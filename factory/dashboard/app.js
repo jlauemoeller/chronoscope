@@ -80,7 +80,9 @@ function render() {
   renderColumns(board.tasks || []);
   if (openTask) {
     const task = findTask(openTask);
-    if (task) renderPanelFiles(task); else closePanel();
+    if (!task) closePanel();
+    else if (openFile) showFile(openFile);   // the open file may have changed or just landed
+    else renderPanelFiles(task);
   }
 }
 

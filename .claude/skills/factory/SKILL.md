@@ -80,6 +80,11 @@ changes and leaves them for the resumed builder.
 - `approve`, `rework`, `abandon`: `main` or `factory/<task-id>` for the
   task-id given.
 
+For `continue`, check for an `Escalated` task in main's backlog **before**
+the branch and tree checks. If there is one, refuse with the pointer to
+`approve`, `rework` and `abandon` (escalation leaves you on the task branch,
+so a plain branch refusal would be misleading).
+
 Also refuse if a merge is in progress (`git rev-parse -q --verify MERGE_HEAD`
 succeeds); tell the user to finish or abort it.
 
@@ -269,7 +274,8 @@ planning), `escalated`, `halted`, `complete`.
    - If a linked file doesn't exist, leave that link unchanged, skip it, and
      list it as a warning in the final summary.
 4. Commit the copies: `git add factory/state/SPEC.md factory/state/spec`,
-   `git commit -m "factory: spec"`.
+   `git commit -m "factory: spec"`. If the copies are unchanged from an
+   earlier, interrupted `start` (nothing to commit), skip the commit.
 5. Write `board.json` with `loop.state` `planning`, no tasks. Spawn the
    Planner and wait.
 6. Verify the Planner's writes. Check that `backlog.md` exists, every row's
