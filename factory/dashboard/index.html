@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factory Board</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">Factory</div>
+    <div class="loop">
+      <span id="loop-state" class="pill">loading</span>
+      <span id="loop-message" class="loop-message"></span>
+    </div>
+    <div id="updated" class="updated"></div>
+  </header>
+
+  <main id="board" class="board" aria-live="polite"></main>
+
+  <aside id="panel" class="panel" hidden>
+    <div class="panel-head">
+      <div>
+        <div id="panel-id" class="mono muted"></div>
+        <h2 id="panel-title"></h2>
+      </div>
+      <button id="panel-close" class="close" aria-label="Close">×</button>
+    </div>
+    <div class="panel-body">
+      <nav id="panel-files" class="files"></nav>
+      <article id="panel-doc" class="doc"></article>
+    </div>
+  </aside>
+</body>
+</html>
