@@ -22,7 +22,7 @@
 | 018-transcript-viewport | Complete |
 | 019-tool-body-renderers | Complete |
 | 020-transcript-navigation | Complete |
-| 021-browser-screen | Planned |
+| 021-browser-screen | In progress |
 | 022-claude-live-watch | Planned |
 | 023-browser-live-updates | Planned |
 | 024-transcript-search | Planned |
