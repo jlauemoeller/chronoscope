@@ -5,8 +5,10 @@
 use clap::Parser;
 
 pub mod config;
+pub mod harness;
 pub mod keymap;
 pub mod logging;
+pub mod model;
 pub mod paths;
 #[doc(hidden)]
 pub mod test_support;
