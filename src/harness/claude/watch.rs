@@ -8,6 +8,10 @@
 //! scratch, after a [`ModelUpdate::Reset`]. When `notify` cannot be started
 //! the worker polls the file's size and modification time instead.
 //!
+//! Like the spec says, only the size and the file's identity tell a reload
+//! from an append: a file truncated and regrown past the old offset within
+//! one coalescing window (or poll interval) is read as an append.
+//!
 //! Files are only ever opened for reading.
 
 use std::fs::{self, File};
@@ -24,6 +28,9 @@ use crate::model::ModelUpdate;
 
 /// After the first event, how long to wait for more before reading.
 const COALESCE: Duration = Duration::from_millis(100);
+
+/// How often the polling fallback looks at the file.
+const POLL_EVERY: Duration = Duration::from_secs(1);
 
 /// How often the worker looks at its stop flag while it waits.
 const TICK: Duration = Duration::from_millis(50);
@@ -82,6 +89,9 @@ struct Watch<'a> {
     streamer: Streamer<'a>,
     /// The `subagents/` directory of a main session.
     subagents: Option<PathBuf>,
+    /// A reload failed after its `Reset`: the receiver holds nothing that
+    /// matches the streamer, so the next change reloads again.
+    needs_reload: bool,
 }
 
 /// The `notify` side: the watcher and what it reports.
@@ -100,6 +110,7 @@ impl<'a> Watch<'a> {
             path,
             streamer,
             subagents,
+            needs_reload: false,
         }
     }
 
@@ -121,14 +132,14 @@ impl<'a> Watch<'a> {
                 Err(err) => log::warn!(
                     "cannot watch {}: {err}; polling every {:?} instead",
                     self.path.display(),
-                    self.job.poll_every
+                    POLL_EVERY
                 ),
             }
         } else {
             log::info!(
                 "watching is off: polling {} every {:?}",
                 self.path.display(),
-                self.job.poll_every
+                POLL_EVERY
             );
         }
         self.poll();
@@ -244,7 +255,7 @@ impl<'a> Watch<'a> {
             return;
         }
         loop {
-            let deadline = Instant::now() + self.job.poll_every;
+            let deadline = Instant::now() + POLL_EVERY;
             while Instant::now() < deadline {
                 if self.stopped() {
                     return;
@@ -252,7 +263,7 @@ impl<'a> Watch<'a> {
                 std::thread::sleep(TICK.min(deadline.saturating_duration_since(Instant::now())));
             }
             let now = self.signature();
-            if now != last {
+            if now != last || self.needs_reload {
                 last = now;
                 if !self.on_change(true) {
                     return;
@@ -290,7 +301,8 @@ impl<'a> Watch<'a> {
             }
         };
         let pos = self.streamer.read_pos();
-        if Identity::of(&meta) != self.streamer.identity() || meta.len() < pos {
+        if self.needs_reload || Identity::of(&meta) != self.streamer.identity() || meta.len() < pos
+        {
             return self.reload(file);
         }
         let grew = meta.len() > pos;
@@ -322,13 +334,15 @@ impl<'a> Watch<'a> {
         match load_file(self.job, &self.path, file) {
             Ok(Some(streamer)) => {
                 self.streamer = streamer;
+                self.needs_reload = false;
                 true
             }
             Ok(None) => false,
             Err(err) => {
+                // Keep watching: the next change tries again.
                 log::error!("could not load {} again: {err}", self.path.display());
-                let _ = self.job.tx.send(ModelUpdate::Loaded);
-                false
+                self.needs_reload = true;
+                self.job.tx.send(ModelUpdate::Loaded).is_ok()
             }
         }
     }
@@ -340,13 +354,19 @@ fn forward(targets: &Targets, tx: &Sender<Wake>, event: notify::Result<notify::E
     let event = match event {
         Ok(event) => event,
         Err(err) => {
+            // Possibly an overflow: look at the file to be safe.
             log::debug!("file watch error: {err}");
+            let _ = tx.send(Wake::Session);
             return;
         }
     };
     // The worker's own reads must not cause more reads.
     if matches!(event.kind, EventKind::Access(_)) {
         return;
+    }
+    // Events were lost (a rescan is due) or name nothing: look at the file.
+    if event.need_rescan() || event.paths.is_empty() {
+        let _ = tx.send(Wake::Session);
     }
     for path in &event.paths {
         if let Some(wake) = targets.classify(path) {

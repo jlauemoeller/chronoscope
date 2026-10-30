@@ -629,5 +629,118 @@ fn a_missing_session_still_ends_in_loaded_and_stops() {
         Err(RecvTimeoutError::Disconnected),
         "nothing to watch"
     );
-    let _: &Path = &data.file;
+}
+
+// ---------------------------------------------------------------------------
+// Warnings, fixture sessions
+// ---------------------------------------------------------------------------
+
+fn warnings(updates: &[ModelUpdate]) -> Vec<usize> {
+    updates
+        .iter()
+        .filter_map(|u| match u {
+            ModelUpdate::ParseWarnings(n) => Some(*n),
+            _ => None,
+        })
+        .collect()
+}
+
+fn activities(updates: &[ModelUpdate]) -> usize {
+    updates
+        .iter()
+        .filter(|u| matches!(u, ModelUpdate::Activity { .. }))
+        .count()
+}
+
+#[test]
+fn the_warning_count_is_sent_when_it_changes_and_only_then() {
+    let data = Data::new(&initial());
+    let mut live = Live::start(&data.harness());
+    let base = applied(&live.seen);
+    assert_eq!(warnings(&live.seen), [0], "the load reports its count");
+    live.clear();
+
+    data.append("this is not json\n");
+    live.wait_for("ParseWarnings(1)", |seen| {
+        seen.contains(&ModelUpdate::ParseWarnings(1))
+    });
+    assert_eq!(warnings(&live.seen), [1]);
+    live.clear();
+
+    // A good line later: the count is the same, so nothing is sent.
+    data.append(&prompt(3, "ok"));
+    live.wait_for_turns(&base, &data.fresh());
+    std::thread::sleep(Duration::from_millis(300));
+    while let Ok(update) = live.rx.try_recv() {
+        live.seen.push(update);
+    }
+    assert_eq!(warnings(&live.seen), Vec::<usize>::new());
+}
+
+fn fixture(name: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/claude")
+        .join(name);
+    fs::read_to_string(path).unwrap()
+}
+
+/// Starts a worker on the first `cut` lines of `fixture`, then appends the
+/// rest in the given pieces (byte offsets into the rest; each piece waits to
+/// be processed before the next is written). Returns the worker's updates
+/// and the data once the turns equal a fresh parse of the whole fixture.
+fn live_fixture(name: &str, cut: usize, splits: &[usize]) -> (Live, Data) {
+    let text = fixture(name);
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let head: String = lines[..cut].concat();
+    let rest: String = lines[cut..].concat();
+    let data = Data::new(&head);
+    let mut live = Live::start(&data.harness());
+
+    let mut from = 0;
+    for &end in splits.iter().chain(std::iter::once(&rest.len())) {
+        let seen = activities(&live.seen);
+        data.append(&rest[from..end]);
+        from = end;
+        live.wait_for("the piece to be processed", |s| activities(s) > seen);
+    }
+    (live, data)
+}
+
+#[test]
+fn the_session_fixture_appended_in_pieces_equals_a_fresh_parse() {
+    // Cut before the >4 KiB `Read` result (line 18, stored lazily); the first
+    // piece ends in the middle of that line, the second in the malformed one.
+    let text = fixture("session.jsonl");
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let first: usize = lines[17..17 + 1].concat().len() / 2;
+    let second: usize = lines[17..26].concat().len() + 20;
+    let (mut live, data) = live_fixture("session.jsonl", 17, &[first, second]);
+
+    let fresh = Assembler::from_file(&data.file).unwrap();
+    let unparsed = fresh.unparsed_count();
+    assert!(unparsed > 0, "the fixture has malformed entries");
+    let expected = fresh.into_turns();
+    live.wait_for_turns(&[], &expected);
+    assert_eq!(warnings(&live.seen).last(), Some(&unparsed));
+    assert!(!live.seen.contains(&ModelUpdate::Reset));
+}
+
+#[test]
+fn the_injected_fixture_appended_in_pieces_equals_a_fresh_parse() {
+    // Cut inside the first exchange, between the injected entries of lines
+    // 25 and 26 and the assistant reply they precede; the pieces end
+    // mid-line. (A cut right before a prompt would differ from a fresh parse
+    // in where the entries before the prompt go: a batch end puts held
+    // entries into the turn that is open, see `claude_injected.rs`.)
+    let text = fixture("injected.jsonl");
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let first: usize = lines[25..27].concat().len() / 2;
+    let second: usize = lines[25..30].concat().len() - 5;
+    let (mut live, data) = live_fixture("injected.jsonl", 25, &[first, second]);
+
+    let fresh = Assembler::from_file(&data.file).unwrap();
+    let unparsed = fresh.unparsed_count();
+    let expected = fresh.into_turns();
+    live.wait_for_turns(&[], &expected);
+    assert_eq!(warnings(&live.seen).last(), Some(&unparsed));
 }

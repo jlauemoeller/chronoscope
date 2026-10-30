@@ -12,15 +12,16 @@
 //! A final line without its newline may still be being written: it is kept in
 //! a buffer and parsed once the newline arrives (unless it is already a
 //! complete JSON value, which a file that simply lacks a final newline is).
+//! The price: a session that died mid-write leaves a cut-off last line that
+//! is never parsed, so it is not counted among the unparsable entries either.
 
 use std::collections::HashSet;
 use std::fs::{self, File, Metadata};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::time::Duration;
 
 use super::assemble::Assembler;
 use super::subagent::resolve;
@@ -52,10 +53,9 @@ impl Default for Tuning {
 }
 
 /// How the worker learns that the file changed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum WatchMode {
     /// A `notify` watch; polling when it cannot be started.
-    #[default]
     Notify,
     /// Polling only (a test seam for "watching is unavailable").
     Poll,
@@ -70,8 +70,6 @@ pub(super) struct Job {
     pub tuning: Tuning,
     pub hook: Option<LoadHook>,
     pub mode: WatchMode,
-    /// How often the polling fallback looks at the file.
-    pub poll_every: Duration,
 }
 
 /// The worker's body. Never panics on bad input: a session that cannot be
@@ -112,7 +110,7 @@ fn stream(job: &Job) -> io::Result<()> {
 /// before the end.
 pub(super) fn load_file<'a>(
     job: &'a Job,
-    path: &std::path::Path,
+    path: &Path,
     file: File,
 ) -> io::Result<Option<Streamer<'a>>> {
     let meta = file.metadata()?;
@@ -277,7 +275,8 @@ impl<'a> Streamer<'a> {
     /// worker should stop.
     pub(super) fn catch_up(&mut self, mut file: File) -> io::Result<bool> {
         file.seek(SeekFrom::Start(self.read_pos()))?;
-        let mut chunk = vec![0; 256 * 1024];
+        let wanted = file.metadata()?.len().saturating_sub(self.read_pos());
+        let mut chunk = vec![0; wanted.clamp(4096, 256 * 1024) as usize];
         loop {
             if self.job.stop.load(Ordering::Relaxed) {
                 return Ok(false);

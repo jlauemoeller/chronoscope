@@ -103,7 +103,6 @@ pub struct ClaudeHarness {
     tuning: Tuning,
     on_batch: Option<LoadHook>,
     watch_mode: WatchMode,
-    poll_every: Duration,
 }
 
 impl ClaudeHarness {
@@ -134,7 +133,6 @@ impl ClaudeHarness {
             tuning: Tuning::default(),
             on_batch: None,
             watch_mode: WatchMode::Notify,
-            poll_every: Duration::from_secs(1),
         }
     }
 
@@ -455,7 +453,6 @@ impl Harness for ClaudeHarness {
             tuning: self.tuning,
             hook: self.on_batch.clone(),
             mode: self.watch_mode,
-            poll_every: self.poll_every,
         };
         let thread = std::thread::Builder::new()
             .name("claude-load".to_owned())
