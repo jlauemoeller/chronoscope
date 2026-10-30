@@ -36,7 +36,8 @@ const RULE_CELLS: usize = 80;
 /// `block_width` is the width the turn's block is laid out at on screen, when
 /// known. A folded summary is cut to the text width of that block (a folded
 /// prompt keeps the two rows the screen shows, the second ending in `…`, with
-/// rows that are soft-wrapped parts of one line joined by a space); without
+/// rows that are soft-wrapped parts of one line joined with the whitespace the
+/// source has there); without
 /// it, summaries are cut at the logical lines. A folded tool call is always
 /// its whole description. Unfolded sections are never cut at the width.
 pub fn displayed_text(
@@ -102,10 +103,12 @@ pub fn full_text(turn: &Turn, id: &SectionId, theme: &Theme, open_key: &str) -> 
 }
 
 /// The rows of a folded summary with the ones that continue the line before
-/// them joined to it by a space. `logical` is the whole text as lines that
-/// are not wrapped: a row continues the line before it when its text is what
-/// follows the text that row ended at. A row that cannot be matched (a quote
-/// bar, say) stays a line of its own.
+/// them joined to it. `logical` is the whole text as lines that are not
+/// wrapped: a row continues the line before it when its text is what follows
+/// the text that row ended at. The join uses the whitespace the source has
+/// there (none where the screen broke a word), and the rows of a quote lose
+/// their repeated `│ ` bar. A row that cannot be matched stays a line of its
+/// own.
 fn soft_joined(rows: Vec<String>, logical: &[String]) -> Vec<String> {
     let logical: Vec<&str> = logical
         .iter()
@@ -116,33 +119,53 @@ fn soft_joined(rows: Vec<String>, logical: &[String]) -> Vec<String> {
     // The logical line the last row came from and how much of it was shown.
     let mut at: Option<(usize, usize)> = None;
     for row in rows {
-        let key = row.trim();
-        // The last row of a cut summary ends in `…`, which is not text.
-        let keys = [key, key.strip_suffix('…').unwrap_or(key)];
-        let found = |line: usize, from: usize| -> Option<usize> {
-            let rest = &logical.get(line)?[from..];
-            let skipped = rest.len() - rest.trim_start().len();
-            keys.iter()
-                .find(|k| !k.is_empty() && rest.trim_start().starts_with(**k))
-                .map(|k| from + skipped + k.len())
+        let continued = match (at, out.last_mut()) {
+            (Some((line, from)), Some(last)) => {
+                let source = logical[line];
+                let prefix = quote_prefix(source);
+                let body = row.trim_start();
+                let body = body.strip_prefix(prefix).unwrap_or(body).trim_start();
+                locate(source, from, body).map(|(end, gap)| (last, line, end, gap, body))
+            }
+            _ => None,
         };
-        let next = match at {
-            Some((line, from)) => found(line, from)
-                .map(|end| (line, end))
-                .filter(|_| !out.is_empty()),
-            None => None,
-        };
-        if let (Some(next), Some(last)) = (next, out.last_mut()) {
-            last.push(' ');
-            last.push_str(row.trim_start());
-            at = Some(next);
+        if let Some((last, line, end, gap, body)) = continued {
+            last.push_str(gap);
+            last.push_str(body);
+            at = Some((line, end));
         } else {
             let line = at.map_or(0, |(line, _)| line + 1);
-            at = found(line, 0).map(|end| (line, end));
+            at = logical
+                .get(line)
+                .and_then(|source| locate(source, 0, &row))
+                .map(|(end, _)| (line, end));
             out.push(row);
         }
     }
     out
+}
+
+/// Where `row` (the last row of a cut summary ends in `…`, which is not text)
+/// continues `source` after its first `from` bytes: the end of the match, and
+/// the whitespace between.
+fn locate<'a>(source: &'a str, from: usize, row: &str) -> Option<(usize, &'a str)> {
+    let rest = &source[from..];
+    let text = rest.trim_start();
+    let gap = &rest[..rest.len() - text.len()];
+    let row = row.trim();
+    [row, row.strip_suffix('…').unwrap_or(row)]
+        .into_iter()
+        .find(|key| !key.is_empty() && text.starts_with(key))
+        .map(|key| (from + gap.len() + key.len(), gap))
+}
+
+/// The quote bars (`│ `, repeated for nested quotes) a line starts with.
+fn quote_prefix(line: &str) -> &str {
+    let mut rest = line;
+    while let Some(after) = rest.strip_prefix("│ ") {
+        rest = after;
+    }
+    &line[..line.len() - rest.len()]
 }
 
 /// The section `id` stands for, in `turn`.
@@ -672,7 +695,6 @@ mod tests {
     #[test]
     fn soft_joined_matches_rows_to_the_unwrapped_lines() {
         let logical = ["alpha beta gamma delta".to_owned(), "second".to_owned()];
-        let rows = |rows: &[&str]| rows.iter().map(|r| (*r).to_owned()).collect::<Vec<_>>();
         assert_eq!(
             soft_joined(rows(&["alpha beta", "gamma…"]), &logical),
             ["alpha beta gamma…"]
@@ -685,6 +707,31 @@ mod tests {
             soft_joined(rows(&["│ alpha", "│ beta"]), &logical),
             ["│ alpha", "│ beta"],
             "rows that cannot be matched stay apart"
+        );
+    }
+
+    fn rows(rows: &[&str]) -> Vec<String> {
+        rows.iter().map(|r| (*r).to_owned()).collect()
+    }
+
+    #[test]
+    fn soft_joined_joins_with_the_sources_own_whitespace() {
+        let join = |r: &[&str], l: &str| soft_joined(rows(r), &[l.to_owned()]);
+        assert_eq!(join(&["abc", "def"], "abcdef"), ["abcdef"]);
+        assert_eq!(join(&["ab", "cd"], "ab cd"), ["ab cd"]);
+        assert_eq!(join(&["abc", "de…"], "abcdefgh"), ["abcde…"]);
+    }
+
+    #[test]
+    fn soft_joined_joins_the_rows_of_a_quote_under_one_bar() {
+        let join = |r: &[&str], l: &str| soft_joined(rows(r), &[l.to_owned()]);
+        assert_eq!(
+            join(&["│ alpha", "│ beta"], "│ alpha beta"),
+            ["│ alpha beta"]
+        );
+        assert_eq!(
+            join(&["│ │ alpha", "│ │ beta…"], "│ │ alpha beta gamma"),
+            ["│ │ alpha beta…"]
         );
     }
 
@@ -743,5 +790,48 @@ mod tests {
                 content.trim_end()
             )
         );
+    }
+
+    #[test]
+    fn a_folded_single_token_prompt_is_copied_without_inserted_spaces() {
+        let source = format!("https://example.com/{}", "abcdefghij".repeat(20));
+        let turn = user(&source, vec![]);
+        let text = shown_at(&turn, &key_id(&turn, SectionKey::Prompt), 80);
+        assert!(!text.contains(' ') && !text.contains('\n'), "{text}");
+        assert!(text.ends_with('…'), "{text}");
+        assert!(source.starts_with(text.trim_end_matches('…')), "{text}");
+    }
+
+    #[test]
+    fn a_folded_cjk_prompt_is_copied_without_inserted_spaces() {
+        let source = "日本語のテキストはスペースなしで長く続きます。".repeat(8);
+        let turn = user(&source, vec![]);
+        let text = shown_at(&turn, &key_id(&turn, SectionKey::Prompt), 80);
+        assert!(!text.contains(' ') && !text.contains('\n'), "{text}");
+        assert!(text.ends_with('…'), "{text}");
+        assert!(source.starts_with(text.trim_end_matches('…')), "{text}");
+    }
+
+    #[test]
+    fn a_folded_quoted_prompt_is_one_line_with_one_bar() {
+        let quote = "a quoted line that is long enough to wrap over more than one row at sixty or eighty columns wide, and then it goes on for a good while longer so that it needs more than two rows";
+        let turn = user(&format!("> {quote}"), vec![]);
+        let text = shown_at(&turn, &key_id(&turn, SectionKey::Prompt), 80);
+        assert!(!text.contains('\n'), "{text}");
+        assert_eq!(text.matches('│').count(), 1, "{text}");
+        let body = text.strip_prefix("│ ").expect("starts with the bar");
+        assert!(body.ends_with('…'), "{text}");
+        assert!(quote.starts_with(body.trim_end_matches('…')), "{text}");
+    }
+
+    #[test]
+    fn a_folded_code_block_line_wider_than_the_row_has_no_inserted_space() {
+        let line = format!("let value = {};", "x".repeat(150));
+        let turn = user(&format!("```\n{line}\n```"), vec![]);
+        let text = shown_at(&turn, &key_id(&turn, SectionKey::Prompt), 80);
+        assert!(!text.contains('\n'), "{text}");
+        let body = text.trim_end_matches('…').trim_start();
+        assert!(line.starts_with(body), "{text}");
+        assert!(!body.contains("x x"), "{text}");
     }
 }

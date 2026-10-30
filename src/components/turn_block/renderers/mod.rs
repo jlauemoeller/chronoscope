@@ -173,8 +173,8 @@ pub(crate) fn indent(lines: Vec<Line<'static>>, n: u16, style: Style) -> Vec<Lin
         .collect()
 }
 
-/// One row per line of `text`, exactly as it is: nothing is wrapped, tabs and
-/// control characters stay.
+/// One row per line of `text`, as it is: nothing is wrapped, tabs and control
+/// characters stay. Lines end at `\n`, so a `\r\n` ending becomes a plain one.
 pub(crate) fn verbatim_lines(text: &str, style: Style) -> Vec<Line<'static>> {
     text.lines()
         .map(|line| Line::from(Span::styled(line.to_owned(), style)))
