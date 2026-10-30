@@ -13,8 +13,10 @@ use crate::theme::{TerminalEnv, ThemeRegistry, resolve_by_id};
 
 use super::super::theme_selector::THEMED;
 
-/// The match is exhaustive on purpose: a new `Id` makes this fail to compile
-/// until it is classified, and every themed one must be in `THEMED`.
+/// Checks that every entry of `THEMED` is an `Id` that draws with the theme.
+/// (`THEMED` stays a list, not a predicate: the numbered `Subagent(n)` ids are
+/// added at run time.) The match is exhaustive, so a new `Id` fails to compile
+/// here until it is classified.
 #[test]
 fn every_id_is_themed_but_the_global_events() {
     for id in THEMED {
@@ -941,6 +943,19 @@ fn the_list_follows_the_cursor_when_the_terminal_shrinks() {
     assert!(small.contains("│  > User 09  "), "{small}");
     let big = screen_text(&mut rig, 120, 40);
     assert!(big.contains("│  > User 09  "));
+}
+
+#[test]
+fn a_long_invalid_id_keeps_its_invalid_suffix_at_60x20() {
+    let id = "catppuccin-mocha-custom-high-contrast-v2-test";
+    let mut rig = rig_with_registry(registry_with(&[(id, None)]), 60, 20);
+    rig.open_loaded();
+    rig.open_themes();
+    let text = screen_text(&mut rig, 60, 20);
+    let row = text.lines().find(|r| r.contains("(invalid)")).unwrap();
+    assert!(row.contains("… (invalid) │"), "{row}");
+    assert!(row.contains("│    catppuccin-mocha"), "{row}");
+    insta::assert_snapshot!(text);
 }
 
 #[test]

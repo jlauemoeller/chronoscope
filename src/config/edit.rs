@@ -59,23 +59,32 @@ fn with_theme(text: &str, id: &str) -> Result<String, SaveThemeError> {
     let value = Value::from(id).to_string();
     match parsed.get("theme") {
         Some(Item::Value(old)) => {
-            if let Some(range) = old.span() {
-                let mut edited = text.to_owned();
-                edited.replace_range(range, &value);
-                return Ok(edited);
-            }
+            let Some(range) = old.span() else {
+                // Parsed values always have a span; never add a second key.
+                return Ok(replaced_by_document(parsed, id));
+            };
+            let mut edited = text.to_owned();
+            edited.replace_range(range, &value);
+            return Ok(edited);
         }
         Some(_) => {
-            // A table or the like: it is replaced, which loses what is in it.
-            log::warn!("config: replacing the non-string `theme` entry with the chosen theme");
-            let mut doc = parsed.into_mut();
-            doc["theme"] = toml_edit::value(id);
-            return Ok(doc.to_string());
+            log::warn!(
+                "config: replacing the `theme` table with the chosen theme; its contents are lost"
+            );
+            return Ok(replaced_by_document(parsed, id));
         }
         None => {}
     }
     let at = insertion_point(text, &parsed);
     Ok(insert_line(text, at, &format!("theme = {value}")))
+}
+
+/// The document with its `theme` replaced by `id`, written out again (what
+/// is around the key is kept, line endings are normalised).
+fn replaced_by_document(parsed: Document<&str>, id: &str) -> String {
+    let mut doc = parsed.into_mut();
+    doc["theme"] = toml_edit::value(id);
+    doc.to_string()
 }
 
 /// Where a new top-level key goes: after the line of the last top-level

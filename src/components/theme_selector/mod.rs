@@ -795,8 +795,29 @@ mod tests {
         s.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(3));
         let rows = rows_of(&render(41, 8, |f| s.view(f, area)));
         assert_eq!(rows[3], "│  > An Extremely Long User Theme Name… │");
-        assert_eq!(rows[4], "│    an-extremely-long-invalid-theme-i… │");
+        assert_eq!(rows[4], "│    an-extremely-long-inval… (invalid) │");
         assert!(rows[2].contains("│    Short  "));
+    }
+
+    #[test]
+    fn an_invalid_row_in_a_narrow_overlay_keeps_the_suffix_or_falls_back_without_panicking() {
+        let items = vec![
+            ThemeItem::valid("a", "Alpha"),
+            ThemeItem::invalid("some-long-invalid-id"),
+        ];
+        let mut s = ThemeSelector::new(items, "a", builtin::default_theme(), Keymap::default());
+        // 25 wide: 23 inside, 18 for the label: 8 for the id and the suffix.
+        s.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(2));
+        let rows = rows_of(&render(25, 8, |f| s.view(f, Rect::new(0, 0, 25, 8))));
+        assert_eq!(rows[3], "│    some-lo… (invalid) │");
+        // Too narrow for the suffix: the whole label is cut, as for any row.
+        for width in 0..16 {
+            let rows = rows_of(&render(20, 8, |f| s.view(f, Rect::new(0, 0, width, 8))));
+            assert_eq!(rows.len(), 8);
+        }
+        let rows = rows_of(&render(16, 8, |f| s.view(f, Rect::new(0, 0, 16, 8))));
+        assert!(rows[3].starts_with("│    some"), "{}", rows[3]);
+        assert!(rows[3].contains('…'), "{}", rows[3]);
     }
 
     // -- drawing

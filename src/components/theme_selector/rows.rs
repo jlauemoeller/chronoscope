@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
+use unicode_width::UnicodeWidthStr;
 
 use crate::components::truncate_with_ellipsis;
 use crate::theme::{Role, Theme};
@@ -16,6 +17,8 @@ const MARKER_INDENT: &str = "  ";
 const NO_MARKER: &str = " ";
 /// What stands between the marker and the label.
 const LABEL_GAP: &str = " ";
+/// What follows the id of a theme that failed to load.
+const INVALID_SUFFIX: &str = " (invalid)";
 /// The columns of a row that are not label: the indent, the marker, the gap
 /// and one column before the border.
 const ROW_CHROME: usize = 5;
@@ -46,7 +49,7 @@ impl ThemeItem {
     pub fn invalid(id: impl Into<String>) -> Self {
         let id = id.into();
         Self {
-            label: format!("{id} (invalid)"),
+            label: format!("{id}{INVALID_SUFFIX}"),
             id,
             selectable: false,
         }
@@ -64,9 +67,23 @@ pub struct ThemeRows<'a> {
 }
 
 impl ThemeRows<'_> {
-    /// The row for `item`, its label cut to `width` columns.
+    /// The text of the row for `item` in a row `width` columns wide: its
+    /// label, cut with an ellipsis if it does not fit. On a theme that cannot
+    /// be selected only the id is cut, so ` (invalid)` always shows (unless
+    /// not even one column of the id fits beside it).
+    fn label_text(item: &ThemeItem, width: usize) -> String {
+        let room = width.saturating_sub(ROW_CHROME);
+        let suffix = INVALID_SUFFIX.width();
+        if !item.selectable && room > suffix {
+            let id = truncate_with_ellipsis(&item.id, room - suffix);
+            return format!("{id}{INVALID_SUFFIX}");
+        }
+        truncate_with_ellipsis(&item.label, room)
+    }
+
+    /// The row for `item`, its label cut to fit `width` columns.
     fn line(&self, index: usize, item: &ThemeItem, width: usize) -> Line<'static> {
-        let label = truncate_with_ellipsis(&item.label, width.saturating_sub(ROW_CHROME));
+        let label = Self::label_text(item, width);
         if self.selected == Some(index) {
             let marker = Style::new().fg(self.theme.role(Role::Primary));
             let bold = Style::new()
