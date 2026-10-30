@@ -55,6 +55,10 @@ pub struct SectionCtx<'a> {
     pub expanded: bool,
     /// The label of the key that opens a subagent transcript.
     pub open_key: &'a str,
+    /// Whether tool text is kept exactly as it is: one row per line of the
+    /// text, with no wrapping, no tab expansion and no dropped characters.
+    /// Used for plain text that must be complete (the full copy).
+    pub verbatim: bool,
 }
 
 /// The label of the default `open_subagent` key.
@@ -71,6 +75,7 @@ impl<'a> SectionCtx<'a> {
             truncate: crate::config::DEFAULT_TRUNCATE_OUTPUT_LINES,
             expanded: false,
             open_key: DEFAULT_OPEN_KEY,
+            verbatim: false,
         }
     }
 }
@@ -165,6 +170,14 @@ pub(crate) fn indent(lines: Vec<Line<'static>>, n: u16, style: Style) -> Vec<Lin
             spans.extend(line.spans);
             Line::from(spans)
         })
+        .collect()
+}
+
+/// One row per line of `text`, as it is: nothing is wrapped, tabs and control
+/// characters stay. Lines end at `\n`, so a `\r\n` ending becomes a plain one.
+pub(crate) fn verbatim_lines(text: &str, style: Style) -> Vec<Line<'static>> {
+    text.lines()
+        .map(|line| Line::from(Span::styled(line.to_owned(), style)))
         .collect()
 }
 

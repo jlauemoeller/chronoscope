@@ -5,6 +5,7 @@
 use clap::Parser;
 
 pub mod app;
+pub mod clipboard;
 pub mod components;
 pub mod config;
 pub mod harness;

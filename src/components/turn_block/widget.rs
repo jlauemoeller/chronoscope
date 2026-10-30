@@ -215,6 +215,7 @@ impl<'a> TurnBlock<'a> {
             truncate: self.truncate,
             expanded: folds.is_expanded(&section.id),
             open_key: self.open_key,
+            verbatim: false,
         }
     }
 

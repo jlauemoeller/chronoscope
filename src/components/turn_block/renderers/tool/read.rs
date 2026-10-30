@@ -96,11 +96,15 @@ fn gutter_rows(
     let text_width = usize::from(ctx.body_width()).saturating_sub(gutter).max(1);
     let mut rows = Vec::new();
     for (number, text) in lines {
-        let mut wrapped = char_wrap(
-            text,
-            u16::try_from(text_width).unwrap_or(u16::MAX),
-            text_style,
-        );
+        let mut wrapped = if ctx.verbatim {
+            super::super::verbatim_lines(text, text_style)
+        } else {
+            char_wrap(
+                text,
+                u16::try_from(text_width).unwrap_or(u16::MAX),
+                text_style,
+            )
+        };
         if wrapped.is_empty() {
             wrapped.push(Line::default());
         }

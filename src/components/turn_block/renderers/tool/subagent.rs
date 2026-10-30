@@ -37,7 +37,11 @@ fn markdown_block(
     style: ratatui::style::Style,
     ctx: &SectionCtx<'_>,
 ) -> Block {
-    let mut lines = render_markdown(text, ctx.body_width(), style, ctx.theme);
+    let mut lines = if ctx.verbatim {
+        super::super::verbatim_lines(text, style)
+    } else {
+        render_markdown(text, ctx.body_width(), style, ctx.theme)
+    };
     if lines.is_empty() {
         lines.push(Line::default());
     }
