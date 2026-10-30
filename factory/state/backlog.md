@@ -27,7 +27,7 @@
 | 023-browser-live-updates | Complete |
 | 024-transcript-search | Complete |
 | 025-copy-to-clipboard | Complete |
-| 026-save-and-export | Planned |
+| 026-save-and-export | In progress |
 | 027-subagent-transcripts | Planned |
 | 028-opencode-adapter | Planned |
 | 029-opencode-live-watch | Planned |
