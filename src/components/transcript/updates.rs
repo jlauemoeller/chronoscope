@@ -77,6 +77,10 @@ impl Transcript {
             self.pin_to_bottom();
         }
         self.refresh();
+        if counting {
+            // A shorter turn can bring the end back into view.
+            self.update_following();
+        }
     }
 
     /// When the selected section lies entirely above the top row of the

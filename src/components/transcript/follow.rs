@@ -50,7 +50,11 @@ impl Transcript {
         };
         let end = self.offset + usize::from(size.height);
         let blocks = self.cache.len();
-        if let Some(window) = self.window.as_ref().filter(|w| w.size == size) {
+        if let Some(window) = self
+            .window
+            .as_ref()
+            .filter(|w| w.size == size && w.offset == self.offset)
+        {
             match window.blocks.last() {
                 Some(last) => {
                     return last.index + 1 == blocks && last.top + last.layout.height() <= end;

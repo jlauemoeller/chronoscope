@@ -466,3 +466,18 @@ fn header_with_the_parse_warning_and_the_live_marker_120x40_text() {
     );
     insta::assert_snapshot!(text);
 }
+
+#[test]
+fn the_indicator_is_drawn_in_help_text_80x24_styled() {
+    let mut rig = rig_with(theme("default"), 80, 24);
+    rig.open_live();
+    rig.live_update(ModelUpdate::Appended(replies(&["t9", "t10", "t11"])));
+    let buffer = screen_buffer(&mut rig, 80, 24);
+    let help_text = theme("default").style(crate::theme::Token::HelpText).fg;
+    // `↓ 3 new` ends one column before the edge.
+    for x in 72..79 {
+        assert_eq!(buffer[(x, 23)].fg, help_text.unwrap(), "col {x}");
+    }
+    assert_eq!(buffer[(72, 23)].symbol(), "↓");
+    insta::assert_snapshot!(buffer_to_styled(&buffer));
+}

@@ -124,7 +124,9 @@ pub const MODEL_UPDATE_ATTR: Attribute = Attribute::Custom("model_update");
 /// The number of turns the transcript holds (a length; query only).
 pub const TURN_COUNT_ATTR: Attribute = Attribute::Custom("turn_count");
 /// The number of sections that arrived while the user was away from the end,
-/// the `N` of `↓ N new` (a length; query only).
+/// the `N` of `↓ N new` (a length; query only). A `Component::attr` cannot
+/// answer a `Msg`, so the App reads it with `query` after the updates it
+/// forwards; keys report changes themselves as [`Msg::NewSections`].
 pub const NEW_SECTIONS_ATTR: Attribute = Attribute::Custom("new_sections");
 /// Whether the transcript follows new content (a flag; query only).
 pub const FOLLOWING_ATTR: Attribute = Attribute::Custom("following");
@@ -543,7 +545,9 @@ impl Transcript {
 
 impl AppComponent<Msg, UserEvent> for Transcript {
     /// Resolves the key in the `browser` context and performs the `Cmd` of
-    /// its action. Returns [`Msg::TranscriptChanged`] when that changed what
+    /// its action. Returns [`Msg::NewSections`] when it changed the count of
+    /// new sections (`G` resuming following), else [`Msg::TranscriptChanged`]
+    /// when that changed what
     /// is shown, so that the App redraws. Actions of other tasks (search,
     /// copy, ...) do nothing yet.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {

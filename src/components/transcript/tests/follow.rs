@@ -112,6 +112,73 @@ fn a_growing_last_turn_keeps_the_view_at_the_end() {
 }
 
 #[test]
+fn the_selection_moves_to_the_new_last_section_of_a_growing_turn() {
+    let mut t = at_the_end();
+    assert_eq!(t.selected(), Some(&last_section_of(&t, "t8")));
+    let before = t.selected().cloned().unwrap();
+    let grown = arc(with_id(
+        blocks::assistant(
+            None,
+            vec![
+                blocks::text("t1", "That is everything the camera exposes."),
+                blocks::text("t2", "A second item arrived."),
+            ],
+            None,
+        ),
+        "t8",
+    ));
+    t.apply_update(&ModelUpdate::Updated(vec![grown]));
+    let last = last_section_of(&t, "t8");
+    assert_ne!(last, before, "the turn has a new last section");
+    assert_eq!(t.selected(), Some(&last));
+    assert!(shows_last_row(&mut t, 24));
+    assert_eq!(t.new_sections(), 0);
+}
+
+#[test]
+fn a_selection_not_on_the_last_section_stays_when_the_last_turn_grows() {
+    let mut t = at_the_end();
+    t.perform(up());
+    let kept = t.selected().cloned().unwrap();
+    let grown = arc(with_id(
+        blocks::assistant(
+            None,
+            vec![
+                blocks::text("t1", "That is everything the camera exposes."),
+                blocks::text("t2", "A second item arrived."),
+            ],
+            None,
+        ),
+        "t8",
+    ));
+    t.apply_update(&ModelUpdate::Updated(vec![grown]));
+    assert_eq!(t.selected(), Some(&kept));
+    assert!(shows_last_row(&mut t, 24));
+}
+
+#[test]
+fn an_update_that_brings_the_end_into_view_resumes_following() {
+    let mut t = loading_transcript();
+    let mut turns: Vec<Arc<Turn>> = (1..=6).map(|n| text_turn(&format!("r{n}"))).collect();
+    turns.push(arc(reply("r7", &tall_text())));
+    t.apply_update(&ModelUpdate::Appended(turns));
+    t.apply_update(&ModelUpdate::Loaded);
+    t.perform(end());
+    assert!(t.following());
+    t.perform(scroll_up());
+    t.perform(scroll_up());
+    assert!(!t.following());
+    // The tall turn shrinks: the end is on screen without the user moving.
+    t.apply_update(&ModelUpdate::Updated(vec![text_turn("r7")]));
+    assert!(shows_last_row(&mut t, 24), "the end is in view");
+    assert!(t.following());
+    assert_eq!(t.new_sections(), 0);
+    t.apply_update(&appended_turns(&["r8"]));
+    assert!(shows_last_row(&mut t, 24));
+    assert_eq!(t.new_sections(), 0);
+}
+
+#[test]
 fn an_update_that_arrives_as_appended_with_a_known_id_also_follows() {
     let mut t = at_the_end();
     let grown = arc(reply("t8", &tall_text()));

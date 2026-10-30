@@ -171,18 +171,26 @@ impl BrowserHeader {
     fn cwd_row(&self, width: usize) -> Line<'static> {
         let border = self.border();
         let inner = width.saturating_sub(2);
-        let note = parse_warning_note(self.parse_warnings);
-        let note_width = note.as_deref().map_or(0, UnicodeWidthStr::width);
+        // What is right-aligned must fit between the first blank column and
+        // the blank column before the border; the note goes first, then the
+        // marker.
+        let room = inner.saturating_sub(CWD_COLUMN - 1 + PADDING);
         let live_width = if self.live {
             LIVE_DOT.width() + LIVE_WORD.width()
         } else {
             0
         };
-        let gap = if note.is_some() && self.live {
-            NOTE_GAP
-        } else {
-            0
+        let live = self.live && live_width <= room;
+        let live_width = if live { live_width } else { 0 };
+        let gap_for = |note_width: usize| {
+            if live && note_width > 0 { NOTE_GAP } else { 0 }
         };
+        let note = parse_warning_note(self.parse_warnings).filter(|note| {
+            let width = note.width();
+            width + gap_for(width) + live_width <= room
+        });
+        let note_width = note.as_deref().map_or(0, UnicodeWidthStr::width);
+        let gap = if note.is_some() && live { NOTE_GAP } else { 0 };
         // What is right-aligned, and the blank column before the border.
         let right = note_width + gap + live_width;
         let trailing = if right > 0 { right + PADDING } else { 0 };
@@ -205,7 +213,7 @@ impl BrowserHeader {
         if gap > 0 {
             spans.push(Span::raw(" ".repeat(gap)));
         }
-        if self.live {
+        if live {
             let dot = Style::new().fg(self.theme.role(Role::Primary));
             spans.push(Span::styled(LIVE_DOT, dot));
             spans.push(Span::styled(LIVE_WORD, self.muted()));
@@ -467,6 +475,24 @@ mod tests {
         );
         let before = &row[..row.find("3 entries").unwrap()];
         assert_eq!(before.chars().rev().take_while(|c| *c == ' ').count(), 2);
+    }
+
+    #[test]
+    fn a_row_too_narrow_for_the_note_and_the_marker_drops_the_note_first() {
+        for (width, kept) in [(44u16, true), (40, false), (30, false), (16, false)] {
+            let mut h = header(2).live(true);
+            let rows = rows(&mut h, width);
+            let row = &rows[2];
+            assert_eq!(row.chars().count(), usize::from(width), "{row}");
+            assert!(row.ends_with("│"), "{row}");
+            assert_eq!(row.contains("entries"), kept, "{row}");
+            assert!(row.contains("● live"), "the marker stays: {row}");
+        }
+        // Too narrow even for the marker: the row is still whole.
+        let mut h = header(2).live(true);
+        let rows = rows(&mut h, 8);
+        assert_eq!(rows[2].chars().count(), 8);
+        assert!(!rows[2].contains("live"));
     }
 
     #[test]

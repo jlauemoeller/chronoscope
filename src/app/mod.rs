@@ -142,7 +142,9 @@ pub enum Msg {
     /// nothing but a redraw is needed.
     TranscriptChanged,
     /// The transcript counts this many sections that arrived while the user
-    /// was away from the end (`↓ N new`); 0 once following resumes.
+    /// was away from the end (`↓ N new`); 0 once following resumes. Keys
+    /// report it this way; after the updates and viewport changes it
+    /// forwards, the App reads the count from the transcript itself.
     NewSections(usize),
     /// `Enter` in the prompt, with its text (`"y"` for a yes in a `y/n`
     /// prompt).
@@ -496,7 +498,11 @@ impl App {
             Msg::Selector(msg) => self.selector_msg(msg),
             Msg::PromptChanged(text) => self.search_changed(text),
             Msg::PromptMoved | Msg::TranscriptChanged => self.request_redraw(RedrawRequest::Dirty),
-            Msg::NewSections(count) => self.set_new_sections(count),
+            Msg::NewSections(count) => {
+                // The key that reported it moved the view too.
+                self.request_redraw(RedrawRequest::Dirty);
+                self.set_new_sections(count);
+            }
             Msg::PromptSubmit(_) => self.search_submit(),
             Msg::PromptCancel => self.search_cancel(),
             Msg::PromptNav(direction) => self.search_nav(direction),
