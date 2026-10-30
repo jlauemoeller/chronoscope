@@ -1,0 +1,25 @@
+VERDICT: PASS
+
+## Summary
+Round 3 does what the approver's rework note asked. `ProjectId` is now built by a new helper, `project_id(&str)`, from the raw cwd string with only trailing `/` and `\` trimmed. Roots (`/`, `C:\`) are kept, so ids no longer depend on the OS. The `cwd` field stays the component-normalised `PathBuf` used for alias matching and display names, and the optional `refresh()` doc sentence was added. `tests/claude_discovery.rs` is unchanged. I re-ran the gates: fmt, clippy `-D warnings` and `cargo test` all pass (325 tests).
+
+## Acceptance criteria
+- [x] `Harness` (stage 1), `HarnessId` (1–4, display names), `Project`, `ProjectId`, `SessionSummary` and `SessionId` exist, and `ClaudeHarness` implements the trait. They are in `src/harness/mod.rs`, `src/model/mod.rs` and `src/harness/claude/discovery.rs`. Tests: `harness_ids_have_stable_numbers_and_names`, `claude_harness_implements_the_trait`, `sessions_carry_their_summary_fields`.
+- [x] `available()` follows the data dir, and config `data_dir` overrides the default. Tests: `available_follows_the_data_dir`, `default_data_dir_is_under_home_and_config_overrides_it`.
+- [x] One real cwd in two encoded dirs gives one project, and two cwds in one encoded dir give two projects. Grouping in `build_index` is keyed by `project_id(raw cwd)`. Tests: `sessions_in_different_encoded_dirs_with_one_cwd_are_one_project`, `sessions_in_one_encoded_dir_with_different_cwds_are_two_projects`, `cwds_that_differ_only_by_a_trailing_separator_are_one_project`, plus the new unit test `project_ids_trim_trailing_separators_only`.
+- [x] The display name is the basename or the configured alias, and projects are sorted by most recent activity. `display_name` matches aliases on the normalised `PathBuf`. `Path` equality compares components, so this also holds on Windows. Tests: `project_names_are_the_basename_or_the_configured_alias`, `aliases_from_the_config_are_matched_on_the_expanded_path`, `projects_are_sorted_by_most_recent_activity`, `a_newer_mtime_moves_the_project_up_and_is_the_last_activity`.
+- [x] Title rule (last `ai-title`, then the first prompt's first line truncated to 80 with `…`, then `(untitled)`) and sessions sorted newest first by `started_at`. Tests: `the_last_ai_title_wins`, `without_a_title_the_first_prompt_gives_a_truncated_first_line`, `the_prompt_title_is_the_first_line_only`, `truncation_keeps_80_characters_and_cuts_81`, `without_title_or_prompt_a_session_is_untitled`, `sessions_are_sorted_newest_first_by_start_time_not_last_activity`.
+- [x] `subagents/*.jsonl` files are not sessions, and a 0-byte `.jsonl` is listed under its directory-name project as `(untitled)`. Tests: `subagent_transcripts_are_not_sessions`, `a_zero_byte_transcript_is_listed_under_its_directory_name_as_untitled`.
+- [x] Cache: one build reads each file once, an unchanged rebuild reads zero files, an append rescans only that file, and a delete removes the session. These are checked with `scan_count()`. Tests: `one_build_reads_each_file_exactly_once`, `sessions_alone_also_builds_once`, `a_second_build_without_changes_reads_nothing`, `appending_to_one_file_rescans_only_that_file`, `a_changed_mtime_alone_rescans_the_file`, `a_new_file_is_scanned_and_listed`, `a_deleted_file_loses_its_session`.
+- [x] Scanning runs on several threads with `std::thread::scope` (`scan_all`). Tests: `scanning_uses_several_threads` (overlap hook), `the_worker_count_never_exceeds_the_files_to_scan`, `the_default_worker_count_follows_available_parallelism`.
+- [x] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` pass. I re-ran them locally and all are green. The test ids are now plain strings with no `PathBuf` round-trip, so the earlier `windows-latest` failure mode is gone.
+
+Rework note check:
+- Helper `project_id` exists, trims only trailing `/` and `\`, and keeps `/` and `C:\`: done (`discovery.rs`, `project_id`).
+- Unit test with the five required cases, plus `/a/b//` and a mixed-separator path: done (`project_ids_trim_trailing_separators_only`).
+- No code path builds a `ProjectId` from a `PathBuf` string. The only constructions are `project_id(raw)` and `ProjectId::from(file.dir_name.as_str())` (the directory name is a `String`): done.
+- Existing tests unchanged. Round 3 touched only `src/harness/claude/discovery.rs` and the build notes: done.
+- Optional `refresh()` doc sentence: done. This also closes round-2 feature-review nit 1.
+
+## Findings
+1. [nit] `src/harness/claude/discovery.rs`, `project_id`: when a root has repeated trailing separators, the raw string is kept untrimmed. `//` stays `//`, not `/`, and `C:\\` or `C://` stays as written, not `C:\`. Such cwds would therefore be separate projects from `/` and `C:\`. Claude never writes these, so this is cosmetic. Change, if wanted: when the trimmed result is empty or a drive (`X:`), return the trimmed string plus the first trailing separator character (`&cwd[..trimmed.len() + 1]`). Add `//` → `/` and `C:\\` → `C:\` cases to `project_ids_trim_trailing_separators_only`.

@@ -1,0 +1,523 @@
+//! Claude session discovery: projects and session summaries (SPEC §3.1, §4.1,
+//! §9.2).
+//!
+//! [`ClaudeHarness`] scans every transcript under the data directory once,
+//! keeps each file's [`FileScan`] in memory keyed by (path, size, mtime), and
+//! builds the project and session lists from the scans. A rebuild rescans
+//! only new or changed files and forgets the ones that are gone.
+
+use std::collections::{BTreeMap, HashMap};
+use std::fs::{self, File};
+use std::io::{self, BufReader};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::SystemTime;
+
+use anyhow::Context;
+use chrono::{DateTime, Utc};
+
+use super::scan::{FileScan, scan_reader};
+use crate::config::Config;
+use crate::harness::{Harness, Result};
+use crate::model::{HarnessId, Project, ProjectId, SessionId, SessionSummary};
+
+/// Title of a session with neither an `ai-title` nor a prompt.
+pub const UNTITLED: &str = "(untitled)";
+
+/// The longest prompt-derived title, in characters, including the `…`.
+pub const MAX_TITLE_CHARS: usize = 80;
+
+/// The default data directory: `<home>/.claude/projects` on every platform.
+pub fn default_data_dir(home: &Path) -> PathBuf {
+    home.join(".claude").join("projects")
+}
+
+/// What the last index build did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BuildStats {
+    /// Transcripts found.
+    pub files: usize,
+    /// Transcripts read.
+    pub scanned: usize,
+    /// Transcripts whose cached scan was still valid.
+    pub reused: usize,
+    /// Cached scans dropped because their file is gone.
+    pub dropped: usize,
+    /// Threads the scanning ran on (0 when nothing needed scanning).
+    pub workers: usize,
+}
+
+/// A transcript found on disk, with the stat the cache is keyed by.
+struct FileMeta {
+    path: PathBuf,
+    /// The encoded cwd: the name of the project directory.
+    dir_name: String,
+    /// The file stem, the session id.
+    id: String,
+    size: u64,
+    mtime: SystemTime,
+}
+
+struct CacheEntry {
+    size: u64,
+    mtime: SystemTime,
+    scan: Arc<FileScan>,
+}
+
+/// The built project and session lists.
+#[derive(Default)]
+struct Index {
+    projects: Vec<Project>,
+    sessions: HashMap<ProjectId, Vec<SessionSummary>>,
+}
+
+#[derive(Default)]
+struct State {
+    cache: HashMap<PathBuf, CacheEntry>,
+    index: Option<Arc<Index>>,
+    last_build: BuildStats,
+}
+
+type ScanHook = Box<dyn Fn(&Path) + Send + Sync>;
+
+/// The Claude Code adapter's discovery half.
+pub struct ClaudeHarness {
+    data_dir: PathBuf,
+    aliases: BTreeMap<PathBuf, String>,
+    max_workers: Option<usize>,
+    scans: AtomicUsize,
+    state: Mutex<State>,
+    on_scan: Option<ScanHook>,
+}
+
+impl ClaudeHarness {
+    /// Builds the harness from the config: `harness.claude.data_dir` when set,
+    /// else `<home>/.claude/projects`; `projects.aliases` for display names.
+    pub fn new(config: &Config, home: &Path) -> Self {
+        let data_dir = config
+            .harness
+            .claude
+            .data_dir
+            .clone()
+            .unwrap_or_else(|| default_data_dir(home));
+        Self::with_data_dir(data_dir, config.projects.aliases.clone())
+    }
+
+    /// Builds the harness for an explicit data directory.
+    pub fn with_data_dir(data_dir: PathBuf, aliases: BTreeMap<PathBuf, String>) -> Self {
+        Self {
+            data_dir,
+            aliases,
+            max_workers: None,
+            scans: AtomicUsize::new(0),
+            state: Mutex::new(State::default()),
+            on_scan: None,
+        }
+    }
+
+    /// Caps the scan worker threads (default: `available_parallelism()`).
+    #[must_use]
+    pub fn with_max_workers(mut self, workers: usize) -> Self {
+        self.max_workers = Some(workers.max(1));
+        self
+    }
+
+    /// Calls `hook` with the path of every file just before it is read, on the
+    /// scanning thread. A test hook.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_scan_hook(mut self, hook: impl Fn(&Path) + Send + Sync + 'static) -> Self {
+        self.on_scan = Some(Box::new(hook));
+        self
+    }
+
+    /// The directory the transcripts are read from.
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
+    /// How many files have been read since construction. Every read counts,
+    /// including one that failed.
+    pub fn scan_count(&self) -> usize {
+        self.scans.load(Ordering::Relaxed)
+    }
+
+    /// What the last build did.
+    pub fn last_build(&self) -> BuildStats {
+        self.lock().last_build
+    }
+
+    /// Rebuilds the index: stats every transcript, rescans the new or changed
+    /// ones (in parallel) and drops what is gone.
+    ///
+    /// [`projects`](Harness::projects) and [`sessions`](Harness::sessions)
+    /// only build when there is no index yet, so call this to pick up changes
+    /// on disk. The state lock is held for the whole build, so other callers
+    /// wait for it; do not call this on the UI thread. The first `projects()` or
+    /// `sessions()` call also builds the index under the same lock, so the
+    /// same caveat applies to it.
+    pub fn refresh(&self) -> Result<()> {
+        let mut state = self.lock();
+        self.build(&mut state)?;
+        Ok(())
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The current index, building it first when there is none.
+    fn index(&self) -> Result<Arc<Index>> {
+        let mut state = self.lock();
+        match &state.index {
+            Some(index) => Ok(Arc::clone(index)),
+            None => self.build(&mut state),
+        }
+    }
+
+    fn build(&self, state: &mut State) -> Result<Arc<Index>> {
+        let files = list_transcripts(&self.data_dir)?;
+        let mut stats = BuildStats {
+            files: files.len(),
+            ..BuildStats::default()
+        };
+
+        let before = state.cache.len();
+        let present: std::collections::HashSet<&Path> =
+            files.iter().map(|f| f.path.as_path()).collect();
+        state
+            .cache
+            .retain(|path, _| present.contains(path.as_path()));
+        stats.dropped = before - state.cache.len();
+
+        let stale: Vec<&FileMeta> = files
+            .iter()
+            .filter(|f| {
+                !state
+                    .cache
+                    .get(&f.path)
+                    .is_some_and(|c| c.size == f.size && c.mtime == f.mtime)
+            })
+            .collect();
+        stats.reused = files.len() - stale.len();
+        stats.scanned = stale.len();
+
+        let (results, workers) = self.scan_all(&stale)?;
+        stats.workers = workers;
+        for (file, result) in stale.iter().zip(results) {
+            match result {
+                Ok(scan) => {
+                    state.cache.insert(
+                        file.path.clone(),
+                        CacheEntry {
+                            size: file.size,
+                            mtime: file.mtime,
+                            scan: Arc::new(scan),
+                        },
+                    );
+                }
+                Err(err) => {
+                    log::warn!("could not read {}: {err}", file.path.display());
+                    state.cache.remove(&file.path);
+                }
+            }
+        }
+
+        let scanned: Vec<(&FileMeta, &FileScan)> = files
+            .iter()
+            .filter_map(|f| Some((f, &*state.cache.get(&f.path)?.scan)))
+            .collect();
+        let index = Arc::new(build_index(&scanned, &self.aliases));
+        state.index = Some(Arc::clone(&index));
+        state.last_build = stats;
+        Ok(index)
+    }
+
+    /// Scans `files` on up to `max_workers` threads, which take files from a
+    /// shared counter so that one big file does not hold up the rest. Returns
+    /// the results in `files` order and the number of threads used.
+    fn scan_all(&self, files: &[&FileMeta]) -> Result<(Vec<io::Result<FileScan>>, usize)> {
+        if files.is_empty() {
+            return Ok((Vec::new(), 0));
+        }
+        let workers = self
+            .max_workers
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
+            })
+            .clamp(1, files.len());
+        let next = AtomicUsize::new(0);
+        let mut results: Vec<Option<io::Result<FileScan>>> = files.iter().map(|_| None).collect();
+        std::thread::scope(|scope| -> Result<()> {
+            let handles: Vec<_> = (0..workers)
+                .map(|_| {
+                    scope.spawn(|| {
+                        let mut done = Vec::new();
+                        loop {
+                            let i = next.fetch_add(1, Ordering::Relaxed);
+                            let Some(file) = files.get(i) else {
+                                return done;
+                            };
+                            done.push((i, self.scan_file(&file.path)));
+                        }
+                    })
+                })
+                .collect();
+            for handle in handles {
+                let done = handle
+                    .join()
+                    .map_err(|_| anyhow::anyhow!("a scan worker panicked"))?;
+                for (i, result) in done {
+                    results[i] = Some(result);
+                }
+            }
+            Ok(())
+        })?;
+        let results = results
+            .into_iter()
+            .map(|r| r.unwrap_or_else(|| Err(io::Error::other("file was not scanned"))))
+            .collect();
+        Ok((results, workers))
+    }
+
+    fn scan_file(&self, path: &Path) -> io::Result<FileScan> {
+        self.scans.fetch_add(1, Ordering::Relaxed);
+        if let Some(hook) = &self.on_scan {
+            hook(path);
+        }
+        scan_reader(BufReader::with_capacity(64 * 1024, File::open(path)?))
+    }
+}
+
+impl Harness for ClaudeHarness {
+    fn id(&self) -> HarnessId {
+        HarnessId::Claude
+    }
+
+    fn available(&self) -> bool {
+        self.data_dir.is_dir()
+    }
+
+    /// Builds the index first when there is none. A missing data directory
+    /// gives no projects.
+    fn projects(&self) -> Result<Vec<Project>> {
+        Ok(self.index()?.projects.clone())
+    }
+
+    /// Builds the index first when there is none. An unknown project gives no
+    /// sessions.
+    fn sessions(&self, project: &ProjectId) -> Result<Vec<SessionSummary>> {
+        Ok(self
+            .index()?
+            .sessions
+            .get(project)
+            .cloned()
+            .unwrap_or_default())
+    }
+}
+
+/// Lists `<data_dir>/<encoded-cwd>/*.jsonl`, sorted by path. Files in deeper
+/// directories (`<uuid>/subagents/`) are not sessions. A missing data
+/// directory is an empty list; an unreadable project directory is skipped.
+fn list_transcripts(data_dir: &Path) -> Result<Vec<FileMeta>> {
+    let top = match fs::read_dir(data_dir) {
+        Ok(top) => top,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => {
+            return Err(err).with_context(|| format!("reading {}", data_dir.display()));
+        }
+    };
+    let mut files = Vec::new();
+    for dir in top.filter_map(|e| e.ok()) {
+        let dir_path = dir.path();
+        if !dir_path.is_dir() {
+            continue;
+        }
+        let dir_name = dir.file_name().to_string_lossy().into_owned();
+        let inner = match fs::read_dir(&dir_path) {
+            Ok(inner) => inner,
+            Err(err) => {
+                log::warn!("could not read {}: {err}", dir_path.display());
+                continue;
+            }
+        };
+        for entry in inner.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "jsonl") {
+                continue;
+            }
+            let Some(id) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
+                continue;
+            };
+            let meta = match fs::metadata(&path) {
+                Ok(meta) if meta.is_file() => meta,
+                Ok(_) => continue,
+                Err(err) => {
+                    log::warn!("could not stat {}: {err}", path.display());
+                    continue;
+                }
+            };
+            let Ok(mtime) = meta.modified() else {
+                log::warn!("no modification time for {}", path.display());
+                continue;
+            };
+            files.push(FileMeta {
+                path,
+                dir_name: dir_name.clone(),
+                id,
+                size: meta.len(),
+                mtime,
+            });
+        }
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
+}
+
+fn build_index(files: &[(&FileMeta, &FileScan)], aliases: &BTreeMap<PathBuf, String>) -> Index {
+    // Project id -> (cwd, sessions).
+    let mut groups: HashMap<ProjectId, (Option<PathBuf>, Vec<SessionSummary>)> = HashMap::new();
+    for (file, scan) in files {
+        let session = summarize(file, scan);
+        let group = groups
+            .entry(session.project.clone())
+            .or_insert_with(|| (session.cwd.clone(), Vec::new()));
+        group.1.push(session);
+    }
+
+    let mut projects = Vec::with_capacity(groups.len());
+    let mut sessions = HashMap::with_capacity(groups.len());
+    for (id, (cwd, mut list)) in groups {
+        list.sort_by(|a, b| {
+            b.started_at
+                .cmp(&a.started_at)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        let last_activity = list
+            .iter()
+            .map(|s| s.last_activity)
+            .max()
+            .unwrap_or(DateTime::UNIX_EPOCH);
+        projects.push(Project {
+            name: display_name(&id, cwd.as_deref(), aliases),
+            id: id.clone(),
+            harness: HarnessId::Claude,
+            cwd,
+            last_activity,
+            session_count: list.len(),
+        });
+        sessions.insert(id, list);
+    }
+    projects.sort_by(|a, b| {
+        b.last_activity
+            .cmp(&a.last_activity)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    Index { projects, sessions }
+}
+
+/// A file with no `cwd` anywhere belongs to the project named by its encoded
+/// directory; it starts at the file's mtime and is untitled.
+fn summarize(file: &FileMeta, scan: &FileScan) -> SessionSummary {
+    let mtime = DateTime::<Utc>::from(file.mtime);
+    let last_activity = scan.last_timestamp.map_or(mtime, |t| t.max(mtime));
+    let (project, cwd, title, started_at) = match &scan.cwd {
+        Some(raw) => (
+            project_id(raw),
+            // Component-normalised, as alias matching compares components.
+            Some(Path::new(raw).components().collect::<PathBuf>()),
+            session_title(scan),
+            scan.started_at.unwrap_or(mtime),
+        ),
+        None => (
+            ProjectId::from(file.dir_name.as_str()),
+            None,
+            UNTITLED.to_owned(),
+            mtime,
+        ),
+    };
+    SessionSummary {
+        id: SessionId::from(file.id.as_str()),
+        harness: HarnessId::Claude,
+        project,
+        cwd,
+        title,
+        first_prompt: scan.first_prompt.clone(),
+        started_at,
+        last_activity,
+        path: file.path.clone(),
+    }
+}
+
+/// The project id for a cwd as Claude wrote it: the raw string with trailing
+/// `/` and `\` removed, so `/a/b/` and `/a/b` are one project. No other
+/// separator is touched, so the id is the same on every OS. A root (`/`,
+/// `C:\`) is kept as it is.
+fn project_id(cwd: &str) -> ProjectId {
+    let trimmed = cwd.trim_end_matches(['/', '\\']);
+    let is_drive = matches!(trimmed.as_bytes(), [letter, b':'] if letter.is_ascii_alphabetic());
+    if trimmed.is_empty() || is_drive {
+        ProjectId::from(cwd)
+    } else {
+        ProjectId::from(trimmed)
+    }
+}
+
+/// The last `ai-title`, else the first prompt's first line, else
+/// [`UNTITLED`].
+fn session_title(scan: &FileScan) -> String {
+    if let Some(title) = &scan.ai_title {
+        return title.clone();
+    }
+    scan.first_prompt
+        .as_deref()
+        .and_then(|p| p.lines().map(str::trim).find(|l| !l.is_empty()))
+        .map_or_else(|| UNTITLED.to_owned(), truncate_title)
+}
+
+/// Keeps `line` as is when it has at most [`MAX_TITLE_CHARS`] characters,
+/// else its first `MAX_TITLE_CHARS - 1` characters followed by `…`.
+pub fn truncate_title(line: &str) -> String {
+    if line.chars().count() <= MAX_TITLE_CHARS {
+        return line.to_owned();
+    }
+    let mut title: String = line.chars().take(MAX_TITLE_CHARS - 1).collect();
+    title.push('…');
+    title
+}
+
+/// The alias configured for the project's cwd, else the cwd's basename, else
+/// the project id itself (a no-cwd project's encoded directory name, or a
+/// cwd without a basename such as `/`).
+fn display_name(id: &ProjectId, cwd: Option<&Path>, aliases: &BTreeMap<PathBuf, String>) -> String {
+    let Some(cwd) = cwd else {
+        return id.to_string();
+    };
+    if let Some(alias) = aliases.get(cwd) {
+        return alias.clone();
+    }
+    cwd.file_name()
+        .map_or_else(|| id.to_string(), |n| n.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_ids_trim_trailing_separators_only() {
+        for (cwd, id) in [
+            ("C:\\Users\\u\\p\\", "C:\\Users\\u\\p"),
+            ("/a/b/", "/a/b"),
+            ("/a/b", "/a/b"),
+            ("/a/b//", "/a/b"),
+            ("/", "/"),
+            ("C:\\", "C:\\"),
+            ("/a\\b/c", "/a\\b/c"),
+        ] {
+            assert_eq!(project_id(cwd).as_str(), id, "{cwd}");
+        }
+    }
+}

@@ -1,0 +1,3 @@
+{"type":"ai-title","aiTitle":"Release notes","sessionId":"bbbb0002"}
+{"isSidechain":false,"cwd":"/home/user/my.app","sessionId":"bbbb0002","version":"2.1.306","uuid":"b0000011","timestamp":"2026-03-05T12:00:00.000Z","type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"Write the release notes"}}
+{"isSidechain":false,"cwd":"/home/user/my.app","sessionId":"bbbb0002","version":"2.1.306","uuid":"b0000012","timestamp":"2026-03-05T12:30:00.000Z","type":"assistant","message":{"id":"msg_b0000012","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"ok"}]}}

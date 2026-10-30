@@ -1,0 +1,2 @@
+{"isSidechain":false,"cwd":"/home/user/my.app","sessionId":"bbbb0001","version":"2.1.306","uuid":"b0000001","timestamp":"2026-03-03T10:00:00.000Z","type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"Fix the build"}}
+{"isSidechain":false,"cwd":"/home/user/my.app","sessionId":"bbbb0001","version":"2.1.306","uuid":"b0000002","timestamp":"2026-03-03T10:10:00.000Z","type":"assistant","message":{"id":"msg_b0000002","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"ok"}]}}

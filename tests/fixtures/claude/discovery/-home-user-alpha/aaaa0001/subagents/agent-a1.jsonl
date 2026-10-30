@@ -1,0 +1,2 @@
+{"isSidechain":true,"cwd":"/home/user/alpha","sessionId":"aaaa0001","version":"2.1.306","uuid":"a0000101","timestamp":"2026-03-09T09:00:00.000Z","type":"user","agentId":"a1","origin":{"kind":"human"},"message":{"role":"user","content":"Look around"}}
+{"isSidechain":true,"cwd":"/home/user/alpha","sessionId":"aaaa0001","version":"2.1.306","uuid":"a0000102","timestamp":"2026-03-09T09:01:00.000Z","type":"assistant","agentId":"a1","message":{"id":"msg_sub","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"done"}]}}
