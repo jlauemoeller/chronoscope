@@ -1,0 +1,23 @@
+# Write, pending, content truncated at 4, width 50. A pending result has no lines, yet the row reads as if (pending) had 6 more.
+===== write pending truncated 4 @ 50 (height 21)
+╭─ Assistant ── claude-… ─ 2026-10-21 08:35:18Z ─╮
+│                                                │
+│ ▼ Write big pending                            │
+│                                                │
+│   Path:                                        │
+│                                                │
+│      /x/a.rs                                   │
+│                                                │
+│   Content:                                     │
+│                                                │
+│      x1                                        │
+│      x2                                        │
+│      x3                                        │
+│      x4                                        │
+│                                                │
+│   Result:                                      │
+│                                                │
+│      (pending)                                 │
+│      … 6 more lines                            │
+│                                                │
+╰────────────────────────────────────────────────╯
