@@ -8,6 +8,7 @@
 pub mod assemble;
 pub mod db;
 mod discovery;
+mod follow;
 mod load;
 mod location;
 mod subagent;
@@ -16,6 +17,7 @@ pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
 pub mod tools;
+mod watch;
 
 pub use assemble::Assembler;
 pub use db::{Db, NEWEST_KNOWN_MIGRATION, OpenMode};
