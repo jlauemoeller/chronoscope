@@ -55,6 +55,11 @@ struct FakeHarness {
     /// For each load: whether every earlier load had been stopped when it
     /// started.
     earlier_stopped: Mutex<Vec<bool>>,
+    /// What `subagent` resolves: the session and the tool call to the
+    /// subagent's session.
+    subagents: Mutex<HashMap<(SessionId, ToolCallId), SessionId>>,
+    /// Every `subagent` question asked.
+    subagent_asks: Mutex<Vec<(SessionId, ToolCallId)>>,
 }
 
 impl FakeHarness {
@@ -67,6 +72,8 @@ impl FakeHarness {
             fail: AtomicBool::new(false),
             watch: Mutex::default(),
             earlier_stopped: Mutex::default(),
+            subagents: Mutex::default(),
+            subagent_asks: Mutex::default(),
         })
     }
 
@@ -75,6 +82,14 @@ impl FakeHarness {
             .lock()
             .unwrap()
             .insert(SessionId::from(session), updates);
+    }
+
+    /// Makes tool call `call` of `parent` resolve to the subagent `agent`.
+    fn link(&self, parent: &str, call: &str, agent: &str) {
+        self.subagents
+            .lock()
+            .unwrap()
+            .insert((id(parent), ToolCallId::from(call)), id(agent));
     }
 
     fn loads(&self) -> Vec<String> {
@@ -147,8 +162,10 @@ impl Harness for FakeHarness {
         Ok(WatchHandle::new(stop, std::thread::spawn(|| {})))
     }
 
-    fn subagent(&self, _parent: &SessionId, _call: &ToolCallId) -> Option<SessionId> {
-        None
+    fn subagent(&self, parent: &SessionId, call: &ToolCallId) -> Option<SessionId> {
+        let key = (parent.clone(), call.clone());
+        self.subagent_asks.lock().unwrap().push(key.clone());
+        self.subagents.lock().unwrap().get(&key).cloned()
     }
 
     fn resume_command(&self, _session: &SessionSummary) -> Option<std::process::Command> {
@@ -1273,3 +1290,4 @@ mod copy;
 mod live;
 mod save;
 mod search;
+mod subagent;

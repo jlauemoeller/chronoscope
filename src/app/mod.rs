@@ -57,7 +57,7 @@ use crate::config::{Config, ConfigWarning};
 use crate::harness::Harness;
 use crate::index::{IndexEvent, IndexHandle};
 use crate::keymap::Keymap;
-use crate::model::{HarnessId, SessionId};
+use crate::model::{HarnessId, SessionId, ToolCallId};
 use crate::theme::{Theme, ThemeRegistry};
 use crate::timestamp::{DisplayTz, TimestampFormatter};
 use crate::transcript_search::{SearchCorpus, SearchMatches, SearchPosition};
@@ -101,6 +101,10 @@ pub enum Id {
     BrowserHeader,
     /// The open session's turns.
     Transcript,
+    /// The turns of the subagent opened at this depth (1 for the first, 2 for
+    /// one opened from it, ...). The transcripts below it stay mounted but
+    /// are not drawn (SPEC §1.3).
+    Subagent(usize),
     /// Key hints and status items of the browser.
     BrowserHelpLine,
     /// "Session file is empty", in place of the transcript.
@@ -178,6 +182,13 @@ pub enum Msg {
     /// The transcript asks for this text to be put on the clipboard: the
     /// selected section as displayed (`y`) or in full (`Y`).
     CopyText(String),
+    /// `a` on a subagent section: open the transcript of the subagent that
+    /// tool call `call_id` started. `label` (the agent type) is the
+    /// breadcrumb's segment.
+    OpenSubagent { call_id: ToolCallId, label: String },
+    /// The back key in a subagent's transcript: return to the one it was
+    /// opened from.
+    CloseSubagent,
     /// The transcript asks for the selected section's text to be saved to a
     /// file (`w`, or `W` for its full content). `kind` is the word for the
     /// section in the default file name (`shell`, `user`, ...).
@@ -604,6 +615,8 @@ impl App {
             Msg::CopyText(text) => self.copy_text(&text),
             Msg::SaveSection { text, kind } => self.save_section(text, kind),
             Msg::Export { full: _, document } => self.export_session(document),
+            Msg::OpenSubagent { call_id, label } => self.open_subagent(&call_id, label),
+            Msg::CloseSubagent => self.close_subagent(),
             Msg::OpenSession(harness, session) => self.open_session(harness, &session),
             Msg::OpenSelector => self.open_selector(),
             Msg::CloseSelector => self.close_selector(),
@@ -657,7 +670,10 @@ impl App {
     /// Draws every visible component, overlays last. Draws nothing itself.
     pub fn view(&mut self, frame: &mut Frame) {
         let screen_layout = layout(&self.layout_input(), frame.area());
+        let transcript = self.top_transcript();
         for &(id, area) in screen_layout.areas() {
+            // The layout places "the transcript"; the one on top is drawn.
+            let id = if id == Id::Transcript { transcript } else { id };
             self.application.view(&id, frame, area);
         }
     }

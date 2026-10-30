@@ -20,6 +20,7 @@ pub(super) mod keys;
 mod property;
 mod save;
 mod search;
+mod subagent;
 mod truncation;
 
 pub(super) fn section_id(turn: &str, key: SectionKey) -> SectionId {

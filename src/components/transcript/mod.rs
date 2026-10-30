@@ -64,6 +64,10 @@
 //! - `Custom(`[`SEARCH_NEXT`]`/`[`SEARCH_PREV`]`)` go to the next/previous
 //!   match, wrapping, and `Custom(`[`CLEAR_SEARCH`]`)` clears the search.
 //!   `/` is not a `Cmd`: the key answers [`Msg::OpenSearch`].
+//!
+//! The subagent keys are not `Cmd`s either: `a` on a subagent section
+//! answers [`Msg::OpenSubagent`] (nothing on any other), and the back key of
+//! a [`nested`](Transcript::nested) transcript [`Msg::CloseSubagent`].
 
 mod cache;
 mod content;
@@ -73,6 +77,7 @@ mod keys;
 mod nav;
 mod paging;
 mod search;
+mod subagent;
 mod text;
 mod updates;
 mod window;
@@ -145,6 +150,9 @@ pub const TURN_COUNT_ATTR: Attribute = Attribute::Custom("turn_count");
 pub const NEW_SECTIONS_ATTR: Attribute = Attribute::Custom("new_sections");
 /// Whether the transcript follows new content (a flag; query only).
 pub const FOLLOWING_ATTR: Attribute = Attribute::Custom("following");
+/// What the transcript keeps of its presentation: the scroll offset, the
+/// selected section and the fold states (a payload; query only).
+pub const PRESENTATION_ATTR: Attribute = Attribute::Custom("presentation");
 /// The [`Size`] of the area the transcript is drawn in (a payload).
 pub const VIEWPORT_ATTR: Attribute = Attribute::Custom("viewport");
 
@@ -156,6 +164,18 @@ pub fn model_update_value(update: ModelUpdate) -> AttrValue {
 /// The attribute value that announces the viewport size.
 pub fn viewport_value(size: Size) -> AttrValue {
     payload_value(size)
+}
+
+/// The presentation state of a transcript: what the user changed by looking
+/// at it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Presentation {
+    /// The top row of the viewport.
+    pub offset: usize,
+    /// The selected section.
+    pub selected: Option<SectionId>,
+    /// Which sections are folded or unfolded, and which outputs expanded.
+    pub folds: crate::components::turn_block::FoldState,
 }
 
 /// The virtualised transcript component.
@@ -188,6 +208,9 @@ pub struct Transcript {
     search: search::SearchState,
     /// What the header of an export says about the session.
     export_meta: Option<ExportMeta>,
+    /// Whether this is the transcript of a subagent, opened over another
+    /// (`Backspace` goes back to it).
+    nested: bool,
     /// How many block layouts were run to measure or draw blocks (read by
     /// tests).
     #[cfg_attr(not(test), allow(dead_code))]
@@ -211,6 +234,7 @@ impl Transcript {
             tail_from: 0,
             search: search::SearchState::default(),
             export_meta: None,
+            nested: false,
             layouts_run: 0,
         }
     }
@@ -227,6 +251,14 @@ impl Transcript {
     #[must_use]
     pub fn export_meta(mut self, meta: ExportMeta) -> Self {
         self.export_meta = Some(meta);
+        self
+    }
+
+    /// Marks this as the transcript of a subagent, opened over another one:
+    /// the back key then answers [`Msg::CloseSubagent`].
+    #[must_use]
+    pub fn nested(mut self, nested: bool) -> Self {
+        self.nested = nested;
         self
     }
 
@@ -266,6 +298,15 @@ impl Transcript {
     /// The scroll offset: the top row of the viewport.
     pub fn offset(&self) -> usize {
         self.offset
+    }
+
+    /// The scroll offset, the selection and the fold states.
+    pub fn presentation(&self) -> Presentation {
+        Presentation {
+            offset: self.offset,
+            selected: self.content.selected.clone(),
+            folds: self.content.folds.clone(),
+        }
     }
 
     /// The number of turns.
@@ -497,6 +538,8 @@ impl Component for Transcript {
             AttrValue::Length(self.new_sections)
         } else if attr == FOLLOWING_ATTR {
             AttrValue::Flag(self.following)
+        } else if attr == PRESENTATION_ATTR {
+            payload_value(self.presentation())
         } else if attr == VIEWPORT_ATTR {
             payload_value(self.viewport?)
         } else if attr == SEARCH_REQUEST_ATTR {
@@ -621,6 +664,8 @@ impl AppComponent<Msg, UserEvent> for Transcript {
         };
         match action {
             Action::Search => return Some(Msg::OpenSearch),
+            Action::OpenSubagent => return self.open_subagent_msg(),
+            Action::Back => return self.nested.then_some(Msg::CloseSubagent),
             Action::Copy => return self.displayed_text().map(Msg::CopyText),
             Action::CopyFull => return self.full_text().map(Msg::CopyText),
             Action::Save => return self.save_msg(self.displayed_text()),

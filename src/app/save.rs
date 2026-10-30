@@ -140,18 +140,19 @@ impl App {
     /// The first 8 characters of the open session's id, as a part of a file
     /// name.
     fn short_id(&self) -> String {
+        // A subagent's id is `<session>/subagents/agent-<id>`: its own part
+        // names the file.
         let id = self
             .browser
-            .open
-            .as_ref()
-            .map_or("", |open| open.summary.id.as_str());
+            .current_session()
+            .map_or("", |id| id.as_str().rsplit('/').next().unwrap_or_default());
         sanitize_for_file_name(&id.chars().take(8).collect::<String>())
     }
 
     /// Opens the path prompt with `default` filled in.
     fn ask_path(&mut self, kind: WriteKind, text: String, default: String) {
         if self.screen != Screen::Browser
-            || !self.application.mounted(&Id::Transcript)
+            || !self.application.mounted(&self.top_transcript())
             || self.application.mounted(&Id::Prompt)
         {
             return;

@@ -14,7 +14,10 @@ use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
 use super::working_dir::truncate_start;
-use super::{THEME_ATTR, theme_from_value, theme_value, truncate_with_ellipsis};
+use super::{
+    THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value,
+    truncate_with_ellipsis,
+};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme, Token};
 
@@ -25,6 +28,15 @@ pub const PARSE_WARNINGS_ATTR: Attribute = Attribute::Custom("parse_warnings");
 /// The attribute that sets whether the `● live` marker is shown (an
 /// `AttrValue::Flag`).
 pub const LIVE_ATTR: Attribute = Attribute::Custom("live");
+
+/// The attribute that sets the breadcrumb: the agents of the subagent
+/// transcripts opened one over the other (a payload of `Vec<String>`; empty
+/// for the session itself).
+pub const BREADCRUMB_ATTR: Attribute = Attribute::Custom("breadcrumb");
+
+/// The attribute that sets the session id of the right title (an
+/// `AttrValue::String`): the id of the subagent while one is shown.
+pub const SESSION_ID_ATTR: Attribute = Attribute::Custom("header_session_id");
 
 /// The header is this many rows high: the border, a blank row, the working
 /// directory, a blank row and the border.
@@ -43,6 +55,8 @@ const NOTE_GAP: usize = 2;
 const LIVE_DOT: &str = "●";
 /// The word after the dot, drawn in `muted_foreground`.
 const LIVE_WORD: &str = " live";
+/// Between the project and an agent, and between two agents.
+const AGENT_SEPARATOR: &str = " › Agent: ";
 
 /// The note for `count` entries that could not be parsed, or `None` for 0.
 pub fn parse_warning_note(count: usize) -> Option<String> {
@@ -61,6 +75,11 @@ pub fn parse_warning_note(count: usize) -> Option<String> {
 /// `muted_foreground`) is right-aligned there too, with the note two cells to
 /// its left.
 ///
+/// While subagent transcripts are open the left title carries one
+/// ` › Agent: <label>` segment per level (SPEC §5.4) and the right title is the
+/// id of the subagent: `╭─ Project BRIO › Agent: story-writer ─…─ <id> ─╮`.
+/// `›` and `Agent:` are `muted_foreground`, the labels `foreground`.
+///
 /// `Project` is `muted_foreground`, the project name bold `foreground`, the
 /// session id `timestamp`, the working directory `foreground` and the note
 /// `muted_foreground`. The area is first painted with `background`, unless
@@ -68,6 +87,8 @@ pub fn parse_warning_note(count: usize) -> Option<String> {
 #[derive(Debug, Clone)]
 pub struct BrowserHeader {
     project: String,
+    /// The labels of the open subagents, outermost first.
+    agents: Vec<String>,
     session_id: String,
     cwd: String,
     parse_warnings: usize,
@@ -86,12 +107,20 @@ impl BrowserHeader {
     ) -> Self {
         Self {
             project: project.into(),
+            agents: Vec::new(),
             session_id: session_id.into(),
             cwd: cwd.into(),
             parse_warnings: 0,
             live: false,
             theme,
         }
+    }
+
+    /// Sets the labels of the open subagents, outermost first.
+    #[must_use]
+    pub fn breadcrumb(mut self, agents: Vec<String>) -> Self {
+        self.agents = agents;
+        self
     }
 
     /// Sets whether the `● live` marker is shown.
@@ -122,34 +151,72 @@ impl BrowserHeader {
 
     /// The top border for `width` columns.
     ///
-    /// The project name is cut with `…` to leave room for the session id; on
-    /// a width where even a short name does not fit next to it, the id goes.
+    /// The project name and the agents are cut with `…` to leave room for the
+    /// session id, the longest first; on a width where even short ones do
+    /// not fit next to it, the id goes.
     fn top(&self, width: usize) -> Line<'static> {
         let border = self.border();
         // `╭─`, the titles, at least one `─`, `─╮`.
         let room = width.saturating_sub(5);
         let mut id = format!(" {} ", self.session_id);
-        // " Project " before the name and a blank after it.
-        let chrome = "Project".width() + 3;
-        let mut name_room = room.saturating_sub(chrome + id.width());
-        if name_room < MIN_NAME_WIDTH.min(self.project.width()) {
+        // " Project " before the name and a blank after it, and a separator
+        // before every agent.
+        let chrome = "Project".width() + 3 + self.agents.len() * AGENT_SEPARATOR.width();
+        // The name, then the agents.
+        let names: Vec<&str> = std::iter::once(self.project.as_str())
+            .chain(self.agents.iter().map(String::as_str))
+            .collect();
+        let floors: Vec<usize> = names
+            .iter()
+            .map(|name| MIN_NAME_WIDTH.min(name.width()))
+            .collect();
+        let mut widths: Vec<usize> = names.iter().map(|name| name.width()).collect();
+        let mut names_room = room.saturating_sub(chrome + id.width());
+        if names_room < floors.iter().sum::<usize>() {
             id.clear();
-            name_room = room.saturating_sub(chrome);
+            names_room = room.saturating_sub(chrome);
         }
-        let name = if name_room == 0 {
-            String::new()
-        } else {
-            truncate_with_ellipsis(&self.project, name_room)
-        };
-        let used = chrome + name.width() + id.width();
+        // Shrink the longest first, down to the floors, then from the end.
+        while widths.iter().sum::<usize>() > names_room {
+            let longest = (0..widths.len())
+                .filter(|&n| widths[n] > floors[n])
+                .max_by_key(|&n| (widths[n], n));
+            match longest {
+                Some(n) => widths[n] -= 1,
+                None => match widths.iter().rposition(|&w| w > 0) {
+                    Some(n) => widths[n] -= 1,
+                    None => break,
+                },
+            }
+        }
+        let cut: Vec<String> = names
+            .iter()
+            .zip(&widths)
+            .map(|(name, &w)| {
+                if w == 0 {
+                    String::new()
+                } else {
+                    truncate_with_ellipsis(name, w)
+                }
+            })
+            .collect();
+        let used = chrome + cut.iter().map(|name| name.width()).sum::<usize>() + id.width();
         let fill = width.saturating_sub(4 + used);
+        let mut cut = cut.into_iter();
         let mut spans = vec![
             Span::styled("╭─", border),
             Span::styled(" Project ", self.muted()),
-            Span::styled(name, self.foreground().add_modifier(Modifier::BOLD)),
-            Span::styled(" ", self.muted()),
-            Span::styled("─".repeat(fill), border),
+            Span::styled(
+                cut.next().unwrap_or_default(),
+                self.foreground().add_modifier(Modifier::BOLD),
+            ),
         ];
+        for agent in cut {
+            spans.push(Span::styled(AGENT_SEPARATOR, self.muted()));
+            spans.push(Span::styled(agent, self.foreground()));
+        }
+        spans.push(Span::styled(" ", self.muted()));
+        spans.push(Span::styled("─".repeat(fill), border));
         if !id.is_empty() {
             spans.push(Span::styled(id, self.theme.style(Token::Timestamp)));
         }
@@ -260,6 +327,10 @@ impl Component for BrowserHeader {
             THEME_ATTR => Some(QueryResult::Owned(theme_value(&self.theme))),
             PARSE_WARNINGS_ATTR => Some(QueryResult::Owned(AttrValue::Length(self.parse_warnings))),
             LIVE_ATTR => Some(QueryResult::Owned(AttrValue::Flag(self.live))),
+            BREADCRUMB_ATTR => Some(QueryResult::Owned(payload_value(self.agents.clone()))),
+            SESSION_ID_ATTR => Some(QueryResult::Owned(AttrValue::String(
+                self.session_id.clone(),
+            ))),
             _ => None,
         }
     }
@@ -273,6 +344,12 @@ impl Component for BrowserHeader {
             }
             (PARSE_WARNINGS_ATTR, AttrValue::Length(count)) => self.parse_warnings = count,
             (LIVE_ATTR, AttrValue::Flag(live)) => self.live = live,
+            (BREADCRUMB_ATTR, value) => {
+                if let Some(agents) = payload_from_value::<Vec<String>>(&value) {
+                    self.agents = agents;
+                }
+            }
+            (SESSION_ID_ATTR, AttrValue::String(id)) => self.session_id = id,
             _ => {}
         }
     }
@@ -567,6 +644,112 @@ mod tests {
     #[test]
     fn header_with_a_note_styled_snapshot() {
         let mut h = header(3);
+        let buffer = render(120, 5, |frame| h.view(frame, frame.area()));
+        insta::assert_snapshot!(buffer_to_styled(&buffer));
+    }
+
+    const AGENT_ID: &str = "85a86657-11a7-4318-a21a-0f4476babd5c/subagents/agent-r2";
+
+    fn nested(agents: &[&str]) -> BrowserHeader {
+        BrowserHeader::new("BRIO", AGENT_ID, CWD, builtin::default_theme())
+            .breadcrumb(agents.iter().map(|a| (*a).to_owned()).collect())
+    }
+
+    #[test]
+    fn a_subagent_adds_a_segment_to_the_left_title() {
+        let rows = rows(&mut nested(&["story-writer"]), 120);
+        let left = "╭─ Project BRIO › Agent: story-writer ";
+        let right = format!(" {AGENT_ID} ─╮");
+        assert!(rows[0].starts_with(left), "{}", rows[0]);
+        assert!(rows[0].ends_with(&right), "{}", rows[0]);
+        assert_eq!(rows[0].chars().count(), 120);
+        assert_eq!(
+            rows[2],
+            format!("│ {CWD:<117}│"),
+            "the cwd row is unchanged"
+        );
+    }
+
+    #[test]
+    fn two_subagents_add_two_segments() {
+        let rows = rows(&mut nested(&["story-writer", "Explore"]), 120);
+        assert!(
+            rows[0].starts_with("╭─ Project BRIO › Agent: story-writer › Agent: Explore ─"),
+            "{}",
+            rows[0]
+        );
+        assert_eq!(rows[0].chars().count(), 120);
+    }
+
+    #[test]
+    fn no_agents_leave_the_title_as_it_was() {
+        let plain = rows(&mut header(0), 120);
+        let mut empty = header(0).breadcrumb(Vec::new());
+        assert_eq!(rows(&mut empty, 120), plain);
+    }
+
+    #[test]
+    fn the_breadcrumb_is_cut_before_the_title_overflows() {
+        for width in [60u16, 70, 80, 100] {
+            let rows = rows(&mut nested(&["story-writer", "Explore"]), width);
+            assert_eq!(rows[0].chars().count(), usize::from(width), "{}", rows[0]);
+            assert!(rows[0].starts_with("╭─ Project "), "{}", rows[0]);
+            assert!(rows[0].ends_with("─╮"), "{}", rows[0]);
+        }
+        // At 80 columns the id (53 characters) would not leave room for the
+        // names, so it goes and the breadcrumb is whole.
+        let rows = rows(&mut nested(&["story-writer"]), 80);
+        assert!(rows[0].starts_with("╭─ Project BRIO › Agent: story-writer ─"));
+        assert!(!rows[0].contains("agent-r2"), "{}", rows[0]);
+    }
+
+    #[test]
+    fn the_breadcrumb_attrs_update_the_title() {
+        let mut h = header(0);
+        h.attr(
+            BREADCRUMB_ATTR,
+            payload_value(vec!["story-writer".to_owned()]),
+        );
+        h.attr(SESSION_ID_ATTR, AttrValue::String("agent-r2".to_owned()));
+        let rows = rows(&mut h, 120);
+        assert!(
+            rows[0].contains("Project BRIO › Agent: story-writer "),
+            "{}",
+            rows[0]
+        );
+        assert!(rows[0].ends_with(" agent-r2 ─╮"), "{}", rows[0]);
+        assert_eq!(
+            h.query(SESSION_ID_ATTR).map(|q| q.into_attr()),
+            Some(AttrValue::String("agent-r2".to_owned()))
+        );
+        h.attr(BREADCRUMB_ATTR, payload_value(Vec::<String>::new()));
+        assert!(rows_of(&mut h, 120)[0].starts_with("╭─ Project BRIO ─"));
+    }
+
+    fn rows_of(h: &mut BrowserHeader, width: u16) -> Vec<String> {
+        rows(h, width)
+    }
+
+    #[test]
+    fn the_breadcrumb_is_muted_and_the_agent_names_are_foreground() {
+        let theme = distinct_theme();
+        let mut h = BrowserHeader::new("BRIO", AGENT_ID, CWD, theme.clone())
+            .breadcrumb(vec!["story-writer".to_owned()]);
+        let buffer = render(120, 5, |frame| h.view(frame, frame.area()));
+        let cell = |x: u16| &buffer[(x, 0)];
+        // `╭─ Project BRIO › Agent: story-writer`
+        assert_eq!(cell(3).fg, theme.role(Role::MutedForeground), "Project");
+        assert_eq!(cell(11).fg, theme.role(Role::Foreground), "BRIO");
+        assert!(cell(11).modifier.contains(Modifier::BOLD));
+        assert_eq!(cell(16).fg, theme.role(Role::MutedForeground), "›");
+        assert_eq!(cell(18).fg, theme.role(Role::MutedForeground), "Agent:");
+        assert_eq!(cell(25).fg, theme.role(Role::Foreground), "story-writer");
+        assert!(!cell(25).modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn header_with_a_breadcrumb_styled_snapshot() {
+        let mut h = nested(&["story-writer"]);
         let buffer = render(120, 5, |frame| h.view(frame, frame.area()));
         insta::assert_snapshot!(buffer_to_styled(&buffer));
     }
