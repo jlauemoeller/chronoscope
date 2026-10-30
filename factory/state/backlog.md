@@ -12,7 +12,7 @@
 | 008-claude-session-discovery | Complete |
 | 009-claude-session-loading | Complete |
 | 010-session-index-worker | Complete |
-| 011-app-runtime | Planned |
+| 011-app-runtime | In progress |
 | 012-help-line-toast | Planned |
 | 013-selector-panes | Planned |
 | 014-selector-selection-rules | Planned |
