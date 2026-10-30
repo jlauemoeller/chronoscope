@@ -362,13 +362,68 @@ fn without_title_or_prompt_a_session_is_untitled() {
 }
 
 #[test]
-fn sessions_are_sorted_newest_first_by_start_time() {
+fn sessions_are_sorted_newest_first_by_start_time_not_last_activity() {
     let (_tmp, data) = fixture();
+    // The older session is touched last: it now has the later last activity.
+    set_mtime(
+        &data.join("-home-user-prompt").join("dddd0002.jsonl"),
+        "2026-03-10T00:00:00Z",
+    );
     let h = harness(&data);
     let sessions = h.sessions(&ProjectId::from("/home/user/prompt")).unwrap();
     let ids: Vec<_> = sessions.iter().map(|s| s.id.as_str()).collect();
     assert_eq!(ids, ["dddd0001", "dddd0002"]);
     assert!(sessions[0].started_at > sessions[1].started_at);
+    assert!(sessions[0].last_activity < sessions[1].last_activity);
+}
+
+/// A project directory in a temp dir with one transcript per `(name, text)`,
+/// each a single human prompt with the given `cwd`.
+fn prompt_harness(prompts: &[(&str, &str, &str)]) -> (TempDir, ClaudeHarness) {
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("projects");
+    let dir = data.join("-enc");
+    fs::create_dir_all(&dir).unwrap();
+    for (name, cwd, text) in prompts {
+        let line = serde_json::json!({
+            "type": "user",
+            "cwd": cwd,
+            "timestamp": "2026-03-01T00:00:00Z",
+            "origin": {"kind": "human"},
+            "message": {"role": "user", "content": text},
+        });
+        fs::write(dir.join(format!("{name}.jsonl")), format!("{line}\n")).unwrap();
+    }
+    (tmp, harness(&data))
+}
+
+#[test]
+fn the_prompt_title_is_the_first_line_only() {
+    let (_tmp, h) = prompt_harness(&[
+        ("s1", "/home/user/p", "Short first line\nsecond line"),
+        ("s2", "/home/user/p", "\n  \nReal start\nmore"),
+    ]);
+    let sessions = h.sessions(&ProjectId::from("/home/user/p")).unwrap();
+    let s1 = session(&sessions, "s1");
+    assert_eq!(s1.title, "Short first line");
+    assert_eq!(
+        s1.first_prompt.as_deref(),
+        Some("Short first line\nsecond line")
+    );
+    // Leading blank lines are skipped.
+    assert_eq!(session(&sessions, "s2").title, "Real start");
+}
+
+#[test]
+fn cwds_that_differ_only_by_a_trailing_separator_are_one_project() {
+    let (_tmp, h) = prompt_harness(&[
+        ("s1", "/home/user/p", "one"),
+        ("s2", "/home/user/p/", "two"),
+    ]);
+    let projects = h.projects().unwrap();
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0].id.as_str(), "/home/user/p");
+    assert_eq!(projects[0].session_count, 2);
 }
 
 #[test]

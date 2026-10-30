@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::inject::queued_prompt_text;
-use super::wire::{AttachmentHead, Entry};
+use super::wire::Entry;
 
 /// The first prompt is kept up to this many characters; the list only needs
 /// its first line.
@@ -32,10 +32,9 @@ pub(super) struct FileScan {
     pub last_timestamp: Option<DateTime<Utc>>,
 }
 
-/// The fields every line is classified by. `timestamp`, `cwd` and `aiTitle`
-/// are read as loose JSON values, so an unexpected type loses that one field,
-/// not the line. (A non-object `attachment` still fails the line, as in the
-/// assembler.)
+/// The fields every line is classified by. Apart from `type`, they are read
+/// as loose JSON values, so an unexpected type loses that one field, not the
+/// line.
 #[derive(Deserialize)]
 struct ScanHead {
     #[serde(rename = "type")]
@@ -44,7 +43,7 @@ struct ScanHead {
     cwd: Option<Value>,
     #[serde(rename = "aiTitle")]
     ai_title: Option<Value>,
-    attachment: Option<AttachmentHead>,
+    attachment: Option<Value>,
 }
 
 /// Scans a transcript, reading `reader` once to the end.
@@ -101,8 +100,8 @@ pub(super) fn scan_reader<R: BufRead>(mut reader: R) -> io::Result<FileScan> {
     }
 }
 
-fn is_queued_command(attachment: Option<&AttachmentHead>) -> bool {
-    attachment.and_then(|a| a.kind.as_deref()) == Some("queued_command")
+fn is_queued_command(attachment: Option<&Value>) -> bool {
+    attachment.and_then(|a| a.get("type")?.as_str()) == Some("queued_command")
 }
 
 fn prompt_of_user(line: &[u8]) -> Option<String> {
@@ -189,6 +188,15 @@ mod tests {
             "{\"type\":\"user\",\"message\":{\"content\":\"later\"}}\n",
         ));
         assert_eq!(s.first_prompt.as_deref(), Some("real"));
+    }
+
+    #[test]
+    fn a_non_object_attachment_does_not_lose_the_line() {
+        let s = scan(
+            "{\"type\":\"attachment\",\"cwd\":\"/a\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"attachment\":\"odd\"}\n",
+        );
+        assert_eq!(s.cwd.as_deref(), Some("/a"));
+        assert!(s.started_at.is_some());
     }
 
     #[test]

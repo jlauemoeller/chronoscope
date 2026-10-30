@@ -153,7 +153,8 @@ impl ClaudeHarness {
     ///
     /// [`projects`](Harness::projects) and [`sessions`](Harness::sessions)
     /// only build when there is no index yet, so call this to pick up changes
-    /// on disk.
+    /// on disk. The state lock is held for the whole build, so other callers
+    /// wait for it; do not call this on the UI thread.
     pub fn refresh(&self) -> Result<()> {
         let mut state = self.lock();
         self.build(&mut state)?;
@@ -421,12 +422,17 @@ fn summarize(file: &FileMeta, scan: &FileScan) -> SessionSummary {
     let mtime = DateTime::<Utc>::from(file.mtime);
     let last_activity = scan.last_timestamp.map_or(mtime, |t| t.max(mtime));
     let (project, cwd, title, started_at) = match &scan.cwd {
-        Some(cwd) => (
-            ProjectId::from(cwd.as_str()),
-            Some(PathBuf::from(cwd)),
-            session_title(scan),
-            scan.started_at.unwrap_or(mtime),
-        ),
+        Some(cwd) => {
+            // Normalised, so `/a/b` and `/a/b/` are one project, as they are
+            // for alias matching.
+            let cwd: PathBuf = Path::new(cwd).components().collect();
+            (
+                ProjectId::from(cwd.to_string_lossy().as_ref()),
+                Some(cwd),
+                session_title(scan),
+                scan.started_at.unwrap_or(mtime),
+            )
+        }
         None => (
             ProjectId::from(file.dir_name.as_str()),
             None,
