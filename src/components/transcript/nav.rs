@@ -16,23 +16,23 @@ pub enum Step {
 }
 
 /// The selected section within its block.
-struct Cursor {
-    block: usize,
+pub(super) struct Cursor {
+    pub(super) block: usize,
     /// The selectable sections of the block with their rows (counted from
     /// the block's top border).
-    rows: Vec<(SectionId, Range<usize>)>,
-    pos: usize,
+    pub(super) rows: Vec<(SectionId, Range<usize>)>,
+    pub(super) pos: usize,
 }
 
 impl Cursor {
-    fn id(&self) -> &SectionId {
+    pub(super) fn id(&self) -> &SectionId {
         &self.rows[self.pos].0
     }
 }
 
 /// How to scroll a section taller than the viewport into view.
 #[derive(Debug, Clone, Copy)]
-enum Reveal {
+pub(super) enum Reveal {
     /// Arrived moving down: show its top.
     Top,
     /// Arrived moving up: show its bottom.
@@ -42,7 +42,7 @@ enum Reveal {
 }
 
 /// The offset that brings `span` into the viewport with the least scrolling.
-fn reveal(offset: usize, height: usize, span: &Range<usize>, tall: Reveal) -> usize {
+pub(super) fn reveal(offset: usize, height: usize, span: &Range<usize>, tall: Reveal) -> usize {
     if span.len() > height {
         return match tall {
             Reveal::Top => span.start,
@@ -61,7 +61,7 @@ fn reveal(offset: usize, height: usize, span: &Range<usize>, tall: Reveal) -> us
 }
 
 impl Transcript {
-    fn outcome(&self, before: usize) -> CmdResult {
+    pub(super) fn outcome(&self, before: usize) -> CmdResult {
         if self.offset == before {
             CmdResult::Visual
         } else {
@@ -97,7 +97,7 @@ impl Transcript {
         }
     }
 
-    fn cursor(&self) -> Option<Cursor> {
+    pub(super) fn cursor(&self) -> Option<Cursor> {
         let selected = self.content.selected.as_ref()?;
         let &block = self.content.index.get(&selected.turn)?;
         self.cursor_in(block, |rows| rows.iter().position(|(id, _)| id == selected))
@@ -137,7 +137,7 @@ impl Transcript {
     }
 
     /// The transcript rows of the cursor's section.
-    fn section_rows_abs(&mut self, cur: &Cursor) -> Range<usize> {
+    pub(super) fn section_rows_abs(&mut self, cur: &Cursor) -> Range<usize> {
         let top = self.measured(|cache, m| cache.top(cur.block, m));
         let rows = &cur.rows[cur.pos].1;
         top + rows.start..top + rows.end
@@ -146,7 +146,7 @@ impl Transcript {
     /// The rows to bring into view for the cursor's section: the section,
     /// plus the block's title row if it is the first and its bottom border
     /// if it is the last, as long as that still fits in the viewport.
-    fn span(&mut self, cur: &Cursor, height: usize) -> Range<usize> {
+    pub(super) fn span(&mut self, cur: &Cursor, height: usize) -> Range<usize> {
         let section = self.section_rows_abs(cur);
         let (top, block_height) =
             self.measured(|cache, m| (cache.top(cur.block, m), cache.height(cur.block, m)));
@@ -282,37 +282,11 @@ impl Transcript {
     /// the selection stays on the tool call. The viewport does not move, so
     /// the rows that were on screen stay and the rest of the output follows
     /// them.
-    fn expand_output(&mut self, parent: SectionId, block: usize) -> CmdResult {
+    pub(super) fn expand_output(&mut self, parent: SectionId, block: usize) -> CmdResult {
         self.content.folds.set_expanded(parent.clone());
         self.cache.invalidate(block);
         self.content.selected = Some(parent);
         self.refresh();
         CmdResult::Visual
-    }
-
-    /// Folds or unfolds the selected section, or expands the output the
-    /// selected truncation row stands for. Only that block is measured
-    /// again.
-    pub(super) fn toggle_fold(&mut self) -> CmdResult {
-        let before = self.offset;
-        let Some(cur) = self.cursor() else {
-            return CmdResult::NoChange;
-        };
-        let id = cur.id().clone();
-        if let Some(parent) = id.more_parent() {
-            return self.expand_output(parent, cur.block);
-        }
-        let Some(folded) = self.is_folded(&id) else {
-            return CmdResult::NoChange;
-        };
-        self.content.folds.set_folded(id, !folded);
-        self.cache.invalidate(cur.block);
-        if let (Some(size), Some(cur)) = (self.viewport, self.cursor()) {
-            let height = usize::from(size.height);
-            let span = self.span(&cur, height);
-            self.offset = reveal(self.offset, height, &span, Reveal::InPlace);
-        }
-        self.refresh();
-        self.outcome(before)
     }
 }

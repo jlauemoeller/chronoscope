@@ -26,19 +26,39 @@
 //! area on a copy of the cache and discards it: slower, but correct, and
 //! still without side effects.
 //!
-//! Basic `Cmd`s: `Scroll(Up/Down)` scrolls one row, `Move(Up/Down)` selects
-//! the previous/next section and `Submit` toggles the selected section's
-//! fold, or, on the `… N more lines` row of a truncated tool call, expands
-//! its output. Task 020 binds the keys.
+//! # Keys and `Cmd`s
+//!
+//! `on` resolves a key with the shared [`Keymap`] for the `browser` context
+//! (a [`KeyResolver`] of its own holds a pending chord) and turns the action
+//! into a `Cmd` that `perform` handles; no `Msg` is returned yet, because
+//! nothing in the transcript needs the App. The `Cmd`s:
+//!
+//! - `Scroll(Up/Down)` scrolls one row;
+//! - `Move(Up/Down)` selects the previous/next section (paging through one
+//!   taller than the viewport first);
+//! - `GoTo(Begin/End)` selects the first/last section and scrolls there;
+//! - `Custom(`[`NEXT_TURN`]`/`[`PREV_TURN`]`)` jump between turn blocks;
+//! - `Custom(`[`HALF_PAGE_DOWN`]`/`[`HALF_PAGE_UP`]`/`[`PAGE_DOWN`]`/`[`PAGE_UP`]`)`
+//!   scroll and move the selection into view;
+//! - `Submit` toggles the selected section's fold, or, on the `… N more
+//!   lines` row of a truncated tool call, expands its output;
+//!   `Custom(`[`FOLD`]`/`[`UNFOLD`]`/`[`FOLD_ALL`]`/`[`UNFOLD_ALL`]`)` fold
+//!   and unfold;
+//! - `Custom(`[`TOGGLE_SYSTEM`]`)` shows or hides system sections.
 
 mod cache;
 mod content;
+mod folding;
+mod keys;
 mod nav;
+mod paging;
 mod updates;
 mod window;
 
 #[cfg(test)]
 mod fixtures;
+#[cfg(test)]
+mod key_snapshots;
 #[cfg(test)]
 mod snapshots;
 #[cfg(test)]
@@ -51,19 +71,24 @@ use ratatui::Frame;
 use ratatui::layout::{Rect, Size};
 use ratatui::style::Style;
 use ratatui::widgets::Block;
-use tuirealm::command::{Cmd, CmdResult, Direction};
+use tuirealm::command::{Cmd, CmdResult, Direction, Position};
 use tuirealm::component::{AppComponent, Component};
 use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
 pub(crate) use cache::LayoutCache;
+pub use keys::{
+    FOLD, FOLD_ALL, HALF_PAGE_DOWN, HALF_PAGE_UP, NEXT_TURN, PAGE_DOWN, PAGE_UP, PREV_TURN,
+    TOGGLE_SYSTEM, UNFOLD, UNFOLD_ALL,
+};
 
 use self::content::{Content, Measurer};
 use self::window::Window;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::components::turn_block::SectionId;
+use crate::keymap::{Context, KeyResolver, Keymap, Resolved};
 use crate::model::{ModelUpdate, Turn};
 use crate::theme::{Role, Theme};
 use crate::timestamp::TimestampFormatter;
@@ -102,6 +127,10 @@ pub struct Transcript {
     /// The top row of the viewport, in transcript rows.
     offset: usize,
     viewport: Option<Size>,
+    /// The key bindings of the `browser` context.
+    keymap: Keymap,
+    /// Resolves keys; remembers the first key of a chord.
+    resolver: KeyResolver,
     /// The blocks overlapping the viewport, laid out; `None` until a
     /// viewport is announced.
     window: Option<Window>,
@@ -119,9 +148,19 @@ impl Transcript {
             cache: LayoutCache::new(),
             offset: 0,
             viewport: None,
+            keymap: Keymap::default(),
+            resolver: KeyResolver::new(Context::Browser),
             window: None,
             layouts_run: 0,
         }
+    }
+
+    /// Sets the keymap keys are resolved with (default: the built-in one).
+    #[must_use]
+    pub fn keymap(mut self, keymap: Keymap) -> Self {
+        self.keymap = keymap;
+        self.resolver.reset();
+        self
     }
 
     /// Sets whether unselected sections are dimmed.
@@ -433,7 +472,10 @@ impl Component for Transcript {
             Cmd::Scroll(Direction::Up) => self.scroll_up(),
             Cmd::Move(Direction::Down) => self.move_selection(nav::Step::Next),
             Cmd::Move(Direction::Up) => self.move_selection(nav::Step::Previous),
-            Cmd::Submit => self.toggle_fold(),
+            Cmd::GoTo(Position::Begin) => self.jump_to_start(),
+            Cmd::GoTo(Position::End) => self.jump_to_end(),
+            Cmd::Submit => self.fold_command(folding::FoldOp::Toggle),
+            Cmd::Custom(name) => self.custom(name),
             Cmd::None => CmdResult::NoChange,
             other => CmdResult::Invalid(other),
         }
@@ -441,9 +483,17 @@ impl Component for Transcript {
 }
 
 impl AppComponent<Msg, UserEvent> for Transcript {
-    /// Keys are bound in task 020; until then the transcript only answers
-    /// `Cmd`s.
-    fn on(&mut self, _ev: &Event<UserEvent>) -> Option<Msg> {
+    /// Resolves the key in the `browser` context and performs the `Cmd` of
+    /// its action. Actions of other tasks (search, copy, ...) do nothing yet.
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
+        let Event::Keyboard(key) = ev else {
+            return None;
+        };
+        if let Resolved::Action(action) = self.resolver.feed(&self.keymap, key)
+            && let Some(cmd) = keys::cmd_for(action)
+        {
+            self.perform(cmd);
+        }
         None
     }
 }
