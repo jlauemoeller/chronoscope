@@ -26,7 +26,7 @@
 | 022-claude-live-watch | Complete |
 | 023-browser-live-updates | Complete |
 | 024-transcript-search | Complete |
-| 025-copy-to-clipboard | In progress |
+| 025-copy-to-clipboard | Complete |
 | 026-save-and-export | Planned |
 | 027-subagent-transcripts | Planned |
 | 028-opencode-adapter | Planned |
