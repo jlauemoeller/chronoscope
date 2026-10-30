@@ -1,0 +1,44 @@
+---
+source: src/app/browser_tests/help.rs
+expression: text
+---
+╭─ Project BRIO ──────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                       ╭─ Keybindings ─────────────────────────────────────────────── ↑ more ─╮                       │
+│ /home/user/projects/br│  Sections                                                            │                       │
+│                       │                                                                      │                       │
+╰───────────────────────│    ENTER / SPACE                     Fold or unfold current section  │───────────────────────╯
+╭─ User ────────────────│    Left / h                          Fold current section            │ 2026-10-21 08:35:15Z ─╮
+│                       │    Right / l                         Unfold current section          │                       │
+▒ ▶ I have a Logitech BR│    -                                 Fold all sections               │era and microphone -   │
+▒   but I don't have a w│    + / =                             Unfold all sections             │dows, since there…     │
+│                       │    s                                 Show or hide system content     │                       │
+╰───────────────────────│    y                                 Copy section as displayed       │───────────────────────╯
+╭─ Assistant ── claude-o│    Y                                 Copy full section               │ 2026-10-21 08:35:18Z ─╮
+│                       │    w / Ctrl-s                        Save section as displayed       │                       │
+│   I'll start by lookin│    W                                 Save full section               │                       │
+│                       │                                                                      │                       │
+│   • Check lsusb -v for│  Search                                                              │                       │
+│   • Look at v4l2-ctl -│                                                                      │                       │
+│                       │    /                                 Search transcript               │                       │
+│   Then I'll compare th│    n                                 Next match                      │                       │
+│                       │    N                                 Previous match                  │                       │
+│ ▶ Thinking: The user w│    ESC                               Clear search                    │                       │
+│                       │                                                                      │                       │
+│ ▶ Find the BRIO on USB│  Sessions                                                            │                       │
+│                       │                                                                      │                       │
+│ ▶ Dump full USB descri│    a                                 Open subagent transcript        │                       │
+│                       │    Backspace                         Back to parent session          │                       │
+│   model → claude-sonne│    R                                 Resume in harness               │                       │
+│                       │    Ctrl-o                            Open another session            │                       │
+│   5m 02s · 112 message│                                                                      │                       │
+│                       │  Application                                                         │                       │
+╰───────────────────────│                                                                      │───────────────────────╯
+╭─ User ────────────────│    e / Ctrl-e                        Export session as folded        │ 2026-10-21 08:35:15Z ─╮
+│                       │    E                                 Export full session             │                       │
+│ ▶ Dump the full descri│    t                                 Choose theme                    │                       │
+│                       │    ?                                 Show keybindings                │                       │
+╰───────────────────────│    q / Ctrl-q / Ctrl-w / Ctrl-c      Quit                            │───────────────────────╯
+╭─ Assistant ── claude-o│                                                                      │ 2026-10-21 08:35:18Z ─╮
+│                       │  Hold Shift to select text with the mouse                            │                       │
+                        ╰──────────────────────────────────────────────────────────────────────╯                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

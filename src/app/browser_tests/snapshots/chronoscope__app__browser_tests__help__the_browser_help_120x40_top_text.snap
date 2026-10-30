@@ -1,0 +1,44 @@
+---
+source: src/app/browser_tests/help.rs
+expression: "screen_text(&mut rig, 120, 40)"
+---
+╭─ Project BRIO ──────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                       ╭─ Keybindings ────────────────────────────────────────────────────────╮                       │
+│ /home/user/projects/br│                                                                      │                       │
+│                       │  Navigation                                                          │                       │
+╰───────────────────────│                                                                      │───────────────────────╯
+╭─ User ────────────────│    Up / k                            Previous section                │ 2026-10-21 08:35:15Z ─╮
+│                       │    Down / j                          Next section                    │                       │
+▒ ▶ I have a Logitech BR│    [                                 Previous turn                   │era and microphone -   │
+▒   but I don't have a w│    ]                                 Next turn                       │dows, since there…     │
+│                       │    Ctrl-u                            Scroll half a page up           │                       │
+╰───────────────────────│    Ctrl-d                            Scroll half a page down         │───────────────────────╯
+╭─ Assistant ── claude-o│    PgUp                              Scroll a page up                │ 2026-10-21 08:35:18Z ─╮
+│                       │    PgDn                              Scroll a page down              │                       │
+│   I'll start by lookin│    g / Home                          Jump to start                   │                       │
+│                       │    G / End                           Jump to end and follow          │                       │
+│   • Check lsusb -v for│                                                                      │                       │
+│   • Look at v4l2-ctl -│  Sections                                                            │                       │
+│                       │                                                                      │                       │
+│   Then I'll compare th│    ENTER / SPACE                     Fold or unfold current section  │                       │
+│                       │    Left / h                          Fold current section            │                       │
+│ ▶ Thinking: The user w│    Right / l                         Unfold current section          │                       │
+│                       │    -                                 Fold all sections               │                       │
+│ ▶ Find the BRIO on USB│    + / =                             Unfold all sections             │                       │
+│                       │    s                                 Show or hide system content     │                       │
+│ ▶ Dump full USB descri│    y                                 Copy section as displayed       │                       │
+│                       │    Y                                 Copy full section               │                       │
+│   model → claude-sonne│    w / Ctrl-s                        Save section as displayed       │                       │
+│                       │    W                                 Save full section               │                       │
+│   5m 02s · 112 message│                                                                      │                       │
+│                       │  Search                                                              │                       │
+╰───────────────────────│                                                                      │───────────────────────╯
+╭─ User ────────────────│    /                                 Search transcript               │ 2026-10-21 08:35:15Z ─╮
+│                       │    n                                 Next match                      │                       │
+│ ▶ Dump the full descri│    N                                 Previous match                  │                       │
+│                       │    ESC                               Clear search                    │                       │
+╰───────────────────────│                                                                      │───────────────────────╯
+╭─ Assistant ── claude-o│  Sessions                                                            │ 2026-10-21 08:35:18Z ─╮
+│                       │                                                                      │                       │
+                        ╰───────────────────────────────────────────────────────────── ↓ more ─╯                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

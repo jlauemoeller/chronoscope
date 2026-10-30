@@ -15,6 +15,7 @@ use crate::app::search_worker::search_event_kind;
 use crate::app::session_port::session_event_kind;
 use crate::app::transcript_search::transcript_search_event_kind;
 use crate::app::{Id, Msg, UserEvent};
+use crate::components::{HELP_CONTEXT_ATTR, HelpContext, context_from_value};
 use crate::keymap::{Action, Context, KeySpec, Keymap};
 
 /// `Ctrl-c` always quits. It is not part of the keymap.
@@ -27,18 +28,26 @@ const CTRL_C: KeyEvent = KeyEvent {
 /// and to the user events of the session index, the search worker and the
 /// open session, and turns them into messages.
 ///
-/// The quit and `open_selector` keys come from the keymap's `global` context;
-/// `Ctrl-c` always quits. The other global keys (help, theme selector) are
+/// The quit, help and `open_selector` keys come from the keymap's `global`
+/// context; `Ctrl-c` always quits. The other global keys (theme selector) are
 /// added with the components they open.
+///
+/// The help key gives `Msg::OpenHelp` for the screen the app says is shown
+/// (see [`HELP_CONTEXT_ATTR`]).
 #[derive(Debug, Clone)]
 pub struct GlobalEvents {
     keymap: Keymap,
+    help_context: HelpContext,
 }
 
 impl GlobalEvents {
-    /// A component resolving keys with `keymap`.
+    /// A component resolving keys with `keymap`. The help it opens is the
+    /// selector's, the screen the application starts on.
     pub fn new(keymap: Keymap) -> Self {
-        Self { keymap }
+        Self {
+            keymap,
+            help_context: HelpContext::Selector,
+        }
     }
 
     /// The subscriptions that make the application forward the events this
@@ -51,8 +60,21 @@ impl GlobalEvents {
     pub fn subscriptions(keymap: &Keymap) -> Vec<Sub<Id, UserEvent>> {
         let mut subs: Vec<Sub<Id, UserEvent>> = quit_key_events(keymap)
             .into_iter()
-            .chain(action_key_events(keymap, Action::OpenSelector))
-            .map(|key| Sub::new(EventClause::Keyboard(key), key_clause()))
+            .map(|key| {
+                // `Ctrl-c` is the one global key an overlay lets through.
+                let clause = if KeySpec::from_event(&key).is_ctrl_c() {
+                    prompt_clause()
+                } else {
+                    key_clause()
+                };
+                Sub::new(EventClause::Keyboard(key), clause)
+            })
+            .chain(
+                [Action::Help, Action::OpenSelector]
+                    .into_iter()
+                    .flat_map(|action| action_key_events(keymap, action))
+                    .map(|key| Sub::new(EventClause::Keyboard(key), key_clause())),
+            )
             .collect();
         subs.push(Sub::new(EventClause::WindowResize, always_clause()));
         subs.push(Sub::new(EventClause::Tick, always_clause()));
@@ -68,11 +90,20 @@ impl GlobalEvents {
     }
 }
 
-/// When the global keys apply: not while the [`Prompt`](super::Prompt) has
-/// focus. It is mounted exactly while it has focus (input mode, SPEC §6), and
-/// handles its own keys, `Ctrl-c` among them. The overlays that take focus
-/// later (help, theme selector) are added here.
+/// When the global keys apply: not while the [`Prompt`](super::Prompt) or the
+/// help overlay has focus. Each is mounted exactly while it has focus, and
+/// handles its own keys (the prompt, `Ctrl-c` as well). The overlays that
+/// take focus later (theme selector) are added here.
 fn key_clause() -> SubClause<Id> {
+    SubClause::and(
+        prompt_clause(),
+        SubClause::not(SubClause::IsMounted(Id::HelpOverlay)),
+    )
+}
+
+/// When `Ctrl-c` applies: not while the prompt has focus, which handles it.
+/// It quits from every overlay.
+fn prompt_clause() -> SubClause<Id> {
     SubClause::not(SubClause::IsMounted(Id::Prompt))
 }
 
@@ -129,7 +160,13 @@ impl Component for GlobalEvents {
         None
     }
 
-    fn attr(&mut self, _attr: Attribute, _value: AttrValue) {}
+    fn attr(&mut self, attr: Attribute, value: AttrValue) {
+        if attr == HELP_CONTEXT_ATTR
+            && let Some(context) = context_from_value(&value)
+        {
+            self.help_context = context;
+        }
+    }
 
     fn state(&self) -> State {
         State::None
@@ -168,6 +205,7 @@ impl GlobalEvents {
         match self.keymap.resolve(Context::Global, key)? {
             Action::Quit => Some(Msg::Quit),
             Action::OpenSelector => Some(Msg::OpenSelector),
+            Action::Help => Some(Msg::OpenHelp(self.help_context)),
             _ => None,
         }
     }
@@ -176,6 +214,7 @@ impl GlobalEvents {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::context_value;
     use crate::config::RawKeys;
 
     fn key(code: Key, modifiers: KeyModifiers) -> Event<UserEvent> {
@@ -286,9 +325,57 @@ mod tests {
         let keys = quit_key_events(&Keymap::default()).len();
         let open = action_key_events(&Keymap::default(), Action::OpenSelector);
         assert_eq!(open, [KeyEvent::new(Key::Char('o'), KeyModifiers::CONTROL)]);
+        let help = action_key_events(&Keymap::default(), Action::Help);
+        assert_eq!(
+            help,
+            [
+                KeyEvent::new(Key::Char('?'), KeyModifiers::NONE),
+                KeyEvent::new(Key::Char('?'), KeyModifiers::SHIFT)
+            ]
+        );
         // Resize, tick, and the index, session search, transcript search
         // and session events.
-        assert_eq!(subs.len(), keys + open.len() + 6);
+        assert_eq!(subs.len(), keys + open.len() + help.len() + 6);
+    }
+
+    #[test]
+    fn the_help_key_opens_the_help_of_the_screen_the_app_reports() {
+        let mut component = GlobalEvents::new(Keymap::default());
+        let shifted = key(Key::Char('?'), KeyModifiers::SHIFT);
+        assert_eq!(
+            component.on(&char_key('?')),
+            Some(Msg::OpenHelp(HelpContext::Selector))
+        );
+        component.attr(HELP_CONTEXT_ATTR, context_value(HelpContext::Browser));
+        assert_eq!(
+            component.on(&char_key('?')),
+            Some(Msg::OpenHelp(HelpContext::Browser))
+        );
+        assert_eq!(
+            component.on(&shifted),
+            Some(Msg::OpenHelp(HelpContext::Browser))
+        );
+        component.attr(HELP_CONTEXT_ATTR, context_value(HelpContext::Selector));
+        assert_eq!(
+            component.on(&char_key('?')),
+            Some(Msg::OpenHelp(HelpContext::Selector))
+        );
+    }
+
+    #[test]
+    fn a_remapped_help_key_replaces_the_question_mark() {
+        let mut raw = RawKeys::new();
+        raw.entry("global".to_owned())
+            .or_default()
+            .insert("help".to_owned(), vec!["f1".to_owned()]);
+        let (keymap, warnings) = Keymap::from_config(&raw);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut component = GlobalEvents::new(keymap);
+        assert!(matches!(
+            component.on(&key(Key::Function(1), KeyModifiers::NONE)),
+            Some(Msg::OpenHelp(_))
+        ));
+        assert_eq!(component.on(&char_key('?')), None);
     }
 
     #[test]

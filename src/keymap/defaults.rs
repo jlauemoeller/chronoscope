@@ -428,5 +428,21 @@ pub(super) const DEFAULTS: &[DefaultBinding] = &[
         OVERLAYS,
         "Select",
     ),
+    row(
+        Overlay,
+        Action::PageUp,
+        "page_up",
+        &["pgup"],
+        OVERLAYS,
+        "Scroll a page up",
+    ),
+    row(
+        Overlay,
+        Action::PageDown,
+        "page_down",
+        &["pgdn"],
+        OVERLAYS,
+        "Scroll a page down",
+    ),
     row(Overlay, Action::Close, "close", &["esc"], OVERLAYS, "Close"),
 ];

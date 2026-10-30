@@ -7,6 +7,7 @@ mod empty_state;
 mod global_events;
 mod harness_tabs;
 mod help_line;
+mod help_overlay;
 mod list_pane;
 mod project_list;
 mod prompt;
@@ -29,6 +30,10 @@ pub use empty_state::{EMPTY_SESSION, EmptyState, NO_MATCHING_SESSIONS, NO_SESSIO
 pub use global_events::{GlobalEvents, quit_key_events};
 pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
 pub use help_line::{HINTS_ATTR, HelpLine, Hint, STATUS_ATTR, hints_value, status_value};
+pub use help_overlay::{
+    HELP_CONTEXT_ATTR, HelpContent, HelpContext, HelpGroup, HelpOverlay, HelpRow, INTERIOR_ATTR,
+    MIN_WIDTH as HELP_MIN_WIDTH, SHIFT_NOTE, context_from_value, context_value, interior_value,
+};
 pub use list_pane::{
     ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
     selected_value, visible_rows,

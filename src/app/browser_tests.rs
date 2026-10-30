@@ -22,7 +22,7 @@ use super::fixtures::{self, at, now, project_in, session, snapshot_event};
 use super::layout::Screen;
 use super::selector_tests::{CLAUDE, init, session_rows, text, theme};
 use super::session_port::{SESSION_MAX_PER_POLL, SessionPort};
-use super::{App, Id, Msg, SessionUpdate, UserEvent, session_channel};
+use super::{App, AppInit, Id, Msg, SessionUpdate, UserEvent, session_channel};
 use crate::components::transcript::fixtures::session as fixture_turns;
 use crate::components::{
     PARSE_WARNINGS_ATTR, STATUS_ATTR, TURN_COUNT_ATTR, VIEWPORT_ATTR, payload_from_value,
@@ -266,6 +266,11 @@ fn rig_with(theme: Theme, width: u16, height: u16) -> Rig {
 /// transcript on a worker thread whose port the listener reads, as the
 /// running application does.
 fn build_rig(theme: Theme, width: u16, height: u16, transcript_worker: bool) -> Rig {
+    build_rig_from(init(&[CLAUDE], theme), width, height, transcript_worker)
+}
+
+/// Like [`build_rig`], for an app built from `init`.
+fn build_rig_from(init: AppInit, width: u16, height: u16, transcript_worker: bool) -> Rig {
     let (sink, events) = session_channel();
     let (keys, key_events) = channel();
     let mut listener = EventListenerCfg::default()
@@ -284,7 +289,7 @@ fn build_rig(theme: Theme, width: u16, height: u16, transcript_worker: bool) -> 
         );
         worker
     });
-    let mut app = App::new(init(&[CLAUDE], theme), listener, PathBuf::from("/nowhere")).unwrap();
+    let mut app = App::new(init, listener, PathBuf::from("/nowhere")).unwrap();
     if let Some(worker) = worker {
         app.set_transcript_search_worker(worker);
     }
@@ -1287,6 +1292,7 @@ theme_snapshot!(loaded_browser_theme_tokyo_night, "tokyo-night");
 theme_snapshot!(loaded_browser_theme_solarized, "solarized");
 
 mod copy;
+mod help;
 mod live;
 mod opencode;
 mod save;
