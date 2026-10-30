@@ -403,9 +403,11 @@ fn ten_quick_writes_are_coalesced() {
     let env = env();
     let mut live = Live::start(&env.harness(), "ses_main");
     live.clear();
+    // Writes 30 ms apart: closer than the debounce, over in under the cap.
     for n in 1..=10_i64 {
         let data = assistant_data(&format!("stream {n}"), 1_793_178_331_000, 7);
         env.rewrite("msg_main_09", &data, 1_793_179_900_000 + n);
+        std::thread::sleep(Duration::from_millis(30));
     }
     live.wait_for("the last state", |seen| {
         seen.iter().any(|u| match u {
@@ -420,7 +422,7 @@ fn ten_quick_writes_are_coalesced() {
         .iter()
         .filter(|u| matches!(u, ModelUpdate::Updated(_)))
         .count();
-    assert!((1..10).contains(&batches), "{batches} batches");
+    assert!((1..=3).contains(&batches), "{batches} batches");
 }
 
 // -- activity
@@ -755,4 +757,65 @@ fn the_index_follows_a_write_ahead_log_database_through_file_events() {
             break;
         }
     }
+}
+
+#[test]
+fn the_index_keeps_following_after_the_wal_is_deleted_and_created_again() {
+    let Env { _dir, path, writer } = env().wal();
+    let wal = path.with_file_name("opencode.db-wal");
+    let cache = tempfile::tempdir().unwrap();
+    let harness: Arc<dyn Harness> =
+        Arc::new(OpenCodeHarness::with_db_path(path.clone(), BTreeMap::new()));
+    let mut index = SessionIndex::start_with_timing(
+        vec![harness],
+        cache.path().to_path_buf(),
+        // No polling to speak of: only events can deliver the change.
+        Timing {
+            coalesce: Duration::from_millis(100),
+            poll: Duration::from_secs(3600),
+            save_interval: Duration::from_secs(5),
+        },
+    );
+    let rx = index.take_events().unwrap();
+    wait_for_sessions(&rx, &mut |s| s.iter().any(|(id, ..)| id == "ses_main"));
+    // The index's own connections are short-lived: wait until its stats
+    // workers (the five top-level sessions) are done with them.
+    let mut stats = std::collections::HashSet::new();
+    let end = Instant::now() + WAIT;
+    while stats.len() < 5 {
+        let left = end.saturating_duration_since(Instant::now());
+        if let IndexEvent::Stats { session, .. } = rx.recv_timeout(left).expect("the stats") {
+            stats.insert(session);
+        }
+    }
+
+    // OpenCode exits: the last connection closes and SQLite deletes the log.
+    drop(writer);
+    let end = Instant::now() + WAIT;
+    while wal.exists() {
+        assert!(Instant::now() < end, "the log was not deleted");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // Let the rebuild that the deletion itself causes finish, so that only a
+    // watch on the new log can deliver what is written next.
+    std::thread::sleep(Duration::from_millis(600));
+    while rx.try_recv().is_ok() {}
+
+    // OpenCode starts again and writes into a new log.
+    let writer = Connection::open(&path).unwrap();
+    writer.execute_batch("PRAGMA synchronous = OFF").unwrap();
+    writer
+        .execute(
+            "INSERT INTO session_v2 (id, project_id, parent_id, slug, directory, title, version, \
+             time_created, time_updated, time_idle) VALUES ('ses_new', 'prj_alpha', NULL, 'ses_new', \
+             '/home/user/alpha', 'After the restart', '1.0.0', 1793190000000, 1793190000000, NULL)",
+            [],
+        )
+        .unwrap();
+    assert!(wal.exists(), "the write went into a new log");
+    wait_for_sessions(&rx, &mut |s| {
+        s.iter()
+            .any(|(id, title, _)| id == "ses_new" && title == "After the restart")
+    });
 }

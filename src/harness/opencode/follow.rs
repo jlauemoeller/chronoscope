@@ -11,12 +11,18 @@
 //! 3. the unparsable-row count and the session's activity (`time_updated`,
 //!    `time_idle`) are sent when they changed.
 //!
+//! Known limits: rows that OpenCode deletes are not noticed (no `Reset`);
+//! a part that appears in a row updated in place is added at the end of its
+//! turn; `synthetic` and `system` rows updated in place are not re-read; a
+//! row whose `data` could not be parsed when it was first read is not read
+//! again to be shown (it stays counted in the warnings); injected entries
+//! that arrive in one pass and precede a `user` row that arrives in the next
+//! stay in the earlier turn (a reload would put them before the prompt).
+//!
 //! Every statement goes through [`Db::select`], which only runs `SELECT`s on
 //! a read-only connection.
 
 use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 use super::assemble::{Assembler, Row};
 use super::db::{Db, OpenMode};
@@ -32,10 +38,12 @@ pub(super) struct Cursor {
     last_seq: Option<i64>,
     /// The greatest `time_updated` read.
     max_updated: Option<i64>,
-    /// Each row read: its `time_updated` and a hash of its `data`. A row is
-    /// changed when either differs, so two updates within one millisecond
-    /// are told apart too.
-    seen: HashMap<String, (i64, u64)>,
+    /// Each row read: its `time_updated` and the byte length of its `data`.
+    /// A row is changed when either differs, so most updates within one
+    /// millisecond are told apart too (not a rewrite to text of the same
+    /// length). Only these two are compared, so that a pass does not read
+    /// the `data` of rows that did not change.
+    seen: HashMap<String, (i64, usize)>,
 }
 
 impl Cursor {
@@ -47,26 +55,19 @@ impl Cursor {
                 .map_or(row.updated, |updated| updated.max(row.updated)),
         );
         self.seen
-            .insert(row.id.clone(), (row.updated, hash(&row.data)));
+            .insert(row.id.clone(), (row.updated, row.data.len()));
     }
 
-    /// Whether `row` differs from what was read before. `None` for a row
-    /// that was never read.
-    fn changed(&self, row: &Row) -> Option<bool> {
-        self.seen
-            .get(&row.id)
-            .map(|&seen| seen != (row.updated, hash(&row.data)))
+    /// Whether a row with this `time_updated` and `data` length differs from
+    /// what was read before. `None` for a row that was never read.
+    fn changed(&self, id: &str, updated: i64, len: usize) -> Option<bool> {
+        self.seen.get(id).map(|&seen| seen != (updated, len))
     }
-}
-
-fn hash(text: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    text.hash(&mut hasher);
-    hasher.finish()
 }
 
 /// What polling compares: the extremes of the session's rows and the session
-/// row's times.
+/// row's times. A rewrite of a row's `data` that leaves its `time_updated`
+/// (to the millisecond) and the extremes alone is not seen by polling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Signature {
     max_seq: Option<i64>,
@@ -195,28 +196,42 @@ impl<'a> Follower<'a> {
         let mut changed = false;
 
         // 1. Rows updated in place. Their `time_updated` is not less than the
-        // greatest one read before this pass.
+        // greatest one read before this pass. A first query lists them with
+        // the length of their `data`; only those that differ from what was
+        // read are read in full.
         if let (Some(since), Some(last)) = (self.cursor.max_updated, self.cursor.last_seq) {
-            let rows = db.select(
-                &format!(
-                    "SELECT {ROW_COLUMNS} FROM session_message \
-                     WHERE session_id = ?1 AND seq <= ?2 AND time_updated >= ?3 ORDER BY seq"
-                ),
+            let listed = db.select(
+                "SELECT id, time_updated, length(CAST(data AS BLOB)) FROM session_message \
+                 WHERE session_id = ?1 AND seq <= ?2 AND time_updated >= ?3 ORDER BY seq",
                 rusqlite::params![id, last, since],
-                read_row,
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        usize::try_from(row.get::<_, i64>(2)?).unwrap_or_default(),
+                    ))
+                },
             )?;
-            for row in &rows {
-                match self.cursor.changed(row) {
+            for (row_id, updated, len) in listed {
+                match self.cursor.changed(&row_id, updated, len) {
                     Some(true) => {
-                        self.asm.replace_row(row);
-                        self.cursor.note(row);
-                        changed = true;
+                        let row = db.select_one(
+                            &format!(
+                                "SELECT {ROW_COLUMNS} FROM session_message \
+                                 WHERE session_id = ?1 AND id = ?2"
+                            ),
+                            rusqlite::params![id, row_id],
+                            read_row,
+                        )?;
+                        if let Some(row) = row {
+                            self.asm.replace_row(&row);
+                            self.cursor.note(&row);
+                            changed = true;
+                        }
                     }
                     Some(false) => {}
                     None => log::debug!(
-                        "session_message {} (seq {}) appeared behind the last one read; skipped",
-                        row.id,
-                        row.seq
+                        "session_message {row_id} appeared behind the last one read; skipped"
                     ),
                 }
             }

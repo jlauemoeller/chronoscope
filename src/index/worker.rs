@@ -360,7 +360,8 @@ impl Coordinator {
             return;
         }
         let paths = state.harness.watch_paths();
-        match watch(&paths, i, self.ctl_tx.clone()) {
+        let files = state.harness.watch_files();
+        match watch(&paths, &files, i, self.ctl_tx.clone()) {
             Ok(watcher) => {
                 state.watcher = Some(watcher);
                 state.poll_at = None;
@@ -624,26 +625,107 @@ fn collect(harness: &dyn Harness) -> Result<(Vec<Project>, SessionMap)> {
     Ok((projects, sessions))
 }
 
-/// Watches `paths` recursively, reporting changes as `Msg::Fs(index)`. Reads
+/// Watches `paths` recursively, reporting changes as `Msg::Fs(index)`, except
+/// the `files` among them: those are watched through their directory,
+/// non-recursively, and only events about their names count (a file may be
+/// created and removed, which would end a watch on the file itself). Reads
 /// (`Access` events) are ignored: the worker's own scans must not cause
 /// rebuilds.
 fn watch(
     paths: &[std::path::PathBuf],
+    files: &[std::path::PathBuf],
     index: usize,
     tx: Sender<Msg>,
 ) -> notify::Result<RecommendedWatcher> {
     if paths.is_empty() {
         return Err(notify::Error::generic("the harness names nothing to watch"));
     }
+    let dirs: Vec<std::path::PathBuf> = paths
+        .iter()
+        .filter(|p| !files.contains(p))
+        .cloned()
+        .collect();
+    let names: Vec<std::ffi::OsString> = files
+        .iter()
+        .filter_map(|file| file.file_name().map(ToOwned::to_owned))
+        .collect();
+    let recursive = dirs.clone();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        if matches!(&event, Ok(e) if matches!(e.kind, EventKind::Access(_))) {
-            return;
+        match &event {
+            Ok(e) if matches!(e.kind, EventKind::Access(_)) => return,
+            Ok(e) if !concerns(e, &recursive, &names) => return,
+            _ => {}
         }
         // The worker may be gone already.
         let _ = tx.send(Msg::Fs(index));
     })?;
-    for path in paths {
+    for path in &dirs {
         watcher.watch(path, RecursiveMode::Recursive)?;
     }
+    let mut parents: Vec<&std::path::Path> = Vec::new();
+    for file in files {
+        let parent = match file.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => std::path::Path::new("."),
+        };
+        if !parents.contains(&parent) {
+            parents.push(parent);
+            watcher.watch(parent, RecursiveMode::NonRecursive)?;
+        }
+    }
     Ok(watcher)
+}
+
+/// Whether `event` is about something under a recursively watched directory
+/// or a watched file's name. Events that name no path (or ask for a rescan)
+/// count.
+fn concerns(
+    event: &notify::Event,
+    dirs: &[std::path::PathBuf],
+    names: &[std::ffi::OsString],
+) -> bool {
+    if names.is_empty() || event.need_rescan() || event.paths.is_empty() {
+        return true;
+    }
+    event.paths.iter().any(|path| {
+        dirs.iter().any(|dir| path.starts_with(dir))
+            || path
+                .file_name()
+                .is_some_and(|name| names.iter().any(|n| n == name))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn event(paths: &[&str]) -> notify::Event {
+        let mut event = notify::Event::new(EventKind::Any);
+        event.paths = paths.iter().map(PathBuf::from).collect();
+        event
+    }
+
+    #[test]
+    fn without_watched_files_every_event_counts() {
+        assert!(concerns(&event(&["/d/anything"]), &[], &[]));
+    }
+
+    #[test]
+    fn with_watched_files_only_their_names_and_recursive_directories_count() {
+        let names = [OsString::from("o.db"), OsString::from("o.db-wal")];
+        let dirs = [PathBuf::from("/data")];
+        assert!(concerns(&event(&["/d/o.db-wal"]), &[], &names));
+        assert!(concerns(&event(&["/d/o.db"]), &[], &names));
+        assert!(!concerns(&event(&["/d/o.db-shm"]), &[], &names));
+        assert!(!concerns(&event(&["/d/o.db-journal"]), &[], &names));
+        assert!(!concerns(&event(&["/d/snapshot/x"]), &dirs, &names));
+        assert!(concerns(&event(&["/data/sub/x"]), &dirs, &names));
+        // Events that name nothing, or ask for a rescan, count.
+        assert!(concerns(&event(&[]), &[], &names));
+        let rescan = event(&["/d/o.db-shm"]).set_flag(notify::event::Flag::Rescan);
+        assert!(concerns(&rescan, &[], &names));
+    }
 }

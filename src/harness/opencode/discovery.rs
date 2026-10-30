@@ -212,6 +212,12 @@ impl Harness for OpenCodeHarness {
         vec![self.db_path.clone(), wal_path(&self.db_path)]
     }
 
+    /// Both are files, and the log comes and goes as OpenCode opens and
+    /// closes the database: the index watches their directory.
+    fn watch_files(&self) -> Vec<PathBuf> {
+        self.watch_paths()
+    }
+
     /// Builds the index first when there is none. A missing database gives no
     /// projects.
     fn projects(&self) -> Result<Vec<Project>> {
@@ -261,8 +267,8 @@ impl Harness for OpenCodeHarness {
     }
 
     /// Returns at once: a worker thread reads the session's rows in pages
-    /// and streams the turns, then watches the database (see
-    /// [`watch`](super::watch)) and sends what changes. A session that cannot be found or read ends in
+    /// and streams the turns, then watches the database (module `watch`) and
+    /// sends what changes. A session that cannot be found or read ends in
     /// [`ModelUpdate::Loaded`] with the error logged, not in an `Err`.
     fn load(&self, session: &SessionId, tx: Sender<ModelUpdate>) -> Result<WatchHandle> {
         let stop = Arc::new(AtomicBool::new(false));

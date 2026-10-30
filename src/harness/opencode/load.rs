@@ -8,8 +8,8 @@
 //! rows read). The stream ends with `Progress(1.0)`,
 //! [`ModelUpdate::ParseWarnings`], [`ModelUpdate::Loaded`] and an
 //! [`ModelUpdate::Activity`] with the session's `time_updated` and idleness.
-//! The worker then keeps the session live (see [`super::watch`] and
-//! [`super::follow`]) until it is stopped.
+//! The worker then keeps the session live (modules `watch` and `follow`)
+//! until it is stopped.
 
 use std::path::PathBuf;
 use std::sync::Arc;
