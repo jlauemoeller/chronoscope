@@ -9,12 +9,13 @@
 //! turns to the `Transcript` through its `attr`. The `App` keeps no copy of
 //! them.
 
+use std::ops::{Deref, DerefMut};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 use tuirealm::props::{AttrValue, PropPayload};
 
-use super::hints::browser_hints;
+use super::hints::{browser_hints, browser_hints_at};
 use super::layout::Screen;
 use super::redraw::RedrawRequest;
 use super::selector::{SELECTOR_IDS, mount_selector};
@@ -22,13 +23,14 @@ use super::session_port::{SessionUpdate, forward_to};
 use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
-    BrowserHeader, EMPTY_SESSION, EmptyState, HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR,
-    NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR, PARSE_WARNINGS_ATTR, STATUS_ATTR,
-    TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript, status_value,
+    BREADCRUMB_ATTR, BrowserHeader, EMPTY_SESSION, EmptyState, HINTS_ATTR, HelpLine, LIVE_ATTR,
+    MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR, PARSE_WARNINGS_ATTR,
+    SESSION_ID_ATTR, STATUS_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript,
+    hints_value, payload_value, status_value,
 };
 use crate::harness::WatchHandle;
 use crate::keymap::{Action, Context};
-use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary, is_active_at};
+use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary, ToolCallId, is_active_at};
 use crate::theme::Role;
 
 /// The browser's components, in drawing order.
@@ -38,6 +40,9 @@ const BROWSER_IDS: [Id; 4] = [
     Id::BrowserHelpLine,
     Id::EmptySession,
 ];
+
+/// The toast when a subagent section has no transcript to open.
+pub const NO_SUBAGENT_TRANSCRIPT: &str = "No transcript for this subagent";
 
 /// The columns the browser's help line text is inset from each side.
 const HELP_LINE_INSET: u16 = 1;
@@ -49,13 +54,11 @@ pub(super) struct OpenSession {
     pub(super) summary: SessionSummary,
 }
 
-/// The browser's domain state. The turns are not part of it: the
-/// `Transcript` owns them.
+/// What the browser knows about one loaded session: the open one (depth 0)
+/// or a subagent's transcript opened over it.
 #[derive(Debug, Default)]
-pub(super) struct BrowserState {
-    /// The open session, if any.
-    pub(super) open: Option<OpenSession>,
-    /// The number of the current load. Updates of any other are dropped.
+pub(super) struct LoadView {
+    /// The number of the load. Updates of any other are dropped.
     generation: u64,
     /// Keeps the load's worker alive; dropping it stops the worker.
     watch: Option<WatchHandle>,
@@ -72,11 +75,59 @@ pub(super) struct BrowserState {
     activity: Option<(SystemTime, Option<bool>)>,
     /// Whether the header shows `● live`.
     live: bool,
+    /// How many entries of the session could not be parsed.
+    warnings: usize,
     /// The search of the transcript.
     pub(super) search: super::transcript_search::BrowserSearch,
+}
+
+/// A subagent's transcript opened over the session or over another subagent.
+#[derive(Debug)]
+struct Level {
+    /// The subagent's session.
+    id: SessionId,
+    /// The agent in the breadcrumb.
+    label: String,
+    view: LoadView,
+}
+
+/// The browser's domain state. The turns are not part of it: the
+/// `Transcript`s own them.
+///
+/// It reads and writes the view of the transcript on top (the deepest
+/// subagent, else the session) through `Deref`: that is the one the header
+/// and the help line show.
+#[derive(Debug, Default)]
+pub(super) struct BrowserState {
+    /// The open session, if any.
+    pub(super) open: Option<OpenSession>,
+    /// The session's own view (depth 0).
+    root: LoadView,
+    /// The subagent transcripts opened one over the other; the transcript at
+    /// depth `n` is `levels[n - 1]`.
+    levels: Vec<Level>,
+    /// The number of the latest load started. Never goes back, so the
+    /// number of a load that was stopped is never given to another.
+    load_seq: u64,
     /// The save or export waiting for its path or for an overwrite to be
     /// confirmed.
     pub(super) write: Option<super::save::PendingWrite>,
+}
+
+impl Deref for BrowserState {
+    type Target = LoadView;
+
+    fn deref(&self) -> &LoadView {
+        self.levels.last().map_or(&self.root, |level| &level.view)
+    }
+}
+
+impl DerefMut for BrowserState {
+    fn deref_mut(&mut self) -> &mut LoadView {
+        self.levels
+            .last_mut()
+            .map_or(&mut self.root, |level| &mut level.view)
+    }
 }
 
 impl BrowserState {
@@ -85,9 +136,61 @@ impl BrowserState {
         self.empty
     }
 
-    /// Tells the worker of the current load to stop.
+    /// Tells the workers of every load to stop.
     pub(super) fn stop_watching(&mut self) {
-        self.watch = None;
+        self.root.watch = None;
+        for level in &mut self.levels {
+            level.view.watch = None;
+        }
+    }
+
+    /// The depth of the transcript on top: 0 for the session.
+    pub(super) fn depth(&self) -> usize {
+        self.levels.len()
+    }
+
+    /// The view at `depth`.
+    fn view_at_mut(&mut self, depth: usize) -> Option<&mut LoadView> {
+        match depth.checked_sub(1) {
+            None => Some(&mut self.root),
+            Some(n) => self.levels.get_mut(n).map(|level| &mut level.view),
+        }
+    }
+
+    /// The depth whose load has number `generation`.
+    fn depth_of(&self, generation: u64) -> Option<usize> {
+        (0..=self.levels.len()).find(|&depth| {
+            let view = match depth.checked_sub(1) {
+                None => &self.root,
+                Some(n) => &self.levels[n].view,
+            };
+            view.generation == generation
+        })
+    }
+
+    /// The session of the transcript on top.
+    pub(super) fn current_session(&self) -> Option<&SessionId> {
+        match self.levels.last() {
+            Some(level) => Some(&level.id),
+            None => self.open.as_ref().map(|open| &open.summary.id),
+        }
+    }
+
+    /// The agents of the open subagents, outermost first.
+    fn breadcrumb(&self) -> Vec<String> {
+        self.levels
+            .iter()
+            .map(|level| level.label.clone())
+            .collect()
+    }
+}
+
+/// The component that shows the transcript at `depth`.
+pub(super) fn transcript_id(depth: usize) -> Id {
+    if depth == 0 {
+        Id::Transcript
+    } else {
+        Id::Subagent(depth)
     }
 }
 
@@ -105,9 +208,32 @@ impl App {
         Some((open.harness, &open.summary.id))
     }
 
-    /// The number of the current load: it grows with every session opened.
+    /// The number of the load of the transcript on top: it grows with every
+    /// session and subagent opened.
     pub fn session_generation(&self) -> u64 {
         self.browser.generation
+    }
+
+    /// How many subagent transcripts are open one over the other: 0 while
+    /// the session itself is shown.
+    pub fn subagent_depth(&self) -> usize {
+        self.browser.depth()
+    }
+
+    /// The agents of the open subagents, outermost first (the breadcrumb).
+    pub fn breadcrumb(&self) -> Vec<String> {
+        self.browser.breadcrumb()
+    }
+
+    /// The session of the transcript on top: the open session, or a
+    /// subagent's.
+    pub fn top_session_id(&self) -> Option<&SessionId> {
+        self.browser.current_session()
+    }
+
+    /// The component that shows the transcript on top.
+    pub(super) fn top_transcript(&self) -> Id {
+        transcript_id(self.browser.depth())
     }
 
     /// Whether the initial parse of the open session is complete.
@@ -164,7 +290,7 @@ impl App {
             self.toast_quiet("Cannot open the session");
             return;
         };
-        let generation = self.browser.generation + 1;
+        let generation = self.browser.load_seq + 1;
         // The worker of the session that was open stops before the new load
         // starts. If the load fails the old browser stays, no longer live.
         self.browser.stop_watching();
@@ -176,10 +302,16 @@ impl App {
                 return;
             }
         };
+        // The subagent transcripts are closed with their loads.
+        self.unmount_subagents();
         self.browser = super::browser::BrowserState {
             open: Some(OpenSession { harness, summary }),
-            generation,
-            watch: Some(watch),
+            root: LoadView {
+                generation,
+                watch: Some(watch),
+                ..LoadView::default()
+            },
+            load_seq: generation,
             ..BrowserState::default()
         };
         self.unmount_selector();
@@ -219,16 +351,15 @@ impl App {
         ))
     }
 
-    /// Mounts the header, the transcript and the help line of the open
-    /// session, and gives the transcript the focus.
-    fn mount_browser(&mut self) -> Result<(), tuirealm::application::ApplicationError> {
+    /// The project name and the working directory the header shows for the
+    /// open session.
+    fn header_texts(&self) -> (String, String) {
         let Some(open) = self.browser.open.as_ref() else {
-            return Ok(());
+            return (String::new(), String::new());
         };
         let project = self
             .selector
             .find_project(open.harness, &open.summary.project);
-        let name = self.open_project_name().unwrap_or_default();
         let cwd = open
             .summary
             .cwd
@@ -236,21 +367,59 @@ impl App {
             .or_else(|| project.and_then(|p| p.cwd.as_ref()))
             .map(|cwd| cwd.display().to_string())
             .unwrap_or_default();
+        (self.open_project_name().unwrap_or_default(), cwd)
+    }
+
+    /// A transcript for the session `session_id` of the open session's
+    /// project, titled `title` in an export.
+    fn new_transcript(&self, session_id: &str, title: String, nested: bool) -> Option<Transcript> {
+        let open = self.browser.open.as_ref()?;
+        let (project, cwd) = self.header_texts();
         let meta = ExportMeta {
-            title: open.summary.title.clone(),
-            project: name.clone(),
-            session_id: open.summary.id.as_str().to_owned(),
-            cwd: cwd.clone(),
+            title,
+            project,
+            session_id: session_id.to_owned(),
+            cwd,
             started: open.summary.started_at,
             harness: open.harness.display_name().to_owned(),
         };
-        let header = BrowserHeader::new(name, open.summary.id.as_str(), cwd, self.theme.clone());
-        let transcript = Transcript::new(self.theme.clone(), self.timestamps.clone())
-            .keymap(self.keymap.clone())
-            .export_meta(meta)
-            .dim_unselected(self.config.dim_unselected)
-            .show_system(self.config.show_system)
-            .loading(!self.browser.loaded);
+        Some(
+            Transcript::new(self.theme.clone(), self.timestamps.clone())
+                .keymap(self.keymap.clone())
+                .export_meta(meta)
+                .dim_unselected(self.config.dim_unselected)
+                .show_system(self.config.show_system)
+                .nested(nested)
+                .loading(!self.browser.loaded),
+        )
+    }
+
+    /// Gives the transcript `id` the settings that are not set when it is
+    /// built.
+    fn configure_transcript(&mut self, id: Id) {
+        self.set_attr(
+            id,
+            TRUNCATE_OUTPUT_LINES_ATTR,
+            AttrValue::Length(self.config.truncate_output_lines),
+        );
+        if let Some(label) = self.keymap.label(Context::Browser, Action::OpenSubagent) {
+            self.set_attr(id, OPEN_SUBAGENT_KEY_ATTR, AttrValue::String(label));
+        }
+    }
+
+    /// Mounts the header, the transcript and the help line of the open
+    /// session, and gives the transcript the focus.
+    fn mount_browser(&mut self) -> Result<(), tuirealm::application::ApplicationError> {
+        let Some(open) = self.browser.open.as_ref() else {
+            return Ok(());
+        };
+        let (name, cwd) = self.header_texts();
+        let title = open.summary.title.clone();
+        let session_id = open.summary.id.as_str().to_owned();
+        let header = BrowserHeader::new(name, &session_id, cwd, self.theme.clone());
+        let Some(transcript) = self.new_transcript(&session_id, title, false) else {
+            return Ok(());
+        };
         let help = HelpLine::new(
             browser_hints(&self.keymap),
             Vec::new(),
@@ -267,18 +436,7 @@ impl App {
             .mount(Id::BrowserHelpLine, Box::new(help), Vec::new())?;
         self.application
             .mount(Id::EmptySession, Box::new(empty), Vec::new())?;
-        self.set_attr(
-            Id::Transcript,
-            TRUNCATE_OUTPUT_LINES_ATTR,
-            AttrValue::Length(self.config.truncate_output_lines),
-        );
-        if let Some(label) = self.keymap.label(Context::Browser, Action::OpenSubagent) {
-            self.set_attr(
-                Id::Transcript,
-                OPEN_SUBAGENT_KEY_ATTR,
-                AttrValue::String(label),
-            );
-        }
+        self.configure_transcript(Id::Transcript);
         self.application.active(&Id::Transcript)
     }
 
@@ -292,19 +450,200 @@ impl App {
         }
     }
 
+    /// Unmounts every subagent transcript.
+    fn unmount_subagents(&mut self) {
+        for depth in 1..=self.browser.depth() {
+            let id = Id::Subagent(depth);
+            if self.application.mounted(&id)
+                && let Err(err) = self.application.umount(&id)
+            {
+                log::warn!("could not unmount {id:?}: {err}");
+            }
+        }
+    }
+
+    // -- subagent transcripts (SPEC §5.4)
+
+    /// `a` on a subagent section: asks the harness for the transcript of the
+    /// subagent that tool call `call` started and mounts a `Transcript` for
+    /// it over the one on top, which stays mounted but is not drawn. The new
+    /// one is loaded and watched like any session and gets the focus. With
+    /// no transcript to open a toast says so and nothing is mounted.
+    pub(super) fn open_subagent(&mut self, call: &ToolCallId, label: String) {
+        if self.screen != Screen::Browser || self.application.mounted(&Id::Prompt) {
+            return;
+        }
+        let Some(harness) = self.browser.open.as_ref().map(|open| open.harness) else {
+            return;
+        };
+        let Some(parent) = self.browser.current_session().cloned() else {
+            return;
+        };
+        let (Some(loader), Some(sink)) = (
+            self.harnesses.get(&harness).cloned(),
+            self.session_sink.clone(),
+        ) else {
+            log::error!("cannot open a subagent: no {harness} harness or session channel");
+            self.toast_quiet("Could not open the subagent");
+            return;
+        };
+        let Some(id) = loader.subagent(&parent, call) else {
+            self.toast_quiet(NO_SUBAGENT_TRANSCRIPT);
+            return;
+        };
+        // The number is taken before the worker starts, so it is never given
+        // again, whatever happens next.
+        let generation = self.browser.load_seq + 1;
+        self.browser.load_seq = generation;
+        let watch = match loader.load(&id, forward_to(generation, sink)) {
+            Ok(watch) => watch,
+            Err(err) => {
+                log::warn!("could not load {id}: {err}");
+                self.toast_quiet(format!("Could not open the subagent: {err}"));
+                return;
+            }
+        };
+        let depth = self.browser.depth() + 1;
+        let mounted = self.mount_subagent(depth, &id, &label);
+        if let Err(err) = mounted {
+            log::error!("could not mount the subagent transcript: {err}");
+            self.toast_quiet("Could not open the subagent");
+            return;
+        }
+        // An answer to a search of the covered transcript would land in the
+        // subagent's view and be dropped: forget that it is waited for.
+        self.browser.search.forget_pending();
+        self.browser.levels.push(Level {
+            id,
+            label,
+            view: LoadView {
+                generation,
+                watch: Some(watch),
+                ..LoadView::default()
+            },
+        });
+        self.show_top_in_header();
+        self.refresh_status();
+        self.push_viewports();
+        self.request_redraw(RedrawRequest::Dirty);
+    }
+
+    /// Mounts the transcript of subagent `id` at `depth` and focuses it.
+    fn mount_subagent(
+        &mut self,
+        depth: usize,
+        id: &SessionId,
+        label: &str,
+    ) -> Result<(), tuirealm::application::ApplicationError> {
+        let component = Id::Subagent(depth);
+        let transcript = self
+            .new_transcript(id.as_str(), format!("Agent: {label}"), true)
+            .map(|transcript| transcript.loading(true));
+        let Some(transcript) = transcript else {
+            return Ok(());
+        };
+        self.application
+            .mount(component, Box::new(transcript), Vec::new())?;
+        self.configure_transcript(component);
+        if let Err(err) = self.application.active(&component) {
+            self.application.umount(&component)?;
+            return Err(err);
+        }
+        Ok(())
+    }
+
+    /// The back key in a subagent's transcript: drops its load, unmounts it
+    /// and returns to the transcript it was opened from, which was never
+    /// touched, with the header and help line as that one had them. At depth
+    /// 0, or while a prompt is open, nothing happens.
+    pub(super) fn close_subagent(&mut self) {
+        if self.screen != Screen::Browser
+            || self.application.mounted(&Id::Prompt)
+            || self.browser.levels.is_empty()
+        {
+            return;
+        }
+        let depth = self.browser.depth();
+        // Dropping the level stops its worker; its late updates are dropped
+        // because no load has its number.
+        drop(self.browser.levels.pop());
+        let id = Id::Subagent(depth);
+        if let Err(err) = self.application.umount(&id) {
+            log::warn!("could not unmount {id:?}: {err}");
+        }
+        let top = self.top_transcript();
+        if let Err(err) = self.application.active(&top) {
+            log::warn!("could not return the focus to {top:?}: {err}");
+        }
+        self.show_top_in_header();
+        // What the transcript on top says about itself, as it is now: it kept
+        // receiving its updates while it was covered.
+        self.sync_search_position();
+        self.sync_new_sections();
+        self.refresh_session_empty();
+        self.refresh_live();
+        self.push_viewports();
+        self.request_redraw(RedrawRequest::Dirty);
+    }
+
+    /// Shows the breadcrumb, the session id, the parse warnings and the live
+    /// marker of the transcript on top in the header, and its status in the
+    /// help line.
+    fn show_top_in_header(&mut self) {
+        let breadcrumb = self.browser.breadcrumb();
+        let session = self
+            .browser
+            .current_session()
+            .map(|id| id.as_str().to_owned())
+            .unwrap_or_default();
+        let (warnings, live) = (self.browser.warnings, self.browser.live);
+        self.set_attr(
+            Id::BrowserHeader,
+            BREADCRUMB_ATTR,
+            payload_value(breadcrumb),
+        );
+        self.set_attr(
+            Id::BrowserHeader,
+            SESSION_ID_ATTR,
+            AttrValue::String(session),
+        );
+        self.set_attr(
+            Id::BrowserHeader,
+            PARSE_WARNINGS_ATTR,
+            AttrValue::Length(warnings),
+        );
+        self.set_attr(Id::BrowserHeader, LIVE_ATTR, AttrValue::Flag(live));
+        self.set_attr(
+            Id::BrowserHelpLine,
+            HINTS_ATTR,
+            hints_value(browser_hints_at(&self.keymap, self.browser.depth())),
+        );
+        self.refresh_status();
+    }
+
     // -- the updates of the load
 
     /// Applies what the load of generation `generation` reported. Updates of
-    /// another load are dropped.
+    /// a load that is not running (replaced, or a subagent that was closed)
+    /// are dropped.
     pub(super) fn session_update(&mut self, generation: u64, update: &SessionUpdate) {
-        if generation != self.browser.generation || self.browser.open.is_none() {
+        let depth = self
+            .browser
+            .open
+            .as_ref()
+            .and_then(|_| self.browser.depth_of(generation));
+        let Some(depth) = depth else {
             log::debug!(
                 "dropping an update of load {generation}; the current one is {}",
                 self.browser.generation
             );
             return;
-        }
+        };
         self.request_redraw(RedrawRequest::Dirty);
+        if depth != self.browser.depth() {
+            self.covered_session_update(depth, update);
+            return;
+        }
         match update.update() {
             ModelUpdate::Progress(fraction) => {
                 if !self.browser.loaded {
@@ -315,11 +654,12 @@ impl App {
                 self.browser.loaded = true;
                 self.set_loading(None);
                 // The transcript decides whether to follow from here on.
-                self.forward_to_transcript(update);
+                self.forward_to_transcript(depth, update);
                 self.sync_new_sections();
                 self.refresh_session_empty();
             }
             ModelUpdate::ParseWarnings(count) => {
+                self.browser.warnings = *count;
                 self.set_attr(
                     Id::BrowserHeader,
                     PARSE_WARNINGS_ATTR,
@@ -327,16 +667,16 @@ impl App {
                 );
             }
             ModelUpdate::Appended(_) => {
-                self.forward_to_transcript(update);
+                self.forward_to_transcript(depth, update);
                 self.sync_new_sections();
                 self.refresh_session_empty();
             }
             ModelUpdate::Updated(_) => {
-                self.forward_to_transcript(update);
+                self.forward_to_transcript(depth, update);
                 self.sync_new_sections();
             }
             ModelUpdate::Reset => {
-                self.forward_to_transcript(update);
+                self.forward_to_transcript(depth, update);
                 self.sync_new_sections();
                 // The matches were of the turns that are gone.
                 self.search_reloaded();
@@ -348,6 +688,44 @@ impl App {
                 self.browser.activity = Some((*last_modified, *idle));
                 self.refresh_live();
             }
+        }
+    }
+
+    /// Applies an update of the load at `depth`, which a subagent transcript
+    /// covers: its transcript gets the turns and its view the facts, but the
+    /// header and the help line are those of the transcript on top. They are
+    /// brought up to date when the covering one is closed.
+    fn covered_session_update(&mut self, depth: usize, update: &SessionUpdate) {
+        let Some(view) = self.browser.view_at_mut(depth) else {
+            return;
+        };
+        let forward = match update.update() {
+            ModelUpdate::Progress(fraction) => {
+                if !view.loaded {
+                    view.loading = Some(percent(*fraction));
+                }
+                false
+            }
+            ModelUpdate::Loaded => {
+                view.loaded = true;
+                view.loading = None;
+                true
+            }
+            ModelUpdate::ParseWarnings(count) => {
+                view.warnings = *count;
+                false
+            }
+            ModelUpdate::Activity {
+                last_modified,
+                idle,
+            } => {
+                view.activity = Some((*last_modified, *idle));
+                false
+            }
+            ModelUpdate::Appended(_) | ModelUpdate::Updated(_) | ModelUpdate::Reset => true,
+        };
+        if forward {
+            self.forward_to_transcript(depth, update);
         }
     }
 
@@ -379,7 +757,7 @@ impl App {
     pub(super) fn sync_new_sections(&mut self) {
         let count = self
             .application
-            .query(&Id::Transcript, NEW_SECTIONS_ATTR)
+            .query(&self.top_transcript(), NEW_SECTIONS_ATTR)
             .ok()
             .flatten()
             .map(tuirealm::props::QueryResult::into_attr);
@@ -397,10 +775,10 @@ impl App {
         }
     }
 
-    /// Hands a turn update to the transcript, which owns the turns.
-    fn forward_to_transcript(&mut self, update: &SessionUpdate) {
+    /// Hands a turn update to the transcript at `depth`, which owns the turns.
+    fn forward_to_transcript(&mut self, depth: usize, update: &SessionUpdate) {
         self.set_attr(
-            Id::Transcript,
+            transcript_id(depth),
             MODEL_UPDATE_ATTR,
             AttrValue::Payload(PropPayload::Any(Box::new(update.shared()))),
         );
@@ -430,10 +808,10 @@ impl App {
 
     /// Decides whether the session is empty: loaded, and the transcript
     /// holds no turn (asked of the transcript, which owns them).
-    fn refresh_session_empty(&mut self) {
+    pub(super) fn refresh_session_empty(&mut self) {
         let turns = self
             .application
-            .query(&Id::Transcript, TURN_COUNT_ATTR)
+            .query(&self.top_transcript(), TURN_COUNT_ATTR)
             .ok()
             .flatten()
             .map(tuirealm::props::QueryResult::into_attr);
@@ -490,7 +868,7 @@ impl App {
             .first()
             .copied()
             .filter(|id| self.application.mounted(id))
-            .unwrap_or(Id::Transcript);
+            .unwrap_or_else(|| self.top_transcript());
         self.focus_stack.clear();
         if let Err(err) = self.application.active(&back) {
             log::warn!("could not return the focus to {back:?}: {err}");

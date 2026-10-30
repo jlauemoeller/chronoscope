@@ -21,6 +21,15 @@ use crate::theme::{Role, Theme, Token};
 /// [`status_value`]).
 pub const STATUS_ATTR: Attribute = Attribute::Custom("status");
 
+/// The attribute that replaces the key hints (a `Vec<Hint>` payload, see
+/// [`hints_value`]).
+pub const HINTS_ATTR: Attribute = Attribute::Custom("hints");
+
+/// The attribute value that replaces the key hints with `hints`.
+pub fn hints_value(hints: Vec<Hint>) -> AttrValue {
+    payload_value(hints)
+}
+
 /// The attribute value that replaces the status items with `items`.
 pub fn status_value(items: Vec<String>) -> AttrValue {
     payload_value(items)
@@ -174,6 +183,7 @@ impl Component for HelpLine {
         match attr {
             THEME_ATTR => Some(QueryResult::Owned(theme_value(&self.theme))),
             STATUS_ATTR => Some(QueryResult::Owned(status_value(self.status.clone()))),
+            HINTS_ATTR => Some(QueryResult::Owned(hints_value(self.hints.clone()))),
             _ => None,
         }
     }
@@ -187,6 +197,10 @@ impl Component for HelpLine {
             && let Some(items) = payload_from_value::<Vec<String>>(&value)
         {
             self.status = items;
+        } else if attr == HINTS_ATTR
+            && let Some(hints) = payload_from_value::<Vec<Hint>>(&value)
+        {
+            self.hints = hints;
         }
     }
 

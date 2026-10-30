@@ -153,6 +153,13 @@ pub(super) struct BrowserSearch {
     pub(super) position: Option<SearchPosition>,
 }
 
+impl BrowserSearch {
+    /// Stops waiting for the answer to a search that is under way.
+    pub(super) fn forget_pending(&mut self) {
+        self.pending = None;
+    }
+}
+
 impl App {
     /// Hands the app the thread that searches transcripts; without one the
     /// search runs on the calling thread. The app owns it from now on;
@@ -175,7 +182,7 @@ impl App {
     pub(super) fn open_transcript_search(&mut self) {
         if self.screen != Screen::Browser
             || self.browser.search.prompt_open
-            || !self.application.mounted(&Id::Transcript)
+            || !self.application.mounted(&self.top_transcript())
         {
             return;
         }
@@ -214,10 +221,14 @@ impl App {
             query,
             generation: self.transcript_seq,
         };
-        self.set_attr(Id::Transcript, SEARCH_QUERY_ATTR, search_start_value(start));
+        self.set_attr(
+            self.top_transcript(),
+            SEARCH_QUERY_ATTR,
+            search_start_value(start),
+        );
         let request = self
             .application
-            .query(&Id::Transcript, SEARCH_REQUEST_ATTR)
+            .query(&self.top_transcript(), SEARCH_REQUEST_ATTR)
             .ok()
             .flatten()
             .and_then(|value| payload_from_value::<SearchRequest>(&value.into_attr()));
@@ -266,7 +277,7 @@ impl App {
         }
         self.browser.search.pending = None;
         self.set_attr(
-            Id::Transcript,
+            self.top_transcript(),
             SEARCH_RESULTS_ATTR,
             search_results_value(matches.clone()),
         );
@@ -298,7 +309,7 @@ impl App {
     pub(super) fn sync_search_position(&mut self) {
         let value = self
             .application
-            .query(&Id::Transcript, SEARCH_POSITION_ATTR)
+            .query(&self.top_transcript(), SEARCH_POSITION_ATTR)
             .ok()
             .flatten()
             .map(tuirealm::props::QueryResult::into_attr);

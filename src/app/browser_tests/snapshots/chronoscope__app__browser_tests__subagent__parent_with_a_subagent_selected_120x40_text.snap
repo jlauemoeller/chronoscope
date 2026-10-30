@@ -1,0 +1,44 @@
+---
+source: src/app/browser_tests/subagent.rs
+expression: text
+---
+╭─ Project BRIO ──────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                                                                                                                      │
+│ /home/user/projects/brio                                                                                      ● live │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 ──────────────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                                      │
+│   The extension units are listed under VideoControl:                                                                 │
+│                                                                                                                      │
+│   • one for exposure                                                                                                 │
+│   • one for pan and tilt                                                                                             │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 ──────────────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                                      │
+│   That is everything the camera exposes over plain UVC. Anything beyond that needs the vendor protocol, which is     │
+│   not documented.                                                                                                    │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 ──────────────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                                      │
+│   I will ask the story writer.                                                                                       │
+│                                                                                                                      │
+▒ ▼ Ask story-writer (story-writer)                                                                                    │
+▒                                                                                                                      │
+▒   Prompt:                                                                                                            │
+▒                                                                                                                      │
+▒      Write a short story                                                                                             │
+▒                                                                                                                      │
+▒   Result:                                                                                                            │
+▒                                                                                                                      │
+▒      Once upon a time.                                                                                               │
+▒                                                                                                                      │
+▒   a to open transcript                                                                                               │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

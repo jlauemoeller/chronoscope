@@ -31,22 +31,32 @@ pub fn selector_hints(keymap: &Keymap) -> Vec<Hint> {
 /// With the default keys they read `/ to search | ENTER to fold or unfold
 /// sections | y to copy current | ? for keybindings`.
 pub fn browser_hints(keymap: &Keymap) -> Vec<Hint> {
-    [
-        (Context::Browser, Action::Search, "to search"),
-        (
-            Context::Browser,
-            Action::FoldToggle,
-            "to fold or unfold sections",
-        ),
-        (Context::Browser, Action::Copy, "to copy current"),
-        (Context::Global, Action::Help, "for keybindings"),
-    ]
-    .into_iter()
-    .filter_map(|(context, action, text)| {
-        let key = keymap.label(context, action)?;
-        Some(Hint::new(key, text))
-    })
-    .collect()
+    browser_hints_at(keymap, 0)
+}
+
+/// Like [`browser_hints`], for the transcript at subagent `depth`: in a
+/// subagent's transcript (depth above 0) `Backspace to go back` comes right
+/// after the search hint, where it survives a narrow terminal.
+pub fn browser_hints_at(keymap: &Keymap, depth: usize) -> Vec<Hint> {
+    let back = (depth > 0).then_some((Context::Browser, Action::Back, "to go back"));
+    let search = (Context::Browser, Action::Search, "to search");
+    [Some(search), back]
+        .into_iter()
+        .flatten()
+        .chain([
+            (
+                Context::Browser,
+                Action::FoldToggle,
+                "to fold or unfold sections",
+            ),
+            (Context::Browser, Action::Copy, "to copy current"),
+            (Context::Global, Action::Help, "for keybindings"),
+        ])
+        .filter_map(|(context, action, text)| {
+            let key = keymap.label(context, action)?;
+            Some(Hint::new(key, text))
+        })
+        .collect()
 }
 
 /// The text of the toast that shows the startup `warnings`, or `None` when
@@ -143,6 +153,27 @@ mod tests {
         let hints = browser_hints(&keymap_with("global", "help", "F1"));
         assert_eq!(hints[3].text, "for keybindings");
         assert_ne!(hints[3].key, "?");
+    }
+
+    #[test]
+    fn a_subagent_view_adds_the_back_hint_after_search() {
+        let keymap = Keymap::default();
+        assert_eq!(
+            rendered(&browser_hints_at(&keymap, 0)),
+            rendered(&browser_hints(&keymap))
+        );
+        for depth in [1, 2] {
+            assert_eq!(
+                rendered(&browser_hints_at(&keymap, depth)),
+                "/ to search | Backspace to go back | ENTER to fold or unfold sections | y to copy current | ? for keybindings"
+            );
+        }
+    }
+
+    #[test]
+    fn the_back_hint_follows_a_remapped_back_key() {
+        let keymap = keymap_with("browser", "back", "z");
+        assert!(rendered(&browser_hints_at(&keymap, 1)).contains("z to go back"));
     }
 
     #[test]

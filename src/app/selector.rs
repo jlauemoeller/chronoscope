@@ -798,11 +798,15 @@ impl App {
         }
         if self.screen.has_browser() {
             let transcript = browser_areas(area).transcript;
-            self.set_attr(
-                Id::Transcript,
-                VIEWPORT_ATTR,
-                viewport_value(transcript.as_size()),
-            );
+            // Every transcript, the covered ones too: they are drawn at this
+            // size again when the ones over them are closed.
+            for depth in 0..=self.browser.depth() {
+                self.set_attr(
+                    super::browser::transcript_id(depth),
+                    VIEWPORT_ATTR,
+                    viewport_value(transcript.as_size()),
+                );
+            }
             // A new size can show the end again, which resumes following.
             self.sync_new_sections();
         }
