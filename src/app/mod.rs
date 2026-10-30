@@ -22,6 +22,8 @@ pub mod session_port;
 pub mod startup;
 
 #[cfg(test)]
+mod browser_tests;
+#[cfg(test)]
 mod fixtures;
 #[cfg(test)]
 mod search_tests;

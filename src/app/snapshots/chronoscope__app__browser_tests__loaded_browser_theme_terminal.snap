@@ -1,0 +1,85 @@
+---
+source: src/app/browser_tests.rs
+expression: "buffer_to_styled(& screen_buffer(& mut rig, 120, 40))"
+---
+╭─ Project BRIO ──────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                                                                                                                      │
+│ /home/user/projects/brio                                                                                             │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                                                                      │
+▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine - both camera and microphone -   │
+▒   but I don't have a way to access settings that would have been available on say a mac or windows, since there…     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                                      │
+│   I'll start by looking at what the camera exposes over USB:                                                         │
+│                                                                                                                      │
+│   • Check lsusb -v for the UVC descriptors                                                                           │
+│   • Look at v4l2-ctl --list-ctrls                                                                                    │
+│                                                                                                                      │
+│   Then I'll compare the results.                                                                                     │
+│                                                                                                                      │
+│ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.                                                │
+│                                                                                                                      │
+│ ▶ Find the BRIO on USB and check available tools                                                                     │
+│                                                                                                                      │
+│ ▶ Dump full USB descriptors for the BRIO                                                                             │
+│                                                                                                                      │
+│   model → claude-sonnet-5.5                                                                                          │
+│                                                                                                                      │
+│   5m 02s · 112 messages · 45.2k tokens                                                                               │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                                                                      │
+│ ▶ Dump the full descriptors and look for extension units.                                                            │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                                      │
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings                                 
+--- styles (fg/bg/modifiers) ---
+0: 0..2 DarkGray/Reset/NONE | 2..11 Gray/Reset/NONE | 11..15 Reset/Reset/BOLD | 15..16 Gray/Reset/NONE | 16..80 DarkGray/Reset/NONE | 80..118 Gray/Reset/NONE | 118..120 DarkGray/Reset/NONE
+1: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+2: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+3: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+4: 0..120 DarkGray/Reset/NONE
+5: 0..2 DarkGray/Reset/NONE | 2..8 White/Reset/NONE | 8..96 DarkGray/Reset/NONE | 96..118 Gray/Reset/NONE | 118..120 DarkGray/Reset/NONE
+6: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+7: 0..1 White/Reset/NONE | 1..2 Reset/Reset/NONE | 2..116 Reset/Reset/BOLD | 116..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+8: 0..1 White/Reset/NONE | 1..2 Reset/Reset/NONE | 2..114 Reset/Reset/BOLD | 114..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+9: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+10: 0..120 DarkGray/Reset/NONE
+11: 0..2 DarkGray/Reset/NONE | 2..13 LightMagenta/Reset/NONE | 13..15 DarkGray/Reset/NONE | 15..39 LightMagenta/Reset/NONE | 39..96 DarkGray/Reset/NONE | 96..118 Gray/Reset/NONE | 118..120 DarkGray/Reset/NONE
+12: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+13: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..62 Gray/Reset/NONE | 62..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+14: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+15: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..44 Gray/Reset/NONE | 44..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+16: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..35 Gray/Reset/NONE | 35..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+17: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+18: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..34 Gray/Reset/NONE | 34..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+19: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+20: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..71 Gray/Reset/NONE | 71..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+21: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+22: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..50 Gray/Reset/NONE | 50..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+23: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+24: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..42 Gray/Reset/NONE | 42..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+25: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+26: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..29 Gray/Reset/NONE | 29..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+27: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+28: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..40 Gray/Reset/NONE | 40..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+29: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+30: 0..120 DarkGray/Reset/NONE
+31: 0..2 DarkGray/Reset/NONE | 2..8 White/Reset/NONE | 8..96 DarkGray/Reset/NONE | 96..118 Gray/Reset/NONE | 118..120 DarkGray/Reset/NONE
+32: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+33: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..59 Gray/Reset/NONE | 59..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+34: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+35: 0..120 DarkGray/Reset/NONE
+36: 0..2 DarkGray/Reset/NONE | 2..13 LightMagenta/Reset/NONE | 13..15 DarkGray/Reset/NONE | 15..39 LightMagenta/Reset/NONE | 39..96 DarkGray/Reset/NONE | 96..118 Gray/Reset/NONE | 118..120 DarkGray/Reset/NONE
+37: 0..1 DarkGray/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 DarkGray/Reset/NONE
+38: 0..120 Reset/Reset/NONE
+39: 0..1 Reset/Reset/NONE | 1..2 White/Reset/NONE | 2..15 Gray/Reset/NONE | 15..20 White/Reset/NONE | 20..50 Gray/Reset/NONE | 50..51 White/Reset/NONE | 51..70 Gray/Reset/NONE | 70..71 White/Reset/NONE | 71..87 Gray/Reset/NONE | 87..120 Reset/Reset/NONE
