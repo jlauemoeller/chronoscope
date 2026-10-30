@@ -3,6 +3,7 @@
 use tuirealm::command::{Cmd, CmdResult, Direction, Position};
 
 use super::Transcript;
+use super::folding::FoldOp;
 use super::nav::Step;
 use super::paging::Amount;
 use crate::keymap::Action;
@@ -63,8 +64,8 @@ impl Transcript {
             HALF_PAGE_UP => self.scroll_pages(Step::Previous, Amount::Half),
             PAGE_DOWN => self.scroll_pages(Step::Next, Amount::Full),
             PAGE_UP => self.scroll_pages(Step::Previous, Amount::Full),
-            FOLD => self.fold_command(super::folding::FoldOp::Fold),
-            UNFOLD => self.fold_command(super::folding::FoldOp::Unfold),
+            FOLD => self.fold_command(FoldOp::Fold),
+            UNFOLD => self.fold_command(FoldOp::Unfold),
             FOLD_ALL => self.set_all_folded(true),
             UNFOLD_ALL => self.set_all_folded(false),
             TOGGLE_SYSTEM => self.toggle_system(),

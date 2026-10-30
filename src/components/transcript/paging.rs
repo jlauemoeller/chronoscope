@@ -5,41 +5,39 @@ use std::ops::Range;
 use tuirealm::command::CmdResult;
 
 use super::Transcript;
-use super::nav::Step;
+use super::nav::{Reveal, Step, reveal};
 use crate::components::turn_block::{SectionId, SectionKind, derive_sections};
 
 /// How far a page key scrolls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Amount {
-    /// Half the viewport height, rounded down.
+pub(super) enum Amount {
+    /// Half the viewport height, rounded down (at least one row).
     Half,
     /// The viewport height.
     Full,
 }
 
 impl Transcript {
-    /// Whether `id` is a section of system / injected content.
-    fn is_system(&self, id: &SectionId) -> bool {
-        let Some(&at) = self.content.index.get(&id.turn) else {
-            return false;
-        };
-        derive_sections(&self.content.turns[at], true)
-            .iter()
-            .any(|s| s.id == *id && s.kind() == SectionKind::System)
-    }
-
     /// The section a jump to block `index` selects: its first section that is
     /// not system content. A block with none is not a stop.
     fn turn_stop(&self, index: usize) -> Option<SectionId> {
+        let system: Vec<SectionId> = derive_sections(&self.content.turns[index], true)
+            .into_iter()
+            .filter(|s| s.kind() == SectionKind::System)
+            .map(|s| s.id)
+            .collect();
         self.sections_of(index)
             .into_iter()
-            .find(|id| !self.is_system(id))
+            .find(|id| !system.contains(id))
     }
 
     /// Selects the first section of the next or previous User, Assistant or
     /// Compaction block, and scrolls so that the block's top border is the
-    /// top row of the viewport, as far as the end of the transcript allows.
-    /// System content never forms a block of its own.
+    /// top row of the viewport, as far as the end of the transcript allows
+    /// and the selected section stays on screen (an unfolded system section
+    /// in front of the prompt can push it below the viewport; then the
+    /// prompt is scrolled into view instead). System content never forms a
+    /// block of its own.
     pub(super) fn jump_turn(&mut self, step: Step) -> CmdResult {
         let before = self.offset;
         let Some(cur) = self.cursor() else {
@@ -56,8 +54,13 @@ impl Transcript {
             return CmdResult::NoChange;
         };
         self.content.selected = Some(id);
-        if self.viewport.is_some() {
+        if let Some(size) = self.viewport {
             self.offset = self.measured(|cache, m| cache.top(block, m));
+            if let Some(cur) = self.cursor() {
+                let height = usize::from(size.height);
+                let span = self.span(&cur, height);
+                self.offset = reveal(self.offset, height, &span, Reveal::Top);
+            }
         }
         self.refresh();
         self.outcome(before)
@@ -121,7 +124,7 @@ impl Transcript {
         };
         let height = usize::from(size.height);
         let rows = match amount {
-            Amount::Half => height / 2,
+            Amount::Half => (height / 2).max(1),
             Amount::Full => height,
         };
         let before = self.offset;
@@ -142,17 +145,16 @@ impl Transcript {
     /// Selects the first section and scrolls to the start.
     pub(super) fn jump_to_start(&mut self) -> CmdResult {
         let before = self.offset;
-        let first =
-            (0..self.content.turns.len()).find_map(|i| self.sections_of(i).into_iter().next());
+        let first = self.first_section_from(0);
         self.jump_to(first, 0, before)
     }
 
-    /// Selects the last section and scrolls to the end.
+    /// Selects the last section and scrolls to the end. A selected section
+    /// that fits the viewport but would be off screen (a viewport of one or
+    /// two rows) is scrolled into view.
     pub(super) fn jump_to_end(&mut self) -> CmdResult {
         let before = self.offset;
-        let last = (0..self.content.turns.len())
-            .rev()
-            .find_map(|i| self.sections_of(i).pop());
+        let last = self.last_section();
         let end = match self.viewport {
             Some(size) => {
                 let height = usize::from(size.height);
@@ -161,7 +163,21 @@ impl Transcript {
             }
             None => 0,
         };
-        self.jump_to(last, end, before)
+        let result = self.jump_to(last, end, before);
+        if let Some(size) = self.viewport
+            && let Some(cur) = self.cursor()
+        {
+            let height = usize::from(size.height);
+            let rows = self.section_rows_abs(&cur);
+            let visible = rows.start >= self.offset && rows.end <= self.offset + height;
+            if rows.len() <= height && !visible {
+                let span = self.span(&cur, height);
+                self.offset = reveal(self.offset, height, &span, Reveal::InPlace);
+                self.refresh();
+                return self.outcome(before);
+            }
+        }
+        result
     }
 
     fn jump_to(&mut self, section: Option<SectionId>, offset: usize, before: usize) -> CmdResult {

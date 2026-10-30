@@ -9,7 +9,7 @@ use crate::components::turn_block::{SectionId, derive_sections};
 
 /// What a fold command does to the selected section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FoldOp {
+pub(super) enum FoldOp {
     Toggle,
     Fold,
     Unfold,
@@ -135,13 +135,22 @@ impl Transcript {
 
     /// Shows or hides system sections. A selected system section that
     /// disappears moves the selection to the nearest following visible
-    /// section, or else the previous one; otherwise the selected section
-    /// keeps its screen row.
+    /// section, or else the previous one. When hiding, the selected section
+    /// keeps its screen row. When showing, the view stays where it is (so the
+    /// top of the transcript stays on screen) unless the selected section
+    /// would be pushed off screen.
     pub(super) fn toggle_system(&mut self) -> CmdResult {
         let before = self.offset;
-        let anchor = self.anchor_selected();
-        self.set_show_system(!self.content.show_system);
-        self.restore_anchor(anchor);
+        let hiding = self.content.show_system;
+        let anchor = hiding.then(|| self.anchor_selected()).flatten();
+        self.set_show_system(!hiding);
+        if hiding {
+            self.restore_anchor(anchor);
+        } else if let (Some(size), Some(cur)) = (self.viewport, self.cursor()) {
+            let height = usize::from(size.height);
+            let span = self.span(&cur, height);
+            self.offset = reveal(self.offset, height, &span, Reveal::InPlace);
+        }
         self.refresh();
         self.outcome(before)
     }

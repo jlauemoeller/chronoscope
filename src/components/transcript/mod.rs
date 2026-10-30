@@ -30,8 +30,9 @@
 //!
 //! `on` resolves a key with the shared [`Keymap`] for the `browser` context
 //! (a [`KeyResolver`] of its own holds a pending chord) and turns the action
-//! into a `Cmd` that `perform` handles; no `Msg` is returned yet, because
-//! nothing in the transcript needs the App. The `Cmd`s:
+//! into a `Cmd` that `perform` handles; it answers [`Msg::TranscriptChanged`]
+//! when the key changed what is shown (the App then redraws), else nothing.
+//! The `Cmd`s:
 //!
 //! - `Scroll(Up/Down)` scrolls one row;
 //! - `Move(Up/Down)` selects the previous/next section (paging through one
@@ -84,6 +85,7 @@ pub use keys::{
 };
 
 use self::content::{Content, Measurer};
+use self::folding::FoldOp;
 use self::window::Window;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
@@ -474,7 +476,7 @@ impl Component for Transcript {
             Cmd::Move(Direction::Up) => self.move_selection(nav::Step::Previous),
             Cmd::GoTo(Position::Begin) => self.jump_to_start(),
             Cmd::GoTo(Position::End) => self.jump_to_end(),
-            Cmd::Submit => self.fold_command(folding::FoldOp::Toggle),
+            Cmd::Submit => self.fold_command(FoldOp::Toggle),
             Cmd::Custom(name) => self.custom(name),
             Cmd::None => CmdResult::NoChange,
             other => CmdResult::Invalid(other),
@@ -484,7 +486,9 @@ impl Component for Transcript {
 
 impl AppComponent<Msg, UserEvent> for Transcript {
     /// Resolves the key in the `browser` context and performs the `Cmd` of
-    /// its action. Actions of other tasks (search, copy, ...) do nothing yet.
+    /// its action. Returns [`Msg::TranscriptChanged`] when that changed what
+    /// is shown, so that the App redraws. Actions of other tasks (search,
+    /// copy, ...) do nothing yet.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let Event::Keyboard(key) = ev else {
             return None;
@@ -492,7 +496,10 @@ impl AppComponent<Msg, UserEvent> for Transcript {
         if let Resolved::Action(action) = self.resolver.feed(&self.keymap, key)
             && let Some(cmd) = keys::cmd_for(action)
         {
-            self.perform(cmd);
+            return match self.perform(cmd) {
+                CmdResult::NoChange | CmdResult::Invalid(_) => None,
+                _ => Some(Msg::TranscriptChanged),
+            };
         }
         None
     }

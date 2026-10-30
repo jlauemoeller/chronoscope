@@ -20,8 +20,8 @@ pub(super) struct Cursor {
     pub(super) block: usize,
     /// The selectable sections of the block with their rows (counted from
     /// the block's top border).
-    pub(super) rows: Vec<(SectionId, Range<usize>)>,
-    pub(super) pos: usize,
+    rows: Vec<(SectionId, Range<usize>)>,
+    pos: usize,
 }
 
 impl Cursor {

@@ -118,8 +118,8 @@ fn after_minus_everything_is_folded_at_120x40_text() {
     insta::assert_snapshot!(text);
 }
 
-/// The session with the system section of the sixth block selected and the
-/// block at the top of the viewport.
+/// The session with the system section of the sixth block selected, scrolled
+/// as far towards the sixth block as the end of the transcript allows.
 fn system_selected() -> Transcript {
     let mut t = session_transcript(80, 24);
     assert!(t.select(&item_section("t6", "i1")));

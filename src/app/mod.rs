@@ -115,6 +115,9 @@ pub enum Msg {
     PromptChanged(String),
     /// Only the prompt's cursor moved: nothing but a redraw is needed.
     PromptMoved,
+    /// A key changed what the transcript shows (selection, scroll, folds):
+    /// nothing but a redraw is needed.
+    TranscriptChanged,
     /// `Enter` in the prompt, with its text (`"y"` for a yes in a `y/n`
     /// prompt).
     PromptSubmit(String),
@@ -475,7 +478,7 @@ impl App {
             Msg::SearchResults(update) => self.search_result_arrived(&update),
             Msg::Selector(msg) => self.selector_msg(msg),
             Msg::PromptChanged(text) => self.search_changed(text),
-            Msg::PromptMoved => self.request_redraw(RedrawRequest::Dirty),
+            Msg::PromptMoved | Msg::TranscriptChanged => self.request_redraw(RedrawRequest::Dirty),
             Msg::PromptSubmit(_) => self.search_submit(),
             Msg::PromptCancel => self.search_cancel(),
             Msg::PromptNav(direction) => self.search_nav(direction),

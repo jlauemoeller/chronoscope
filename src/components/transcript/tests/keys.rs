@@ -21,12 +21,12 @@ pub(crate) fn press(t: &mut Transcript, code: Key) -> Option<Msg> {
     t.on(&key(code, KeyModifiers::NONE))
 }
 
-pub(crate) fn ch(t: &mut Transcript, c: char) {
-    assert_eq!(press(t, Key::Char(c)), None);
+pub(crate) fn ch(t: &mut Transcript, c: char) -> Option<Msg> {
+    press(t, Key::Char(c))
 }
 
-pub(crate) fn ctrl(t: &mut Transcript, c: char) {
-    assert_eq!(t.on(&key(Key::Char(c), KeyModifiers::CONTROL)), None);
+pub(crate) fn ctrl(t: &mut Transcript, c: char) -> Option<Msg> {
+    t.on(&key(Key::Char(c), KeyModifiers::CONTROL))
 }
 
 fn selected(t: &Transcript) -> SectionId {
@@ -674,12 +674,14 @@ fn the_screen_row_is_kept_only_when_the_end_of_the_transcript_allows_it() {
     let mut t = session_transcript(80, 24);
     ch(&mut t, 'G');
     let last = selected(&t);
+    let row = screen_row(&mut t, &last);
     ch(&mut t, '+');
-    // Unfolding above the last section can only move content down; the last
-    // row stays at the bottom edge.
+    // Unfolding above the last section moves it down; the view follows, so
+    // it stays at the end and the section keeps its screen row.
     let total = total_height(&mut t);
-    assert!(t.offset() <= total - 24);
+    assert_eq!(t.offset(), total - 24);
     assert_eq!(selected(&t), last);
+    assert_eq!(screen_row(&mut t, &last), row);
 }
 
 #[test]
@@ -837,7 +839,7 @@ fn a_remapped_key_works_and_the_old_one_does_nothing() {
 fn shifted_letters_arrive_with_the_shift_modifier() {
     let mut t = remapped("[keys.browser]\nnext = \"J\"\n");
     let all = all_selectable(&t);
-    assert_eq!(t.on(&key(Key::Char('J'), KeyModifiers::SHIFT)), None);
+    t.on(&key(Key::Char('J'), KeyModifiers::SHIFT));
     assert_eq!(selected(&t), all[1]);
 }
 
@@ -910,4 +912,144 @@ fn the_marker_is_on_the_selected_section_after_keys() {
         ch(&mut t, 'j');
     }
     assert!(!marked_rows(&mut t, 80, 24).is_empty());
+}
+
+// ---- Redraw messages ----
+
+#[test]
+fn a_key_that_changes_the_view_answers_transcript_changed() {
+    let mut t = session_transcript(80, 24);
+    for c in ['l', 'j', 's', 'G'] {
+        assert_eq!(ch(&mut t, c), Some(Msg::TranscriptChanged), "{c}");
+    }
+    assert_eq!(ctrl(&mut t, 'u'), Some(Msg::TranscriptChanged));
+    assert_eq!(press(&mut t, Key::Home), Some(Msg::TranscriptChanged));
+}
+
+#[test]
+fn a_key_that_changes_nothing_answers_nothing() {
+    let mut t = session_transcript(80, 24);
+    assert_eq!(ch(&mut t, 'k'), None, "at the first section");
+    assert_eq!(ch(&mut t, '['), None, "no block before the first");
+    assert_eq!(ch(&mut t, 'g'), None, "already at the start");
+    assert_eq!(ch(&mut t, 'h'), None, "already folded");
+    assert_eq!(ch(&mut t, '-'), None, "everything is folded");
+    assert_eq!(ch(&mut t, 'z'), None, "unbound");
+    assert_eq!(ch(&mut t, '/'), None, "search is another task's");
+    assert_eq!(ctrl(&mut t, 'u'), None, "at the top");
+    assert_eq!(t.on(&Event::<UserEvent>::Tick), None);
+}
+
+// ---- A jump keeps the selection on screen ----
+
+/// Block `u2` has 40 rows of unfolded system content in front of its
+/// one-row prompt, in a 10-row viewport.
+fn long_system_transcript() -> Transcript {
+    let file = tall_text_of(40);
+    let u2 = arc(with_id(
+        blocks::user(
+            "The prompt.",
+            vec![blocks::injected("i1", &[("file", &file)])],
+        ),
+        "u2",
+    ));
+    transcript_of(
+        vec![arc(prompt("p1", "first")), u2, arc(reply("r1", "Done."))],
+        80,
+        10,
+    )
+}
+
+fn assert_selection_on_screen(t: &mut Transcript, height: usize) {
+    let id = selected(t);
+    let rows = span_of(t, &id);
+    assert!(
+        rows.start >= t.offset() && rows.end <= t.offset() + height,
+        "{id:?} at {rows:?} is off screen at offset {}",
+        t.offset()
+    );
+}
+
+#[test]
+fn a_jump_past_a_tall_unfolded_system_section_keeps_the_prompt_on_screen() {
+    let mut t = long_system_transcript();
+    ch(&mut t, '+');
+    ch(&mut t, ']');
+    assert_eq!(selected(&t), section_id("u2", SectionKey::Prompt));
+    assert_selection_on_screen(&mut t, 10);
+    ch(&mut t, ']');
+    assert_eq!(selected(&t).turn, TurnId::from("r1"));
+    assert_selection_on_screen(&mut t, 10);
+    ch(&mut t, '[');
+    assert_eq!(selected(&t), section_id("u2", SectionKey::Prompt));
+    assert_selection_on_screen(&mut t, 10);
+}
+
+#[test]
+fn a_jump_keeps_the_top_border_on_top_while_the_prompt_still_fits() {
+    let mut t = long_system_transcript();
+    ch(&mut t, ']');
+    assert_eq!(selected(&t), section_id("u2", SectionKey::Prompt));
+    let top = t.measured(|cache, m| cache.top(1, m));
+    assert_eq!(t.offset(), top, "the system section is folded: all fits");
+    assert_selection_on_screen(&mut t, 10);
+}
+
+// ---- Small viewports and showing system content ----
+
+#[test]
+fn g_in_a_one_row_viewport_shows_the_selected_last_section() {
+    let mut t = transcript_of(
+        vec![arc(prompt("p1", "first")), arc(reply("r1", "Yes."))],
+        80,
+        1,
+    );
+    ch(&mut t, 'G');
+    assert_eq!(selected(&t), item_section("r1", "t1"));
+    assert_selection_on_screen(&mut t, 1);
+    let rows = text_rows(&draw(&mut t, 80, 1));
+    assert!(rows[0].contains("Yes."), "{}", rows[0]);
+}
+
+#[test]
+fn g_on_a_tall_last_section_still_shows_its_end() {
+    let (mut t, tall) = tall_section_transcript();
+    ch(&mut t, 'j');
+    ch(&mut t, 'j');
+    ch(&mut t, 'G');
+    assert_eq!(selected(&t), item_section("r1", "t1"));
+    let _ = tall;
+    let total = total_height(&mut t);
+    assert_eq!(t.offset(), total - 10);
+}
+
+#[test]
+fn half_a_page_is_at_least_one_row() {
+    let mut t = transcript_of(
+        vec![arc(prompt("p1", "first")), arc(reply("r1", "Yes."))],
+        80,
+        1,
+    );
+    ctrl(&mut t, 'd');
+    assert_eq!(t.offset(), 1);
+}
+
+#[test]
+fn showing_system_content_keeps_the_top_of_the_transcript_on_screen() {
+    let mut t = session_transcript(80, 12).show_system(false);
+    assert_eq!(selected(&t), section_id("t1", SectionKey::Prompt));
+    ch(&mut t, 's');
+    ch(&mut t, 's');
+    ch(&mut t, 's');
+    assert_eq!(t.offset(), 0);
+    let rows = text_rows(&draw(&mut t, 80, 12));
+    assert!(rows[0].starts_with("╭─ User"), "{}", rows[0]);
+}
+
+#[test]
+fn showing_system_content_scrolls_a_pushed_down_selection_into_view() {
+    let mut t = session_transcript(80, 12).show_system(false);
+    assert!(t.select(&section_id("t6", SectionKey::Prompt)));
+    ch(&mut t, 's');
+    assert_selection_on_screen(&mut t, 12);
 }
