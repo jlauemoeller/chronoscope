@@ -324,6 +324,7 @@ dependencies = [
  "toml_edit",
  "tui-input",
  "tuirealm",
+ "unicode-segmentation",
  "unicode-width",
 ]
 

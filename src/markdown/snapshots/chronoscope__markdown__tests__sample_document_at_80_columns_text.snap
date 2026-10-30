@@ -1,0 +1,33 @@
+---
+source: src/markdown/tests.rs
+expression: buffer_to_text(&buffer)
+---
+Release notes                                                                   
+                                                                                
+Highlights                                                                      
+                                                                                
+A paragraph with emphasis, strong text, inline_code and a link to the docs that 
+is long enough to wrap onto more lines.                                         
+                                                                                
+• First bullet                                                                  
+  • Nested bullet one                                                           
+  • Nested bullet two with enough words to wrap around                          
+• Second bullet                                                                 
+                                                                                
+1. Ordered one                                                                  
+2. Ordered two                                                                  
+                                                                                
+│ A quoted remark that is long enough to wrap when the terminal is narrow.      
+                                                                                
+Name     │ Description                          │ Status                        
+─────────┼──────────────────────────────────────┼────────────                   
+parser   │ Turns markdown into blocks           │ done                          
+renderer │ Lays the blocks out as wrapped lines │ in progress                   
+                                                                                
+  // Say hello.                                                                 
+  fn main() {                                                                   
+      let answer = 42;                                                          
+      println!("The answer is {answer}, printed from main with a long line");   
+  }                                                                             
+                                                                                
+────────────────────────────────────────────────────────────────────────────────

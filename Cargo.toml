@@ -25,6 +25,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 notify = "8"
 textwrap = "0.16"
 unicode-width = "0.2"
+unicode-segmentation = "1"
 tui-input = "0.15"
 arboard = "3"
 nucleo = "0.5"

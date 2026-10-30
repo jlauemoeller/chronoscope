@@ -11,6 +11,7 @@ pub mod harness;
 pub mod index;
 pub mod keymap;
 pub mod logging;
+pub mod markdown;
 pub mod model;
 pub mod paths;
 pub mod terminal;
