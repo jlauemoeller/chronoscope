@@ -22,7 +22,7 @@ expression: buffer_to_styled(&buffer)
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
+│    / to search sessions | ENTER to open                                      │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
                                                                                 
@@ -47,7 +47,7 @@ expression: buffer_to_styled(&buffer)
 17: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(207, 207, 207)/Reset/NONE
 18: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(207, 207, 207)/Reset/NONE
 19: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(207, 207, 207)/Reset/NONE
-20: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(207, 207, 207)/Reset/NONE
+20: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..5 Reset/Reset/NONE | 5..6 Rgb(229, 229, 229)/Reset/NONE | 6..28 Rgb(161, 161, 161)/Reset/NONE | 28..33 Rgb(229, 229, 229)/Reset/NONE | 33..41 Rgb(161, 161, 161)/Reset/NONE | 41..79 Reset/Reset/NONE | 79..80 Rgb(207, 207, 207)/Reset/NONE
 21: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(207, 207, 207)/Reset/NONE
 22: 0..80 Rgb(207, 207, 207)/Reset/NONE
 23: 0..80 Reset/Reset/NONE

@@ -1,0 +1,11 @@
+---
+source: src/components/toast.rs
+expression: buffer_to_styled(&buffer)
+---
+╭──────────────────────────╮  
+│ Config: unknown key "x"  │  
+╰──────────────────────────╯  
+--- styles (fg/bg/modifiers) ---
+0: 0..28 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE
+1: 0..28 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE
+2: 0..28 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE

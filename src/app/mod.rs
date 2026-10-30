@@ -9,6 +9,7 @@
 //! components. [`App::view`] only asks [`layout`] where each component goes and
 //! calls [`Application::view`] for it.
 
+pub mod hints;
 pub mod layout;
 pub mod redraw;
 pub mod runtime;
@@ -17,19 +18,24 @@ pub mod startup;
 #[cfg(test)]
 mod tests;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ratatui::Frame;
 use tuirealm::application::{Application, ApplicationError, PollStrategy};
 use tuirealm::listener::EventListenerCfg;
+use tuirealm::subscription::{EventClause, Sub, SubClause};
 
-use crate::components::{EmptyState, GlobalEvents, SelectorFrame, TOO_SMALL};
+use crate::components::{
+    EmptyState, GlobalEvents, HelpLine, SelectorFrame, TOAST_DURATION, TOO_SMALL, Toast,
+};
 use crate::config::{Config, ConfigWarning};
 use crate::keymap::Keymap;
-use crate::theme::{Theme, ThemeRegistry};
+use crate::theme::{Role, Theme, ThemeRegistry};
+use hints::{selector_hints, startup_toast_text};
 use layout::{LayoutInput, Screen, layout};
 use redraw::RedrawRequest;
 pub use startup::AppInit;
+use unicode_width::UnicodeWidthStr;
 
 /// One variant per mountable component (SPEC §1.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -40,6 +46,10 @@ pub enum Id {
     SelectorFrame,
     /// "Terminal too small" (and, later, other empty states).
     EmptyState,
+    /// Key hints and status items.
+    HelpLine,
+    /// The notification in the bottom-right corner.
+    Toast,
 }
 
 /// What happened, in application terms. Never raw keys.
@@ -51,6 +61,8 @@ pub enum Msg {
     Resized(u16, u16),
     /// A tick of the event loop.
     Tick,
+    /// The toast has been shown for its duration.
+    ToastExpired,
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -87,6 +99,7 @@ pub struct App {
     keymap: Keymap,
     warnings: Vec<ConfigWarning>,
     screen: Screen,
+    toast_text: Option<String>,
     size: (u16, u16),
     quit: bool,
     redraw: RedrawRequest,
@@ -124,7 +137,18 @@ impl App {
             Box::new(EmptyState::new(TOO_SMALL, theme.clone())),
             Vec::new(),
         )?;
-        Ok(Self {
+        application.mount(
+            Id::HelpLine,
+            Box::new(HelpLine::new(
+                selector_hints(&keymap),
+                Vec::new(),
+                theme.clone(),
+                Role::Surface,
+            )),
+            Vec::new(),
+        )?;
+        let toast_text = startup_toast_text(&warnings);
+        let mut app = Self {
             application,
             config,
             registry,
@@ -132,10 +156,42 @@ impl App {
             keymap,
             warnings,
             screen: Screen::default(),
+            toast_text: None,
             size: (0, 0),
             quit: false,
             redraw: RedrawRequest::Dirty,
-        })
+        };
+        // The startup warnings are shown once, here, and never again.
+        if let Some(text) = toast_text {
+            app.show_toast(text)?;
+        }
+        Ok(app)
+    }
+
+    /// Shows `text` as a toast for [`TOAST_DURATION`], replacing the toast on
+    /// screen, if any.
+    pub fn show_toast(&mut self, text: impl Into<String>) -> Result<(), ApplicationError> {
+        self.show_toast_for(text, TOAST_DURATION)
+    }
+
+    /// Shows `text` as a toast that expires after `duration`.
+    pub fn show_toast_for(
+        &mut self,
+        text: impl Into<String>,
+        duration: Duration,
+    ) -> Result<(), ApplicationError> {
+        let text = text.into();
+        let toast = Toast::new(text.clone(), self.theme.clone(), Instant::now(), duration);
+        let subs = vec![Sub::new(EventClause::Tick, SubClause::Always)];
+        self.application.remount(Id::Toast, Box::new(toast), subs)?;
+        self.toast_text = Some(text);
+        self.request_redraw(RedrawRequest::Dirty);
+        Ok(())
+    }
+
+    /// The text of the toast on screen, if any.
+    pub fn toast_text(&self) -> Option<&str> {
+        self.toast_text.as_deref()
     }
 
     // -- domain state
@@ -202,6 +258,7 @@ impl App {
             Msg::Quit => self.quit(),
             Msg::Resized(width, height) => self.resized(width, height),
             Msg::Tick => self.tick_elapsed(),
+            Msg::ToastExpired => self.toast_expired(),
         }
     }
 
@@ -215,8 +272,18 @@ impl App {
     }
 
     fn tick_elapsed(&mut self) {
-        // Toast expiry, the live marker and activity flags come with the
-        // components that need them.
+        // The live marker and activity flags come with the components that
+        // need them. The toast expires itself on `Tick` (see `Toast`).
+    }
+
+    fn toast_expired(&mut self) {
+        if self.toast_text.take().is_none() {
+            return;
+        }
+        if let Err(err) = self.application.umount(&Id::Toast) {
+            log::warn!("could not unmount the toast: {err}");
+        }
+        self.request_redraw(RedrawRequest::Dirty);
     }
 
     fn request_redraw(&mut self, request: RedrawRequest) {
@@ -229,6 +296,7 @@ impl App {
     fn layout_input(&self) -> LayoutInput {
         LayoutInput {
             screen: self.screen,
+            toast_text_width: self.toast_text.as_deref().map(UnicodeWidthStr::width),
         }
     }
 

@@ -22,6 +22,6 @@ expression: "buffer_to_text(&screen(&mut app(), 80, 24))"
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
+│    / to search sessions | ENTER to open                                      │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯

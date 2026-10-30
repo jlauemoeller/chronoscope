@@ -1,0 +1,135 @@
+//! Building the help line's hints and the startup toast text.
+
+use crate::components::Hint;
+use crate::config::ConfigWarning;
+use crate::keymap::{Action, Context, Keymap};
+
+/// The hints of the session selector, from the active keymap so remapped keys
+/// show up: search, open, switch pane, cancel. Actions without a key are left
+/// out.
+///
+/// With the default keys they read `/ to search sessions | ENTER to open |
+/// TAB to switch between projects and sessions | ESC to Cancel`.
+pub fn selector_hints(keymap: &Keymap) -> Vec<Hint> {
+    [
+        (Action::Search, "to search sessions"),
+        (Action::Open, "to open"),
+        (Action::NextPane, "to switch between projects and sessions"),
+        (Action::Cancel, "to Cancel"),
+    ]
+    .into_iter()
+    .filter_map(|(action, text)| {
+        let key = keymap.label(Context::Selector, action)?;
+        Some(Hint::new(key, text))
+    })
+    .collect()
+}
+
+/// The text of the toast that shows the startup `warnings`, or `None` when
+/// there are none.
+///
+/// One warning reads `Config: <warning>`; more read
+/// `Config: <first warning> (+N more, see log)`.
+pub fn startup_toast_text(warnings: &[ConfigWarning]) -> Option<String> {
+    let (first, rest) = warnings.split_first()?;
+    let first = first
+        .message
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(if rest.is_empty() {
+        format!("Config: {first}")
+    } else {
+        format!("Config: {first} (+{} more, see log)", rest.len())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::RawKeys;
+
+    fn warning(message: &str) -> ConfigWarning {
+        ConfigWarning {
+            key: "k".to_owned(),
+            message: message.to_owned(),
+        }
+    }
+
+    fn keymap_with(table: &str, action: &str, key: &str) -> Keymap {
+        let mut raw = RawKeys::new();
+        raw.entry(table.to_owned())
+            .or_default()
+            .insert(action.to_owned(), vec![key.to_owned()]);
+        let (keymap, warnings) = Keymap::from_config(&raw);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        keymap
+    }
+
+    fn rendered(hints: &[Hint]) -> String {
+        hints
+            .iter()
+            .map(|h| format!("{} {}", h.key, h.text))
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+
+    #[test]
+    fn default_selector_hints_match_the_sketch() {
+        assert_eq!(
+            rendered(&selector_hints(&Keymap::default())),
+            "/ to search sessions | ENTER to open | TAB to switch between projects and sessions | ESC to Cancel"
+        );
+    }
+
+    #[test]
+    fn a_remapped_search_key_shows_in_the_first_hint() {
+        let hints = selector_hints(&keymap_with("selector", "search", "f"));
+        assert_eq!(hints[0], Hint::new("f", "to search sessions"));
+        assert_eq!(hints.len(), 4);
+    }
+
+    #[test]
+    fn remapped_open_next_pane_and_cancel_show_too() {
+        let hints = selector_hints(&keymap_with("selector", "open", "o"));
+        assert_eq!(hints[1], Hint::new("o", "to open"));
+        let hints = selector_hints(&keymap_with("selector", "next_pane", "ctrl-n"));
+        assert_eq!(hints[2].key, "Ctrl-n");
+        let hints = selector_hints(&keymap_with("selector", "cancel", "x"));
+        assert_eq!(hints[3], Hint::new("x", "to Cancel"));
+    }
+
+    #[test]
+    fn no_warnings_no_toast_text() {
+        assert_eq!(startup_toast_text(&[]), None);
+    }
+
+    #[test]
+    fn one_warning_reads_config_colon_warning() {
+        assert_eq!(
+            startup_toast_text(&[warning("unknown key \"x\"")]).as_deref(),
+            Some("Config: unknown key \"x\"")
+        );
+    }
+
+    #[test]
+    fn more_warnings_add_the_count_of_the_rest() {
+        let warnings = [warning("first"), warning("second"), warning("third")];
+        assert_eq!(
+            startup_toast_text(&warnings).as_deref(),
+            Some("Config: first (+2 more, see log)")
+        );
+        assert_eq!(
+            startup_toast_text(&warnings[..2]).as_deref(),
+            Some("Config: first (+1 more, see log)")
+        );
+    }
+
+    #[test]
+    fn line_breaks_in_a_warning_become_spaces() {
+        assert_eq!(
+            startup_toast_text(&[warning("bad\nvalue")]).as_deref(),
+            Some("Config: bad value")
+        );
+    }
+}
