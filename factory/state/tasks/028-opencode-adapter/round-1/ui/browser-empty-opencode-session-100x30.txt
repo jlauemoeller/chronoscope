@@ -1,0 +1,31 @@
+# Browser, OpenCode session ses_blank (no session_message rows) at 100x30 (nit: 'Session file is empty' for a database session).
+╭─ Project beta-tool ────────────────────────────────────────────────────────────────── ses_blank ─╮
+│                                                                                                  │
+│ /home/user/work/beta-tool                                                                        │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                        Session file is empty                                       
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings             

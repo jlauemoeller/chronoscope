@@ -93,7 +93,7 @@ mod tests {
         assert!(init.warnings.is_empty(), "{:?}", init.warnings);
         assert_eq!(init.keymap, Keymap::default());
         assert_eq!(init.theme.name(), "Default");
-        assert_eq!(init.harnesses, [HarnessId::Claude]);
+        assert_eq!(init.harnesses, [HarnessId::Claude, HarnessId::OpenCode]);
     }
 
     #[test]
@@ -102,6 +102,13 @@ mod tests {
         let paths = paths_in(dir.path());
         fs::create_dir_all(paths.config_file.parent().unwrap()).unwrap();
         fs::write(&paths.config_file, "[harness.claude]\nenabled = false\n").unwrap();
+        let init = AppInit::load(Some(&paths), &env());
+        assert_eq!(init.harnesses, [HarnessId::OpenCode]);
+        fs::write(
+            &paths.config_file,
+            "[harness.claude]\nenabled = false\n[harness.opencode]\nenabled = false\n",
+        )
+        .unwrap();
         let init = AppInit::load(Some(&paths), &env());
         assert!(init.harnesses.is_empty());
     }

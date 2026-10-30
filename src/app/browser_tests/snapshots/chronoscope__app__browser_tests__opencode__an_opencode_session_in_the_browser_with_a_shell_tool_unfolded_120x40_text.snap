@@ -1,0 +1,44 @@
+---
+source: src/app/browser_tests/opencode.rs
+expression: screen
+---
+╭─ Project Alpha App ─────────────────────────────────────────────────────────────────────────────────────── ses_main ─╮
+│                                                                                                                      │
+│ /home/user/alpha                                                                                                     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-28 09:00:01Z ─╮
+│                                                                                                                      │
+│ ▶ synthetic: <system-reminder>Note: The user opened the file src/settings.rs.</system-reminder>                      │
+│                                                                                                                      │
+│ ▶ system: Instructions updated: core/skill-guidance                                                                  │
+│                                                                                                                      │
+│ ▶ Add a settings screen with a dark mode toggle.                                                                     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── acme/coder-1 @ high ──────────────────────────────────────────────────────────── 2026-10-28 09:00:03Z ─╮
+│                                                                                                                      │
+│ ▶ Thinking: I should look at the existing screens first.                                                             │
+│                                                                                                                      │
+│   Let me look at the repo layout.                                                                                    │
+│                                                                                                                      │
+│ ▶ Read src/main.rs                                                                                                   │
+│                                                                                                                      │
+▒ ▼ List the sources                                                                                                   │
+▒                                                                                                                      │
+▒   Command:                                                                                                           │
+▒                                                                                                                      │
+▒      ls src                                                                                                          │
+▒                                                                                                                      │
+▒   Result:                                                                                                            │
+▒                                                                                                                      │
+▒      main.rs                                                                                                         │
+▒      settings.rs                                                                                                     │
+│                                                                                                                      │
+│ ▶ shell                                                                                                              │
+│                                                                                                                      │
+│ ▶ Write src/scratch.txt                                                                                              │
+│                                                                                                                      │
+│   17s · 2 messages · 3.3k tokens · $0.03                                                                             │
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

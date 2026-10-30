@@ -14,18 +14,8 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
+pub use crate::harness::shared::SubagentInfo;
 use crate::model::SessionId;
-
-/// What `agent-<id>.meta.json` says about a subagent run.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-pub struct SubagentInfo {
-    /// The agent type (`Explore`, `story-writer`, ...); empty when unknown.
-    #[serde(rename = "agentType", default)]
-    pub agent_type: String,
-    /// The short description the parent gave the run; empty when unknown.
-    #[serde(default)]
-    pub description: String,
-}
 
 /// The fields of a meta file the linkage needs.
 #[derive(Deserialize)]

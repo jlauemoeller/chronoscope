@@ -1,0 +1,43 @@
+# Browser, OpenCode session ses_main, top of screen at 60x20 (nit: '@ high' truncated to '@ hi…').
+╭─ Project Alpha App ─────────────────────────── ses_main ─╮
+│                                                          │
+│ /home/user/alpha                                         │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────── 2026-10-28 09:00:01Z ─╮
+│                                                          │
+▒ ▶ synthetic: <system-reminder>Note: The user opened t…   │
+│                                                          │
+│ ▶ system: Instructions updated: core/skill-guidance      │
+│                                                          │
+│ ▶ Add a settings screen with a dark mode toggle.         │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+╭─ Assistant ── acme/coder-1 @ hi… ─ 2026-10-28 09:00:03Z ─╮
+│                                                          │
+│ ▶ Thinking: I should look at the existing screens fir…   │
+│                                                          │
+                                                            
+ / to search | ENTER to fold or unfold sections             
+
+# Browser, edge session with a 56-char model id and variant 'extra-high-reasoning' at 80x30 (nit: '@ variant' dropped entirely).
+╭─ Project a-very-long-project-directory-name-for-truncation-tests ─ ses_edge ─╮
+│                                                                              │
+│ /home/user/projects/a-very-long-project-directory-name-for-truncation-tests  │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────────────────────────── 2026-10-29 07:46:40Z ─╮
+│                                                                              │
+▒ ▶ Go.                                                                        │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── anthropic/claude-opus-5-5-extended-co… ─ 2026-10-29 07:46:41Z ─╮
+│                                                                              │
+│   Running.                                                                   │
+│                                                                              │
+│ ▶ Run the whole workspace test suite with every feature turned on and wit…   │
+│                                                                              │
+│ ▶ execute                                                                    │
+│                                                                              │
+│ ▶ Glob **/*.rs in /home/user/x                                               │
+│                                                                              │

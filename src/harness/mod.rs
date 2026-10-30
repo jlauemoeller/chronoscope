@@ -1,6 +1,10 @@
 //! Harness adapters: translate native session formats into the shared model.
 
 pub mod claude;
+mod describe;
+pub mod opencode;
+pub(crate) mod resume;
+pub mod shared;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -118,8 +122,11 @@ impl Drop for WatchHandle {
 
 /// The harnesses that exist, in tab order, with whether `config` enables
 /// each. The one place that knows which harnesses are enabled.
-fn enabled_harnesses(config: &Config) -> [(HarnessId, bool); 1] {
-    [(HarnessId::Claude, config.harness.claude.enabled)]
+fn enabled_harnesses(config: &Config) -> [(HarnessId, bool); 2] {
+    [
+        (HarnessId::Claude, config.harness.claude.enabled),
+        (HarnessId::OpenCode, config.harness.opencode.enabled),
+    ]
 }
 
 /// The harnesses [`build_harnesses`] constructs for `config`, in tab order:
@@ -136,7 +143,7 @@ pub fn registered_harnesses(config: &Config) -> Vec<HarnessId> {
 /// A harness with `enabled = false` is not constructed, so its tab is hidden
 /// (its number stays reserved). One whose data store is missing is kept: its
 /// [`available`](Harness::available) is false and the selector shows it
-/// muted. Only Claude exists so far.
+/// muted. Claude and OpenCode exist so far.
 ///
 /// The home directory (for default data directories) is detected from the
 /// environment; see [`build_harnesses_with_home`] to give it explicitly.
@@ -161,8 +168,11 @@ pub fn build_harnesses_with_home(config: &Config, home: &Path) -> Vec<Arc<dyn Ha
             HarnessId::Claude => {
                 Some(Arc::new(claude::ClaudeHarness::new(config, home)) as Arc<dyn Harness>)
             }
+            HarnessId::OpenCode => {
+                Some(Arc::new(opencode::OpenCodeHarness::new(config, home)) as Arc<dyn Harness>)
+            }
             // No adapter yet.
-            HarnessId::OpenCode | HarnessId::Codex | HarnessId::Pi => None,
+            HarnessId::Codex | HarnessId::Pi => None,
         })
         .collect()
 }
@@ -175,8 +185,9 @@ mod registered_tests {
     fn registered_harnesses_match_the_constructed_ones() {
         let mut config = Config::default();
         let home = Path::new("/nonexistent");
-        for enabled in [true, false] {
-            config.harness.claude.enabled = enabled;
+        for (claude, opencode) in [(true, true), (false, true), (true, false), (false, false)] {
+            config.harness.claude.enabled = claude;
+            config.harness.opencode.enabled = opencode;
             let built: Vec<HarnessId> = build_harnesses_with_home(&config, home)
                 .iter()
                 .map(|h| h.id())

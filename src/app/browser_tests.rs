@@ -1288,6 +1288,7 @@ theme_snapshot!(loaded_browser_theme_solarized, "solarized");
 
 mod copy;
 mod live;
+mod opencode;
 mod save;
 mod search;
 mod subagent;
