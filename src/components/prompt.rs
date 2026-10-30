@@ -115,10 +115,7 @@ impl Prompt {
             Key::Down => Some(Msg::PromptNav(Direction::Down)),
             Key::Left => self.edit(InputRequest::GoToPrevChar),
             Key::Right => self.edit(InputRequest::GoToNextChar),
-            Key::Home => self.edit(InputRequest::GoToStart),
-            Key::End => self.edit(InputRequest::GoToEnd),
             Key::Backspace => self.edit(InputRequest::DeletePrevChar),
-            Key::Delete => self.edit(InputRequest::DeleteNextChar),
             Key::Char(c) if is_typed(key.modifiers) => self.edit(InputRequest::InsertChar(c)),
             _ => None,
         }
@@ -340,11 +337,10 @@ mod tests {
         let mut p = prompt("");
         assert_eq!(p.on(&key(Key::Left)), None);
         let mut p = prompt("ab");
-        p.on(&key(Key::Home));
+        p.on(&key(Key::Left));
+        p.on(&key(Key::Left));
         assert_eq!(p.cursor(), 0);
         assert_eq!(p.on(&key(Key::Left)), None);
-        assert_eq!(p.on(&key(Key::End)), Some(Msg::PromptMoved));
-        assert_eq!(p.cursor(), 2);
     }
 
     #[test]
@@ -353,7 +349,6 @@ mod tests {
         p.on(&key(Key::Left));
         assert_eq!(p.on(&key(Key::Backspace)), changed("ac"));
         assert_eq!(p.cursor(), 1);
-        assert_eq!(p.on(&key(Key::Delete)), changed("a"));
     }
 
     #[test]
@@ -442,6 +437,9 @@ mod tests {
             key(Key::Tab),
             key(Key::BackTab),
             key(Key::PageUp),
+            key(Key::Home),
+            key(Key::End),
+            key(Key::Delete),
             Event::Tick,
             Event::WindowResize(10, 10),
             Event::FocusLost,

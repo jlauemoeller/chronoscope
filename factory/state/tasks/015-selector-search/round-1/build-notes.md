@@ -1,7 +1,7 @@
 STATUS: DONE
 
 ## Changes
-- `src/components/prompt.rs` (new): the `Prompt` component (`PromptMode::{Text, YesNo}`), `tui-input` editing, `Ctrl-c` quits, horizontal scroll, cursor cell with bg `cursor`, painted with the `surface` fill (skipped for transparent themes). Messages: `PromptChanged`, `PromptSubmit`, `PromptCancel`, `PromptNav(Direction)`, plus `PromptMoved` (cursor-only move; asks for a redraw only, so `PromptChanged` always means "text changed" and re-runs the search). It also takes `Home`/`End`/`Delete` and pasted text (editing keys; no printable key is intercepted).
+- `src/components/prompt.rs` (new): the `Prompt` component (`PromptMode::{Text, YesNo}`), `tui-input` editing, `Ctrl-c` quits, horizontal scroll, cursor cell with bg `cursor`, painted with the `surface` fill (skipped for transparent themes). Messages: `PromptChanged`, `PromptSubmit`, `PromptCancel`, `PromptNav(Direction)`, plus `PromptMoved` (cursor-only move; asks for a redraw only, so `PromptChanged` always means "text changed" and re-runs the search). It also inserts pasted text (`Event::Paste`, on one line). It takes no other keys than the ones SPEC §6 lists.
 - `src/app/mod.rs`: `Id::Prompt`, the new `Msg`s, `Msg::SearchResults`, `UserEvent::Search`, the App-level **focus stack** (`open_overlay` pushes the focused id and activates the overlay; `close_overlay` unmounts and pops/restores; later overlays reuse them), a message queue (`emit` / `take_queued`; `tick` hands queued messages out after the components'), `set_search_worker`, `shutdown` also stops the search worker, `production_listener(index, search)`.
 - `src/components/global_events.rs`: the key subscriptions now use `key_clause()` = `Not(IsMounted(Prompt))`; resize, tick, index and search events keep `Always` (previously one shared clause; gating that would also have stopped resizes/ticks during a search). `Ctrl-c` is handled by the Prompt itself. Maps `UserEvent::Search` to `Msg::SearchResults`.
 - `src/app/layout.rs`: `LayoutInput::prompt`; an active prompt replaces `HelpLine` in the same rect (toast stays last).
@@ -55,4 +55,4 @@ Matching alone (`search_sessions`) measured 12.4 ms (`im`), 17.5 ms (`impo`) and
 ## Test gate
 - cargo fmt --check: pass
 - cargo clippy --all-targets -- -D warnings: pass
-- cargo test: pass (647 passed in the lib, 0 failed; 1 ignored = the release-only timing measurement)
+- cargo test: pass (861 passed, 0 failed across all test binaries; 1 ignored = the release-only timing measurement)

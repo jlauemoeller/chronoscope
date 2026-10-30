@@ -254,9 +254,21 @@ mod tests {
 
     #[test]
     fn requests_that_a_newer_one_overtook_are_skipped() {
-        // Requests are queued before the worker can take them, by holding the
-        // channel's reader busy: the worker answers the last one and, at
-        // most, the one it had already started.
+        // The requests are all queued before the loop starts, so it can only
+        // answer the newest.
+        let (request_tx, request_rx) = channel();
+        let (result_tx, result_rx) = channel();
+        for seq in 1..=200 {
+            request_tx.send(request(seq, "brio")).unwrap();
+        }
+        drop(request_tx);
+        run(&request_rx, &result_tx);
+        let answered: Vec<u64> = result_rx.try_iter().map(|r| r.seq).collect();
+        assert_eq!(answered, [200]);
+    }
+
+    #[test]
+    fn the_thread_answers_the_newest_request_last() {
         let (mut worker, results) = SearchWorker::start();
         for seq in 1..=200 {
             worker.request(request(seq, "brio"));
@@ -264,7 +276,6 @@ mod tests {
         worker.shutdown();
         let answered: Vec<u64> = results.try_iter().map(|r| r.seq).collect();
         assert_eq!(answered.last(), Some(&200), "{answered:?}");
-        assert!(answered.len() < 200, "{} answers", answered.len());
         assert!(answered.windows(2).all(|w| w[0] < w[1]));
     }
 
