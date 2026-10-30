@@ -14,7 +14,7 @@ use tuirealm::state::{State, StateValue};
 use unicode_width::UnicodeWidthStr;
 
 use super::{THEME_ATTR, theme_from_value, theme_value};
-use crate::app::UserEvent;
+use crate::app::{Msg, UserEvent};
 use crate::keymap::{Action, Context, Keymap};
 use crate::model::HarnessId;
 use crate::theme::{Role, Theme, Token};
@@ -25,6 +25,10 @@ pub const SELECTED_ATTR: Attribute = Attribute::Custom("selected");
 /// The attribute that tells a list how many rows its pane shows, so scrolling
 /// keeps the selection visible. Set from the layout, never from `view`.
 pub const VISIBLE_ROWS_ATTR: Attribute = Attribute::Custom("visible_rows");
+/// The attribute that tells a list whether a session is open behind the
+/// selector (`AttrValue::Flag`). It decides what `Esc` does: close the
+/// selector, or quit.
+pub const SESSION_OPEN_ATTR: Attribute = Attribute::Custom("session_open");
 
 /// The rows above the list inside a pane: the border and one blank row.
 const ROWS_ABOVE_LIST: u16 = 2;
@@ -155,6 +159,8 @@ pub(super) struct PaneState {
     pub theme: Theme,
     pub focused: bool,
     pub cursor: ListCursor,
+    /// Whether a session is open behind the selector.
+    pub session_open: bool,
 }
 
 impl PaneState {
@@ -163,6 +169,17 @@ impl PaneState {
             theme,
             focused: false,
             cursor: ListCursor::default(),
+            session_open: false,
+        }
+    }
+
+    /// What `Esc` asks for when there is no search to clear: close the
+    /// selector if a session is open behind it, else quit.
+    pub fn cancel(&self) -> Msg {
+        if self.session_open {
+            Msg::CloseSelector
+        } else {
+            Msg::Quit
         }
     }
 
@@ -190,6 +207,11 @@ impl PaneState {
                     self.cursor.set_visible(*rows);
                 }
             }
+            SESSION_OPEN_ATTR => {
+                if let AttrValue::Flag(open) = value {
+                    self.session_open = *open;
+                }
+            }
             _ => return false,
         }
         true
@@ -202,6 +224,7 @@ impl PaneState {
             THEME_ATTR => theme_value(&self.theme),
             SELECTED_ATTR => selected_value(self.cursor.selected()),
             VISIBLE_ROWS_ATTR => AttrValue::Length(self.cursor.visible),
+            SESSION_OPEN_ATTR => AttrValue::Flag(self.session_open),
             _ => return None,
         };
         Some(QueryResult::Owned(value))
@@ -253,6 +276,7 @@ pub(super) enum PaneKey {
     NextPane,
     PrevPane,
     Open,
+    Cancel,
     Harness(HarnessId),
 }
 
@@ -271,6 +295,7 @@ pub(super) fn pane_key(keymap: &Keymap, event: &Event<UserEvent>) -> Option<Pane
         Action::NextPane => Some(PaneKey::NextPane),
         Action::PrevPane => Some(PaneKey::PrevPane),
         Action::Open => Some(PaneKey::Open),
+        Action::Cancel => Some(PaneKey::Cancel),
         Action::Harness1 => harness(1),
         Action::Harness2 => harness(2),
         Action::Harness3 => harness(3),

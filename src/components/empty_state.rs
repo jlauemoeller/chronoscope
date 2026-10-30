@@ -16,14 +16,22 @@ use crate::theme::{Role, Theme};
 
 /// The message shown when the terminal is too small.
 pub const TOO_SMALL: &str = "Terminal too small";
+/// The message shown in the Sessions pane when the harness has nothing to
+/// list.
+pub const NO_SESSIONS: &str = "No sessions for this harness";
 
 /// Shows a message centred horizontally and vertically in its area, in
 /// `muted_foreground` on `background` (the background is not painted when the
 /// theme is transparent). It never takes focus.
+///
+/// Inside another component (the Sessions pane) it is built
+/// [`without_background`](Self::without_background), so it leaves what is
+/// behind it as it is.
 #[derive(Debug, Clone)]
 pub struct EmptyState {
     message: String,
     theme: Theme,
+    paint_background: bool,
 }
 
 impl EmptyState {
@@ -32,7 +40,16 @@ impl EmptyState {
         Self {
             message: message.into(),
             theme,
+            paint_background: true,
         }
+    }
+
+    /// Leaves the cells around the message as they are instead of painting
+    /// `background` over the area.
+    #[must_use]
+    pub fn without_background(mut self) -> Self {
+        self.paint_background = false;
+        self
     }
 
     fn text_style(&self) -> Style {
@@ -40,7 +57,7 @@ impl EmptyState {
     }
 
     fn background_style(&self) -> Style {
-        if self.theme.transparent_background() {
+        if self.theme.transparent_background() || !self.paint_background {
             Style::new()
         } else {
             Style::new().bg(self.theme.role(Role::Background))

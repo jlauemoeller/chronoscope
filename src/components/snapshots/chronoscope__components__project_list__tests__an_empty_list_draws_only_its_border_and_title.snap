@@ -1,0 +1,14 @@
+---
+source: src/components/project_list.rs
+expression: text
+---
+╭─ Projects ───────────────────────╮
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+╰──────────────────────────────────╯

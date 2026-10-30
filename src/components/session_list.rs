@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Margin, Rect};
 use tuirealm::command::{Cmd, CmdResult, Direction};
 use tuirealm::component::{AppComponent, Component};
 use tuirealm::event::Event;
@@ -12,14 +12,15 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
+use super::empty_state::{EmptyState, NO_SESSIONS};
 use super::list_pane::{
     PaneKey, PaneState, Part, RowParts, border_role, pane_key, render_rows, title_width,
     titled_block,
 };
-use super::{payload_from_value, payload_value, truncate_with_ellipsis};
+use super::{THEME_ATTR, payload_from_value, payload_value, truncate_with_ellipsis};
 use crate::app::{Msg, Pane, SelectorMsg, UserEvent};
 use crate::keymap::Keymap;
-use crate::model::{SessionId, SessionStats};
+use crate::model::{HarnessId, SessionId, SessionStats};
 use crate::theme::Theme;
 
 /// The attribute that sets the rows ([`SessionRows`]).
@@ -59,6 +60,8 @@ pub struct SessionRow {
 pub struct SessionRows {
     /// The display name of the project, for the title `Sessions in <name>`.
     pub project: String,
+    /// The harness the sessions belong to, sent in [`Msg::OpenSession`].
+    pub harness: Option<HarnessId>,
     pub rows: Arc<Vec<SessionRow>>,
     pub selected: Option<usize>,
 }
@@ -101,24 +104,37 @@ pub fn format_stats(stats: &SessionStats) -> String {
 /// Rows come in through [`SESSION_ROWS_ATTR`]; stats and the active flags
 /// are updated one by one through [`SESSION_STATS_ATTR`] and
 /// [`ACTIVE_ATTR`]. Moving the selection reports
-/// [`SelectorMsg::SessionSelected`].
+/// [`SelectorMsg::SessionSelected`]; `Enter` on the selected session asks to
+/// open it ([`Msg::OpenSession`]). With no rows, the pane shows the
+/// [`EmptyState`] "No sessions for this harness".
 #[derive(Debug, Clone)]
 pub struct SessionList {
     pane: PaneState,
     keymap: Keymap,
     project: String,
+    harness: Option<HarnessId>,
     rows: Arc<Vec<SessionRow>>,
+    empty: EmptyState,
 }
 
 impl SessionList {
     /// An empty list that resolves keys with `keymap`.
     pub fn new(keymap: Keymap, theme: Theme) -> Self {
         Self {
+            empty: EmptyState::new(NO_SESSIONS, theme.clone()).without_background(),
             pane: PaneState::new(theme),
             keymap,
             project: String::new(),
+            harness: None,
             rows: Arc::default(),
         }
+    }
+
+    /// The request to open the selected session, if there is one.
+    fn open(&self) -> Option<Msg> {
+        let harness = self.harness?;
+        self.selected_id()
+            .map(|session| Msg::OpenSession(harness, session))
     }
 
     fn selected_id(&self) -> Option<SessionId> {
@@ -202,6 +218,10 @@ impl Component for SessionList {
         let title = self.title(area.width);
         let block = titled_block(&self.pane.theme, &title, border_role(self.pane.focused));
         frame.render_widget(block, area);
+        if self.rows.is_empty() {
+            self.empty.view(frame, area.inner(Margin::new(1, 1)));
+            return;
+        }
         render_rows(frame, area, &self.pane, |index, width| {
             self.rows
                 .get(index)
@@ -213,6 +233,7 @@ impl Component for SessionList {
         if attr == SESSION_ROWS_ATTR {
             let rows = SessionRows {
                 project: self.project.clone(),
+                harness: self.harness,
                 rows: Arc::clone(&self.rows),
                 selected: self.pane.cursor.selected(),
             };
@@ -226,12 +247,14 @@ impl Component for SessionList {
             SESSION_ROWS_ATTR => {
                 if let Some(SessionRows {
                     project,
+                    harness,
                     rows,
                     selected,
                 }) = payload_from_value(&value)
                 {
                     self.pane.cursor.set(rows.len(), selected);
                     self.project = project;
+                    self.harness = harness;
                     self.rows = rows;
                 }
             }
@@ -246,6 +269,9 @@ impl Component for SessionList {
                 }
             }
             _ => {
+                if attr == THEME_ATTR {
+                    self.empty.attr(attr, value.clone());
+                }
                 self.pane.attr(attr, &value);
             }
         }
@@ -268,7 +294,9 @@ impl AppComponent<Msg, UserEvent> for SessionList {
             PaneKey::FocusProjects | PaneKey::NextPane | PaneKey::PrevPane => {
                 Some(Msg::Selector(SelectorMsg::Focus(Pane::Projects)))
             }
-            PaneKey::FocusSessions | PaneKey::Open => None,
+            PaneKey::FocusSessions => None,
+            PaneKey::Open => self.open(),
+            PaneKey::Cancel => Some(self.pane.cancel()),
             PaneKey::Harness(harness) => Some(Msg::Selector(SelectorMsg::SwitchHarness(harness))),
         }
     }
@@ -277,10 +305,10 @@ impl AppComponent<Msg, UserEvent> for SessionList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value};
+    use crate::components::{SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_value};
     use crate::model::HarnessId;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
-    use crate::theme::builtin;
+    use crate::theme::{Role, builtin};
     use tuirealm::event::{Key, KeyEvent, KeyModifiers};
     use tuirealm::state::StateValue;
 
@@ -313,6 +341,7 @@ mod tests {
     fn rows_value(rows: Vec<SessionRow>, selected: Option<usize>) -> AttrValue {
         payload_value(SessionRows {
             project: "BRIO".to_owned(),
+            harness: Some(HarnessId::Claude),
             rows: Arc::new(rows),
             selected,
         })
@@ -450,6 +479,7 @@ mod tests {
             SESSION_ROWS_ATTR,
             payload_value(SessionRows {
                 project: "A project with a really long display name".to_owned(),
+                harness: None,
                 rows: Arc::default(),
                 selected: None,
             }),
@@ -518,9 +548,82 @@ mod tests {
     #[test]
     fn other_keys_and_events_produce_nothing() {
         let mut l = list(sample(false), Some(0), true);
-        for event in [ch('x'), key(Key::Esc), Event::Tick, Event::FocusGained] {
+        for event in [ch('x'), Event::Tick, Event::FocusGained] {
             assert_eq!(l.on(&event), None, "{event:?}");
         }
+    }
+
+    #[test]
+    fn enter_asks_to_open_the_selected_session_of_the_harness() {
+        let mut l = list(sample(false), Some(1), true);
+        assert_eq!(
+            l.on(&key(Key::Enter)),
+            Some(Msg::OpenSession(HarnessId::Claude, SessionId::from("b")))
+        );
+        // The session in the message is the one the cursor is on.
+        l.on(&ch('j'));
+        assert_eq!(
+            l.on(&key(Key::Enter)),
+            Some(Msg::OpenSession(HarnessId::Claude, SessionId::from("c")))
+        );
+    }
+
+    #[test]
+    fn enter_without_a_selected_session_or_a_harness_does_nothing() {
+        let mut l = list(sample(false), None, true);
+        assert_eq!(l.on(&key(Key::Enter)), None);
+        let mut l = list(Vec::new(), None, true);
+        assert_eq!(l.on(&key(Key::Enter)), None);
+        l.attr(
+            SESSION_ROWS_ATTR,
+            payload_value(SessionRows {
+                project: String::new(),
+                harness: None,
+                rows: Arc::new(sample(false)),
+                selected: Some(0),
+            }),
+        );
+        assert_eq!(l.on(&key(Key::Enter)), None);
+    }
+
+    #[test]
+    fn esc_quits_without_an_open_session_and_closes_the_selector_with_one() {
+        let mut l = list(sample(false), Some(0), true);
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
+        l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(true));
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::CloseSelector));
+        assert_eq!(
+            l.query(SESSION_OPEN_ATTR).unwrap().into_attr(),
+            AttrValue::Flag(true)
+        );
+        l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(false));
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
+    }
+
+    #[test]
+    fn a_list_without_rows_shows_the_empty_state_in_muted_foreground() {
+        let theme = builtin::default_theme();
+        let mut l = list(Vec::new(), None, false);
+        let buffer = render(60, 10, |frame| l.view(frame, frame.area()));
+        let text = buffer_to_text(&buffer);
+        let line = text.lines().nth(5).unwrap();
+        assert!(line.contains("No sessions for this harness"), "{text}");
+        // Centred in the 58 columns inside the border.
+        let left = line.chars().position(|c| c == 'N').unwrap();
+        assert_eq!(left, 1 + (58 - 28) / 2);
+        assert_eq!(
+            buffer[(left as u16, 5)].fg,
+            theme.role(Role::MutedForeground)
+        );
+        // The pane keeps its border and its title.
+        assert!(text.starts_with("╭─ Sessions in BRIO ─"), "{text}");
+        insta::assert_snapshot!(buffer_to_styled(&buffer));
+    }
+
+    #[test]
+    fn a_list_with_rows_does_not_show_the_empty_state() {
+        let text = buffer_to_text(&draw_sized(&mut list(sample(false), None, false), 60));
+        assert!(!text.contains("No sessions"), "{text}");
     }
 
     #[test]

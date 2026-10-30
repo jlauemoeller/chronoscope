@@ -177,3 +177,68 @@ pub fn stats_event(harness: HarnessId, session: &str, turns: usize, secs: u64) -
         },
     }
 }
+
+/// A project of `harness` with an explicit working directory.
+pub fn project_in(
+    harness: HarnessId,
+    name: &str,
+    cwd: &str,
+    last_activity: DateTime<Utc>,
+) -> Project {
+    Project {
+        id: ProjectId::from(cwd),
+        harness,
+        name: name.to_owned(),
+        cwd: Some(PathBuf::from(cwd)),
+        last_activity,
+        session_count: 0,
+    }
+}
+
+/// A snapshot of `projects`, each with one session `<name>-1`.
+pub fn snapshot_of(harness: HarnessId, projects: Vec<Project>) -> IndexEvent {
+    let mut sessions = SessionMap::new();
+    for project in &projects {
+        let id = format!("{}-1", project.name);
+        let title = format!("A session of {}", project.name);
+        let last = project.last_activity;
+        let one = session(
+            project,
+            &id,
+            &title,
+            last - chrono::Duration::minutes(30),
+            last,
+        );
+        sessions.insert(project.id.clone(), vec![one]);
+    }
+    snapshot_event(harness, true, projects, sessions)
+}
+
+/// The 12 projects of the preselection snapshots, newest activity first. The
+/// 9th is `Quill`, in `/home/jacob/Development/projects/Quill`.
+pub fn twelve_projects(harness: HarnessId) -> Vec<Project> {
+    [
+        "Agentmon",
+        "BRIO",
+        "Calira",
+        "CameraSettings",
+        "FactoryFight",
+        "Nayra",
+        "Orbit",
+        "Parsley",
+        "Quill",
+        "Relay",
+        "Sundial",
+        "Tessera",
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(n, name)| {
+        project(
+            harness,
+            name,
+            at(2026, 10, 30, 11, 0, 0) - chrono::Duration::days(n as i64),
+        )
+    })
+    .collect()
+}

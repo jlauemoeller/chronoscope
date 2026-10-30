@@ -25,7 +25,7 @@ expression: "buffer_to_text(&screen(&mut app(), 200, 50))"
                     │   │                                  │ │                                                                                                                 │   │                    
                     │   │                                  │ │                                                                                                                 │   │                    
                     │   │                                  │ │                                                                                                                 │   │                    
-                    │   │                                  │ │                                                                                                                 │   │                    
+                    │   │                                  │ │                                          No sessions for this harness                                           │   │                    
                     │   │                                  │ │                                                                                                                 │   │                    
                     │   │                                  │ │                                                                                                                 │   │                    
                     │   │                                  │ │                                                                                                                 │   │                    
