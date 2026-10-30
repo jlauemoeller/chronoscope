@@ -59,6 +59,15 @@ pub(super) struct HarnessData {
     sessions: Arc<SessionMap>,
 }
 
+/// Where the selector starts (see [`SelectorState::preselection`]).
+struct Preselection {
+    harness: HarnessId,
+    project: Option<ProjectId>,
+    /// Whether the project contains the working directory; false for the
+    /// fallback to the first project.
+    matched: bool,
+}
+
 /// The selector's domain state.
 #[derive(Debug, Default)]
 pub(super) struct SelectorState {
@@ -93,12 +102,13 @@ impl SelectorState {
         }
     }
 
-    /// Whether the harness shown has nothing to list: it has no sessions in
-    /// any project, or no harness is available, once every registered
-    /// harness has reported (before that the lists are still loading).
+    /// Whether the harness shown has nothing to list: it has no projects, or
+    /// no harness is available, once every registered harness has reported
+    /// (before that the lists are still loading). A project without sessions
+    /// in a harness that has projects is an ordinary empty list.
     fn harness_empty(&self) -> bool {
         match self.current_data() {
-            Some(data) => data.sessions.values().all(Vec::is_empty),
+            Some(data) => data.projects.is_empty(),
             None => self.current.is_none() && self.all_reported(),
         }
     }
@@ -113,7 +123,7 @@ impl SelectorState {
     /// numbered harness on a tie and the most recently active project of a
     /// harness on a tie; else the first project of the first available
     /// harness. Only available harnesses take part.
-    fn preselection(&self) -> Option<(HarnessId, Option<ProjectId>)> {
+    fn preselection(&self) -> Option<Preselection> {
         let mut harnesses: Vec<HarnessId> = self
             .registered
             .iter()
@@ -128,7 +138,7 @@ impl SelectorState {
                 .get(&harness)
                 .map_or(&[][..], |d| d.projects.as_slice());
             for project in projects {
-                let Some(cwd) = project.cwd.as_ref() else {
+                let Some(cwd) = project.cwd.as_ref().filter(|cwd| cwd.is_absolute()) else {
                     continue;
                 };
                 // `starts_with` compares whole path components.
@@ -142,7 +152,11 @@ impl SelectorState {
             }
         }
         if let Some((_, harness, project)) = best {
-            return Some((harness, Some(project.clone())));
+            return Some(Preselection {
+                harness,
+                project: Some(project.clone()),
+                matched: true,
+            });
         }
         let first = *harnesses.first()?;
         let project = self
@@ -150,7 +164,11 @@ impl SelectorState {
             .get(&first)
             .and_then(|d| d.projects.first())
             .map(|p| p.id.clone());
-        Some((first, project))
+        Some(Preselection {
+            harness: first,
+            project,
+            matched: false,
+        })
     }
 
     fn current_data(&self) -> Option<&HarnessData> {
@@ -317,27 +335,33 @@ impl App {
     }
 
     /// Before the user has acted, a snapshot can change the harness and
-    /// project: the first one that holds data picks them, and one that
-    /// arrives from another harness may hold a better match for the working
-    /// directory. Returns whether the selection was replaced.
+    /// project: the first one that holds data picks them, one that arrives
+    /// from another harness may hold a better match for the working
+    /// directory, and so may a later snapshot of the shown harness (the
+    /// first can be empty when its build failed). Live updates of the shown
+    /// harness never move a selection the working directory did not pick.
+    /// Returns whether the selection was replaced.
     fn preselect_again(&mut self) -> bool {
         if self.selector.current.is_some() && !self.selector.preselecting {
             return false;
         }
-        let Some((harness, project)) = self.selector.preselection() else {
+        let Some(want) = self.selector.preselection() else {
             return false;
         };
-        if self.selector.current == Some(harness) {
+        let same_harness = self.selector.current == Some(want.harness);
+        if same_harness && (!want.matched || want.project == self.selector.project) {
             return false;
         }
-        self.enter_harness_at(harness, project);
+        self.enter_harness_at(want.harness, want.project);
         self.settle_preselection();
         true
     }
 
-    /// Ends the preselection once every harness has reported.
+    /// Ends the preselection once every harness has reported and the shown
+    /// one has projects: an empty first snapshot (a failed build) does not
+    /// count.
     fn settle_preselection(&mut self) {
-        if self.selector.all_reported() {
+        if self.selector.all_reported() && !self.selector.projects().is_empty() {
             self.selector.preselecting = false;
         }
     }

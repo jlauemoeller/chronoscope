@@ -10,7 +10,7 @@ use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 
-use super::{THEME_ATTR, theme_from_value, theme_value};
+use super::{THEME_ATTR, theme_from_value, theme_value, truncate_with_ellipsis};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme};
 
@@ -77,7 +77,8 @@ impl Component for EmptyState {
             height: 1,
             ..area
         };
-        let text = Paragraph::new(self.message.as_str())
+        let message = truncate_with_ellipsis(&self.message, usize::from(area.width));
+        let text = Paragraph::new(message)
             .alignment(Alignment::Center)
             .style(self.text_style());
         frame.render_widget(text, middle);

@@ -18,7 +18,7 @@ expression: buffer_to_styled(&buffer)
 2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
 3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
 4: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
-5: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Rgb(161, 161, 161)/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
+5: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..3 Reset/Reset/NONE | 3..57 Rgb(161, 161, 161)/Reset/NONE | 57..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
 6: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
 7: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
 8: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE

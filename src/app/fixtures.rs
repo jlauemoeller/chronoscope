@@ -197,6 +197,19 @@ pub fn project_in(
 
 /// A snapshot of `projects`, each with one session `<name>-1`.
 pub fn snapshot_of(harness: HarnessId, projects: Vec<Project>) -> IndexEvent {
+    snapshot_with_availability(harness, true, projects)
+}
+
+/// Like [`snapshot_of`], for a harness that says it is not available.
+pub fn unavailable_snapshot_of(harness: HarnessId, projects: Vec<Project>) -> IndexEvent {
+    snapshot_with_availability(harness, false, projects)
+}
+
+fn snapshot_with_availability(
+    harness: HarnessId,
+    available: bool,
+    projects: Vec<Project>,
+) -> IndexEvent {
     let mut sessions = SessionMap::new();
     for project in &projects {
         let id = format!("{}-1", project.name);
@@ -211,7 +224,7 @@ pub fn snapshot_of(harness: HarnessId, projects: Vec<Project>) -> IndexEvent {
         );
         sessions.insert(project.id.clone(), vec![one]);
     }
-    snapshot_event(harness, true, projects, sessions)
+    snapshot_event(harness, available, projects, sessions)
 }
 
 /// The 12 projects of the preselection snapshots, newest activity first. The

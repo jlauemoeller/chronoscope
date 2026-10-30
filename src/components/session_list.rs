@@ -225,7 +225,8 @@ impl Component for SessionList {
         let block = titled_block(&self.pane.theme, &title, border_role(self.pane.focused));
         frame.render_widget(block, area);
         if self.harness_empty {
-            self.empty.view(frame, area.inner(Margin::new(1, 1)));
+            // Inside the border and the same 2-cell margin the rows keep.
+            self.empty.view(frame, area.inner(Margin::new(3, 1)));
             return;
         }
         render_rows(frame, area, &self.pane, |index, width| {
@@ -637,6 +638,22 @@ mod tests {
         // The pane keeps its border and its title.
         assert!(text.starts_with("╭─ Sessions ─"), "{text}");
         insta::assert_snapshot!(buffer_to_styled(&buffer));
+    }
+
+    #[test]
+    fn the_empty_message_keeps_the_rows_margin_and_is_cut_in_a_narrow_pane() {
+        let mut l = list(Vec::new(), None, false);
+        l.attr(
+            SESSION_ROWS_ATTR,
+            payload_value(SessionRows {
+                harness_empty: true,
+                ..SessionRows::default()
+            }),
+        );
+        // Pane of 30: 28 inside the border, 24 after the 2-cell margins.
+        let text = buffer_to_text(&render(30, 10, |frame| l.view(frame, frame.area())));
+        let line = text.lines().nth(5).unwrap();
+        assert_eq!(line, "│  No sessions for this ha…  │", "{text}");
     }
 
     #[test]

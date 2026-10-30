@@ -131,27 +131,11 @@ fn an_unavailable_harness_takes_no_part_in_the_preselection() {
         at(2026, 10, 1, 0, 0, 0),
     )];
     // Claude says it is not available but still lists a matching project.
-    let IndexEventParts(projects, sessions) = parts(snapshot_of(CLAUDE, claude));
-    send(
-        &mut app,
-        fixtures::snapshot_event(CLAUDE, false, projects, sessions),
-    );
+    send(&mut app, fixtures::unavailable_snapshot_of(CLAUDE, claude));
     let opencode = vec![project_in(OPENCODE, "w", "/w", at(2026, 10, 1, 0, 0, 0))];
     send(&mut app, snapshot_of(OPENCODE, opencode));
     assert_eq!(app.selected_harness(), Some(OPENCODE));
     assert_eq!(dir(&app), Some("/w"));
-}
-
-struct IndexEventParts(Vec<crate::model::Project>, SessionMap);
-
-fn parts(event: crate::index::IndexEvent) -> IndexEventParts {
-    let crate::index::IndexEvent::Snapshot {
-        projects, sessions, ..
-    } = event
-    else {
-        unreachable!()
-    };
-    IndexEventParts((*projects).clone(), (*sessions).clone())
 }
 
 #[test]
@@ -223,6 +207,77 @@ fn a_late_snapshot_after_every_harness_reported_does_not_move_the_preselection()
     )];
     send(&mut app, snapshot_of(OPENCODE, opencode));
     assert_eq!(app.selected_harness(), Some(CLAUDE));
+}
+
+#[test]
+fn an_empty_first_snapshot_does_not_lose_the_preselection() {
+    // A failed first build sends empty lists with `available = true`.
+    let real = || {
+        vec![
+            project_in(CLAUDE, "w", "/w", at(2026, 10, 30, 11, 0, 0)),
+            project_in(CLAUDE, "brio", "/w/brio", at(2026, 10, 29, 11, 0, 0)),
+        ]
+    };
+    let mut app = empty_app_in(&[CLAUDE], theme("default"), "/w/brio/src");
+    send(&mut app, snapshot_of(CLAUDE, Vec::new()));
+    assert_eq!(app.selected_harness(), Some(CLAUDE));
+    assert_eq!(dir(&app), None);
+    send(&mut app, snapshot_of(CLAUDE, real()));
+    assert_eq!(dir(&app), Some("/w/brio"));
+    assert_eq!(project_rows(&app).selected, Some(1));
+    assert_eq!(app.focused_pane(), Pane::Projects);
+    assert_eq!(app.selected_session(), None);
+    assert_eq!(row_ids(&session_rows(&app)), ["brio-1"]);
+
+    // The same when the other harness has already reported (no match there).
+    let mut app = empty_app_in(&[CLAUDE, OPENCODE], theme("default"), "/w/brio/src");
+    send(&mut app, snapshot_of(CLAUDE, Vec::new()));
+    let other = vec![project_in(OPENCODE, "o", "/o", at(2026, 10, 1, 0, 0, 0))];
+    send(&mut app, snapshot_of(OPENCODE, other));
+    send(&mut app, snapshot_of(CLAUDE, real()));
+    assert_eq!(app.selected_harness(), Some(CLAUDE));
+    assert_eq!(dir(&app), Some("/w/brio"));
+    assert_eq!(app.focused_pane(), Pane::Projects);
+    assert_eq!(app.selected_session(), None);
+}
+
+#[test]
+fn a_better_match_in_the_shown_harness_wins_before_the_user_acts() {
+    let mut app = empty_app_in(&[CLAUDE, OPENCODE], theme("default"), "/w/brio/src");
+    let shallow = vec![project_in(CLAUDE, "w", "/w", at(2026, 10, 30, 11, 0, 0))];
+    send(&mut app, snapshot_of(CLAUDE, shallow));
+    assert_eq!(dir(&app), Some("/w"));
+    let deeper = vec![
+        project_in(CLAUDE, "w", "/w", at(2026, 10, 30, 11, 0, 0)),
+        project_in(CLAUDE, "brio", "/w/brio", at(2026, 10, 29, 11, 0, 0)),
+    ];
+    send(&mut app, snapshot_of(CLAUDE, deeper));
+    assert_eq!(dir(&app), Some("/w/brio"));
+}
+
+#[test]
+fn a_new_most_recent_project_does_not_move_a_fallback_preselection() {
+    let mut app = empty_app_in(&[CLAUDE, OPENCODE], theme("default"), "/nowhere");
+    let old = vec![project_in(CLAUDE, "a", "/a", at(2026, 10, 1, 0, 0, 0))];
+    send(&mut app, snapshot_of(CLAUDE, old));
+    let newer = vec![
+        project_in(CLAUDE, "b", "/b", at(2026, 10, 2, 0, 0, 0)),
+        project_in(CLAUDE, "a", "/a", at(2026, 10, 1, 0, 0, 0)),
+    ];
+    send(&mut app, snapshot_of(CLAUDE, newer));
+    assert_eq!(dir(&app), Some("/a"));
+}
+
+#[test]
+fn a_project_without_an_absolute_cwd_never_matches() {
+    let mut app = empty_app_in(&[CLAUDE], theme("default"), "/w/brio");
+    let projects = vec![
+        project_in(CLAUDE, "first", "/first", at(2026, 10, 30, 11, 0, 0)),
+        project_in(CLAUDE, "empty", "", at(2026, 10, 29, 11, 0, 0)),
+        project_in(CLAUDE, "relative", "w", at(2026, 10, 28, 11, 0, 0)),
+    ];
+    send(&mut app, snapshot_of(CLAUDE, projects));
+    assert_eq!(dir(&app), Some("/first"));
 }
 
 // -- keeping and clearing the session selection
@@ -466,6 +521,21 @@ fn an_empty_project_in_a_harness_with_sessions_does_not_show_the_message() {
     assert!(!session_rows(&app).harness_empty);
     let shown = text(&mut app, 120, 40);
     assert!(shown.contains("Sessions in BRIO"), "{shown}");
+    assert!(!shown.contains("No sessions for this harness"), "{shown}");
+}
+
+#[test]
+fn a_harness_with_projects_but_no_sessions_shows_an_ordinary_empty_list() {
+    let mut app = empty_app_in(&[CLAUDE], theme("default"), "/nowhere");
+    let projects = fixtures::projects(CLAUDE);
+    send(
+        &mut app,
+        fixtures::snapshot_event(CLAUDE, true, projects, SessionMap::new()),
+    );
+    assert!(!session_rows(&app).harness_empty);
+    let shown = text(&mut app, 80, 24);
+    assert!(shown.contains("> Agentmon"), "{shown}");
+    assert!(shown.contains("Sessions in Agentmon"), "{shown}");
     assert!(!shown.contains("No sessions for this harness"), "{shown}");
 }
 
