@@ -61,14 +61,19 @@ string_id!(
     ItemId
 );
 
+/// Identity of a tool call: the [`ItemId`] of its [`ToolCall`] (for Claude,
+/// the `tool_use` id).
+pub type ToolCallId = ItemId;
+
 string_id!(
     /// Identity of a project within its harness: the real working directory
     /// for Claude (the encoded directory name when no cwd is known).
     ProjectId
 );
 string_id!(
-    /// Identity of a session within its harness (the transcript's file stem
-    /// for Claude).
+    /// Identity of a session within its harness: the transcript's file stem
+    /// for Claude, and `<parent-uuid>/subagents/agent-<agentId>` for a
+    /// Claude subagent transcript.
     SessionId
 );
 
@@ -412,11 +417,21 @@ pub enum ModelUpdate {
     Appended(Vec<Arc<Turn>>),
     /// Existing turns replaced in place (matched by [`TurnId`]).
     Updated(Vec<Arc<Turn>>),
+    /// Loading progress: the fraction of the transcript's bytes parsed, from
+    /// 0.0 to 1.0. Sent after each batch of turns.
+    Progress(f32),
+    /// The initial parse is complete.
+    Loaded,
+    /// How many lines, entries and content blocks could not be parsed (the
+    /// `N entries could not be parsed` note). Sent with [`Loaded`](Self::Loaded)
+    /// and again whenever it changes.
+    ParseWarnings(usize),
 }
 
 impl ModelUpdate {
     /// Applies the update to `turns`. Updated turns whose id is not present
-    /// are ignored.
+    /// are ignored. `Progress`, `Loaded` and `ParseWarnings` do not touch the
+    /// turns.
     pub fn apply(&self, turns: &mut Vec<Arc<Turn>>) {
         match self {
             ModelUpdate::Appended(new) => turns.extend(new.iter().cloned()),
@@ -427,6 +442,7 @@ impl ModelUpdate {
                     }
                 }
             }
+            ModelUpdate::Progress(_) | ModelUpdate::Loaded | ModelUpdate::ParseWarnings(_) => {}
         }
     }
 }

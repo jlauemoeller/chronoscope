@@ -815,6 +815,7 @@ fn a_new_turn_is_never_both_appended_and_updated_in_one_call() {
             match update {
                 ModelUpdate::Appended(t) => appended.extend(t.iter().map(|t| t.id().clone())),
                 ModelUpdate::Updated(t) => updated.extend(t.iter().map(|t| t.id().clone())),
+                other => panic!("the assembler never sends {other:?}"),
             }
         }
         assert!(appended.iter().all(|id| !updated.contains(id)));

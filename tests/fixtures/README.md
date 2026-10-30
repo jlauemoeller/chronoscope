@@ -104,3 +104,27 @@ Claude Code 2.1.304 to 2.1.311 sessions.
   - `-home-user-prompt/dddd0002.jsonl`: no prompt and no title (only an
     assistant entry and a `tool_result`-only user entry);
   - `-home-user-empty/ffff0001.jsonl`: a 0-byte transcript.
+
+## claude/subagents/
+
+- **Origin:** hand-written (generated once with a throw-away script that is
+  not part of the repository), following the subagent layout of real Claude
+  Code 2.1.x sessions. Nothing was copied from a real session; ids and texts
+  are made up and paths use `/home/user/loading`.
+- **Used by:** `tests/claude_loading.rs` (and `tests/claude_loading_log.rs`).
+  A miniature `~/.claude/projects` tree with one project, `-home-user-loading`.
+- **Covers:**
+  - `pppp0001.jsonl`, a parent session with four subagent calls:
+    - `toolu_meta01` (`Agent`): linked through `agent-m1.meta.json`'s
+      `toolUseId`; the result entry also names `agentId` `m1`;
+    - `toolu_res02` (`Task`): `agent-r2.meta.json` carries a different
+      `toolUseId`, so it is linked through the result entry's
+      `toolUseResult.agentId` (`r2`);
+    - `toolu_gone03` (`Agent`): the result names `agentId` `zz9`, which has no
+      transcript;
+    - `toolu_plain04` (`Agent`): the result has no `toolUseResult` at all;
+  - `pppp0001/subagents/agent-m1.jsonl` and `agent-r2.jsonl`: subagent
+    transcripts (`isSidechain: true`). The first entry is a `user` entry with
+    string content and no `origin`, the second an `assistant` entry;
+  - `agent-m1.meta.json` and `agent-r2.meta.json`: `agentType`, `description`
+    and `toolUseId`.

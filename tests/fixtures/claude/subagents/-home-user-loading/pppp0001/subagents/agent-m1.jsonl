@@ -1,0 +1,2 @@
+{"isSidechain":true,"cwd":"/home/user/loading","sessionId":"pppp0001","version":"2.1.306","uuid":"m1-u1","timestamp":"2026-04-01T10:00:10.000Z","agentId":"m1","type":"user","message":{"role":"user","content":"Look around the repository"}}
+{"isSidechain":true,"cwd":"/home/user/loading","sessionId":"pppp0001","version":"2.1.306","uuid":"m1-a1","timestamp":"2026-04-01T10:00:1030.000Z","agentId":"m1","type":"assistant","message":{"id":"msg_m1","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"The repository has two crates."}]}}
