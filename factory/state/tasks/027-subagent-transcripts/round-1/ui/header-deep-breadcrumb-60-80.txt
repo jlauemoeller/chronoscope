@@ -1,0 +1,48 @@
+# BrowserHeader top border with a deep breadcrumb, rendered in the scratch crate
+# (TestBackend, default theme, session id 85a86657-…/subagents/agent-r2, live).
+# 60 is the app's MIN_WIDTH. Depth 3+ at 60, and depth 5 at 80, render empty
+# 'Agent:' segments (the agent on screen loses its name); depth 5 at 60 also
+# drops the project name and clips the '─╮' corner.
+
+### depth 2 @ 60x5 (BrowserHeader, default theme, live)
+╭─ Project BRIO › Agent: story-writer › Agent: Explore ────╮
+│                                                          │
+│ /home/user/projects/brio                          ● live │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+
+### depth 3 @ 60x5 (BrowserHeader, default theme, live)
+╭─ Project BRIO › Agent: story… › Agent: Expl… › Agent:  ──╮
+│                                                          │
+│ /home/user/projects/brio                          ● live │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+
+### depth 4 @ 60x5 (BrowserHeader, default theme, live)
+╭─ Project BRIO › Agent: … › Agent:  › Agent:  › Agent:  ──╮
+│                                                          │
+│ /home/user/projects/brio                          ● live │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+
+### depth 5 @ 60x5 (BrowserHeader, default theme, live)
+╭─ Project  › Agent:  › Agent:  › Agent:  › Agent:  › Agent:
+│                                                          │
+│ /home/user/projects/brio                          ● live │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+
+### depth 4 @ 80x5 (BrowserHeader, default theme, live)
+╭─ Project BRIO › Agent: story… › Agent: Explo… › Agent: gener… › Agent: Pl… ──╮
+│                                                                              │
+│ /home/user/projects/brio                                              ● live │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+### depth 5 @ 80x5 (BrowserHeader, default theme, live)
+╭─ Project BRIO › Agent: story… › Agent: Expl… › Agent:  › Agent:  › Agent:  ──╮
+│                                                                              │
+│ /home/user/projects/brio                                              ● live │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
