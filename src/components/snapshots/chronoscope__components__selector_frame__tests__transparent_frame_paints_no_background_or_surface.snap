@@ -1,0 +1,21 @@
+---
+source: src/components/selector_frame.rs
+expression: "draw(theme, true, 30, 8, Rect::new(2, 1, 26, 6))"
+---
+                              
+  ╭────────────────────────╮  
+  │                        │  
+  │                        │  
+  │                        │  
+  │                        │  
+  ╰────────────────────────╯  
+                              
+--- styles (fg/bg/modifiers) ---
+0: 0..30 Reset/Reset/NONE
+1: 0..2 Reset/Reset/NONE | 2..28 Rgb(207, 207, 207)/Reset/NONE | 28..30 Reset/Reset/NONE
+2: 0..2 Reset/Reset/NONE | 2..3 Rgb(207, 207, 207)/Reset/NONE | 3..27 Reset/Reset/NONE | 27..28 Rgb(207, 207, 207)/Reset/NONE | 28..30 Reset/Reset/NONE
+3: 0..2 Reset/Reset/NONE | 2..3 Rgb(207, 207, 207)/Reset/NONE | 3..27 Reset/Reset/NONE | 27..28 Rgb(207, 207, 207)/Reset/NONE | 28..30 Reset/Reset/NONE
+4: 0..2 Reset/Reset/NONE | 2..3 Rgb(207, 207, 207)/Reset/NONE | 3..27 Reset/Reset/NONE | 27..28 Rgb(207, 207, 207)/Reset/NONE | 28..30 Reset/Reset/NONE
+5: 0..2 Reset/Reset/NONE | 2..3 Rgb(207, 207, 207)/Reset/NONE | 3..27 Reset/Reset/NONE | 27..28 Rgb(207, 207, 207)/Reset/NONE | 28..30 Reset/Reset/NONE
+6: 0..2 Reset/Reset/NONE | 2..28 Rgb(207, 207, 207)/Reset/NONE | 28..30 Reset/Reset/NONE
+7: 0..30 Reset/Reset/NONE

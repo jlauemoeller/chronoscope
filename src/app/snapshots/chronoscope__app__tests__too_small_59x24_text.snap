@@ -1,0 +1,17 @@
+---
+source: src/app/tests.rs
+expression: "buffer_to_text(&screen(&mut app(), 59, 24))"
+---
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                                                           
+                    Terminal too small

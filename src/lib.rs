@@ -4,6 +4,8 @@
 
 use clap::Parser;
 
+pub mod app;
+pub mod components;
 pub mod config;
 pub mod harness;
 pub mod index;
@@ -11,6 +13,7 @@ pub mod keymap;
 pub mod logging;
 pub mod model;
 pub mod paths;
+pub mod terminal;
 #[doc(hidden)]
 pub mod test_support;
 pub mod theme;
@@ -36,9 +39,10 @@ where
 ///
 /// Parses the process arguments. `--help` and `--version` print and exit with
 /// code 0; invalid arguments exit with code 2 (both handled by clap).
+/// Otherwise it starts the application and returns when the user quits.
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     match parse_args(std::env::args_os()) {
-        Ok(Cli {}) => Ok(()),
+        Ok(Cli {}) => Ok(app::runtime::run_app()?),
         Err(err) => err.exit(),
     }
 }

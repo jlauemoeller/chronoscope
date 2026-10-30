@@ -1,0 +1,9 @@
+---
+source: src/components/empty_state.rs
+expression: "buffer_to_text(&draw(builtin::default_theme(), 40, 9))"
+---
+                                        
+                                        
+                                        
+                                        
+           Terminal too small
