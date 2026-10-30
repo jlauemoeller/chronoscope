@@ -90,11 +90,14 @@ fn short_id(id: &SessionId) -> String {
 
 /// `Cannot resume: <cwd> no longer exists`; a path too long for the toast is
 /// cut at its start with `…`.
-fn missing_dir_toast(cwd: &Path) -> String {
+fn missing_dir_toast(cwd: &Path, screen_width: u16) -> String {
     const PREFIX: &str = "Cannot resume: ";
     const SUFFIX: &str = " no longer exists";
-    let room =
-        usize::from(MAX_TOAST_WIDTH - TOAST_CHROME).saturating_sub(PREFIX.width() + SUFFIX.width());
+    // The toast box is at most `MAX_TOAST_WIDTH` wide, and 4 columns
+    // narrower than the screen.
+    let box_width = MAX_TOAST_WIDTH.min(screen_width.saturating_sub(4));
+    let room = usize::from(box_width.saturating_sub(TOAST_CHROME))
+        .saturating_sub(PREFIX.width() + SUFFIX.width());
     format!(
         "{PREFIX}{}{SUFFIX}",
         tail_fitting(&cwd.display().to_string(), room)
@@ -171,7 +174,7 @@ impl App {
             return;
         };
         if !self.resume.dir_exists(&cwd) {
-            self.toast_quiet(missing_dir_toast(&cwd));
+            self.toast_quiet(missing_dir_toast(&cwd, self.size.0));
             return;
         }
         let mut prompt = Prompt::confirm_two(
@@ -204,6 +207,12 @@ impl App {
             self.resume.confirmed = Some(plan);
             self.quit = true;
         }
+    }
+
+    /// Forgets the question without touching the prompt, for when the prompt
+    /// is unmounted by someone else.
+    pub(super) fn clear_resume_question(&mut self) {
+        self.resume.pending = None;
     }
 
     /// `n`, `Esc` or any other key but `y`: nothing is resumed and the focus
@@ -279,6 +288,7 @@ impl<R: FnMut()> Steps for SystemSteps<R> {
         use std::os::unix::process::CommandExt;
         // Nothing buffered is lost when the process image is replaced.
         log::logger().flush();
+        let _ = std::io::Write::flush(&mut std::io::stdout());
         // `exec` only returns when it failed.
         Err(Command::new(&plan.program).args(&plan.args).exec())
     }

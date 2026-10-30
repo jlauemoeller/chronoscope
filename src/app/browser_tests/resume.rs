@@ -15,6 +15,7 @@ use std::rc::Rc;
 use super::super::resume::{ResumePlan, Steps, hand_off};
 use super::super::{Pane, SelectorMsg};
 use super::*;
+use crate::components::{MAX_TOAST_WIDTH, TOAST_CHROME};
 use crate::config::Config;
 use crate::model::SessionSummary;
 
@@ -163,6 +164,68 @@ fn r_in_a_subagent_transcript_resumes_the_top_level_session() {
     rig.press(Key::Char('y'));
     rig.pump_until(App::should_quit);
     assert_eq!(rig.app.take_resume_plan(), Some(claude_plan(BRIO_SESSION)));
+}
+
+#[test]
+fn r_with_the_projects_pane_focused_resumes_the_session_that_is_still_selected() {
+    let mut rig = selector_rig(120, 40);
+    // Sessions: select the older session, then go back to Projects.
+    rig.app
+        .update(Msg::Selector(SelectorMsg::SessionSelected(id(
+            BRIO_SESSION,
+        ))));
+    rig.app
+        .update(Msg::Selector(SelectorMsg::Focus(Pane::Projects)));
+    assert_eq!(rig.focus(), Some(Id::ProjectList));
+    assert_eq!(rig.app.selected_session().unwrap().as_str(), BRIO_SESSION);
+    rig.press_resume();
+    assert!(rig.app.resume_prompt_open());
+    let screen = screen_text(&mut rig, 120, 40);
+    assert!(
+        screen.contains("Resume 85a86657 in Claude? (y/n)"),
+        "{screen}"
+    );
+    rig.press(Key::Char('y'));
+    rig.pump_until(App::should_quit);
+    assert_eq!(rig.app.take_resume_plan(), Some(claude_plan(BRIO_SESSION)));
+}
+
+#[test]
+fn r_with_the_projects_pane_focused_and_a_new_project_selected_does_nothing() {
+    let mut rig = selector_rig(120, 40);
+    rig.app
+        .update(Msg::Selector(SelectorMsg::Focus(Pane::Projects)));
+    // Another project: its sessions are shown with none selected.
+    rig.press(Key::Char('j'));
+    rig.settle();
+    assert_eq!(rig.app.selected_session(), None);
+    rig.press_resume();
+    assert!(!rig.app.resume_prompt_open());
+    assert!(!rig.prompt_is_mounted());
+    assert_eq!(rig.resume_toast(), None);
+}
+
+#[test]
+fn a_question_whose_prompt_is_unmounted_by_opening_a_session_is_forgotten() {
+    let mut rig = selector_rig(120, 40);
+    rig.press_resume();
+    assert!(rig.app.resume_prompt_open());
+    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    assert!(!rig.prompt_is_mounted());
+    assert!(!rig.app.resume_prompt_open());
+    // A later prompt is not taken for the question: `y` in a search prompt
+    // quits nothing.
+    rig.harness.script(
+        BRIO_SESSION,
+        vec![ModelUpdate::Appended(turns()), ModelUpdate::Loaded],
+    );
+    rig.press(Key::Char('/'));
+    rig.pump_until(|app| app.application().mounted(&Id::Prompt));
+    rig.press(Key::Char('y'));
+    rig.press(Key::Enter);
+    rig.settle();
+    assert!(!rig.app.should_quit());
+    assert_eq!(rig.app.take_resume_plan(), None);
 }
 
 #[test]
@@ -546,10 +609,29 @@ fn a_long_missing_cwd_is_cut_at_its_start_so_the_toast_fits() {
     let toast = rig.resume_toast().unwrap();
     assert!(toast.starts_with("Cannot resume: …"), "{toast}");
     assert!(toast.ends_with("/project no longer exists"), "{toast}");
+    let most = usize::from(MAX_TOAST_WIDTH - TOAST_CHROME);
     assert!(
-        unicode_width::UnicodeWidthStr::width(toast.as_str()) <= 56,
+        unicode_width::UnicodeWidthStr::width(toast.as_str()) <= most,
         "{toast}"
     );
+}
+
+#[test]
+fn the_missing_cwd_toast_fits_the_box_of_a_narrow_terminal() {
+    // At 60 columns the toast box is 56 wide: 52 for the text.
+    let mut rig = resume_rig(60, 24);
+    rig.open_loaded();
+    rig.app.set_dir_exists(|_| false);
+    rig.press_resume();
+    let toast = rig.resume_toast().unwrap();
+    assert_eq!(
+        toast,
+        "Cannot resume: …/user/projects/brio no longer exists"
+    );
+    assert_eq!(unicode_width::UnicodeWidthStr::width(toast.as_str()), 52);
+    // The whole text is on the screen.
+    let screen = screen_text(&mut rig, 60, 24);
+    assert!(screen.contains(&toast), "{screen}");
 }
 
 // -- the hand-off

@@ -805,10 +805,10 @@ mod tests {
     }
 
     #[test]
-    fn r_in_the_projects_list_does_nothing() {
+    fn r_in_the_projects_list_leaves_the_selected_session_to_the_app() {
         let mut p =
             crate::components::ProjectList::new(Keymap::default(), builtin::default_theme());
-        assert_eq!(p.on(&ch('R')), None);
+        assert_eq!(p.on(&ch('R')), Some(Msg::Selector(SelectorMsg::Resume)));
     }
 
     #[test]
