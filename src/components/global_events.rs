@@ -28,9 +28,8 @@ const CTRL_C: KeyEvent = KeyEvent {
 /// and to the user events of the session index, the search worker and the
 /// open session, and turns them into messages.
 ///
-/// The quit, help and `open_selector` keys come from the keymap's `global`
-/// context; `Ctrl-c` always quits. The other global keys (theme selector) are
-/// added with the components they open.
+/// The quit, help, theme and `open_selector` keys come from the keymap's
+/// `global` context; `Ctrl-c` always quits.
 ///
 /// The help key gives `Msg::OpenHelp` for the screen the app says is shown
 /// (see [`HELP_CONTEXT_ATTR`]).
@@ -70,7 +69,7 @@ impl GlobalEvents {
                 Sub::new(EventClause::Keyboard(key), clause)
             })
             .chain(
-                [Action::Help, Action::OpenSelector]
+                [Action::Help, Action::Theme, Action::OpenSelector]
                     .into_iter()
                     .flat_map(|action| action_key_events(keymap, action))
                     .map(|key| Sub::new(EventClause::Keyboard(key), key_clause())),
@@ -90,14 +89,17 @@ impl GlobalEvents {
     }
 }
 
-/// When the global keys apply: not while the [`Prompt`](super::Prompt) or the
-/// help overlay has focus. Each is mounted exactly while it has focus, and
-/// handles its own keys (the prompt, `Ctrl-c` as well). The overlays that
-/// take focus later (theme selector) are added here.
+/// When the global keys apply: not while the [`Prompt`](super::Prompt), the
+/// help overlay or the theme selector has focus. Each is mounted exactly
+/// while it has focus, and handles its own keys (the prompt, `Ctrl-c` as
+/// well).
 fn key_clause() -> SubClause<Id> {
     SubClause::and(
         prompt_clause(),
-        SubClause::not(SubClause::IsMounted(Id::HelpOverlay)),
+        SubClause::not(SubClause::or(
+            SubClause::IsMounted(Id::HelpOverlay),
+            SubClause::IsMounted(Id::ThemeSelector),
+        )),
     )
 }
 
@@ -206,6 +208,7 @@ impl GlobalEvents {
             Action::Quit => Some(Msg::Quit),
             Action::OpenSelector => Some(Msg::OpenSelector),
             Action::Help => Some(Msg::OpenHelp(self.help_context)),
+            Action::Theme => Some(Msg::OpenThemeSelector),
             _ => None,
         }
     }
@@ -333,9 +336,42 @@ mod tests {
                 KeyEvent::new(Key::Char('?'), KeyModifiers::SHIFT)
             ]
         );
+        let theme = action_key_events(&Keymap::default(), Action::Theme);
+        assert_eq!(
+            theme,
+            [
+                KeyEvent::new(Key::Char('t'), KeyModifiers::NONE),
+                KeyEvent::new(Key::Char('t'), KeyModifiers::SHIFT)
+            ]
+        );
         // Resize, tick, and the index, session search, transcript search
         // and session events.
-        assert_eq!(subs.len(), keys + open.len() + help.len() + 6);
+        assert_eq!(subs.len(), keys + open.len() + help.len() + theme.len() + 6);
+    }
+
+    #[test]
+    fn the_theme_key_opens_the_theme_selector() {
+        let mut component = GlobalEvents::new(Keymap::default());
+        assert_eq!(component.on(&char_key('t')), Some(Msg::OpenThemeSelector));
+        // On both screens: the help context does not matter.
+        component.attr(HELP_CONTEXT_ATTR, context_value(HelpContext::Browser));
+        assert_eq!(component.on(&char_key('t')), Some(Msg::OpenThemeSelector));
+    }
+
+    #[test]
+    fn a_remapped_theme_key_replaces_the_t() {
+        let mut raw = RawKeys::new();
+        raw.entry("global".to_owned())
+            .or_default()
+            .insert("theme".to_owned(), vec!["f2".to_owned()]);
+        let (keymap, warnings) = Keymap::from_config(&raw);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut component = GlobalEvents::new(keymap);
+        assert_eq!(
+            component.on(&key(Key::Function(2), KeyModifiers::NONE)),
+            Some(Msg::OpenThemeSelector)
+        );
+        assert_eq!(component.on(&char_key('t')), None);
     }
 
     #[test]

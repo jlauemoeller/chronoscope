@@ -1,0 +1,23 @@
+---
+source: src/app/browser_tests/theme_selector.rs
+expression: text
+---
+                                                            
+╭────────╭─ Themes ──────────────────────────────╮─────────╮
+│        │                                       │         │
+│    [1] │    Catppuccin                         │         │
+│    ━━━━│    Gruvbox                            │         │
+│        │    Nord                               │         │
+│   ╭─ Pr│    Tokyo Night                        │─────╮   │
+│   │    │    Solarized                          │     │   │
+│   │  > │    User 01                            │ A…  │   │
+│   ╰────│    User 02                            │─────╯   │
+│   ╭─ Wo│    User 03                            │─────╮   │
+│   │    │    User 04                            │     │   │
+│   │  /h│    User 05                            │     │   │
+│   │    │    User 06                            │     │   │
+│   ╰────│    User 07                            │─────╯   │
+│        │  > User 08                            │         │
+│    / to│                                       │         │
+│        │ ENTER to select | ESC to cancel       │         │
+╰────────╰───────────────────────────────────────╯─────────╯

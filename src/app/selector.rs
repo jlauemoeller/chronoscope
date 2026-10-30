@@ -789,6 +789,7 @@ impl App {
     /// and the transcript how big its area is.
     pub(super) fn push_viewports(&mut self) {
         self.push_help_interior();
+        self.push_theme_selector_rows();
         let area = ratatui::layout::Rect::new(0, 0, self.size.0, self.size.1);
         if super::layout::too_small(area) {
             return;

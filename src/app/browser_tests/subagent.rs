@@ -5,6 +5,7 @@
 use serde_json::json;
 use tuirealm::state::State;
 
+use super::theme_selector::{assert_all_have, mounted_themes};
 use super::*;
 use crate::components::transcript::Presentation;
 use crate::components::transcript::fixtures::{arc, prompt, reply, with_id};
@@ -916,4 +917,37 @@ fn with_the_claude_harness_a_call_without_a_transcript_shows_the_toast() {
     );
     assert_eq!(rig.app.subagent_depth(), 0);
     assert!(!mounted(&rig.app, Id::Subagent(1)));
+}
+
+#[test]
+fn a_preview_reaches_the_parent_transcript_behind_the_subagent_too() {
+    let mut rig = subagent_rig(120, 40);
+    rig.open_subagent(1);
+    let ids: Vec<Id> = mounted_themes(&rig.app).iter().map(|(id, _)| *id).collect();
+    assert!(ids.contains(&Id::Transcript) && ids.contains(&Id::Subagent(1)));
+    rig.open_themes();
+    rig.move_to(Key::Char('j'), "terminal");
+    assert_all_have(&rig.app, &theme("terminal"), 5);
+    let ids: Vec<Id> = mounted_themes(&rig.app).iter().map(|(id, _)| *id).collect();
+    assert!(ids.contains(&Id::Transcript) && ids.contains(&Id::Subagent(1)));
+    // Esc gives the old theme back to both, and Backspace shows the parent
+    // in it.
+    rig.close_themes();
+    assert_all_have(&rig.app, &theme("default"), 5);
+    assert_eq!(rig.focus(), Some(Id::Subagent(1)));
+    rig.back_to(0);
+    assert_all_have(&rig.app, &theme("default"), 4);
+}
+
+#[test]
+fn a_kept_theme_reaches_the_parent_transcript_behind_the_subagent_too() {
+    let mut rig = subagent_rig(120, 40);
+    rig.open_subagent(1);
+    rig.open_themes();
+    rig.move_to(Key::Char('j'), "terminal");
+    rig.press(Key::Enter);
+    rig.pump_until(|app| !app.application().mounted(&Id::ThemeSelector));
+    rig.back_to(0);
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_all_have(&rig.app, &theme("terminal"), 4);
 }

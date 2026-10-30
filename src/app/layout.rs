@@ -93,6 +93,9 @@ pub struct LayoutInput {
     pub session_empty: bool,
     /// The size the help overlay wants, borders included, while it is open.
     pub help: Option<Size>,
+    /// The size the theme selector wants, borders included, while it is
+    /// open.
+    pub theme_selector: Option<Size>,
 }
 
 /// The area of each visible component, in drawing order (overlays last).
@@ -180,6 +183,9 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
     }
     if let Some(wanted) = input.help {
         areas.push((Id::HelpOverlay, help_overlay_rect(area, wanted)));
+    }
+    if let Some(wanted) = input.theme_selector {
+        areas.push((Id::ThemeSelector, help_overlay_rect(area, wanted)));
     }
     if let Some(text_width) = input.toast_text_width {
         areas.push((Id::Toast, toast_rect(area, text_width)));
@@ -281,7 +287,7 @@ fn selector_help_line(overlay: Rect) -> Rect {
     }
 }
 
-/// The help overlay: `wanted` (its widest entry and its content, with the
+/// The help overlay and the theme selector: `wanted` (its widest entry and its content, with the
 /// border) but at most the screen less two columns either side and one row
 /// above and below, and centred.
 pub fn help_overlay_rect(area: Rect, wanted: Size) -> Rect {
@@ -670,6 +676,64 @@ mod tests {
             help_overlay_rect(Rect::new(0, 0, 120, 40), Size::new(72, 24)),
             Rect::new(24, 8, 72, 24)
         );
+    }
+
+    #[test]
+    fn the_theme_selector_is_centred_and_drawn_after_the_screen_and_before_the_toast() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            theme_selector: Some(Size::new(41, 12)),
+            toast_text_width: Some(10),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 120, 40));
+        assert_eq!(l.area(Id::ThemeSelector), Some(Rect::new(39, 14, 41, 12)));
+        let ids: Vec<Id> = l.areas().iter().map(|(id, _)| *id).collect();
+        let at = ids.iter().position(|i| *i == Id::ThemeSelector).unwrap();
+        assert_eq!(ids.len(), at + 2);
+        assert_eq!(ids[at + 1], Id::Toast);
+        assert!(ids[..at].contains(&Id::Transcript));
+    }
+
+    #[test]
+    fn the_theme_selector_is_over_the_selector_too() {
+        let input = LayoutInput {
+            screen: Screen::Selector,
+            theme_selector: Some(Size::new(41, 12)),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 80, 24));
+        assert_eq!(l.areas().last().unwrap().0, Id::ThemeSelector);
+        assert_eq!(l.area(Id::ThemeSelector), Some(Rect::new(19, 6, 41, 12)));
+        assert!(l.area(Id::SelectorFrame).is_some());
+    }
+
+    #[test]
+    fn the_theme_selector_is_capped_to_the_screen() {
+        let input = LayoutInput {
+            screen: Screen::Selector,
+            theme_selector: Some(Size::new(41, 21)),
+            ..LayoutInput::default()
+        };
+        // 60x20: 18 rows at most, and 41 columns fit.
+        let l = layout(&input, Rect::new(0, 0, 60, 20));
+        assert_eq!(l.area(Id::ThemeSelector), Some(Rect::new(9, 1, 41, 18)));
+        let wide = LayoutInput {
+            theme_selector: Some(Size::new(100, 12)),
+            ..input
+        };
+        let l = layout(&wide, Rect::new(0, 0, 60, 20));
+        assert_eq!(l.area(Id::ThemeSelector), Some(Rect::new(2, 4, 56, 12)));
+    }
+
+    #[test]
+    fn a_too_small_screen_shows_no_theme_selector() {
+        let input = LayoutInput {
+            theme_selector: Some(Size::new(41, 12)),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 50, 15));
+        assert_eq!(l.area(Id::ThemeSelector), None);
     }
 
     #[test]
