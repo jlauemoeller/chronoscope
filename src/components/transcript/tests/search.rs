@@ -1222,13 +1222,18 @@ fn a_hit_on_a_numbered_list_line_lands_on_its_own_row() {
 
 // ---- Markers are text outside markdown; the window of an undrawn match ----
 
-fn near(t: &mut Transcript, position: &str, line: usize) {
+/// The hit's neighbour `line N` is on screen, and `hit` is highlighted.
+fn near(t: &mut Transcript, position: &str, line: usize, hit: &str) {
     assert_eq!(shown(t).as_deref(), Some(position));
     let screen = rows(t);
     assert!(
         screen.contains(&format!("line {}", line - 1))
             || screen.contains(&format!("line {}", line + 1)),
         "line {line} on screen\n{screen}"
+    );
+    assert!(
+        highlighted(t).iter().any(|m| m == hit),
+        "{hit:?} highlighted\n{screen}"
     );
 }
 
@@ -1250,7 +1255,7 @@ fn a_hash_line_in_tool_output_is_not_taken_for_the_plain_line_after_it() {
     let lines = with_lines(filler(150, 100, "done"), &[(4, "# done"), (139, "done")]);
     let mut t = log_search(lines, "done", "1/3");
     ch(&mut t, 'n');
-    near(&mut t, "2/3", 100);
+    near(&mut t, "2/3", 100, "done");
 }
 
 #[test]
@@ -1258,7 +1263,7 @@ fn a_star_line_in_tool_output_is_not_taken_for_the_plain_line_after_it() {
     let lines = with_lines(filler(150, 100, "done"), &[(4, "* done"), (139, "done")]);
     let mut t = log_search(lines, "done", "1/3");
     ch(&mut t, 'n');
-    near(&mut t, "2/3", 100);
+    near(&mut t, "2/3", 100, "done");
 }
 
 #[test]
@@ -1267,7 +1272,7 @@ fn a_hash_line_before_a_plain_one_beyond_the_limit_is_expanded_and_shown() {
     let mut t = log_search(lines, "done", "1/3");
     ch(&mut t, 'n');
     assert!(t.content.folds.is_expanded(&tool()));
-    near(&mut t, "2/3", 350);
+    near(&mut t, "2/3", 350, "done");
 }
 
 #[test]
@@ -1275,7 +1280,7 @@ fn a_plain_line_before_a_hash_line_within_the_limit_is_shown() {
     let lines = with_lines(filler(150, 120, "# usb setup"), &[(4, "usb setup")]);
     let mut t = log_search(lines, "usb", "1/2");
     ch(&mut t, 'n');
-    near(&mut t, "2/2", 120);
+    near(&mut t, "2/2", 120, "usb");
 }
 
 #[test]
@@ -1284,7 +1289,7 @@ fn a_plain_line_before_a_hash_line_beyond_the_limit_is_expanded_and_shown() {
     let mut t = log_search(lines, "usb", "1/2");
     ch(&mut t, 'n');
     assert!(t.content.folds.is_expanded(&tool()));
-    near(&mut t, "2/2", 350);
+    near(&mut t, "2/2", 350, "usb");
 }
 
 #[test]
@@ -1292,7 +1297,7 @@ fn an_indented_line_before_a_star_line_is_shown() {
     let lines = with_lines(filler(150, 120, "* usb-fix"), &[(4, "  usb-fix")]);
     let mut t = log_search(lines, "usb", "1/2");
     ch(&mut t, 'n');
-    near(&mut t, "2/2", 120);
+    near(&mut t, "2/2", 120, "usb");
 }
 
 #[test]
@@ -1322,6 +1327,7 @@ fn a_hash_line_in_a_fenced_code_block_is_not_taken_for_the_plain_lines_after_it(
     assert_eq!(shown(&t).as_deref(), Some("2/3"));
     let screen = rows(&mut t);
     assert!(screen.contains("x19") || screen.contains("x21"), "{screen}");
+    assert!(highlighted(&mut t).iter().any(|m| m == "done"), "{screen}");
 }
 
 #[test]
@@ -1334,7 +1340,7 @@ fn a_hash_line_in_a_fenced_block_after_a_paragraph_is_found_on_its_own_row() {
     let mut t = markdown_turn(&text, 80);
     assert_eq!(search(&mut t, "usb").as_deref(), Some("1/2"));
     ch(&mut t, 'n');
-    assert_eq!(shown(&t).as_deref(), Some("2/2"));
+    assert_hit_shown(&mut t, "2/2", "# usb setup", "usb");
     let screen = rows(&mut t);
     assert!(screen.contains("make"), "{screen}");
 }
@@ -1355,18 +1361,24 @@ fn windowed(hit: &str) -> String {
 }
 
 /// Searches `usb`, expects `total` matches, and walks through them
-/// checking that `expected[i]` is on screen at the i-th.
-fn walk(text: &str, expected: &[&str]) -> Transcript {
+/// checking that `expected[i]` is on screen at the i-th, and, where its flag
+/// is set, that the row draws the query, highlighted.
+fn walk(text: &str, expected: &[(&str, bool)]) -> Transcript {
     let mut t = markdown_turn(text, 80);
     let total = expected.len();
     assert_eq!(
         search(&mut t, "usb").as_deref(),
         Some(format!("1/{total}").as_str())
     );
-    for (i, row) in expected.iter().enumerate() {
-        assert_eq!(shown(&t), Some(format!("{}/{total}", i + 1)));
-        let screen = rows(&mut t);
-        assert!(screen.contains(row), "{}/{total}: {row:?}\n{screen}", i + 1);
+    for (i, (row, drawn)) in expected.iter().enumerate() {
+        let position = format!("{}/{total}", i + 1);
+        if *drawn {
+            assert_hit_shown(&mut t, &position, row, "usb");
+        } else {
+            assert_eq!(shown(&t), Some(position.clone()));
+            let screen = rows(&mut t);
+            assert!(screen.contains(row), "{position}: {row:?}\n{screen}");
+        }
         ch(&mut t, 'n');
     }
     t
@@ -1377,9 +1389,9 @@ fn a_url_hit_before_a_drawn_one_on_the_same_line_stays_on_the_paragraph() {
     walk(
         &windowed("See [the docs](https://usb.org) for the usb port."),
         &[
-            "See the docs for the usb port.",
-            "See the docs for the usb port.",
-            "the second usb hit",
+            ("See the docs for the usb port.", true),
+            ("See the docs for the usb port.", true),
+            ("the second usb hit", true),
         ],
     );
 }
@@ -1388,7 +1400,10 @@ fn a_url_hit_before_a_drawn_one_on_the_same_line_stays_on_the_paragraph() {
 fn a_paragraph_with_only_a_url_hit_does_not_borrow_the_next_match() {
     walk(
         &windowed("Read [the spec](https://usb.org/spec) first."),
-        &["Read the spec first.", "the second usb hit"],
+        &[
+            ("Read the spec first.", false),
+            ("the second usb hit", true),
+        ],
     );
 }
 
@@ -1399,11 +1414,11 @@ fn several_undrawn_and_drawn_hits_on_one_line_stay_on_it() {
             "Use `lsusb` from [usbutils](https://github.com/gregkh/usbutils) to list usb devices.",
         ),
         &[
-            "Use lsusb from usbutils to list usb devices.",
-            "Use lsusb from usbutils to list usb devices.",
-            "Use lsusb from usbutils to list usb devices.",
-            "Use lsusb from usbutils to list usb devices.",
-            "the second usb hit",
+            ("Use lsusb from usbutils to list usb devices.", true),
+            ("Use lsusb from usbutils to list usb devices.", true),
+            ("Use lsusb from usbutils to list usb devices.", true),
+            ("Use lsusb from usbutils to list usb devices.", true),
+            ("the second usb hit", true),
         ],
     );
 }
@@ -1422,10 +1437,10 @@ fn a_link_and_a_fence_info_string_before_the_hit_do_not_shift_it() {
     walk(
         &paragraphs.join("\n\n"),
         &[
-            "See the docs and code.",
-            "plain block",
-            "the usb hit you want first",
-            "the second usb hit",
+            ("See the docs and code.", false),
+            ("plain block", false),
+            ("the usb hit you want first", true),
+            ("the second usb hit", true),
         ],
     );
 }
@@ -1453,9 +1468,8 @@ fn a_url_and_a_link_text_before_a_code_span_stay_on_the_paragraph() {
     assert_eq!(search(&mut t, query).as_deref(), Some("1/4"));
     ch(&mut t, 'n');
     ch(&mut t, 'n');
-    assert_eq!(shown(&t).as_deref(), Some("3/4"));
+    assert_hit_shown(&mut t, "3/4", "or serde_json", "serde");
     let screen = rows(&mut t);
-    assert!(screen.contains("or serde_json"), "{screen}");
     assert!(!screen.contains("the far serde line"), "{screen}");
 }
 
@@ -1468,13 +1482,12 @@ fn the_second_hit_with_nothing_undrawn_between_is_the_second_occurrence() {
     paragraphs.extend(filler_paragraphs("tail filler", 20));
     let mut t = markdown_turn(&paragraphs.join("\n\n"), 80);
     assert_eq!(search(&mut t, "usb").as_deref(), Some("1/2"));
+    assert_hit_shown(&mut t, "1/2", "the usb one", "usb");
     let screen = rows(&mut t);
-    assert!(screen.contains("the usb one"), "{screen}");
     assert!(!screen.contains("the usb two"), "{screen}");
     ch(&mut t, 'n');
-    assert_eq!(shown(&t).as_deref(), Some("2/2"));
+    assert_hit_shown(&mut t, "2/2", "the usb two", "usb");
     let screen = rows(&mut t);
-    assert!(screen.contains("the usb two"), "{screen}");
     assert!(!screen.contains("the usb one"), "{screen}");
 }
 
@@ -1486,5 +1499,28 @@ fn a_row_that_reads_like_a_line_but_ends_a_longer_one_is_not_taken_for_it() {
     let lines = with_lines(filler(100, 60, "done"), &[(4, long.as_str())]);
     let mut t = log_search(lines, "done", "1/2");
     ch(&mut t, 'n');
-    near(&mut t, "2/2", 60);
+    near(&mut t, "2/2", 60, "done");
+}
+
+#[test]
+fn a_repeated_context_line_of_an_edit_lands_on_its_own_hunk() {
+    let side = |tag: &str| -> String {
+        (0..62)
+            .map(|n| match n {
+                0 | 57 => "usb ctx\n".to_owned(),
+                1..=20 | 56 => format!("{tag} {n}\n"),
+                _ => format!("c {n}\n"),
+            })
+            .collect()
+    };
+    let mut t = tool_turn(
+        crate::model::ToolKind::Edit,
+        json!({"file_path": "/a/b.rs", "old_string": side("old"), "new_string": side("new")}),
+        "ok",
+    );
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/4"));
+    assert_hit_shown(&mut t, "1/4", "@@ -1,24 +1,24 @@", "usb");
+    assert!(!rows(&mut t).contains("@@ -54,7 +54,7 @@"));
+    ch(&mut t, 'n');
+    assert_hit_shown(&mut t, "2/4", "@@ -54,7 +54,7 @@", "usb");
 }

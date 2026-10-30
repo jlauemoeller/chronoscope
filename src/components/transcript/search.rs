@@ -797,7 +797,7 @@ impl<'a> SectionView<'a> {
             return None;
         }
         let (mut earlier, mut written) = (0, 0);
-        for (i, _) in self.source.squashed.iter().enumerate() {
+        for i in 0..self.source.squashed.len() {
             if self.source.is_drawing_of(i, line) {
                 written += 1;
                 if i < index {
@@ -811,10 +811,11 @@ impl<'a> SectionView<'a> {
         } else if drawn == written || self.truncated {
             nth
         } else if self.source.diff {
-            // The context lines of a diff are written in the old and in the
-            // new text and drawn once. When such a line repeats in the file,
-            // the surplus occurrences land on the row of the last copy.
-            last
+            // A diff draws each context line once, although both the old and
+            // the new text contain it. The n-th copy is on its own row when
+            // there is one; the occurrences beyond the drawn copies
+            // (`earlier >= drawn`) fall back to the last copy's row.
+            nth.or(last)
         } else {
             None
         }
@@ -881,7 +882,8 @@ impl<'a> SectionView<'a> {
             return None;
         }
         // Source order is not draw order: a later line drawn above the
-        // window does not end it.
+        // window does not end it. One drawn at the window start does, after
+        // that row, on purpose.
         let until = (found.line + 1
             ..self
                 .source
