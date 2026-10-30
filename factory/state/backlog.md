@@ -31,7 +31,7 @@
 | 027-subagent-transcripts | Complete |
 | 028-opencode-adapter | Complete |
 | 029-opencode-live-watch | Complete |
-| 030-help-overlay | In progress |
+| 030-help-overlay | Complete |
 | 031-theme-selector | Planned |
 | 032-resume-in-harness | Planned |
 | 033-command-line-args | Planned |
