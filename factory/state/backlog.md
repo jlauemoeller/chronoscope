@@ -32,7 +32,7 @@
 | 028-opencode-adapter | Complete |
 | 029-opencode-live-watch | Complete |
 | 030-help-overlay | Complete |
-| 031-theme-selector | Planned |
+| 031-theme-selector | In progress |
 | 032-resume-in-harness | Planned |
 | 033-command-line-args | Planned |
 | 034-selector-mouse | Planned |
