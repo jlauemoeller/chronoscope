@@ -1,0 +1,40 @@
+Assistant title, model claude-opus-5.5 @ high (fixture), default theme, utc = true.
+Rendered in the scratch crate (TestBackend). Note how the model shrinks to a stub to keep
+the timestamp at 44-50, while at 42 the full model shows without the timestamp.
+
+##### r2 short model @ 64 (height 5)
+╭─ Assistant ── claude-opus-5.5 @ high ─ 2026-10-21 08:35:18Z ─╮
+##### r2 short model @ 60 (height 5)
+╭─ Assistant ── claude-opus-5.5 @… ─ 2026-10-21 08:35:18Z ─╮
+##### r2 short model @ 50 (height 5)
+╭─ Assistant ── claude-… ─ 2026-10-21 08:35:18Z ─╮
+##### r2 short model @ 46 (height 5)
+╭─ Assistant ── cla… ─ 2026-10-21 08:35:18Z ─╮
+##### r2 short model @ 44 (height 5)
+╭─ Assistant ── c… ─ 2026-10-21 08:35:18Z ─╮
+##### r2 short model @ 42 (height 5)
+╭─ Assistant ── claude-opus-5.5 @ high ──╮
+##### r2 short model @ 40 (height 5)
+╭─ Assistant ── claude-opus-5.5 @ h… ──╮
+
+Long model claude-opus-5.5-20261021-extended-context-preview-1m @ xhigh:
+##### r2 long model @ 60 (height 5)
+╭─ Assistant ── claude-opus-5.5-2… ─ 2026-10-21 08:35:18Z ─╮
+##### r2 long model @ 50 (height 5)
+╭─ Assistant ── claude-… ─ 2026-10-21 08:35:18Z ─╮
+##### r2 long model @ 40 (height 5)
+╭─ Assistant ── claude-opus-5.5-202… ──╮
+
+Cut left title runs into the fill with no trailing space (round-1 nit 4, second half):
+##### r2 long model @ 16 (height 5)
+╭─ Assistant…──╮
+##### r2 long model @ 12 (height 5)
+╭─ Assis…──╮
+##### r2 long model @ 10 (height 6)
+╭─ Ass…──╮
+##### r2 long model @ 8 (height 7)
+╭─ A…──╮
+##### r2 user tiny @ 10 (height 6)
+╭─ Use…──╮
+##### r2 user tiny @ 8 (height 6)
+╭─ U…──╮

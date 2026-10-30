@@ -1,0 +1,12 @@
+##### long model @ 80 (height 5)
+╭─ Assistant ── claude-opus-5.5-20261021-extended-context-preview-1m @ xhigh ──╮
+│                                                                              │
+│   Hi.                                                                        │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+##### long model @ 60 (height 5)
+╭─ Assistant ── claude-opus-5.5-20261021-extended-contex…──╮
+│                                                          │
+│   Hi.                                                    │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
