@@ -1,0 +1,35 @@
+VERDICT: FAIL
+
+## Summary
+The `ThemeSelector` overlay matches the task's `UI` section in every listed state: layout, column positions, centring, the ring/surface/primary/foreground/muted/help roles, and the whole screen re-themed during preview. The required snapshots are present and pass with `INSTA_UPDATE=no`. One behaviour bug blocks: when the list scrolls, an invalid theme at the start or end of the list (outside the selectable range) can never be scrolled into view, so it is not listed as §8.4 requires.
+
+## States checked
+- Opened over the browser @ 120x40, cursor on Default (text + styled) — snapshots `the_themes_over_the_browser_120x40_default_text` / `_default_styled` — ok. Overlay is 41x12 at (39,14), so it is centred. The `>` marker is in column 3 in `primary` (229,229,229) and the label starts in column 5 in bold `foreground` (250,250,250). Other rows are `muted_foreground` (161,161,161). The border is `ring` (207,207,207) on `surface` (18,18,18). The title is in `foreground`. The help row starts in column 2, with `help_key`/`help_text`.
+- After `j` x3, Gruvbox @ 120x40 (styled) — snapshot `the_themes_after_three_j_120x40_gruvbox_styled` — ok. The cursor is on Gruvbox. The browser behind uses Gruvbox `background` (40,40,40) and Gruvbox tokens. The overlay uses Gruvbox `surface` (50,48,47), `ring` (229,174,46) and `primary` (250,189,47).
+- Opened over the selector @ 80x24 (text) — snapshot `the_themes_over_the_selector_80x24_text` — ok. Overlay at (19,6), drawn over the panes.
+- Two user themes, one invalid @ 120x40 (text + styled) — snapshots `the_themes_with_two_user_themes_one_invalid_120x40_text` / `_styled` — ok. `Aurora` follows the built-ins, and `my-theme (invalid)` is in `muted_foreground`.
+- Scrolled list, cursor near the end @ 60x20 (text) — snapshot `sixteen_themes_at_60x20_scroll_with_the_cursor_near_the_end` — ok. 16 themes are used instead of 12; see nit 2.
+- Component snapshots `snapshot_builtins_text`/`_styled`, `snapshot_scrolled_text` and `snapshot_with_an_invalid_user_theme_styled` — ok.
+- 12 themes @ 60x20, cursor on last — rendered in scratch crate — ok. All 12 fit (overlay 41x17) and the list does not scroll, which confirms the arithmetic behind nit 2.
+- 16 themes @ 60x20, down to the end then back up — rendered in scratch crate — ok. The list scrolls by the least amount and shows the cursor in both directions. There is no wrap, and a move at either end returns no `Msg`.
+- Trailing invalid user theme in a scrolled list @ 60x20 — rendered in scratch crate — **issue**, see finding 1.
+- Invalid `default.toml` replacing the first built-in, scrolled list @ 60x20 — rendered in scratch crate — **issue**, see finding 1.
+- Active theme id is an invalid user theme @ 80x24 — rendered in scratch crate — ok. The cursor falls back to the first selectable row, and `broken (invalid)` is muted.
+- Transparent background (Nord, `transparent_background = true`) @ 60x20 (styled) — rendered in scratch crate — ok. Only `Clear` is used, there is no `surface` fill (bg `Reset`), and the border is in `ring`.
+- Terminal theme @ 60x20 (styled) — rendered in scratch crate — ok. The ANSI `ring`/`surface`/`primary`/`muted_foreground` are used, and the cursor label is bold `Reset`.
+- `NO_COLOR` (previewing Gruvbox) @ 60x20 (styled) — rendered in scratch crate — ok. Everything is colourless, and only the cursor row's bold marks the selection.
+- Wide characters in user theme names (CJK, emoji) @ 80x24 — rendered in scratch crate — ok. Widths and the right border stay aligned.
+- Long user theme name (70 columns) @ 120x40 and 80x24 — rendered in scratch crate — ok at 120x40 (overlay 80 wide), cosmetic issue at 80x24 (see nit 3).
+- `INSTA_UPDATE=no cargo test --lib theme_selector` — 84 passed, and no snapshot files changed.
+
+## Findings
+1. [must-fix] ThemeSelector, any state where the list scrolls (seen at 60x20) — invalid rows outside the selectable range can never be scrolled into view. The offset only follows the cursor, and the cursor never lands on an invalid row. So when the list overflows:
+   - A trailing invalid user theme is never shown. User themes sort alphabetically, so any broken theme whose id sorts after the last valid one is last in the list. With 9 valid user themes and `zz-broken.toml` at 60x20, pressing `j` to the end stops on `User 09`, and `zz-broken (invalid)` never appears.
+   - An invalid entry at index 0 disappears for good once the list has scrolled. This happens with an invalid user `default.toml`, which replaces the built-in as an invalid entry. After scrolling down and back up, the offset stops at `Terminal`.
+
+   §8.4 says an invalid theme "is listed muted with `(invalid)`", and that row is the user's only in-app sign that their theme is broken. No test or snapshot covers it.
+
+   Change: when the cursor is on the last selectable row, choose the offset so the run of non-selectable rows after it, up to the end of the list, is also visible (offset = `min(len - visible, …)` so the last row shows). Likewise, when the cursor is on the first selectable row, include any non-selectable rows before it (offset 0 if they fit with the cursor). Keep `view` free of side effects, for example by computing this in `ThemeSelector`'s offset helper rather than in `ListCursor`, which other lists share. Add a component test and a text snapshot of a scrolled list at 60x20 with a trailing invalid theme and the cursor on the last valid theme, showing `<id> (invalid)` on the last row. See `ui/theme-selector-trailing-invalid-60x20.txt` and `ui/theme-selector-leading-invalid-60x20.txt`.
+2. [nit] Scrolled-list snapshot, 60x20 — the task's UI state 5 / acceptance criterion says "12 themes at 60x20", but the binding height rule `min(h − 2, rows + 5)` gives 17 rows for 12 themes, and 60x20 allows 18, so 12 themes fit without scrolling. I confirmed this in the scratch crate. The Builder documented this, kept the binding formula, added `twelve_themes_fit_exactly_at_60x20` as the boundary test, and used 16 themes for the scrolled snapshot. That is the right call. It is recorded here so the Approver sees the contradiction in the task text. Change: none needed in code, but the planner may want to correct the task text to "16 themes".
+3. [nit] ThemeSelector, long user theme name, 80x24 — the overlay width is capped at `w − 4`. A 70-column name then runs straight into the right border with no gap, and a longer name would be clipped mid-word with no ellipsis. The spec doesn't pin truncation. Change (optional): truncate labels to the inner width minus the 4-column indent and 1-column right gap with `truncate_with_ellipsis`, as the other lists do. See `ui/theme-selector-long-label-80x24.txt`.
+4. [nit] Over the browser and the selector, all sizes — while the overlay has focus, the screen's own help line underneath (`/ to search | ENTER to fold or unfold sections | …`) stays visible, although none of those keys work while the overlay is open. This matches the existing help overlay behaviour and the spec doesn't address it. Mentioned only for consistency review; no change required.
