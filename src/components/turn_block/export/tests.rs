@@ -337,3 +337,36 @@ fn a_fence_of_the_export_holds_the_backticks_of_the_output() {
 fn a_trailing_newline_of_the_content_is_not_doubled() {
     assert_eq!(fenced("", "a\nb\n"), "```\na\nb\n```");
 }
+
+#[test]
+fn folded_summaries_escape_what_a_renderer_would_take_for_markup() {
+    let text = export(&session(), &FoldState::new(), false, false);
+    assert!(
+        text.contains("> Read the &lt;dump> &amp; friends\n"),
+        "{text}"
+    );
+    assert!(!text.contains("<dump>"));
+}
+
+#[test]
+fn an_unknown_working_directory_is_written_as_unknown() {
+    let theme = theme();
+    let formatter = formatter();
+    let folds = FoldState::new();
+    let settings = ExportSettings {
+        theme: &theme,
+        formatter: &formatter,
+        folds: &folds,
+        truncate: 20,
+        open_key: "a",
+        show_system: true,
+        block_width: None,
+    };
+    let meta = ExportMeta {
+        cwd: String::new(),
+        ..meta()
+    };
+    let text = export_markdown(Some(&meta), &[], &settings, false);
+    assert!(text.contains("- Working directory: (unknown)\n"), "{text}");
+    assert!(!text.contains(" \n"), "no trailing spaces");
+}

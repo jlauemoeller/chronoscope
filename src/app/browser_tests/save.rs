@@ -603,6 +603,25 @@ fn a_symlink_into_harness_data_is_refused() {
     assert!(!data.join("out.txt").exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn a_dangling_symlink_into_harness_data_is_refused_without_asking() {
+    let (mut rig, dir) = save_rig(120, 40);
+    let data = protected(&rig, &dir);
+    // The link exists, what it points to does not: a write through it would
+    // create the file in the data directory.
+    std::os::unix::fs::symlink(data.join("new.txt"), dir.path().join("dangling.txt")).unwrap();
+    std::os::unix::fs::symlink("data/projects/rel.txt", dir.path().join("relative.txt")).unwrap();
+    for (link, target) in [
+        ("dangling.txt", "new.txt"),
+        ("relative.txt", "projects/rel.txt"),
+    ] {
+        refused(&mut rig, link);
+        assert!(!data.join(target).exists(), "{target}");
+    }
+    assert!(!rig.app.write_prompt_open());
+}
+
 #[test]
 fn an_existing_file_in_harness_data_is_refused_without_asking() {
     let (mut rig, dir) = save_rig(120, 40);

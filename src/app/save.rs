@@ -18,7 +18,9 @@ use std::path::{Component, Path, PathBuf};
 
 use super::layout::Screen;
 use super::{App, Id};
-use crate::components::{Prompt, PromptMode};
+use unicode_width::UnicodeWidthStr;
+
+use crate::components::{MAX_TOAST_WIDTH, Prompt, PromptMode, TOAST_CHROME, tail_fitting};
 use crate::paths::expand_tilde;
 use crate::theme::Role;
 
@@ -47,11 +49,15 @@ impl WriteKind {
         }
     }
 
+    /// `Saved to <path>` or `Exported to <path>`; a path too long for the
+    /// toast is cut at its start with `…`, so that the file name stays.
     fn done(self, path: &str) -> String {
-        match self {
-            WriteKind::Save => format!("Saved to {path}"),
-            WriteKind::Export => format!("Exported to {path}"),
-        }
+        let prefix = match self {
+            WriteKind::Save => "Saved to ",
+            WriteKind::Export => "Exported to ",
+        };
+        let room = usize::from(MAX_TOAST_WIDTH - TOAST_CHROME).saturating_sub(prefix.width());
+        format!("{prefix}{}", tail_fitting(path, room))
     }
 
     fn failed(self, error: &std::io::Error) -> String {
@@ -81,11 +87,13 @@ struct Overwrite {
 impl App {
     /// Sets the directory relative paths are resolved against; the directory
     /// the application started in unless a test says another.
+    #[doc(hidden)]
     pub fn set_save_dir(&mut self, dir: PathBuf) {
         self.save_dir = dir;
     }
 
     /// Sets the home directory `~` stands for (`None`: `~` is not expanded).
+    #[doc(hidden)]
     pub fn set_home_dir(&mut self, home: Option<PathBuf>) {
         self.home_dir = home;
     }
@@ -255,7 +263,9 @@ impl App {
     }
 
     /// Whether `path` is inside a directory a harness reads its data from
-    /// (SPEC §9.5: chronoscope never writes there).
+    /// (SPEC §9.5: chronoscope never writes there). The check is made when
+    /// the path is given, not again when the file is written, so a link made
+    /// in between is not caught.
     fn is_harness_data(&self, path: &Path) -> bool {
         let target = resolved(path);
         self.harnesses
@@ -278,10 +288,21 @@ pub fn sanitize_for_file_name(name: &str) -> String {
         .collect()
 }
 
+/// How many symlinks [`resolved`] follows before it gives up.
+const MAX_LINK_HOPS: usize = 40;
+
 /// `path` as an absolute path without `..` and symlinks, as far as it can be
 /// told: the longest part of it that exists is canonicalised and the rest is
-/// appended, with `.` and `..` resolved in the text.
+/// appended, with `.` and `..` resolved in the text. A symlink in that rest
+/// (one that points to something that does not exist yet) is followed, so
+/// that a link to a new file is the file it would create.
+///
+/// The answer is a snapshot: a link made after it is not seen.
 fn resolved(path: &Path) -> PathBuf {
+    resolved_in(path, MAX_LINK_HOPS)
+}
+
+fn resolved_in(path: &Path, hops: usize) -> PathBuf {
     let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
     let components: Vec<Component<'_>> = absolute.components().collect();
     for split in (1..=components.len()).rev() {
@@ -289,7 +310,7 @@ fn resolved(path: &Path) -> PathBuf {
         let Ok(mut real) = prefix.canonicalize() else {
             continue;
         };
-        for component in &components[split..] {
+        for (at, component) in components[split..].iter().enumerate() {
             match component {
                 Component::ParentDir => {
                     real.pop();
@@ -297,6 +318,20 @@ fn resolved(path: &Path) -> PathBuf {
                 Component::CurDir => {}
                 other => real.push(other),
             }
+            let Ok(target) = std::fs::read_link(&real) else {
+                continue;
+            };
+            if hops == 0 {
+                return real;
+            }
+            // A link that does not lead anywhere yet: what it names, then
+            // what comes after it.
+            let mut next = match real.parent() {
+                Some(parent) => parent.join(target),
+                None => target,
+            };
+            next.extend(components[split + at + 1..].iter());
+            return resolved_in(&next, hops - 1);
         }
         return real;
     }
@@ -318,6 +353,19 @@ mod tests {
     }
 
     #[test]
+    fn a_success_toast_keeps_the_end_of_a_long_path() {
+        assert_eq!(WriteKind::Save.done("./a.txt"), "Saved to ./a.txt");
+        let long = format!(
+            "/home/user/{}/brio-85a86657-shell.txt",
+            "directory/".repeat(8)
+        );
+        let toast = WriteKind::Export.done(&long);
+        assert!(toast.starts_with("Exported to …"), "{toast}");
+        assert!(toast.ends_with("/brio-85a86657-shell.txt"), "{toast}");
+        assert_eq!(toast.width(), usize::from(MAX_TOAST_WIDTH - TOAST_CHROME));
+    }
+
+    #[test]
     fn a_path_is_resolved_through_its_existing_part() {
         let dir = tempfile::tempdir().unwrap();
         let real = dir.path().canonicalize().unwrap();
@@ -329,6 +377,41 @@ mod tests {
             real.join("a/z.txt")
         );
         assert_eq!(resolved(&real.join("./a")), real.join("a"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_symlink_is_followed_to_where_it_points() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().canonicalize().unwrap();
+        std::fs::create_dir(real.join("data")).unwrap();
+        // To a file that does not exist, absolute and relative, and a chain.
+        std::os::unix::fs::symlink(real.join("data/new.txt"), real.join("abs")).unwrap();
+        std::os::unix::fs::symlink("data/new.txt", real.join("rel")).unwrap();
+        std::os::unix::fs::symlink("abs", real.join("chain")).unwrap();
+        for link in ["abs", "rel", "chain"] {
+            assert_eq!(
+                resolved(&real.join(link)),
+                real.join("data/new.txt"),
+                "{link}"
+            );
+        }
+        // Through a link to a directory that does not exist, then on.
+        std::os::unix::fs::symlink(real.join("data/later"), real.join("dir")).unwrap();
+        assert_eq!(
+            resolved(&real.join("dir/x.txt")),
+            real.join("data/later/x.txt")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_loop_of_symlinks_ends() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().canonicalize().unwrap();
+        std::os::unix::fs::symlink(real.join("b"), real.join("a")).unwrap();
+        std::os::unix::fs::symlink(real.join("a"), real.join("b")).unwrap();
+        let _ = resolved(&real.join("a"));
     }
 
     #[cfg(unix)]

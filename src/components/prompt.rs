@@ -227,7 +227,7 @@ impl Prompt {
 
 /// `text` cut at its start, with `…` in front, to fit `width` columns; the
 /// text itself when it fits.
-fn tail_fitting(text: &str, width: usize) -> String {
+pub fn tail_fitting(text: &str, width: usize) -> String {
     use unicode_width::UnicodeWidthStr;
     if text.width() <= width {
         return text.to_owned();

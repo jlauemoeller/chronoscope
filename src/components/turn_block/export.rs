@@ -10,7 +10,8 @@
 //! - prompts and assistant text are written as their markdown source;
 //! - thinking is a block quote;
 //! - a folded section (in the folded export) is its summary, as a block
-//!   quote: `▶ Find the BRIO on USB` becomes `> Find the BRIO on USB`;
+//!   quote: `▶ Find the BRIO on USB` becomes `> Find the BRIO on USB` (with
+//!   `&` and `<` escaped, so that `<dump>` is not read as a tag);
 //! - an unfolded tool call (in the folded export) is its description in bold,
 //!   then each label in bold with its content in a fenced code block, as it
 //!   is displayed (a truncated output ends in its `… N more lines` row);
@@ -103,9 +104,14 @@ fn header(meta: &ExportMeta, formatter: &TimestampFormatter) -> String {
     let title = meta.title.trim();
     let title = if title.is_empty() { "Session" } else { title };
     let started = formatter.format(meta.started);
+    let cwd = if meta.cwd.is_empty() {
+        "(unknown)"
+    } else {
+        &meta.cwd
+    };
     format!(
-        "# {title}\n\n- Project: {}\n- Session: {}\n- Working directory: {}\n- Started: {started}\n- Harness: {}",
-        meta.project, meta.session_id, meta.cwd, meta.harness
+        "# {title}\n\n- Project: {}\n- Session: {}\n- Working directory: {cwd}\n- Started: {started}\n- Harness: {}",
+        meta.project, meta.session_id, meta.harness
     )
 }
 
@@ -139,7 +145,7 @@ fn section_markdown(
             settings.open_key,
             settings.block_width,
         )
-        .map(|text| quote(&text))
+        .map(|text| quote(&escape_inline(&text)))
     };
     let text = match section.content {
         SectionContent::Prompt(text) | SectionContent::Text(text) => {
@@ -246,7 +252,8 @@ fn unfolded_tool(call: &ToolCall, section: &Section<'_>, settings: &ExportSettin
         verbatim: false,
     };
     let parts = ToolCallSection(call).plain_parts(&ctx);
-    let mut blocks = vec![format!("**{}**", parts.description.join(" "))];
+    let description = escape_inline(&parts.description.join(" "));
+    let mut blocks = vec![format!("**{description}**")];
     for block in parts.blocks {
         blocks.push(format!("**{}**", block.label));
         let info = if call.tool == ToolKind::Shell && block.label == "Command:" {
@@ -304,6 +311,12 @@ fn system_entries(entries: &[InjectedEntry]) -> String {
 /// `text` on one line, its runs of whitespace single spaces.
 fn one_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// `text` with `&` and `<` replaced, so that a renderer shows them as they
+/// are (`<dump>` is not an HTML tag) in a summary written as plain text.
+fn escape_inline(text: &str) -> String {
+    text.replace('&', "&amp;").replace('<', "&lt;")
 }
 
 /// `text` with the characters HTML gives a meaning replaced.

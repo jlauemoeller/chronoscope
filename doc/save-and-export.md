@@ -23,7 +23,13 @@ content, `e` / `Ctrl-e` export the session as markdown as currently folded, and
   failure.
 - chronoscope never writes inside a harness's data directory (SPEC §9.5): a
   path there is refused with `Refusing to write into harness data`. Paths are
-  compared after resolving `..` and symlinks.
+  compared after resolving `..` and symlinks, including a symlink that points
+  to a file that does not exist yet. The check is made when the path is given;
+  a link made between that and the write is not caught.
+- A path too long for the toast is shown cut at its start (`Exported to …name.md`).
+- Known cost: `E` builds the whole document, reading every lazy tool output
+  back from the transcript, when the key is pressed, on the UI thread and before
+  the path is confirmed; on a very large session that is a pause.
 
 ## The markdown export
 

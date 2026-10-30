@@ -33,7 +33,7 @@ pub use list_pane::{
     selected_value, visible_rows,
 };
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
-pub use prompt::{Prompt, PromptMode};
+pub use prompt::{Prompt, PromptMode, tail_fitting};
 pub use selector_frame::SelectorFrame;
 pub use session_list::{
     ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR,
