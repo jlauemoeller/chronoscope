@@ -4,7 +4,7 @@
 |------|--------|
 | 001-scaffold-crate | Complete |
 | 002-theme-model | Complete |
-| 003-config-file | In progress |
+| 003-config-file | Complete |
 | 004-theme-registry | Planned |
 | 005-keymap-bindings | Planned |
 | 006-claude-turn-assembly | Planned |
