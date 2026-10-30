@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::{
     Block, Body, PENDING, SectionCtx, ToolBodyRenderer, ellipsize, limit, muted_block, str_field,
-    truncate_lines,
+    truncate_lines, unavailable_block,
 };
 use crate::markdown::render_markdown;
 use crate::model::{ToolCall, ToolStatus};
@@ -72,12 +72,7 @@ impl ToolBodyRenderer for SubagentBody {
                     };
                     markdown_block("Result:", shown, ctx.theme.style(token), ctx)
                 }
-                Err(err) => {
-                    log::warn!("subagent result of {} unavailable: {err}", call.id);
-                    let message = format!("(output unavailable: {err})");
-                    let error = ctx.theme.style(Token::ErrorOutput);
-                    super::text_block("Result:", &message, error, ctx)
-                }
+                Err(err) => unavailable_block("Result:", call, &err, ctx),
             },
         });
         let hint = Line::from(Span::styled(

@@ -436,3 +436,26 @@ fn failed_edit_shows_its_error_below_the_diff_at_100_styled() {
     );
     insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &unfolded(&turn), 100)));
 }
+
+#[test]
+fn failed_edit_with_a_truncated_diff_shows_its_error_first_at_100_text() {
+    let old: String = (1..=10).map(|n| format!("let step_{n} = {n};\n")).collect();
+    let turn = assistant(
+        Some("high"),
+        vec![tool_of(
+            ToolKind::Edit,
+            "c1",
+            "Drop the setup lines",
+            json!({
+                "file_path": "/home/jacob/projects/brio/src/main.rs",
+                "old_string": old,
+                "new_string": "",
+            }),
+            Some(("String to replace not found in file.", true)),
+            ToolStatus::Error,
+        )],
+        None,
+    );
+    let opts = unfolded(&turn).truncate(5);
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &opts, 100)));
+}

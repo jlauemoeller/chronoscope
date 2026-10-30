@@ -28,12 +28,14 @@ impl ToolBodyRenderer for WriteBody {
                 blocks: vec![path_block, muted_block("Content:", "(no content)", ctx)],
                 ..Body::default()
             };
-            return with_status_result(body, call, ctx);
+            return with_status_result(body, call, ctx, false);
         };
         let extension = path
             .and_then(|p| std::path::Path::new(p).extension())
             .and_then(|e| e.to_str())
             .unwrap_or("");
+        // Whether the content is cut at the configured limit, expanded or not.
+        let content_cut = truncate_lines(content, ctx.truncate).1 > 0;
         let (shown, cut) = truncate_lines(content, limit(ctx));
         let highlighted = highlight_code(shown, extension, ctx.theme);
         let mut lines: Vec<Line<'static>> = wrap_styled_lines(&highlighted, ctx.body_width());
@@ -51,7 +53,7 @@ impl ToolBodyRenderer for WriteBody {
             remaining: (cut > 0).then_some(cut),
             hint: None,
         };
-        with_status_result(body, call, ctx)
+        with_status_result(body, call, ctx, content_cut)
     }
 }
 
@@ -140,7 +142,7 @@ mod tests {
         let call = call(
             ToolKind::Write,
             json!({"file_path": "/a.txt", "content": content}),
-            None,
+            Some("created"),
         );
         let ctx = SectionCtx {
             truncate: 3,
@@ -206,5 +208,91 @@ mod tests {
             Some("created"),
         );
         assert_eq!(self::body(&ok, &theme, 60).blocks.len(), 2);
+    }
+
+    fn labels(body: &Body) -> Vec<&'static str> {
+        body.blocks.iter().map(|b| b.label).collect()
+    }
+
+    fn at(truncate: usize, expanded: bool, theme: &crate::theme::Theme) -> SectionCtx<'_> {
+        SectionCtx {
+            truncate,
+            expanded,
+            ..SectionCtx::new(theme, 60, false)
+        }
+    }
+
+    fn ten_lines(prefix: &str) -> String {
+        (1..=10).map(|n| format!("{prefix}{n}\n")).collect()
+    }
+
+    fn write(content: &str, result: Option<&str>, status: ToolStatus) -> ToolCall {
+        let mut call = call(
+            ToolKind::Write,
+            json!({"file_path": "/a.txt", "content": content}),
+            result,
+        );
+        call.status = status;
+        call
+    }
+
+    #[test]
+    fn failed_short_content_long_error_puts_the_truncated_result_last() {
+        let theme = theme();
+        let call = write("a\nb\n", Some(&ten_lines("err")), ToolStatus::Error);
+        let body = WriteBody.body(&call, &at(4, false, &theme));
+        assert_eq!(labels(&body), ["Path:", "Content:", "Result:"]);
+        assert_eq!(body.blocks[2].lines.len(), 4);
+        assert_eq!(body.remaining, Some(6));
+        let body = WriteBody.body(&call, &at(4, true, &theme));
+        assert_eq!(labels(&body), ["Path:", "Content:", "Result:"]);
+        assert_eq!(body.blocks[2].lines.len(), 10);
+        assert_eq!(body.remaining, None);
+    }
+
+    #[test]
+    fn failed_long_content_short_error_puts_the_result_before_the_content() {
+        let theme = theme();
+        let call = write(&ten_lines("c"), Some("denied"), ToolStatus::Error);
+        for expanded in [false, true] {
+            let body = WriteBody.body(&call, &at(4, expanded, &theme));
+            assert_eq!(labels(&body), ["Path:", "Result:", "Content:"]);
+            assert_eq!(body.blocks[1].lines[0].to_string(), "denied");
+            assert_eq!(body.blocks[2].lines.len(), if expanded { 10 } else { 4 });
+            assert_eq!(body.remaining, (!expanded).then_some(6));
+        }
+    }
+
+    #[test]
+    fn failed_long_content_and_long_error_show_the_error_in_full() {
+        let theme = theme();
+        let call = write(&ten_lines("c"), Some(&ten_lines("err")), ToolStatus::Error);
+        for expanded in [false, true] {
+            let body = WriteBody.body(&call, &at(4, expanded, &theme));
+            assert_eq!(labels(&body), ["Path:", "Result:", "Content:"]);
+            assert_eq!(body.blocks[1].lines.len(), 10);
+            assert_eq!(body.remaining, (!expanded).then_some(6));
+        }
+    }
+
+    #[test]
+    fn pending_long_content_puts_pending_before_the_content() {
+        let theme = theme();
+        let call = write(&ten_lines("c"), None, ToolStatus::Pending);
+        for expanded in [false, true] {
+            let body = WriteBody.body(&call, &at(4, expanded, &theme));
+            assert_eq!(labels(&body), ["Path:", "Result:", "Content:"]);
+            assert_eq!(body.blocks[1].lines[0].to_string(), "(pending)");
+            assert_eq!(body.remaining, (!expanded).then_some(6));
+        }
+    }
+
+    #[test]
+    fn a_successful_long_write_has_no_result_block() {
+        let theme = theme();
+        let call = write(&ten_lines("c"), Some("created"), ToolStatus::Ok);
+        let body = WriteBody.body(&call, &at(4, false, &theme));
+        assert_eq!(labels(&body), ["Path:", "Content:"]);
+        assert_eq!(body.remaining, Some(6));
     }
 }

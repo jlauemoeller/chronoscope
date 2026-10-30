@@ -65,10 +65,13 @@ pub struct Block {
 pub struct Body {
     /// The labelled blocks, in order.
     pub blocks: Vec<Block>,
-    /// How many logical lines were cut from the last block, if any.
+    /// How many logical lines were cut from the body's last block, which is
+    /// always the truncatable one. The `… N more lines` row goes directly
+    /// under it.
     pub remaining: Option<usize>,
-    /// A final row at the label column, after a blank row (the subagent's
-    /// "open transcript" hint).
+    /// A row at the label column after the blocks, preceded by a blank row
+    /// (the subagent's "open transcript" hint). It comes before the
+    /// `… N more lines` row, if there is one.
     pub hint: Option<Line<'static>>,
 }
 
@@ -334,16 +337,39 @@ pub(super) fn unavailable_block(
     text_block(label, &message, ctx.theme.style(Token::ErrorOutput), ctx)
 }
 
-/// `body` for a call that takes no `Result:` when it succeeded (Write, Edit):
-/// a failed or pending call gets one after all, so that its error or
-/// `(pending)` shows. The result is shown in full.
-pub(super) fn with_status_result(mut body: Body, call: &ToolCall, ctx: &SectionCtx<'_>) -> Body {
-    if matches!(call.status, ToolStatus::Error | ToolStatus::Pending) {
+/// `body` (`Path:` first, then the content or diff) for a call that takes no
+/// `Result:` when it succeeded (Write, Edit). A failed or pending call gets
+/// one after all, so that its error or `(pending)` shows.
+///
+/// A body has one truncatable block, and it is the last. `content_cut` says
+/// whether the content or diff exceeds `truncate_output_lines`; the caller
+/// computes it from the configured limit, not from the current one, so that
+/// expanding the section does not reorder the blocks.
+/// - Cut content or diff: the `Result:` goes right after `Path:` and is shown
+///   in full, so that the `… N more lines` row is directly under the lines it
+///   counts.
+/// - Otherwise the `Result:` comes last and is truncated like any other
+///   result, and `body.remaining` is its cut. (`(pending)` is never cut.)
+pub(super) fn with_status_result(
+    mut body: Body,
+    call: &ToolCall,
+    ctx: &SectionCtx<'_>,
+    content_cut: bool,
+) -> Body {
+    if !matches!(call.status, ToolStatus::Error | ToolStatus::Pending) {
+        return body;
+    }
+    if content_cut {
         let full = SectionCtx {
             expanded: true,
             ..*ctx
         };
-        body.blocks.push(result_block("Result:", call, &full).0);
+        let (block, _) = result_block("Result:", call, &full);
+        body.blocks.insert(1.min(body.blocks.len()), block);
+    } else {
+        let (block, remaining) = result_block("Result:", call, ctx);
+        body.blocks.push(block);
+        body.remaining = remaining;
     }
     body
 }

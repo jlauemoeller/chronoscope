@@ -21,7 +21,8 @@ enum ItemSpec {
         description: String,
         command: String,
         output: Option<String>,
-        is_error: bool,
+        /// 0 is Ok, 1 is Error, 2 is Pending (and has no output).
+        status: u8,
     },
     Injected(String),
     Model,
@@ -81,15 +82,15 @@ fn item() -> impl Strategy<Value = ItemSpec> {
             text(),
             text(),
             proptest::option::of(prop_oneof![text(), "(1[0-9]\n|é\n|日本\n){0,30}"]),
-            any::<bool>()
+            0u8..3
         )
             .prop_map(
-                |(kind, description, command, output, is_error)| ItemSpec::Tool {
+                |(kind, description, command, output, status)| ItemSpec::Tool {
                     kind,
                     description,
                     command,
                     output,
-                    is_error,
+                    status,
                 }
             ),
         text().prop_map(ItemSpec::Injected),
@@ -117,17 +118,20 @@ fn build_item(n: usize, spec: &ItemSpec) -> crate::model::Item {
             description,
             command,
             output,
-            is_error,
+            status,
         } => blocks::tool_of(
             kind_of(*kind),
             &id,
             description,
             input_of(command),
-            output.as_deref().map(|o| (o, *is_error)),
-            if *is_error {
-                ToolStatus::Error
-            } else {
-                ToolStatus::Ok
+            output
+                .as_deref()
+                .filter(|_| *status != 2)
+                .map(|o| (o, *status == 1)),
+            match status {
+                1 => ToolStatus::Error,
+                2 => ToolStatus::Pending,
+                _ => ToolStatus::Ok,
             },
         ),
         ItemSpec::Injected(t) => blocks::injected(&id, &[("file", t)]),

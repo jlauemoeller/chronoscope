@@ -39,7 +39,9 @@ fn range_note(input: &Value, last: Option<usize>) -> Option<String> {
     let end = match (requested, last.and_then(|l| u64::try_from(l).ok())) {
         (Some(r), Some(l)) => Some(r.min(l)),
         (r, l) => r.or(l),
-    };
+    }
+    // Numbers that disagree with the input must not give a reversed range.
+    .filter(|end| *end >= start);
     Some(match end {
         Some(end) => format!(" (lines {start}–{end})"),
         None => format!(" (from line {start})"),
@@ -374,7 +376,7 @@ mod tests {
             Some("x\ny"),
         );
         let rows = section(&both, &theme, 60);
-        assert!(rows[4].starts_with("     /a (lines "), "{rows:?}");
+        assert!(rows[4].starts_with("     /a (from line "), "{rows:?}");
         let only_offset = call(
             ToolKind::Read,
             json!({"file_path": "/a", "offset": u64::MAX}),
@@ -443,6 +445,25 @@ mod tests {
         assert_eq!(
             line.spans[0].style.fg,
             Some(color(&theme, Role::Destructive))
+        );
+    }
+
+    #[test]
+    fn range_note_never_gives_a_reversed_range() {
+        let input = json!({"offset": 98, "limit": 5});
+        // Claude numbers that disagree with the offset.
+        assert_eq!(range_note(&input, Some(3)), Some(" (from line 98)".into()));
+        assert_eq!(
+            range_note(&input, Some(200)),
+            Some(" (lines 98–102)".into())
+        );
+        let huge = json!({"offset": u64::MAX, "limit": u64::MAX});
+        let note = range_note(&huge, Some(3)).unwrap();
+        assert!(note.starts_with(" (from line"), "{note}");
+        let only_offset = json!({"offset": 98});
+        assert_eq!(
+            range_note(&only_offset, Some(3)),
+            Some(" (from line 98)".into())
         );
     }
 }
