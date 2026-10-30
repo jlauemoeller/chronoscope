@@ -112,14 +112,19 @@ impl Drop for WatchHandle {
     }
 }
 
+/// The harnesses that exist, in tab order, with whether `config` enables
+/// each. The one place that knows which harnesses are enabled.
+fn enabled_harnesses(config: &Config) -> [(HarnessId, bool); 1] {
+    [(HarnessId::Claude, config.harness.claude.enabled)]
+}
+
 /// The harnesses [`build_harnesses`] constructs for `config`, in tab order:
 /// the ones with a tab in the selector.
 pub fn registered_harnesses(config: &Config) -> Vec<HarnessId> {
-    let mut harnesses = Vec::new();
-    if config.harness.claude.enabled {
-        harnesses.push(HarnessId::Claude);
-    }
-    harnesses
+    enabled_harnesses(config)
+        .into_iter()
+        .filter_map(|(id, enabled)| enabled.then_some(id))
+        .collect()
 }
 
 /// Constructs the enabled harnesses from `config` (SPEC §6.6), in tab order.
@@ -146,11 +151,16 @@ pub fn build_harnesses(config: &Config) -> Vec<Arc<dyn Harness>> {
 
 /// [`build_harnesses`] with an explicit home directory.
 pub fn build_harnesses_with_home(config: &Config, home: &Path) -> Vec<Arc<dyn Harness>> {
-    let mut harnesses: Vec<Arc<dyn Harness>> = Vec::new();
-    if config.harness.claude.enabled {
-        harnesses.push(Arc::new(claude::ClaudeHarness::new(config, home)));
-    }
-    harnesses
+    registered_harnesses(config)
+        .into_iter()
+        .filter_map(|id| match id {
+            HarnessId::Claude => {
+                Some(Arc::new(claude::ClaudeHarness::new(config, home)) as Arc<dyn Harness>)
+            }
+            // No adapter yet.
+            HarnessId::OpenCode | HarnessId::Codex | HarnessId::Pi => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]

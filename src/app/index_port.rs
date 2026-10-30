@@ -58,6 +58,10 @@ impl Eq for IndexUpdate {}
 
 /// A user event standing for the kind "index update", to subscribe to by
 /// discriminant (the value is never delivered).
+///
+/// `EventClause::Discriminant` compares only the `UserEvent` variant, so the
+/// payload (an empty Claude snapshot) is irrelevant: every index event
+/// matches, whatever the harness or kind.
 pub fn index_event_kind() -> UserEvent {
     use crate::model::HarnessId;
     UserEvent::Index(IndexUpdate::new(

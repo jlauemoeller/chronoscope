@@ -7,7 +7,7 @@
 //! data changes the `App` works out the new selection (by id, falling back to
 //! the same index) and pushes rows and selection into the components.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tuirealm::props::{AttrValue, Attribute};
@@ -207,7 +207,24 @@ impl App {
             log::debug!("ignoring an index snapshot of the unregistered harness {harness}");
             return;
         }
+        // Stats of sessions that are gone are dropped.
+        let live: HashSet<&SessionId> = data.sessions.values().flatten().map(|s| &s.id).collect();
+        self.selector
+            .stats
+            .retain(|(h, id), _| *h != harness || live.contains(id));
+        let available = data.available;
         let old = self.selector.data.insert(harness, data);
+        if !available && self.selector.current == Some(harness) {
+            // An unavailable harness cannot stay selected (SPEC §6.6): show
+            // the first available one, or nothing.
+            self.selector.current = None;
+            self.selector.project = None;
+            self.selector.session = None;
+            if self.selector.first_available().is_none() {
+                self.push_all();
+                return;
+            }
+        }
         if self.selector.current.is_none() {
             if let Some(first) = self.selector.first_available() {
                 self.enter_harness(first);
@@ -226,7 +243,11 @@ impl App {
     /// A project that vanished is a move to another project, so the session
     /// selection goes with it.
     fn keep_selection(&mut self, old: Option<&HarnessData>) {
-        let new_projects = self.selector.projects().to_vec();
+        let new_projects = self
+            .selector
+            .current_data()
+            .map(|d| Arc::clone(&d.projects))
+            .unwrap_or_default();
         let old_projects: &[Project] = old.map_or(&[], |d| d.projects.as_slice());
         let old_project = self
             .selector
@@ -296,13 +317,20 @@ impl App {
         }
         self.selector.project = Some(id);
         self.selector.session = None;
+        let selected = self.selector.project_index();
+        self.set_attr(Id::ProjectList, SELECTED_ATTR, selected_value(selected));
         self.push_sessions();
         self.push_cwd();
     }
 
     fn session_selected(&mut self, id: SessionId) {
-        if self.selector.sessions().iter().any(|s| s.id == id) {
+        let known = self.selector.sessions().iter().any(|s| s.id == id);
+        if known && self.selector.session.as_ref() != Some(&id) {
             self.selector.session = Some(id);
+            // Usually the list moved its own cursor and this changes nothing
+            // there; it keeps the list right when the message came from
+            // elsewhere, and asks for the redraw the move needs.
+            self.push_session_selection();
         }
     }
 

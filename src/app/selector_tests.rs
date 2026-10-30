@@ -240,6 +240,8 @@ fn an_unavailable_harness_is_not_selected_at_startup() {
 
 #[test]
 fn the_first_available_harness_by_number_is_shown() {
+    // The first available snapshot decides: the index worker builds the
+    // harnesses in tab order, so a lower number arrives first.
     let mut app = empty_app(&[CLAUDE, OPENCODE], theme("default"));
     send(&mut app, fixture_snapshot(OPENCODE));
     assert_eq!(app.selected_harness(), Some(OPENCODE));
@@ -427,6 +429,30 @@ fn keys_drive_the_selection_through_the_focused_component() {
     assert_eq!(app.focused_pane(), Pane::Sessions);
 }
 
+#[test]
+fn moving_in_either_list_asks_for_a_redraw() {
+    let mut app = loaded();
+    app.take_redraw();
+    press(&mut app, Key::Char('j'));
+    assert_eq!(app.take_redraw(), RedrawRequest::Dirty, "Projects");
+    press(&mut app, Key::Tab);
+    app.take_redraw();
+    press(&mut app, Key::Char('j'));
+    assert_eq!(
+        app.selected_session().map(SessionId::as_str),
+        Some("other1")
+    );
+    // Only one session: a move that goes nowhere asks for nothing.
+    assert_eq!(app.take_redraw(), RedrawRequest::None);
+    press(&mut app, Key::BackTab);
+    press(&mut app, Key::Char('k'));
+    press(&mut app, Key::Tab);
+    app.take_redraw();
+    press(&mut app, Key::Char('j'));
+    assert_eq!(app.selected_session().map(SessionId::as_str), Some("s2"));
+    assert_eq!(app.take_redraw(), RedrawRequest::Dirty, "Sessions");
+}
+
 // -- harness switching
 
 fn two_harnesses() -> App {
@@ -517,6 +543,44 @@ fn switching_to_the_shown_harness_keeps_the_selection() {
     press(&mut app, Key::Char('j'));
     press(&mut app, Key::Char('1'));
     assert_eq!(project_rows(&app).selected, Some(1));
+}
+
+#[test]
+fn the_shown_harness_becoming_unavailable_gives_way_to_an_available_one() {
+    let mut app = two_harnesses();
+    assert_eq!(app.selected_harness(), Some(CLAUDE));
+    send(
+        &mut app,
+        fixtures::snapshot_event(CLAUDE, false, Vec::new(), SessionMap::new()),
+    );
+    assert_eq!(app.selected_harness(), Some(OPENCODE));
+    assert_eq!(tabs(&app).selected, Some(OPENCODE));
+    assert!(!tabs(&app).tabs[0].available);
+    assert_eq!(project_rows(&app).rows.len(), 2);
+    send(
+        &mut app,
+        fixtures::snapshot_event(OPENCODE, false, Vec::new(), SessionMap::new()),
+    );
+    assert_eq!(app.selected_harness(), None);
+    assert_eq!(tabs(&app).selected, None);
+    assert_eq!(project_rows(&app).rows.len(), 0);
+    assert_eq!(session_rows(&app).rows.len(), 0);
+}
+
+#[test]
+fn stats_of_vanished_sessions_are_dropped_on_a_snapshot() {
+    let mut app = loaded();
+    send(
+        &mut app,
+        edited_snapshot(|projects, sessions| {
+            sessions.get_mut(&projects[0].id).unwrap().remove(0);
+        }),
+    );
+    // s1 is back in a later snapshot, without its old stats.
+    send(&mut app, fixture_snapshot(CLAUDE));
+    let sessions = session_rows(&app);
+    assert_eq!(sessions.rows[0].stats, None);
+    assert!(sessions.rows[1].stats.is_some());
 }
 
 // -- live updates
@@ -986,14 +1050,16 @@ fn long_titles_with_stats_120x40_text() {
     insta::assert_snapshot!(text(&mut app, 120, 40));
 }
 
+// State 4 (the active marker inside the band) is `sessions_focused_120x40_styled`
+// (the active session is the newest, which is selected) and the cell checks in
+// `the_active_dot_is_primary_outside_the_band_and_inverted_inside_it`.
 #[test]
-fn the_active_marker_in_an_unselected_row_120x40_styled() {
-    insta::assert_snapshot!(styled(&mut loaded(), 120, 40));
-}
-
-#[test]
-fn the_active_marker_inside_the_band_120x40_styled() {
-    insta::assert_snapshot!(styled(&mut sessions_focused(), 120, 40));
+fn the_active_marker_in_an_unselected_row_above_a_band_120x40_styled() {
+    let mut app = sessions_focused();
+    app.update(Msg::Selector(SelectorMsg::SessionSelected(
+        SessionId::from("s2"),
+    )));
+    insta::assert_snapshot!(styled(&mut app, 120, 40));
 }
 
 #[test]
@@ -1134,6 +1200,43 @@ fn the_unfocused_selection_is_bold_secondary_without_a_band() {
     // An unselected row is muted.
     let other = cell(&buffer, PROJECTS_X + 5, LIST_ROW_Y + 1);
     assert_eq!(other.fg, theme.role(Role::MutedForeground));
+}
+
+#[test]
+fn the_unfocused_selection_in_sessions_is_bold_secondary_without_a_band() {
+    let theme = distinct_theme();
+    let mut app = loaded_with(theme.clone());
+    focus_sessions(&mut app);
+    app.update(Msg::Selector(SelectorMsg::SessionSelected(
+        SessionId::from("s2"),
+    )));
+    app.update(Msg::Selector(SelectorMsg::Focus(Pane::Projects)));
+    let buffer = screen(&mut app, 120, 40);
+    let y = LIST_ROW_Y + 1;
+    let secondary = theme.role(Role::SecondaryForeground);
+    let marker = cell(&buffer, SESSIONS_X + 3, y);
+    assert_eq!(marker.symbol(), ">");
+    assert_eq!(marker.fg, secondary);
+    assert!(!marker.modifier.contains(Modifier::BOLD));
+    // Timestamp, title and every cell up to the stats: bold, not inverted.
+    for x in [
+        SESSIONS_X + 5,
+        SESSIONS_X + 20,
+        SESSIONS_X + 26,
+        SESSIONS_X + 40,
+    ] {
+        let c = cell(&buffer, x, y);
+        assert_eq!(c.fg, secondary, "column {x}");
+        assert!(c.modifier.contains(Modifier::BOLD), "column {x}");
+    }
+    for x in SESSIONS_X..SESSIONS_X + SESSIONS_WIDTH {
+        assert!(!cell(&buffer, x, y).modifier.contains(Modifier::REVERSED));
+    }
+    // Stats stay muted.
+    let last = cell(&buffer, SESSIONS_X + SESSIONS_WIDTH - 4, y);
+    assert_eq!(last.symbol(), "s");
+    assert_eq!(last.fg, theme.role(Role::MutedForeground));
+    assert!(!last.modifier.contains(Modifier::BOLD));
 }
 
 #[test]

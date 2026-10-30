@@ -52,7 +52,7 @@ impl GlobalEvents {
         subs.push(Sub::new(EventClause::Tick, subscription_clause()));
         subs.push(Sub::new(
             EventClause::Discriminant(index_event_kind()),
-            subscription_clause(),
+            worker_events_clause(),
         ));
         subs
     }
@@ -60,6 +60,14 @@ impl GlobalEvents {
 
 /// When the subscriptions of `GlobalEvents` apply: always, for now.
 fn subscription_clause() -> SubClause<Id> {
+    SubClause::Always
+}
+
+/// When the subscription to worker events applies: always. Unlike the global
+/// keys, worker results must never be filtered by focus (an open overlay must
+/// not make the app miss a snapshot or stats, which are not sent again), so
+/// this does not follow [`subscription_clause`].
+fn worker_events_clause() -> SubClause<Id> {
     SubClause::Always
 }
 

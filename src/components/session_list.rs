@@ -167,10 +167,10 @@ impl SessionList {
 /// title cut with `…`, and the stats on the right unless they would leave
 /// fewer than [`MIN_TITLE_WIDTH`] cells for the title.
 fn row_parts(row: &SessionRow, width: usize) -> RowParts {
-    let prefix = row.started.width() + GAP.len() + DOT_SLOT_WIDTH;
+    let prefix = row.started.width() + GAP.width() + DOT_SLOT_WIDTH;
     let stats = row.stats.as_ref().map(format_stats);
     let with_stats = stats.as_ref().and_then(|text| {
-        let room = width.saturating_sub(prefix + GAP.len() + text.width());
+        let room = width.saturating_sub(prefix + GAP.width() + text.width());
         (room >= MIN_TITLE_WIDTH).then_some((room, text.clone()))
     });
     let (room, stats) = match with_stats {
