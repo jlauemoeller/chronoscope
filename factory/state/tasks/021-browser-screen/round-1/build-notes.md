@@ -13,7 +13,7 @@ STATUS: DONE
 - `src/components/transcript/mod.rs`: `TURN_COUNT_ATTR` query (the App asks the component whether the session is empty instead of keeping a count); fixtures made `pub(crate)` for the browser tests.
 - `src/components/global_events.rs`: subscribes to the `open_selector` keys (same prompt/overlay clause as the other keys) and the session user events; `action_key_events` generalises `quit_key_events`.
 - `src/components/empty_state.rs`: `EMPTY_SESSION`.
-- Deviation to note: `open_session` starts the new load before it drops the old `WatchHandle`, so a failing `load` (toast) leaves the selector as it was. The old worker is stopped right after.
+- Error path: `open_session` stops the old `WatchHandle` before calling `harness.load`, and mounts the new browser only after the load succeeded. If `load` fails, a toast is shown and the previous screen stays (without live updates). The order is asserted in `opening_another_session_stops_the_first_load_and_starts_a_fresh_transcript`.
 
 ## Self-check
 - AC: `OpenSession` mounts header/transcript/help line, unmounts selector, focuses Transcript, starts a load — `opening_a_session_mounts_the_browser_unmounts_the_selector_and_starts_a_load`, plus `a_session_the_index_does_not_list_is_ignored`, `a_load_that_fails_leaves_the_selector_and_shows_a_toast`.

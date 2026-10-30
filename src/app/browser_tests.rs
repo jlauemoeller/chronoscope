@@ -50,6 +50,9 @@ struct FakeHarness {
     stops: Mutex<Vec<Arc<AtomicBool>>>,
     senders: Mutex<Vec<Sender<ModelUpdate>>>,
     fail: AtomicBool,
+    /// For each load: whether every earlier load had been stopped when it
+    /// started.
+    earlier_stopped: Mutex<Vec<bool>>,
 }
 
 impl FakeHarness {
@@ -60,6 +63,7 @@ impl FakeHarness {
             stops: Mutex::default(),
             senders: Mutex::default(),
             fail: AtomicBool::new(false),
+            earlier_stopped: Mutex::default(),
         })
     }
 
@@ -123,6 +127,13 @@ impl Harness for FakeHarness {
             anyhow::bail!("the file is gone");
         }
         self.loads.lock().unwrap().push(session.clone());
+        let stopped = self
+            .stops
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|stop| stop.load(Ordering::Relaxed));
+        self.earlier_stopped.lock().unwrap().push(stopped);
         let script = self.scripts.lock().unwrap().get(session).cloned();
         for update in script.unwrap_or_default() {
             tx.send(update).unwrap();
@@ -589,6 +600,11 @@ fn opening_another_session_stops_the_first_load_and_starts_a_fresh_transcript() 
     rig.app.update(Msg::OpenSelector);
     rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
     assert!(rig.harness.stopped(0), "the first worker is told to stop");
+    assert_eq!(
+        *rig.harness.earlier_stopped.lock().unwrap(),
+        [true, true],
+        "the old worker is stopped before the new load starts"
+    );
     assert!(!rig.harness.stopped(1));
     assert_eq!(rig.harness.loads(), [BRIO_SESSION, NEWER_SESSION]);
     assert_eq!(rig.turn_count(), 0, "a fresh transcript");

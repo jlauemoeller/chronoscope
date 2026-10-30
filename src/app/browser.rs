@@ -147,6 +147,9 @@ impl App {
             return;
         };
         let generation = self.browser.generation + 1;
+        // The worker of the session that was open stops before the new load
+        // starts. If the load fails the old browser stays, no longer live.
+        self.browser.stop_watching();
         let watch = match loader.load(id, forward_to(generation, sink)) {
             Ok(watch) => watch,
             Err(err) => {
@@ -155,7 +158,6 @@ impl App {
                 return;
             }
         };
-        // Replacing the handle stops the worker of the session that was open.
         self.browser = super::browser::BrowserState {
             open: Some(OpenSession { harness, summary }),
             generation,
