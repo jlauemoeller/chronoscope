@@ -13,6 +13,8 @@ use super::{Palette, Theme};
 
 /// The id of the default theme.
 pub const DEFAULT_ID: &str = "default";
+/// Id of the Terminal theme, which uses only ANSI colours.
+pub const TERMINAL_ID: &str = "terminal";
 
 /// A compiled-in theme with the id used in `config.toml` and `--theme`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +58,11 @@ pub fn get(id: &str) -> Option<Theme> {
 /// The default built-in theme (id [`DEFAULT_ID`]).
 pub fn default_theme() -> Theme {
     default_dark()
+}
+
+/// The Terminal built-in theme (id [`TERMINAL_ID`]).
+pub fn terminal_theme() -> Theme {
+    terminal()
 }
 
 /// ratcn's `RING_DIM`: how far `ring` is dimmed from `primary` toward
