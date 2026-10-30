@@ -8,6 +8,10 @@ STATUS: DONE
 - `src/app/transcript_search.rs`, `save.rs`, `selector.rs`: use the transcript on top; saved files of a subagent are named by its own id part.
 - Tests: `src/components/transcript/tests/subagent.rs`, `src/app/browser_tests/subagent.rs` (FakeHarness gained a `subagent()` map), header tests; snapshots accepted.
 
+## Notes for reviewers
+- At 80x24 the subagent's session id (53 characters) is dropped from the right title: it cannot fit beside the breadcrumb, and the header's existing rule (names first, id goes when they would not fit) applies. At 120x40 it is shown.
+- Covered transcripts are not literally frozen: they keep receiving their own load's updates and viewport changes, because dropping a covered session's `Appended` batches would lose turns for good (they are sent once). Their presentation state (scroll, selection, folds) is untouched by anything that happens in the subagent; the restore test asserts it.
+
 ## Self-check
 - AC: `a` on a Subagent section returns `Msg::OpenSubagent`, other sections nothing — `components::transcript::tests::subagent::{a_on_a_subagent_section_asks_to_open_its_transcript, a_on_any_other_section_returns_nothing, the_label_is_the_description_without_an_agent_type, a_on_the_more_row_of_a_subagent_opens_it_too, a_with_nothing_selected_returns_nothing}`
 - AC: OpenSubagent update test (depth-1 transcript mounted and focused, load started, header and id) — `app::browser_tests::subagent::{a_on_a_subagent_section_mounts_a_transcript_at_depth_1_and_focuses_it, the_header_shows_the_breadcrumb_and_the_subagent_id}`

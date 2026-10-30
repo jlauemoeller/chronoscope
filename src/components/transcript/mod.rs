@@ -654,7 +654,10 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     /// keys answer [`Msg::CopyText`] with the text of the selected section
     /// (as displayed, or in full); with nothing selected they do nothing.
     /// The save keys answer [`Msg::SaveSection`] the same way, the export
-    /// keys [`Msg::Export`] with the whole document.
+    /// keys [`Msg::Export`] with the whole document. The open key answers
+    /// [`Msg::OpenSubagent`] on a subagent section (nothing on any other),
+    /// and the back key [`Msg::CloseSubagent`] when the transcript is
+    /// [`nested`](Self::nested).
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let Event::Keyboard(key) = ev else {
             return None;
