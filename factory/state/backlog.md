@@ -19,7 +19,7 @@
 | 015-selector-search | Complete |
 | 016-markdown-renderer | Complete |
 | 017-turn-block-sections | Complete |
-| 018-transcript-viewport | Planned |
+| 018-transcript-viewport | In progress |
 | 019-tool-body-renderers | Planned |
 | 020-transcript-navigation | Planned |
 | 021-browser-screen | Planned |
