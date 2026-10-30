@@ -35,13 +35,14 @@ type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
 /// for it with `…`.
 ///
 /// It is subscribed to `Tick` and answers [`Msg::ToastExpired`] on the first
-/// tick at or after `created_at + duration`.
+/// tick at or after `created_at + duration`, carrying its id.
 #[derive(Clone)]
 pub struct Toast {
     text: String,
     theme: Theme,
     created_at: Instant,
     duration: Duration,
+    id: u64,
     clock: Clock,
 }
 
@@ -51,6 +52,7 @@ impl fmt::Debug for Toast {
             .field("text", &self.text)
             .field("created_at", &self.created_at)
             .field("duration", &self.duration)
+            .field("id", &self.id)
             .finish_non_exhaustive()
     }
 }
@@ -69,8 +71,17 @@ impl Toast {
             theme,
             created_at,
             duration,
+            id: 0,
             clock: Arc::new(Instant::now),
         }
+    }
+
+    /// Sets the id the toast reports in [`Msg::ToastExpired`], so the `App`
+    /// can tell the toast on screen from one it has replaced.
+    #[must_use]
+    pub fn with_id(mut self, id: u64) -> Self {
+        self.id = id;
+        self
     }
 
     /// Replaces the clock that decides when the toast has expired.
@@ -163,7 +174,7 @@ impl Component for Toast {
 impl AppComponent<Msg, UserEvent> for Toast {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
-            Event::Tick if self.expired_at((self.clock)()) => Some(Msg::ToastExpired),
+            Event::Tick if self.expired_at((self.clock)()) => Some(Msg::ToastExpired(self.id)),
             _ => None,
         }
     }
@@ -262,9 +273,21 @@ mod tests {
         let mut component = Toast::new("x", builtin::default_theme(), start, TOAST_DURATION)
             .with_clock(move || *clock.lock().unwrap());
         *now.lock().unwrap() = start + TOAST_DURATION;
-        assert_eq!(component.on(&Event::Tick), Some(Msg::ToastExpired));
+        assert_eq!(component.on(&Event::Tick), Some(Msg::ToastExpired(0)));
         *now.lock().unwrap() = start + TOAST_DURATION * 3;
-        assert_eq!(component.on(&Event::Tick), Some(Msg::ToastExpired));
+        assert_eq!(component.on(&Event::Tick), Some(Msg::ToastExpired(0)));
+    }
+
+    #[test]
+    fn the_expiry_message_carries_the_toast_id() {
+        let mut component = Toast::new(
+            "x",
+            builtin::default_theme(),
+            Instant::now(),
+            Duration::ZERO,
+        )
+        .with_id(7);
+        assert_eq!(component.on(&Event::Tick), Some(Msg::ToastExpired(7)));
     }
 
     #[test]
@@ -275,7 +298,7 @@ mod tests {
             Instant::now(),
             Duration::ZERO,
         );
-        assert_eq!(component.on(&Event::Tick), Some(Msg::ToastExpired));
+        assert_eq!(component.on(&Event::Tick), Some(Msg::ToastExpired(0)));
     }
 
     #[test]

@@ -61,8 +61,8 @@ pub enum Msg {
     Resized(u16, u16),
     /// A tick of the event loop.
     Tick,
-    /// The toast has been shown for its duration.
-    ToastExpired,
+    /// The toast with this id has been shown for its duration.
+    ToastExpired(u64),
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -100,6 +100,7 @@ pub struct App {
     warnings: Vec<ConfigWarning>,
     screen: Screen,
     toast_text: Option<String>,
+    toast_id: u64,
     size: (u16, u16),
     quit: bool,
     redraw: RedrawRequest,
@@ -157,6 +158,7 @@ impl App {
             warnings,
             screen: Screen::default(),
             toast_text: None,
+            toast_id: 0,
             size: (0, 0),
             quit: false,
             redraw: RedrawRequest::Dirty,
@@ -181,7 +183,9 @@ impl App {
         duration: Duration,
     ) -> Result<(), ApplicationError> {
         let text = text.into();
-        let toast = Toast::new(text.clone(), self.theme.clone(), Instant::now(), duration);
+        self.toast_id += 1;
+        let toast = Toast::new(text.clone(), self.theme.clone(), Instant::now(), duration)
+            .with_id(self.toast_id);
         let subs = vec![Sub::new(EventClause::Tick, SubClause::Always)];
         self.application.remount(Id::Toast, Box::new(toast), subs)?;
         self.toast_text = Some(text);
@@ -258,7 +262,7 @@ impl App {
             Msg::Quit => self.quit(),
             Msg::Resized(width, height) => self.resized(width, height),
             Msg::Tick => self.tick_elapsed(),
-            Msg::ToastExpired => self.toast_expired(),
+            Msg::ToastExpired(id) => self.toast_expired(id),
         }
     }
 
@@ -276,8 +280,9 @@ impl App {
         // need them. The toast expires itself on `Tick` (see `Toast`).
     }
 
-    fn toast_expired(&mut self) {
-        if self.toast_text.take().is_none() {
+    /// Removes the toast, unless `id` is that of a toast that was replaced.
+    fn toast_expired(&mut self, id: u64) {
+        if id != self.toast_id || self.toast_text.take().is_none() {
             return;
         }
         if let Err(err) = self.application.umount(&Id::Toast) {

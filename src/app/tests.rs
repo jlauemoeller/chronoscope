@@ -157,7 +157,7 @@ fn three_startup_warnings_end_the_toast_with_two_more() {
 fn the_expiry_message_unmounts_the_toast() {
     let mut app = app_with_warnings(&["w"]);
     app.take_redraw();
-    app.update(Msg::ToastExpired);
+    app.update(Msg::ToastExpired(1));
     assert!(!app.application().mounted(&Id::Toast));
     assert_eq!(app.toast_text(), None);
     assert_eq!(app.take_redraw(), RedrawRequest::Dirty);
@@ -166,7 +166,7 @@ fn the_expiry_message_unmounts_the_toast() {
 #[test]
 fn the_startup_toast_does_not_reappear_on_later_ticks() {
     let mut app = app_with_warnings(&["w"]);
-    app.update(Msg::ToastExpired);
+    app.update(Msg::ToastExpired(1));
     app.take_redraw();
     for _ in 0..3 {
         app.update(Msg::Tick);
@@ -179,10 +179,24 @@ fn the_startup_toast_does_not_reappear_on_later_ticks() {
 #[test]
 fn a_second_expiry_message_is_harmless() {
     let mut app = app_with_warnings(&["w"]);
-    app.update(Msg::ToastExpired);
+    app.update(Msg::ToastExpired(1));
     app.take_redraw();
-    app.update(Msg::ToastExpired);
+    app.update(Msg::ToastExpired(1));
     assert_eq!(app.take_redraw(), RedrawRequest::None);
+}
+
+#[test]
+fn the_expiry_of_a_replaced_toast_does_not_remove_the_new_one() {
+    let mut app = app_with_warnings(&["old"]);
+    // The startup toast has id 1; the new one gets id 2.
+    app.show_toast("new").unwrap();
+    app.take_redraw();
+    app.update(Msg::ToastExpired(1));
+    assert!(app.application().mounted(&Id::Toast));
+    assert_eq!(app.toast_text(), Some("new"));
+    assert_eq!(app.take_redraw(), RedrawRequest::None);
+    app.update(Msg::ToastExpired(2));
+    assert!(!app.application().mounted(&Id::Toast));
 }
 
 #[test]
@@ -203,11 +217,11 @@ fn a_toast_expires_on_a_tick_event_through_the_application() {
     let mut msgs = Vec::new();
     for _ in 0..50 {
         msgs = app.tick().unwrap();
-        if msgs.contains(&Msg::ToastExpired) {
+        if msgs.contains(&Msg::ToastExpired(1)) {
             break;
         }
     }
-    assert!(msgs.contains(&Msg::ToastExpired), "{msgs:?}");
+    assert!(msgs.contains(&Msg::ToastExpired(1)), "{msgs:?}");
     for msg in msgs {
         app.update(msg);
     }
@@ -221,7 +235,7 @@ fn a_toast_that_has_not_expired_stays_through_ticks() {
         .unwrap();
     for _ in 0..5 {
         for msg in app.tick().unwrap() {
-            assert_ne!(msg, Msg::ToastExpired);
+            assert!(!matches!(msg, Msg::ToastExpired(_)));
             app.update(msg);
         }
     }
@@ -450,6 +464,16 @@ fn a_remapped_search_key_shows_in_the_drawn_help_line() {
             .unwrap()
             .contains("│    f to search sessions | ENTER")
     );
+}
+
+#[test]
+fn selector_help_line_80x24_text() {
+    insta::assert_snapshot!(buffer_to_text(&screen(&mut app(), 80, 24)));
+}
+
+#[test]
+fn selector_help_line_120x40_text() {
+    insta::assert_snapshot!(buffer_to_text(&screen(&mut app(), 120, 40)));
 }
 
 #[test]
