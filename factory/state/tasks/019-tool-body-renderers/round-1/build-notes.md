@@ -24,7 +24,7 @@ STATUS: DONE
 - AC: folded never calls `text()`, unfolding does — `truncation::a_folded_call_never_materialises_its_output_and_unfolding_does` (lazy output + call counter); unreadable output — `truncation::an_output_that_cannot_be_read_is_reported_in_error_output`.
 - AC: layout-cache heights match rendering for new bodies — `transcript::tests::property::cached_heights_equal_rendered_heights` extended to all ten kinds, small random truncate limits, random expansion, plus a check that selection stops are ordered and non-overlapping.
 - UI 1 Shell long command + result (text + styled @100) — `shell_unfolded_with_a_long_command_at_100_text`, `..._styled`.
-- UI 2 Read numbered (text) — `read_unfolded_with_numbered_content_at_100_text`.
+- UI 2 Read numbered (text) — `read_unfolded_with_numbered_content_at_100_text` (plus a styled one, `read_unfolded_with_numbered_content_at_100_styled`).
 - UI 3 Write `.rs` (styled) — `write_unfolded_with_rust_content_at_100_styled`.
 - UI 4 Edit diff (text + styled) — `edit_unfolded_with_a_diff_at_100_text`, `..._styled`.
 - UI 5 Grep/Glob/WebFetch/WebSearch (text) — `grep_unfolded_at_100_text`, `glob_unfolded_at_100_text`, `web_fetch_unfolded_at_100_text`, `web_search_unfolded_at_100_text`.
@@ -32,6 +32,9 @@ STATUS: DONE
 - UI 7 Subagent folded and unfolded (text) — `subagent_folded_at_100_text`, `subagent_unfolded_at_100_text`.
 - UI 8 truncated, row selected @80x24 Transcript (text + styled) and after expansion (text) — `truncated_result_with_the_more_row_selected_at_80x24_text`, `..._styled`, `expanded_result_after_submitting_the_more_row_at_80x24_text`.
 - UI 9 failed Shell (styled) — `failed_shell_call_at_100_styled` (also the existing 80-column one).
+
+## Token-test strength
+The body-renderer test theme gives `diff_added`, `diff_removed`, `syntax.keyword` and `syntax.plain` colours no role has, so the Edit and Write assertions would fail if the wrong token were used (Write also asserts `main` is not drawn as keyword, plain or `command` text). Glob has the same label/content/matches token assertions as Grep.
 
 ## Judgement calls (spec silent)
 - Unfolded subagent description also shows ` (<agent type>)`.
@@ -42,4 +45,4 @@ STATUS: DONE
 ## Test gate
 - cargo fmt --check: pass
 - cargo clippy --all-targets -- -D warnings: pass
-- cargo test: pass (951 unit tests + integration tests, 0 failed)
+- cargo test: pass (1165 passed, 0 failed)

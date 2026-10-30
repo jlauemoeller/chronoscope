@@ -269,6 +269,17 @@ fn read_unfolded_with_numbered_content_at_100_text() {
 }
 
 #[test]
+fn read_unfolded_with_numbered_content_at_100_styled() {
+    let turn = tool_turn(
+        ToolKind::Read,
+        "Read the camera module",
+        json!({"file_path": "/home/jacob/projects/brio/src/camera.rs"}),
+        Some("     1→use std::fs::File;\n     2→\n     3→pub fn open() {}\n"),
+    );
+    insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &unfolded(&turn), 100)));
+}
+
+#[test]
 fn write_unfolded_with_rust_content_at_100_styled() {
     let turn = tool_turn(
         ToolKind::Write,

@@ -174,11 +174,8 @@ mod tests {
             Some(color(&theme, Role::MutedForeground))
         );
         assert_eq!(fg_of(&lines[9], "a"), Some(color(&theme, Role::Secondary)));
-        assert_eq!(
-            fg_of(&lines[11], "-c"),
-            Some(color(&theme, Role::Destructive))
-        );
-        assert_eq!(fg_of(&lines[12], "+X"), Some(color(&theme, Role::Primary)));
+        assert_eq!(fg_of(&lines[11], "-c"), Some(DIFF_REMOVED));
+        assert_eq!(fg_of(&lines[12], "+X"), Some(DIFF_ADDED));
     }
 
     #[test]

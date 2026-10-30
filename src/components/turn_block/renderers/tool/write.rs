@@ -85,16 +85,23 @@ mod tests {
         );
         let body = body(&call, &theme, 60);
         let line = &body.blocks[1].lines[0];
-        let keyword = theme.style(Token::SyntaxKeyword);
-        assert!(keyword.fg.is_some());
-        let fn_span = line
-            .spans
-            .iter()
-            .find(|s| s.content.contains("fn"))
-            .unwrap();
-        assert_eq!(fn_span.style.fg, keyword.fg);
-        let plain = theme.style(Token::SyntaxPlain);
-        assert_ne!(keyword.fg, plain.fg);
+        let fg_of_span = |needle: &str| {
+            line.spans
+                .iter()
+                .find(|s| s.content.contains(needle))
+                .and_then(|s| s.style.fg)
+        };
+        // `fn` is a keyword and `main` a function name; neither is drawn as
+        // plain or `command` text.
+        assert_eq!(fg_of_span("fn"), Some(KEYWORD));
+        assert_eq!(
+            fg_of_span("main"),
+            theme.style(Token::SyntaxFunction).fg,
+            "{line:?}"
+        );
+        assert_ne!(fg_of_span("main"), Some(KEYWORD));
+        assert_ne!(fg_of_span("main"), Some(PLAIN));
+        assert_ne!(fg_of_span("main"), Some(color(&theme, Role::Accent)));
     }
 
     #[test]

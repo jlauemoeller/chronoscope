@@ -102,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn glob_shows_the_path_but_no_filters() {
+    fn glob_labels_columns_tokens_and_no_filters() {
         let theme = theme();
         let call = call(
             ToolKind::Glob,
@@ -113,5 +113,20 @@ mod tests {
         assert_eq!(rows[4], "     **/*.toml in /repo");
         assert_eq!(rows[6], "  Matches:");
         assert_eq!(rows[8], "     Cargo.toml");
+        let ctx = SectionCtx::new(&theme, 80, false);
+        let lines = ToolCallSection(&call).lines(&ctx);
+        assert_eq!(
+            fg_of(&lines[2], "Pattern:"),
+            Some(color(&theme, Role::Warning))
+        );
+        assert_eq!(fg_of(&lines[4], "**/*"), Some(color(&theme, Role::Accent)));
+        assert_eq!(
+            fg_of(&lines[6], "Matches:"),
+            Some(color(&theme, Role::Warning))
+        );
+        assert_eq!(
+            fg_of(&lines[8], "Cargo"),
+            Some(color(&theme, Role::Secondary))
+        );
     }
 }

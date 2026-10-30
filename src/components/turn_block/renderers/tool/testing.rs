@@ -8,6 +8,12 @@ use super::*;
 use crate::model::{ItemId, ToolOutput, ToolResult};
 use crate::theme::{Role, Theme, Token, TokenOverride, builtin};
 
+/// Colours no role has, so that a colour names the token it came from.
+pub const DIFF_ADDED: Color = Color::Rgb(1, 2, 3);
+pub const DIFF_REMOVED: Color = Color::Rgb(4, 5, 6);
+pub const KEYWORD: Color = Color::Rgb(7, 8, 9);
+pub const PLAIN: Color = Color::Rgb(10, 11, 12);
+
 /// A theme whose output, command, label, diff and error tokens all differ.
 pub fn theme() -> Theme {
     let base = builtin::default_theme();
@@ -18,8 +24,10 @@ pub fn theme() -> Theme {
         .with_token(Token::Command, fg(Role::Accent))
         .with_token(Token::Output, fg(Role::Secondary))
         .with_token(Token::ErrorOutput, fg(Role::Destructive))
-        .with_token(Token::DiffAdded, fg(Role::Primary))
-        .with_token(Token::DiffRemoved, fg(Role::Destructive))
+        .with_token(Token::DiffAdded, TokenOverride::fg(DIFF_ADDED))
+        .with_token(Token::DiffRemoved, TokenOverride::fg(DIFF_REMOVED))
+        .with_token(Token::SyntaxKeyword, TokenOverride::fg(KEYWORD))
+        .with_token(Token::SyntaxPlain, TokenOverride::fg(PLAIN))
 }
 
 pub fn color(theme: &Theme, role: Role) -> Color {
