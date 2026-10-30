@@ -53,6 +53,10 @@ pub trait Harness: Send + Sync {
     /// (Claude: path, size and mtime; OpenCode: db, session id and
     /// `time_updated`). It keys the stats cache (SPEC §9.2), so equal keys
     /// must mean equal stats. Cheap: it may stat a file but never parses.
+    ///
+    /// The key starts with the lowercase harness name and a colon
+    /// (`claude:`): the cache is shared by all harnesses, and each prunes
+    /// only the entries with its own prefix.
     fn stats_key(&self, session: &SessionSummary) -> String;
 
     /// Starts loading `session` on a worker thread and returns at once.
@@ -118,7 +122,15 @@ impl Drop for WatchHandle {
 /// The home directory (for default data directories) is detected from the
 /// environment; see [`build_harnesses_with_home`] to give it explicitly.
 pub fn build_harnesses(config: &Config) -> Vec<Arc<dyn Harness>> {
-    let home = crate::paths::Paths::detect().map_or_else(PathBuf::new, |p| p.home_dir);
+    let home = crate::paths::Paths::detect().map_or_else(
+        || {
+            log::warn!(
+                "the home directory is unknown: default data directories resolve against the current directory"
+            );
+            PathBuf::new()
+        },
+        |paths| paths.home_dir,
+    );
     build_harnesses_with_home(config, &home)
 }
 

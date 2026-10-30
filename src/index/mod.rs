@@ -129,7 +129,9 @@ impl SessionIndex {
 }
 
 /// Owns the index worker. Dropping it tells the worker to stop (it does not
-/// wait; see [`shutdown`](Self::shutdown)).
+/// wait). The final save of the stats cache happens on the worker thread
+/// after that, so the app must call [`shutdown`](Self::shutdown) when it
+/// exits: a process that ends right after a drop may lose the save.
 #[must_use = "dropping the handle stops the index"]
 pub struct IndexHandle {
     events: Option<Receiver<IndexEvent>>,

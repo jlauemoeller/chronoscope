@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::model::SessionStats;
 
@@ -61,10 +62,14 @@ impl StatsCache {
         self.dirty
     }
 
-    /// Drops the entries whose key is not in `live`.
-    pub fn retain_live(&mut self, live: &HashSet<&str>) {
+    /// Drops the entries starting with one of the `owned` prefixes whose key
+    /// is not in `live`. Other entries (of harnesses that are not running)
+    /// are kept.
+    pub fn retain_live(&mut self, live: &HashSet<&str>, owned: &[String]) {
         let before = self.entries.len();
-        self.entries.retain(|key, _| live.contains(key.as_str()));
+        self.entries.retain(|key, _| {
+            live.contains(key.as_str()) || !owned.iter().any(|p| key.starts_with(p.as_str()))
+        });
         if self.entries.len() != before {
             self.dirty = true;
         }
@@ -86,9 +91,21 @@ impl StatsCache {
         fs::create_dir_all(&self.dir)?;
         let sorted: BTreeMap<&String, &SessionStats> = self.entries.iter().collect();
         let json = serde_json::to_vec(&sorted).map_err(io::Error::other)?;
-        let tmp = self.dir.join(format!("{CACHE_FILE}.tmp"));
-        fs::write(&tmp, json)?;
-        fs::rename(&tmp, self.dir.join(CACHE_FILE))
+        // A name of its own, so that two instances saving at once cannot mix
+        // their writes in one file.
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let tmp = self.dir.join(format!(
+            "{CACHE_FILE}.{}.{}.tmp",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let result =
+            fs::write(&tmp, json).and_then(|()| fs::rename(&tmp, self.dir.join(CACHE_FILE)));
+        if result.is_err() {
+            // Best effort: do not leave the temporary file behind.
+            let _ = fs::remove_file(&tmp);
+        }
+        result
     }
 }
 
@@ -114,7 +131,8 @@ mod tests {
         assert!(cache.is_dirty());
         cache.save();
         assert!(!cache.is_dirty());
-        assert!(!dir.path().join("stats-v1.json.tmp").exists());
+        let leftovers = fs::read_dir(dir.path()).unwrap().count();
+        assert_eq!(leftovers, 1, "only the cache file is left");
 
         let loaded = StatsCache::load(dir.path());
         assert_eq!(loaded.get("a"), Some(stats(2, 300_500)));
@@ -160,12 +178,29 @@ mod tests {
         cache.insert("a".into(), stats(1, 1));
         cache.insert("b".into(), stats(1, 1));
         cache.save();
-        cache.retain_live(&HashSet::from(["a"]));
+        let owned = [String::new()];
+        cache.retain_live(&HashSet::from(["a"]), &owned);
         assert!(cache.is_dirty());
         assert_eq!(cache.get("a"), Some(stats(1, 1)));
         assert_eq!(cache.get("b"), None);
         cache.save();
-        cache.retain_live(&HashSet::from(["a"]));
+        cache.retain_live(&HashSet::from(["a"]), &owned);
         assert!(!cache.is_dirty());
+    }
+
+    #[test]
+    fn retain_live_keeps_the_entries_of_harnesses_it_does_not_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cache = StatsCache::load(dir.path());
+        cache.insert("claude:gone".into(), stats(1, 1));
+        cache.insert("claude:live".into(), stats(1, 1));
+        cache.insert("opencode:other".into(), stats(1, 1));
+        cache.retain_live(&HashSet::from(["claude:live"]), &["claude:".to_owned()]);
+        assert_eq!(cache.get("claude:gone"), None);
+        assert!(cache.get("claude:live").is_some());
+        assert!(cache.get("opencode:other").is_some());
+        // With no harness running, nothing is dropped.
+        cache.retain_live(&HashSet::new(), &[]);
+        assert!(cache.get("claude:live").is_some());
     }
 }

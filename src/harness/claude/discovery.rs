@@ -371,8 +371,10 @@ impl Harness for ClaudeHarness {
     }
 
     /// Parses the whole transcript with the [`Assembler`]: `turns` is the
-    /// number of User turns, `duration` the last entry timestamp minus the
-    /// first (zero when there are fewer than two). Does not take the index
+    /// number of User turns, `duration` the last conversation entry's
+    /// timestamp minus the first's (zero when there are none). Only entries
+    /// the assembler handles count: timestamped noise and metadata entries
+    /// are ignored (see [`Assembler::first_timestamp`]). Does not take the index
     /// lock, so it can run while a [`refresh`](Harness::refresh) does.
     fn stats(&self, session: &SessionSummary) -> Result<SessionStats> {
         self.stat_parses.fetch_add(1, Ordering::Relaxed);

@@ -91,12 +91,18 @@ impl Queue {
         }
     }
 
-    /// Replaces the waiting jobs by `jobs`, built from what was waiting.
+    /// Replaces the waiting jobs by what `jobs` makes of them. Jobs a pool
+    /// thread has taken are not waiting any more.
     fn replace_with(&self, jobs: impl FnOnce(VecDeque<StatsJob>) -> VecDeque<StatsJob>) {
         let mut state = self.lock();
         let old = std::mem::take(&mut state.jobs);
         state.jobs = jobs(old);
         self.ready.notify_all();
+    }
+
+    fn push(&self, job: StatsJob) {
+        self.lock().jobs.push_back(job);
+        self.ready.notify_one();
     }
 
     fn stop(&self) {
@@ -119,6 +125,8 @@ struct HarnessState {
     /// The `stats_key`s of the sessions in the last snapshot.
     live_keys: Option<HashSet<String>>,
     warned_watch: bool,
+    /// A failed build was logged and none has succeeded since.
+    warned_build: bool,
 }
 
 struct Last {
@@ -136,8 +144,13 @@ struct Coordinator {
     cache: StatsCache,
     last_save: Instant,
     queue: Arc<Queue>,
-    /// Jobs queued or running, by (harness, key).
-    pending: HashSet<(usize, String)>,
+    /// The job queued or running for a session, as its stats key. A session
+    /// has at most one, so a growing transcript is not parsed several times
+    /// at once.
+    pending: HashMap<(usize, SessionId), String>,
+    /// Jobs for a newer key of a session whose older job is still running;
+    /// queued when that one finishes.
+    deferred: HashMap<(usize, SessionId), StatsJob>,
     /// Keys whose computation failed; not retried while the key is current.
     failed: HashSet<(usize, String)>,
     /// The key of the stats last sent per session.
@@ -181,12 +194,14 @@ pub(super) fn run(job: Job) {
                 last: None,
                 live_keys: None,
                 warned_watch: false,
+                warned_build: false,
             })
             .collect(),
         cache: StatsCache::load(&job.cache_dir),
         last_save: Instant::now(),
         queue: Arc::clone(&queue),
-        pending: HashSet::new(),
+        pending: HashMap::new(),
+        deferred: HashMap::new(),
         failed: HashSet::new(),
         sent: HashMap::new(),
     };
@@ -346,7 +361,14 @@ impl Coordinator {
         let (projects, sessions, ok) = match built {
             Ok((projects, sessions)) => (projects, sessions, true),
             Err(err) => {
-                log::error!("could not build the {} index: {err}", harness.id());
+                // Logged once per streak: a store that stays unreadable is
+                // rebuilt every few seconds.
+                if self.harnesses[i].warned_build {
+                    log::debug!("could not build the {} index: {err}", harness.id());
+                } else {
+                    self.harnesses[i].warned_build = true;
+                    log::error!("could not build the {} index: {err}", harness.id());
+                }
                 if self.harnesses[i].last.is_some() {
                     return true;
                 }
@@ -356,6 +378,7 @@ impl Coordinator {
         };
         let available = harness.available();
         let state = &mut self.harnesses[i];
+        state.warned_build &= !ok;
         if dedupe
             && state.last.as_ref().is_some_and(|l| {
                 l.available == available && *l.projects == projects && *l.sessions == sessions
@@ -421,30 +444,64 @@ impl Coordinator {
             }
         }
         // Forget sessions that are gone.
-        self.sent
-            .retain(|(h, id), _| *h != i || sessions.values().flatten().any(|s| &s.id == id));
+        let ids: HashSet<&SessionId> = sessions.values().flatten().map(|s| &s.id).collect();
+        self.sent.retain(|(h, id), _| *h != i || ids.contains(id));
         self.failed.retain(|(h, key)| *h != i || live.contains(key));
         self.harnesses[i].live_keys = Some(live);
 
-        // The newest list replaces what is still waiting; running jobs stay.
+        // The newest list replaces what harness `i` still has waiting; the
+        // other harnesses' waiting jobs and all running ones stay.
         let pending = &mut self.pending;
+        let deferred = &mut self.deferred;
+        deferred.retain(|(h, _), _| *h != i);
         self.queue.replace_with(|old| {
+            let mut jobs = VecDeque::new();
             for job in old {
-                pending.remove(&(job.harness, job.key));
+                if job.harness == i {
+                    pending.remove(&(i, job.summary.id.clone()));
+                } else {
+                    jobs.push_back(job);
+                }
             }
-            wanted
-                .into_iter()
-                .filter(|job| pending.insert((job.harness, job.key.clone())))
-                .collect()
+            // What is pending for `i` now is running.
+            for job in wanted {
+                let slot = (i, job.summary.id.clone());
+                match pending.get(&slot) {
+                    None => {
+                        pending.insert(slot, job.key.clone());
+                        jobs.push_back(job);
+                    }
+                    Some(running) if *running == job.key => {}
+                    Some(_) => {
+                        deferred.insert(slot, job);
+                    }
+                }
+            }
+            jobs
         });
         self.prune();
         true
     }
 
     /// Takes a finished job into the cache and, with `send`, reports it.
-    /// `false` when the receiver is gone.
+    /// A result for a key that is no longer current (the session changed
+    /// meanwhile) is dropped, so it can never overwrite a newer one. `false`
+    /// when the receiver is gone.
     fn record(&mut self, done: Done, send: bool) -> bool {
-        self.pending.remove(&(done.harness, done.key.clone()));
+        let slot = (done.harness, done.session.clone());
+        if self.pending.get(&slot) == Some(&done.key) {
+            self.pending.remove(&slot);
+        }
+        if send && let Some(job) = self.deferred.remove(&slot) {
+            let wanted = self.cache.get(&job.key).is_none() && self.is_live(job.harness, &job.key);
+            if wanted && !self.pending.contains_key(&slot) {
+                self.pending.insert(slot.clone(), job.key.clone());
+                self.queue.push(job);
+            }
+        }
+        if !self.is_live(done.harness, &done.key) {
+            return true;
+        }
         let stats = match done.result {
             Ok(stats) => stats,
             Err(err) => {
@@ -466,6 +523,14 @@ impl Coordinator {
         self.events.send(event).is_ok()
     }
 
+    /// Whether `key` belongs to a session of harness `i`'s last snapshot.
+    fn is_live(&self, i: usize, key: &str) -> bool {
+        self.harnesses[i]
+            .live_keys
+            .as_ref()
+            .is_some_and(|keys| keys.contains(key))
+    }
+
     /// Drops cache entries of sessions that are gone or changed, once every
     /// harness has reported its sessions.
     fn prune(&mut self) {
@@ -477,8 +542,20 @@ impl Coordinator {
             .iter()
             .flat_map(|h| h.live_keys.iter().flatten().map(String::as_str))
             .collect();
-        self.cache.retain_live(&live);
+        // Only the keys of the harnesses that ran: the cache may hold
+        // others' (a harness disabled for now).
+        let owned: Vec<String> = self
+            .harnesses
+            .iter()
+            .map(|h| key_prefix(h.harness.id()))
+            .collect();
+        self.cache.retain_live(&live, &owned);
     }
+}
+
+/// The prefix every `stats_key` of harness `id` starts with.
+fn key_prefix(id: crate::model::HarnessId) -> String {
+    format!("{}:", id.display_name().to_lowercase())
 }
 
 /// Reads a harness's projects and all their sessions.

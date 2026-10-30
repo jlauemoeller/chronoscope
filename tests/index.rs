@@ -73,6 +73,15 @@ fn claude(data: &Path) -> Arc<ClaudeHarness> {
     ))
 }
 
+/// Timing under which a harness that can be watched is only rebuilt on file
+/// events: an hour between polls.
+fn watching_only() -> Timing {
+    Timing {
+        poll: Duration::from_secs(3600),
+        ..Timing::default()
+    }
+}
+
 fn start(h: &Arc<ClaudeHarness>, cache: &Path) -> (IndexHandle, Receiver<IndexEvent>) {
     start_with(h, cache, Timing::default())
 }
@@ -213,7 +222,8 @@ const NEW_SESSION: &str = concat!(
 #[test]
 fn a_new_session_file_delivers_a_new_snapshot() {
     let env = env();
-    let (_handle, rx) = start(&claude(&env.data), &env.cache);
+    // Polling is out of the picture: only file events can deliver this.
+    let (_handle, rx) = start_with(&claude(&env.data), &env.cache, watching_only());
     let first = wait_for(&rx, WAIT, snap);
     assert!(first.sessions.iter().all(|s| s.id.as_str() != "eeee0001"));
 
@@ -233,7 +243,7 @@ fn a_new_session_file_delivers_a_new_snapshot() {
 #[test]
 fn a_new_project_directory_delivers_a_new_snapshot() {
     let env = env();
-    let (_handle, rx) = start(&claude(&env.data), &env.cache);
+    let (_handle, rx) = start_with(&claude(&env.data), &env.cache, watching_only());
     wait_for(&rx, WAIT, snap);
     let dir = env.data.join("-home-user-fresh");
     fs::create_dir_all(&dir).unwrap();
@@ -251,7 +261,7 @@ fn a_new_project_directory_delivers_a_new_snapshot() {
 #[test]
 fn modifying_a_file_updates_its_title_in_the_next_snapshot() {
     let env = env();
-    let (_handle, rx) = start(&claude(&env.data), &env.cache);
+    let (_handle, rx) = start_with(&claude(&env.data), &env.cache, watching_only());
     wait_for(&rx, WAIT, snap);
     append(
         &env.data.join("-home-user-alpha").join("aaaa0001.jsonl"),
@@ -336,7 +346,8 @@ fn stats_are_cached_on_disk_and_reused_by_the_next_index() {
     assert_eq!(first_harness.stats_parse_count(), EXPECTED.len());
     handle.shutdown();
     assert!(env.cache.join(CACHE_FILE).is_file());
-    assert!(!env.cache.join("stats-v1.json.tmp").exists());
+    let leftovers = fs::read_dir(&env.cache).unwrap().count();
+    assert_eq!(leftovers, 1, "only the cache file is left");
 
     let second_harness = claude(&env.data);
     let (handle, rx) = start(&second_harness, &env.cache);
@@ -451,8 +462,7 @@ fn dropping_the_handle_stops_the_worker_and_disconnects_the_receiver() {
             Err(RecvTimeoutError::Timeout) => panic!("the receiver never disconnected"),
         }
     }
-    // The watcher is gone too: changes cause nothing, and the cache saved at
-    // the end of the run is there.
+    // The worker saved the cache before it ended.
     assert!(env.cache.join(CACHE_FILE).is_file());
 }
 
@@ -502,7 +512,8 @@ fn a_missing_data_dir_gives_an_unavailable_snapshot_and_is_polled() {
     assert_eq!(next.sessions.len(), 1);
     assert_eq!(next.sessions[0].id.as_str(), "eeee0001");
 
-    // Once the directory exists it is watched: a further change arrives.
+    // A further change arrives too (by polling or, once the directory is
+    // watched, by file events; the new-session tests with polling off cover those).
     append(&project.join("eeee0001.jsonl"), "\n");
     wait_for(&rx, WAIT, snap);
 }

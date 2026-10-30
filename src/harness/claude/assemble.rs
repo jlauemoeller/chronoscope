@@ -170,12 +170,16 @@ impl Assembler {
         &self.unknown_kinds
     }
 
-    /// The timestamp of the first entry the assembler read that has one.
+    /// The timestamp of the first conversation entry that has one. Only
+    /// entries the assembler handles count (user and assistant entries, the
+    /// system entries it uses and injected attachments); timestamped noise
+    /// and metadata entries do not.
     pub fn first_timestamp(&self) -> Option<DateTime<Utc>> {
         self.first_ts
     }
 
-    /// The timestamp of the last entry the assembler read that has one.
+    /// The timestamp of the last conversation entry that has one; see
+    /// [`first_timestamp`](Self::first_timestamp) for which entries count.
     pub fn last_timestamp(&self) -> Option<DateTime<Utc>> {
         self.last_ts
     }
