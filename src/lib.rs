@@ -5,6 +5,7 @@
 use clap::Parser;
 
 pub mod config;
+pub mod keymap;
 pub mod logging;
 pub mod paths;
 #[doc(hidden)]
