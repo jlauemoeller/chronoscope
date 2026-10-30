@@ -107,7 +107,7 @@ pub enum Turn {
     User(UserTurn),
     /// The agent's work up to the next human prompt.
     Assistant(AssistantTurn),
-    /// A compaction summary (produced by task 007).
+    /// A compaction summary.
     Compaction(CompactionTurn),
 }
 
@@ -188,7 +188,9 @@ pub struct TurnStats {
 /// One entry of an [`Item::Injected`] group.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InjectedEntry {
-    /// Kind label (defined by task 007).
+    /// Kind label: the Claude attachment type (`file`, `hook_system_message`,
+    /// ...), the `system` subtype (`local_command`, ...) or `meta` for
+    /// `isMeta` user entries.
     pub kind: String,
     /// When it was injected.
     pub timestamp: DateTime<Utc>,
@@ -215,7 +217,7 @@ pub enum Item {
         /// The markdown source.
         text: String,
     },
-    /// Injected content, consecutive entries collapsed (produced by task 007).
+    /// Injected content, consecutive entries collapsed.
     Injected {
         /// Stable id.
         id: ItemId,

@@ -8,16 +8,36 @@
 use serde::Deserialize;
 use serde_json::Value;
 
-/// The two fields used to decide whether a line is relevant at all.
+/// The few fields used to classify a line before (maybe) parsing it fully.
+/// Everything else on the line is skipped without being materialised.
 #[derive(Deserialize)]
 pub struct Head {
     #[serde(rename = "type")]
     pub kind: Option<String>,
     pub subtype: Option<String>,
+    pub version: Option<Value>,
+    /// Present on conversation entries; its presence tells an unknown entry
+    /// type with content from session metadata.
+    pub message: Option<serde::de::IgnoredAny>,
+    pub attachment: Option<AttachmentHead>,
+}
+
+/// The kind of an `attachment` entry's payload.
+#[derive(Deserialize)]
+pub struct AttachmentHead {
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct Entry {
+    /// Top-level `content` of `system` entries.
+    pub content: Option<Value>,
+    #[serde(rename = "commandRun")]
+    pub command_run: Option<Value>,
+    pub attachment: Option<Value>,
+    #[serde(rename = "isCompactSummary")]
+    pub is_compact_summary: Option<bool>,
     pub uuid: Option<String>,
     pub timestamp: Option<String>,
     #[serde(rename = "isMeta")]
