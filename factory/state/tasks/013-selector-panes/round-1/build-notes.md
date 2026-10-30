@@ -18,6 +18,8 @@ Decisions where the spec was silent:
 - Pane title with no project: `Sessions`. A project that vanishes in a live update counts as a move to another project, so the session selection is cleared (and, if Sessions has focus, the newest session of the successor is selected).
 - Pressing the number of the harness already shown does nothing. Before the first snapshot arrives all tabs are muted; the first available registered harness by number is shown when snapshots arrive and none is shown yet.
 - Scrolling: `App` pushes the number of visible rows (pane height - 3) on resize; the list updates its stored offset when moving or when rows are set, and `view` only reads it (it applies a pure correction so the selection is always drawn).
+- A list with no selection resets its scroll offset to 0 (so a scrolled Sessions list does not carry its offset over to the next project); tests: `list_pane::tests::a_list_without_a_selection_shows_its_first_rows`, `a_scrolled_sessions_list_does_not_carry_its_offset_to_the_next_project`.
+- The cell-level style checks run against a copy of the default theme with distinct colours for foreground, muted, primary, secondary foreground, ring and border (`distinct_theme`), so they cannot pass by swapping two roles.
 - Enter in Projects moves focus to Sessions; Enter in Sessions does nothing yet (open comes with a later task).
 - `Config.utc`/`timestamp_format` drive the rows; tests set `utc = true`.
 - Working Directory text width is the box width minus 6 (starts at column 3, 3-cell right margin).
@@ -46,4 +48,4 @@ Decisions where the spec was silent:
 ## Test gate
 - cargo fmt --check: pass
 - cargo clippy --all-targets -- -D warnings: pass
-- cargo test: pass (695 passed, 0 failed)
+- cargo test: pass (697 passed, 0 failed)

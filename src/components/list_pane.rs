@@ -79,10 +79,16 @@ impl ListCursor {
     }
 
     /// Sets the number of rows and the selection (ignored when out of range)
-    /// and scrolls the least that keeps the selection visible.
+    /// and scrolls the least that keeps the selection visible. Without a
+    /// selection the list shows its first rows: a list nothing is selected
+    /// in cannot have been scrolled, and the offset of the list it replaces
+    /// means nothing for the new one.
     pub fn set(&mut self, len: usize, selected: Option<usize>) {
         self.len = len;
         self.selected = selected.filter(|&i| i < len);
+        if self.selected.is_none() {
+            self.offset = 0;
+        }
         self.reveal();
     }
 
@@ -519,6 +525,18 @@ mod tests {
         let mut c = cursor(40, Some(30), 5);
         c.set(8, Some(2));
         assert_eq!(c.offset(), 2);
+    }
+
+    #[test]
+    fn a_list_without_a_selection_shows_its_first_rows() {
+        let mut c = cursor(40, Some(30), 5);
+        assert_eq!(c.offset(), 26);
+        c.set(10, None);
+        assert_eq!(c.offset(), 0);
+        let mut c = cursor(40, Some(30), 5);
+        c.select(None);
+        assert_eq!(c.offset(), 0);
+        assert_eq!(c.offset_for(5), 0);
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use ratatui::buffer::Buffer;
-use ratatui::style::Modifier;
+use ratatui::style::{Color, Modifier};
 use tuirealm::event::{Event, Key, KeyEvent, KeyModifiers};
 use tuirealm::listener::EventListenerCfg;
 
@@ -34,6 +34,32 @@ fn theme(id: &str) -> Theme {
         no_color: false,
     };
     resolve_by_id(&ThemeRegistry::builtin(), id, &env, None).unwrap()
+}
+
+/// The default theme with every role the cell-level checks look at set to
+/// its own colour, so a check cannot pass by confusing two roles.
+fn distinct_theme() -> Theme {
+    let theme = theme("default")
+        .with_role(Role::Foreground, Color::Rgb(250, 1, 1))
+        .with_role(Role::MutedForeground, Color::Rgb(2, 250, 2))
+        .with_role(Role::Primary, Color::Rgb(3, 3, 250))
+        .with_role(Role::SecondaryForeground, Color::Rgb(250, 250, 4))
+        .with_role(Role::Ring, Color::Rgb(5, 250, 250))
+        .with_role(Role::Border, Color::Rgb(250, 6, 250));
+    let roles = [
+        Role::Foreground,
+        Role::MutedForeground,
+        Role::Primary,
+        Role::SecondaryForeground,
+        Role::Ring,
+        Role::Border,
+    ];
+    for (i, a) in roles.iter().enumerate() {
+        for b in &roles[i + 1..] {
+            assert_ne!(theme.role(*a), theme.role(*b), "{a:?} and {b:?}");
+        }
+    }
+    theme
 }
 
 fn init(harnesses: &[HarnessId], theme: Theme) -> AppInit {
@@ -404,7 +430,11 @@ fn keys_drive_the_selection_through_the_focused_component() {
 // -- harness switching
 
 fn two_harnesses() -> App {
-    let mut app = empty_app(&[CLAUDE, OPENCODE], theme("default"));
+    two_harnesses_with(theme("default"))
+}
+
+fn two_harnesses_with(theme: Theme) -> App {
+    let mut app = empty_app(&[CLAUDE, OPENCODE], theme);
     send(&mut app, fixture_snapshot(CLAUDE));
     let mut projects = fixtures::projects(OPENCODE);
     projects.truncate(2);
@@ -816,6 +846,52 @@ fn the_selection_stays_visible_when_moving_down_a_long_list() {
     assert_eq!(app.selected_session().map(SessionId::as_str), Some("m39"));
 }
 
+#[test]
+fn a_scrolled_sessions_list_does_not_carry_its_offset_to_the_next_project() {
+    let mut app = empty_app(&[CLAUDE], theme("default"));
+    app.update(Msg::Resized(80, 24));
+    let projects = fixtures::projects(CLAUDE);
+    let mut sessions = SessionMap::new();
+    sessions.insert(
+        projects[0].id.clone(),
+        fixtures::many_sessions(&projects[0], 40),
+    );
+    let others = (0..10)
+        .map(|n| {
+            let start = fixtures::at(2026, 3, 1, 10, 0, 0) - chrono::Duration::days(n);
+            fixtures::session(
+                &projects[1],
+                &format!("o{n}"),
+                &format!("Other session {n}"),
+                start,
+                start,
+            )
+        })
+        .collect();
+    sessions.insert(projects[1].id.clone(), others);
+    send(
+        &mut app,
+        fixtures::snapshot_event(CLAUDE, true, projects, sessions),
+    );
+    focus_sessions(&mut app);
+    for _ in 0..30 {
+        press(&mut app, Key::Char('j'));
+    }
+    assert!(text(&mut app, 80, 24).contains("Session number 30"));
+    press(&mut app, Key::BackTab);
+    press(&mut app, Key::Char('j'));
+    assert_eq!(app.selected_session(), None);
+    let shown = text(&mut app, 80, 24);
+    assert!(shown.contains("Sessions in BRIO"), "{shown}");
+    assert!(shown.contains("Other session 0"), "{shown}");
+    assert!(shown.contains("Other session 4"), "{shown}");
+    assert!(!shown.contains("Other session 5"), "{shown}");
+    // Back in Sessions the newest session is selected and shown at the top.
+    press(&mut app, Key::Tab);
+    assert_eq!(app.selected_session().map(SessionId::as_str), Some("o0"));
+    assert!(text(&mut app, 80, 24).contains("> 2026-03-01"));
+}
+
 // -- screens
 
 fn screen(app: &mut App, width: u16, height: u16) -> Buffer {
@@ -983,7 +1059,7 @@ fn cell(buffer: &Buffer, x: u16, y: u16) -> &ratatui::buffer::Cell {
 
 #[test]
 fn the_focused_selection_is_one_inverted_band_with_a_primary_marker() {
-    let theme = theme("default");
+    let theme = distinct_theme();
     let mut app = loaded_with(theme.clone());
     focus_sessions(&mut app);
     let buffer = screen(&mut app, 120, 40);
@@ -1029,7 +1105,7 @@ fn the_focused_selection_is_one_inverted_band_with_a_primary_marker() {
 
 #[test]
 fn the_unfocused_selection_is_bold_secondary_without_a_band() {
-    let theme = theme("default");
+    let theme = distinct_theme();
     let mut app = loaded_with(theme.clone());
     focus_sessions(&mut app);
     let buffer = screen(&mut app, 120, 40);
@@ -1062,7 +1138,7 @@ fn the_unfocused_selection_is_bold_secondary_without_a_band() {
 
 #[test]
 fn the_focused_pane_has_the_ring_border() {
-    let theme = theme("default");
+    let theme = distinct_theme();
     let mut app = loaded_with(theme.clone());
     let buffer = screen(&mut app, 120, 40);
     assert_eq!(cell(&buffer, PROJECTS_X, 6).fg, theme.role(Role::Ring));
@@ -1075,7 +1151,7 @@ fn the_focused_pane_has_the_ring_border() {
 
 #[test]
 fn the_active_dot_is_primary_outside_the_band_and_inverted_inside_it() {
-    let theme = theme("default");
+    let theme = distinct_theme();
     let mut app = loaded_with(theme.clone());
     let buffer = screen(&mut app, 120, 40);
     // Pane column 5 + timestamp (17) + two spaces = column 24 is the dot.
@@ -1096,8 +1172,8 @@ fn the_active_dot_is_primary_outside_the_band_and_inverted_inside_it() {
 
 #[test]
 fn the_selected_tab_is_primary_with_a_primary_underline_of_its_label_width() {
-    let theme = theme("default");
-    let mut app = two_harnesses();
+    let theme = distinct_theme();
+    let mut app = two_harnesses_with(theme.clone());
     let buffer = screen(&mut app, 120, 40);
     // Tabs at column 5, rows 3 and 4.
     let label = "[1] Claude";
