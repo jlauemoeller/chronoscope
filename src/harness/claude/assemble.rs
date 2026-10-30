@@ -4,7 +4,7 @@
 //! [`ModelUpdate`]s it caused. Feeding a transcript in any chunking yields the
 //! same final turns.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, Read};
 use std::ops::Range;
@@ -13,11 +13,17 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
+use super::inject::{
+    NEWEST_KNOWN_VERSION, attachment_text, is_human_queued, is_injected_attachment,
+    is_injected_system, is_known_noise_attachment, is_metadata_type, is_noise_type, system_text,
+    text_of, version_newer,
+};
 use super::tools::{describe, tool_kind};
 use super::wire::{Block, Content, Entry, Head, result_text};
 use crate::model::{
-    AssistantTurn, ByteSource, Item, ItemId, LineFormat, ModelUpdate, OutputSource, Thinking,
-    ToolCall, ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnStats, UserTurn,
+    AssistantTurn, ByteSource, CompactionTurn, InjectedEntry, Item, ItemId, LineFormat,
+    ModelUpdate, OutputSource, Thinking, ToolCall, ToolOutput, ToolResult, ToolStatus, Turn,
+    TurnId, TurnStats, UserTurn,
 };
 
 /// Placeholder model name Claude Code writes for locally generated messages;
@@ -74,6 +80,24 @@ pub struct Assembler {
     dirty: BTreeSet<usize>,
     pending: Vec<u8>,
     pending_start: u64,
+    /// Number of lines processed, for log messages (1-based).
+    lines: u64,
+    /// Lines and blocks that were skipped because they could not be parsed.
+    unparsed: usize,
+    /// Allowlisted entries waiting for the next entry to decide their turn.
+    held: Vec<InjectedEntry>,
+    /// Identity (uuid or line offset) of the first held entry.
+    held_key: Option<String>,
+    /// Attachment kinds that are neither allowlisted nor known noise.
+    unknown_kinds: BTreeMap<String, usize>,
+    /// Unknown kinds already written to the log.
+    logged_kinds: HashSet<String>,
+    /// Index of a Compaction turn still waiting for its summary entry.
+    compaction_pending: Option<usize>,
+    /// The `version` last compared against the newest known one.
+    last_version: Option<String>,
+    /// Whether the newer-version warning has been logged.
+    warned_version: bool,
 }
 
 impl Assembler {
@@ -91,6 +115,15 @@ impl Assembler {
             dirty: BTreeSet::new(),
             pending: Vec::new(),
             pending_start: 0,
+            lines: 0,
+            unparsed: 0,
+            held: Vec::new(),
+            held_key: None,
+            unknown_kinds: BTreeMap::new(),
+            logged_kinds: HashSet::new(),
+            compaction_pending: None,
+            last_version: None,
+            warned_version: false,
         }
     }
 
@@ -107,9 +140,26 @@ impl Assembler {
         &self.turns
     }
 
-    /// Consumes the assembler, returning its turns.
-    pub fn into_turns(self) -> Vec<Arc<Turn>> {
+    /// Consumes the assembler, returning its turns. Injected entries still
+    /// waiting for a turn are placed in the current one.
+    pub fn into_turns(mut self) -> Vec<Arc<Turn>> {
+        self.end_of_input();
         self.turns
+    }
+
+    /// How many lines, unknown entries and unknown content blocks were
+    /// skipped because they could not be parsed (the browser's
+    /// `N entries could not be parsed` note). Noise and session metadata are
+    /// not counted.
+    pub fn unparsed_count(&self) -> usize {
+        self.unparsed
+    }
+
+    /// Attachment kinds seen that are neither allowlisted nor known noise,
+    /// with how often each occurred. They are skipped (not counted as
+    /// unparsed) and logged so the allowlist can be extended.
+    pub fn unknown_attachment_kinds(&self) -> &BTreeMap<String, usize> {
+        &self.unknown_kinds
     }
 
     /// The session cwd, if known.
@@ -169,6 +219,7 @@ impl Assembler {
             self.process(&buf, &(start..start + buf.len() as u64));
             self.pending_start += buf.len() as u64;
         }
+        self.end_of_input();
         self.collect(start_len)
     }
 
@@ -216,30 +267,137 @@ impl Assembler {
     }
 
     fn process(&mut self, line: &[u8], range: &Range<u64>) {
-        let Ok(head) = serde_json::from_slice::<Head>(line) else {
-            return;
-        };
-        let relevant = match head.kind.as_deref() {
-            Some("user" | "assistant") => true,
-            Some("system") => head.subtype.as_deref() == Some("turn_duration"),
-            _ => false,
-        };
-        if !relevant {
+        self.lines += 1;
+        if line.iter().all(u8::is_ascii_whitespace) {
             return;
         }
-        let Ok(entry) = serde_json::from_slice::<Entry>(line) else {
-            return;
+        let head = match serde_json::from_slice::<Head>(line) {
+            Ok(head) => head,
+            Err(err) => {
+                self.skip_unparsed(&format!("not a valid entry: {err}"));
+                return;
+            }
+        };
+        self.check_version(&head);
+        let kind = head.kind.as_deref().unwrap_or_default();
+        match kind {
+            "user" | "assistant" => {
+                if let Some(entry) = self.parse_entry(line) {
+                    let ts = self.timestamp(&entry);
+                    if kind == "user" {
+                        self.on_user(entry, ts, range);
+                    } else {
+                        self.on_assistant(entry, ts, range);
+                    }
+                }
+            }
+            "system" => {
+                let sub = head.subtype.as_deref().unwrap_or_default();
+                if matches!(sub, "turn_duration" | "compact_boundary") || is_injected_system(sub) {
+                    if let Some(entry) = self.parse_entry(line) {
+                        let ts = self.timestamp(&entry);
+                        match sub {
+                            "turn_duration" => self.on_turn_duration(&entry),
+                            "compact_boundary" => self.on_compact_boundary(&entry, ts, range),
+                            _ => {
+                                let text = system_text(
+                                    sub,
+                                    entry.content.as_ref(),
+                                    entry.command_run.as_ref(),
+                                );
+                                self.hold(sub, ts, text, entry.uuid.as_deref(), range);
+                            }
+                        }
+                    }
+                }
+            }
+            "attachment" => {
+                let attachment = head.attachment.and_then(|a| a.kind).unwrap_or_default();
+                if is_injected_attachment(&attachment) {
+                    if let Some(entry) = self.parse_entry(line) {
+                        let ts = self.timestamp(&entry);
+                        self.on_attachment(&attachment, entry, ts, range);
+                    }
+                } else if !is_known_noise_attachment(&attachment)
+                    && !attachment.starts_with("deferred_tools_")
+                {
+                    *self.unknown_kinds.entry(attachment).or_default() += 1;
+                }
+            }
+            k if is_noise_type(k) => {}
+            k if is_metadata_type(k) => {
+                log::debug!("line {}: skipping session metadata entry {k:?}", self.lines);
+            }
+            k => {
+                if head.message.is_some() {
+                    self.skip_unparsed(&format!("unknown entry type {k:?}"));
+                } else {
+                    log::debug!("line {}: skipping metadata entry {k:?}", self.lines);
+                }
+            }
+        }
+    }
+
+    /// Parses a conversation line in full, noting the session cwd. A failure
+    /// counts the line as unparsed.
+    fn parse_entry(&mut self, line: &[u8]) -> Option<Entry> {
+        let entry = match serde_json::from_slice::<Entry>(line) {
+            Ok(entry) => entry,
+            Err(err) => {
+                self.skip_unparsed(&format!("unreadable entry: {err}"));
+                return None;
+            }
         };
         if self.cwd.is_none()
             && let Some(cwd) = entry.cwd.as_deref().filter(|c| !c.is_empty())
         {
             self.cwd = Some(PathBuf::from(cwd));
         }
-        let ts = self.timestamp(&entry);
-        match head.kind.as_deref() {
-            Some("user") => self.on_user(entry, ts, range),
-            Some("assistant") => self.on_assistant(entry, ts, range),
-            _ => self.on_turn_duration(&entry),
+        Some(entry)
+    }
+
+    /// Counts and logs something that was skipped because it could not be
+    /// understood.
+    fn skip_unparsed(&mut self, what: &str) {
+        self.unparsed += 1;
+        log::warn!("line {}: skipped, {what}", self.lines);
+    }
+
+    /// Logs one warning per session when an entry's `version` is newer than
+    /// [`NEWEST_KNOWN_VERSION`].
+    fn check_version(&mut self, head: &Head) {
+        if self.warned_version {
+            return;
+        }
+        let Some(version) = head.version.as_ref().and_then(|v| v.as_str()) else {
+            return;
+        };
+        if self.last_version.as_deref() == Some(version) {
+            return;
+        }
+        self.last_version = Some(version.to_owned());
+        if version_newer(version, NEWEST_KNOWN_VERSION) {
+            self.warned_version = true;
+            log::warn!(
+                "line {}: transcript version {version} is newer than the newest known \
+                 {NEWEST_KNOWN_VERSION}; parsing on a best-effort basis",
+                self.lines
+            );
+        }
+    }
+
+    /// Counts the unknown content blocks of a user or assistant message.
+    fn check_blocks(&mut self, content: &Content) {
+        match content {
+            Content::Blocks(blocks) => {
+                for block in blocks {
+                    if !is_known_block(block.kind.as_deref()) {
+                        self.skip_unparsed(&format!("unknown content block {:?}", block.kind));
+                    }
+                }
+            }
+            Content::Other(_) => self.skip_unparsed("unreadable message content"),
+            Content::Text(_) => {}
         }
     }
 
@@ -255,10 +413,146 @@ impl Assembler {
         parsed.or(self.last_ts).unwrap_or(DateTime::UNIX_EPOCH)
     }
 
+    /// Holds an injected entry until the next entry decides its turn.
+    fn hold(
+        &mut self,
+        kind: &str,
+        timestamp: DateTime<Utc>,
+        text: String,
+        uuid: Option<&str>,
+        range: &Range<u64>,
+    ) {
+        if self.held.is_empty() {
+            self.held_key = Some(entry_id(uuid, range).to_string());
+        }
+        self.held.push(InjectedEntry {
+            kind: kind.to_owned(),
+            timestamp,
+            text,
+        });
+    }
+
+    fn on_attachment(&mut self, kind: &str, entry: Entry, ts: DateTime<Utc>, range: &Range<u64>) {
+        let Some(attachment) = &entry.attachment else {
+            return;
+        };
+        if kind == "queued_command" && is_human_queued(attachment, entry.origin.as_ref()) {
+            let text = attachment.get("prompt").map(text_of).unwrap_or_default();
+            let id = entry_id(entry.uuid.as_deref(), range);
+            self.start_user_turn(id, ts, text);
+        } else {
+            let text = attachment_text(kind, attachment);
+            self.hold(kind, ts, text, entry.uuid.as_deref(), range);
+        }
+    }
+
+    /// Starts a User turn; held injected entries become its first item.
+    fn start_user_turn(&mut self, id: TurnId, timestamp: DateTime<Utc>, text: String) {
+        self.cur = None;
+        self.compaction_pending = None;
+        let items = take_held(&mut self.held, &mut self.held_key)
+            .into_iter()
+            .collect();
+        self.turns.push(Arc::new(Turn::User(UserTurn {
+            id,
+            timestamp,
+            text,
+            items,
+        })));
+    }
+
+    /// Places held injected entries in the current turn: the open Assistant
+    /// turn, or a User turn that has no Assistant turn yet. Without such a
+    /// turn (none yet, or a Compaction turn last) they stay held for the next
+    /// one.
+    fn flush_current(&mut self) {
+        if self.held.is_empty() {
+            return;
+        }
+        if let Some(b) = self.cur.as_mut() {
+            let Some(item) = take_held(&mut self.held, &mut self.held_key) else {
+                return;
+            };
+            if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[b.idx]) {
+                match (turn.items.last_mut(), item) {
+                    // Only turn stats or tool results lie between: the entries
+                    // are consecutive and collapse into the previous item.
+                    (
+                        Some(Item::Injected { entries, .. }),
+                        Item::Injected { entries: more, .. },
+                    ) => {
+                        entries.extend(more);
+                    }
+                    (_, item) => {
+                        upsert(turn, b, item, &mut false);
+                    }
+                }
+                self.dirty.insert(b.idx);
+            }
+        } else if let Some(last) = self.turns.len().checked_sub(1)
+            && matches!(&*self.turns[last], Turn::User(_))
+            && let Some(item) = take_held(&mut self.held, &mut self.held_key)
+            && let Turn::User(turn) = Arc::make_mut(&mut self.turns[last])
+        {
+            turn.items.push(item);
+            self.dirty.insert(last);
+        }
+    }
+
+    /// End of input (or of a batch that the caller declares final): held
+    /// entries go to the current turn and unknown attachment kinds are
+    /// logged once each.
+    fn end_of_input(&mut self) {
+        self.flush_current();
+        for (kind, count) in &self.unknown_kinds {
+            if self.logged_kinds.insert(kind.clone()) {
+                log::info!("unknown attachment kind {kind:?} ({count}\u{d7})");
+            }
+        }
+    }
+
+    fn on_compact_boundary(&mut self, entry: &Entry, ts: DateTime<Utc>, range: &Range<u64>) {
+        self.flush_current();
+        self.cur = None;
+        self.compaction_pending = Some(self.turns.len());
+        self.turns.push(Arc::new(Turn::Compaction(CompactionTurn {
+            id: entry_id(entry.uuid.as_deref(), range),
+            timestamp: ts,
+            summary: String::new(),
+        })));
+    }
+
+    /// The `isCompactSummary` entry following a boundary supplies the
+    /// summary; it is never a prompt.
+    fn on_compact_summary(
+        &mut self,
+        entry: &Entry,
+        ts: DateTime<Utc>,
+        range: &Range<u64>,
+        summary: String,
+    ) {
+        if let Some(idx) = self.compaction_pending.take() {
+            if let Turn::Compaction(turn) = Arc::make_mut(&mut self.turns[idx]) {
+                turn.summary = summary;
+                self.dirty.insert(idx);
+            }
+        } else {
+            // A summary without a boundary: still a compaction.
+            self.flush_current();
+            self.cur = None;
+            self.turns.push(Arc::new(Turn::Compaction(CompactionTurn {
+                id: entry_id(entry.uuid.as_deref(), range),
+                timestamp: ts,
+                summary,
+            })));
+        }
+    }
+
     fn on_user(&mut self, entry: Entry, ts: DateTime<Utc>, range: &Range<u64>) {
         let Some(content) = entry.message.as_ref().and_then(|m| m.content.as_ref()) else {
             return;
         };
+        self.check_blocks(content);
         let blocks: &[Block] = match content {
             Content::Blocks(blocks) => blocks,
             _ => &[],
@@ -267,12 +561,21 @@ impl Assembler {
             .iter()
             .any(|b| b.kind.as_deref() == Some("tool_result"))
         {
+            self.flush_current();
+            self.compaction_pending = None;
             for block in blocks.iter().filter(|b| b.is_result()) {
                 self.attach_result(block, ts, range);
             }
             return;
         }
+        if entry.is_compact_summary == Some(true) {
+            let summary = content_text(content);
+            self.on_compact_summary(&entry, ts, range, summary);
+            return;
+        }
         if entry.is_meta == Some(true) {
+            let text = content_text(content);
+            self.hold("meta", ts, text, entry.uuid.as_deref(), range);
             return;
         }
         let has_text = match content {
@@ -287,24 +590,9 @@ impl Assembler {
         if !is_prompt {
             return;
         }
-        let text = match content {
-            Content::Text(s) => s.clone(),
-            Content::Blocks(blocks) => blocks
-                .iter()
-                .filter(|b| b.kind.as_deref() == Some("text"))
-                .filter_map(|b| b.text.as_deref())
-                .collect::<Vec<_>>()
-                .join("\n"),
-            Content::Other(_) => String::new(),
-        };
+        let text = content_text(content);
         let id = entry_id(entry.uuid.as_deref(), range);
-        self.cur = None;
-        self.turns.push(Arc::new(Turn::User(UserTurn {
-            id,
-            timestamp: ts,
-            text,
-            items: Vec::new(),
-        })));
+        self.start_user_turn(id, ts, text);
     }
 
     fn on_assistant(&mut self, entry: Entry, ts: DateTime<Utc>, range: &Range<u64>) {
@@ -312,6 +600,14 @@ impl Assembler {
         let Some(message) = entry.message else {
             return;
         };
+        if let Some(content) = &message.content {
+            self.check_blocks(content);
+        }
+        self.flush_current();
+        self.compaction_pending = None;
+        // Still held when the previous turn cannot take them (none, or a
+        // Compaction turn): they open this turn.
+        let mut held_item = take_held(&mut self.held, &mut self.held_key);
         let msg_id = message
             .id
             .clone()
@@ -351,6 +647,9 @@ impl Assembler {
         let mut changed = false;
         let mut results: Vec<Block> = Vec::new();
         if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[b.idx]) {
+            if let Some(item) = held_item.take() {
+                upsert(turn, &mut b, item, &mut changed);
+            }
             if turn.effort.is_none() && effort.is_some() {
                 turn.effort = effort;
                 changed = true;
@@ -484,6 +783,8 @@ impl Assembler {
     }
 
     fn on_turn_duration(&mut self, entry: &Entry) {
+        self.flush_current();
+        self.compaction_pending = None;
         let (Some(b), Some(ms)) = (&self.cur, entry.duration_ms) else {
             return;
         };
@@ -552,6 +853,53 @@ impl Assembler {
             self.dirty.insert(call.turn);
         }
     }
+}
+
+/// Content blocks the adapter understands (even when it shows nothing for
+/// them). Anything else is skipped and counted.
+fn is_known_block(kind: Option<&str>) -> bool {
+    kind.is_some_and(|k| {
+        matches!(
+            k,
+            "text"
+                | "thinking"
+                | "redacted_thinking"
+                | "tool_use"
+                | "server_tool_use"
+                | "mcp_tool_use"
+                | "tool_result"
+                | "image"
+                | "document"
+        ) || k.ends_with("_tool_result")
+    })
+}
+
+/// The text of message content: a string as is, text blocks joined by
+/// newlines.
+fn content_text(content: &Content) -> String {
+    match content {
+        Content::Text(s) => s.clone(),
+        Content::Blocks(blocks) => blocks
+            .iter()
+            .filter(|b| b.kind.as_deref() == Some("text"))
+            .filter_map(|b| b.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Content::Other(_) => String::new(),
+    }
+}
+
+/// Turns the held injected entries into one `Injected` item, identified by
+/// the first entry.
+fn take_held(held: &mut Vec<InjectedEntry>, key: &mut Option<String>) -> Option<Item> {
+    if held.is_empty() {
+        return None;
+    }
+    let key = key.take().unwrap_or_default();
+    Some(Item::Injected {
+        id: ItemId::from(format!("injected:{key}")),
+        entries: std::mem::take(held),
+    })
 }
 
 fn is_real_model(model: &str) -> bool {
