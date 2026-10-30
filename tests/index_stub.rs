@@ -296,6 +296,47 @@ fn a_stale_result_after_newer_stats_were_sent_is_dropped() {
             panic!("unexpected stats for {harness} {session}: {stats:?}");
         }
     }
+    // The held result was recorded (version 3's job waited for it) and
+    // dropped: version 2's stats would have come first.
+    stub.version.store(3, Ordering::SeqCst);
+    assert_eq!(next_stats(&rx).turns, 3);
+    handle.shutdown();
+}
+
+#[test]
+fn a_stale_result_after_a_revert_to_the_sent_key_is_dropped() {
+    let (stub, entered, gate) =
+        Stub::plain(HarnessId::Claude, &["s"], Duration::ZERO).blocking_first();
+    let stub = Arc::new(stub);
+    let mut broken = Stub::plain(HarnessId::OpenCode, &["x"], Duration::ZERO);
+    broken.fail_projects = true;
+    let cache = tempfile::tempdir().unwrap();
+    std::fs::write(
+        cache.path().join(chronoscope::index::CACHE_FILE),
+        r#"{"claude:s:v1":{"turns":10,"duration":0}}"#,
+    )
+    .unwrap();
+    let first: Arc<dyn Harness> = stub.clone();
+    let harnesses = vec![first, Arc::new(broken) as Arc<dyn Harness>];
+    let mut handle =
+        SessionIndex::start_with_timing(harnesses, cache.path().to_owned(), poll_50ms());
+    let rx = handle.take_events().unwrap();
+
+    // Version 1 is cached and sent.
+    assert_eq!(next_stats(&rx).turns, 10);
+    // Version 2 is computed (held); then the session reverts to version 1,
+    // whose stats are the ones already shown.
+    stub.version.store(2, Ordering::SeqCst);
+    entered.recv_timeout(WAIT).unwrap();
+    stub.version.store(1, Ordering::SeqCst);
+    wait_for_title(&rx, "s v1");
+
+    gate.send(()).unwrap();
+    // Version 2's result is outdated and older than what is shown. Version
+    // 3's job waits for it, so its stats arrive after it was recorded: and
+    // nothing else may come first.
+    stub.version.store(3, Ordering::SeqCst);
+    assert_eq!(next_stats(&rx).turns, 3);
     handle.shutdown();
 }
 

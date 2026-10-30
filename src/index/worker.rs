@@ -160,11 +160,18 @@ struct Coordinator {
     deferred: HashMap<(usize, SessionId), StatsJob>,
     /// Keys whose computation failed; not retried while the key is current.
     failed: HashSet<(usize, String)>,
-    /// The key and `seq` of the stats last sent per session.
+    /// The key and `seq` of the stats last sent per session. A session whose
+    /// current key is cached is recorded here at every build with a fresh
+    /// `seq`, whether or not its stats were sent again (they are not when the
+    /// key is the one already sent).
     sent: HashMap<(usize, SessionId), (String, u64)>,
-    /// Counts stats jobs and cached sends, in the order they were made. A
-    /// result is only sent when its `seq` is newer than the last one sent
-    /// for its session, so an older result never overwrites a newer one.
+    /// Counts stats jobs and the builds that record a session's cached
+    /// stats, in the order they happened. A result for an outdated key is
+    /// only sent when its `seq` is newer than the last one recorded for its
+    /// session. A session whose current key is cached records a fresh `seq`
+    /// at every build, even when its stats are not sent again, so a job for
+    /// an older key never overwrites them. (A result for a current key is
+    /// always sent.)
     seq: u64,
 }
 
@@ -443,7 +450,14 @@ impl Coordinator {
             live.insert(key.clone());
             if let Some(stats) = self.cache.get(&key) {
                 let slot = (i, summary.id.clone());
-                if self.sent.get(&slot).map(|(k, _)| k) != Some(&key) {
+                // Sent only when it differs from what the UI has. Either
+                // way the session takes a fresh seq, so a job for an older
+                // key (say, one running while the file reverted to this
+                // key) cannot overwrite these stats later.
+                let shown = self.sent.get(&slot).is_some_and(|(k, _)| *k == key);
+                self.seq += 1;
+                self.sent.insert(slot, (key, self.seq));
+                if !shown {
                     let event = IndexEvent::Stats {
                         harness: harness.id(),
                         session: summary.id.clone(),
@@ -452,10 +466,6 @@ impl Coordinator {
                     if self.events.send(event).is_err() {
                         return false;
                     }
-                    // A fresh seq: a job still running for an older key of this
-                    // session cannot overwrite this later.
-                    self.seq += 1;
-                    self.sent.insert(slot, (key, self.seq));
                 }
             } else if !self.failed.contains(&(i, key.clone())) {
                 self.seq += 1;

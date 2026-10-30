@@ -49,6 +49,9 @@ pub enum IndexEvent {
         sessions: Arc<SessionMap>,
     },
     /// The stats of a session, from the cache or freshly computed.
+    ///
+    /// For a session that changes while its stats are computed, this may
+    /// describe an earlier version of it; a newer `Stats` follows.
     Stats {
         harness: HarnessId,
         session: SessionId,
