@@ -12,7 +12,7 @@ use super::sections::{
     ToolCallSection, UserPromptSection, format_duration, format_stats, format_tokens,
 };
 use super::*;
-use crate::model::{Thinking, ToolStatus, Turn, TurnStats};
+use crate::model::{Item, ItemId, Thinking, ToolStatus, Turn, TurnStats};
 use crate::test_support::buffer_to_text;
 use crate::theme::{Role, Token};
 
@@ -486,8 +486,6 @@ fn model_change_is_at_column_4() {
         );
     }
 }
-
-use crate::model::{Item, ItemId};
 
 #[test]
 fn titles_have_the_planner_notes_format() {

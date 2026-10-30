@@ -43,4 +43,4 @@ Interpretation choices (spec silent):
 ## Test gate
 - cargo fmt --check: pass
 - cargo clippy --all-targets -- -D warnings: pass
-- cargo test: pass (793 lib tests plus integration tests, 0 failed)
+- cargo test: pass (1006 passed, 0 failed)
