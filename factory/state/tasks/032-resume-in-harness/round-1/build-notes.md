@@ -10,6 +10,7 @@ STATUS: DONE
 - Tests: `src/app/browser_tests/resume.rs` (new, with FakeHarness gaining a resume template), component tests in transcript/session_list/prompt, and 4 snapshots.
 
 Decisions not in the task:
+- `R` is handled by the Sessions pane only. With the Projects pane focused it does nothing, even when a session is still selected from an earlier visit to Sessions: the spec's "selected row" is a session row, and the Projects pane has the focus on a project row.
 - The request is ignored while a prompt, the help overlay or the theme selector is open.
 - Checks in the planner's order: no resume command -> toast `No resume command configured for <Harness>`; then the cwd (the session's, else its project's; none known -> toast `Cannot resume: the working directory is unknown`); then `is_dir()` -> toast `Cannot resume: <cwd> no longer exists` (a path too long for the toast is cut at its start with `…`).
 - The prompt takes the browser's help line styling (Background fill, inset 1) in the browser and the selector's (default fill, no inset) when the selector is shown, like the existing prompts.
