@@ -6,6 +6,7 @@ use clap::Parser;
 
 #[doc(hidden)]
 pub mod test_support;
+pub mod theme;
 
 /// Command-line interface. Only `--help` and `--version` exist for now.
 #[derive(Debug, Parser)]
