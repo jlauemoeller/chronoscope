@@ -210,7 +210,19 @@ impl Assembler {
         self.collect(start_len)
     }
 
-    /// Flushes a trailing line that has no newline.
+    /// Declares the end of a batch for a growing transcript: injected
+    /// entries still waiting for the next entry go into the current turn and
+    /// stay there. Unlike [`finish`](Self::finish) it leaves a trailing
+    /// partial line buffered, so more bytes can still complete it.
+    pub fn flush_held(&mut self) -> Vec<ModelUpdate> {
+        let start_len = self.turns.len();
+        self.end_of_input();
+        self.collect(start_len)
+    }
+
+    /// Declares the end of the input: flushes a trailing line that has no
+    /// newline, then places held injected entries in the current turn (as
+    /// [`flush_held`](Self::flush_held) does).
     pub fn finish(&mut self) -> Vec<ModelUpdate> {
         let start_len = self.turns.len();
         let buf = std::mem::take(&mut self.pending);

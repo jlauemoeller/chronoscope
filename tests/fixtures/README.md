@@ -46,15 +46,17 @@ hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
     `file` (three consecutive entries with noise between them, before the
     first prompt), `hook_system_message` and a non-human `queued_command`
     (`task-notification`) in the middle of an Assistant turn,
-    `selected_lines_in_ide`, a `peer` `queued_command` and `directory` at the
-    end of the last turn; `user` `isMeta`, `system` `local_command`,
+    `selected_lines_in_ide`, a `peer` `queued_command`, `directory`, `plan_mode`
+    and `plan_mode_exit` at the end of the last turn; `user` `isMeta`, `system` `local_command`,
     `informational` and `away_summary` before the second prompt;
   - a human `queued_command` (`origin` inside the attachment) that starts a
     User turn in the middle of assistant work;
   - noise: `mode`, `permission-mode`, `api-request`, `api-request-blob`,
     `api-request-shape`, `file-history-snapshot`, `file-history-delta`,
     `atis-latch`, `ai-title`, `last-prompt`, `cost-state`, the attachments
-    `total_tokens_reminder`, `deferred_tools_record` and `date`, a `system`
+    `total_tokens_reminder`, `deferred_tools_record`, `deferred_tools_delta`,
+    `skill_listing`, `credential_org`, `batching_reminder_sent`, `environment`,
+    `model`, `auto_mode` and `date`, a `system`
     `agents_killed` entry and a `task-notification` user entry;
   - an unknown attachment kind (`brand_new_reminder`, twice);
   - metadata entries: `agent-name`, `queue-operation`, `bridge-session`,

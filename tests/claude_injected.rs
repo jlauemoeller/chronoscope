@@ -276,12 +276,18 @@ fn trailing_entries_collapse_into_the_previous_injected_item_of_the_turn() {
     let turns = assemble_fixture("injected.jsonl").into_turns();
     let turn = assistant(&turns[5]);
     // Text, then selected lines + peer message + (after the footer) a
-    // directory listing: all consecutive, so one item.
+    // directory listing and the plan mode entries: all consecutive, so one item.
     assert_eq!(item_names(&turn.items), ["text", "injected"]);
     let entries = injected(&turn.items[1]);
     assert_eq!(
         kinds(entries),
-        ["selected_lines_in_ide", "queued_command", "directory"]
+        [
+            "selected_lines_in_ide",
+            "queued_command",
+            "directory",
+            "plan_mode",
+            "plan_mode_exit"
+        ]
     );
     assert_eq!(
         entries[0].text,
@@ -289,6 +295,8 @@ fn trailing_entries_collapse_into_the_previous_injected_item_of_the_turn() {
     );
     assert_eq!(entries[1].text, "[Peer] status update");
     assert_eq!(entries[2].text, "/home/user/project/src\nlib.rs\nmain.rs");
+    assert_eq!(entries[3].text, "/home/user/.claude/plans/tidy-plan.md");
+    assert_eq!(entries[4].text, "/home/user/.claude/plans/tidy-plan.md");
     assert!(turn.stats.is_some());
 }
 
@@ -368,6 +376,52 @@ fn a_flush_at_the_end_of_input_puts_trailing_entries_in_the_current_turn() {
     assert_eq!(
         item_names(&assistant(&asm.turns()[1]).items),
         ["text", "injected"]
+    );
+    assert_eq!(replayed, asm.turns());
+}
+
+#[test]
+fn flushing_held_entries_mid_stream_keeps_a_partial_line_for_later() {
+    let head = lines(&[
+        prompt("u1", "hello"),
+        reply("r1", "msg_1", "hi"),
+        attachment(
+            "a1",
+            "2026-10-24T08:00:02.000Z",
+            r#"{"type":"hook_system_message","content":"late"}"#,
+        ),
+    ]);
+    let next = reply("r2", "msg_2", "and more");
+    let (half, rest) = next.split_at(30);
+    let mut asm = Assembler::new(ByteSource::Memory(Arc::from(&b""[..])));
+    let mut replayed = Vec::new();
+    for u in asm.push_chunk(format!("{head}{half}").as_bytes()) {
+        u.apply(&mut replayed);
+    }
+    let buffered = asm.buffered_from();
+    assert_eq!(item_names(&assistant(&asm.turns()[1]).items), ["text"]);
+
+    let updates = asm.flush_held();
+    assert!(matches!(updates.as_slice(), [ModelUpdate::Updated(t)] if t.len() == 1));
+    for u in updates {
+        u.apply(&mut replayed);
+    }
+    assert_eq!(
+        item_names(&assistant(&asm.turns()[1]).items),
+        ["text", "injected"]
+    );
+    assert_eq!(asm.unparsed_count(), 0, "the partial line is not consumed");
+    assert_eq!(asm.buffered_from(), buffered);
+    assert!(asm.flush_held().is_empty(), "nothing left to flush");
+
+    for u in asm.push_chunk(format!("{rest}\n").as_bytes()) {
+        u.apply(&mut replayed);
+    }
+    assert_eq!(asm.unparsed_count(), 0);
+    // The reply continues the turn; the flushed entries stay where they were.
+    assert_eq!(
+        item_names(&assistant(&asm.turns()[1]).items),
+        ["text", "injected", "text"]
     );
     assert_eq!(replayed, asm.turns());
 }
