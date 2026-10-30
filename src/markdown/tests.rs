@@ -224,7 +224,46 @@ fn ordered_markers_are_padded_to_the_widest() {
 #[test]
 fn bullets_nest_inside_ordered_items_and_back() {
     let lines = render("1. one\n   - inner\n2. two", 20);
-    assert_eq!(text(&lines), ["1. one", "   • inner", "2. two"]);
+    assert_eq!(text(&lines), ["1. one", "  • inner", "2. two"]);
+}
+
+#[test]
+fn nested_lists_are_indented_two_cells_per_level_under_any_marker() {
+    let src = "9. nine\n   1. inner one with words\n   2. inner two\n10. ten\n    - deep";
+    let lines = render(src, 16);
+    assert_eq!(
+        text(&lines),
+        [
+            "9.  nine",
+            "  1. inner one",
+            "     with words",
+            "  2. inner two",
+            "10. ten",
+            "  • deep",
+        ]
+    );
+}
+
+#[test]
+fn list_lines_have_a_marker_span_and_a_hang_indent_span() {
+    let theme = Theme::default();
+    let base = base_of(&theme);
+    let lines = render("1. alpha beta gamma\n2. two", 12);
+    assert_eq!(text(&lines), ["1. alpha", "   beta", "   gamma", "2. two"]);
+    assert_eq!(runs(&lines[0]), [run("1. ", base), run("alpha", base)]);
+    assert_eq!(
+        runs(&lines[1]),
+        [run("   ", Style::new()), run("beta", base)]
+    );
+    let bullets = render("- alpha beta\n  - inner text", 9);
+    assert_eq!(
+        text(&bullets),
+        ["• alpha", "  beta", "  • inner", "    text"]
+    );
+    assert_eq!(
+        runs(&bullets[2]),
+        [run("  ", Style::new()), run("• ", base), run("inner", base)]
+    );
 }
 
 #[test]

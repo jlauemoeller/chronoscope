@@ -13,6 +13,7 @@ use super::wrap::wrap_spans;
 const BULLET: &str = "• ";
 const QUOTE_BAR: &str = "│ ";
 const CODE_INDENT: usize = 2;
+const NEST_INDENT: usize = 2;
 
 /// Lays out `blocks` at `width` cells with one blank line between blocks, or
 /// none when `tight`.
@@ -127,19 +128,49 @@ fn markers(list: &List) -> Vec<String> {
 fn list_lines(list: &List, width: usize, styles: &Styles) -> Vec<Line<'static>> {
     let markers = markers(list);
     let indent = markers.first().map_or(0, |m| m.width());
-    let inner = width.saturating_sub(indent).max(1);
-    let hang = Span::raw(" ".repeat(indent));
     let mut out: Vec<Line<'static>> = Vec::new();
     for (item, marker) in list.items.iter().zip(markers) {
         if !out.is_empty() && !list.tight {
             out.push(Line::default());
         }
         let marker = Span::styled(marker, styles.base);
-        let mut lines = layout(item, inner, styles, list.tight);
+        let mut lines = item_lines(item, marker, indent, width, list, styles);
         if lines.is_empty() {
             lines.push(Line::default());
         }
-        out.extend(prefix(lines, marker, hang.clone(), false));
+        out.extend(lines);
+    }
+    out
+}
+
+/// One list item: the marker in front of its first line, the text hanging
+/// under the first line's text, and nested lists indented by two cells.
+fn item_lines(
+    item: &[Block],
+    marker: Span<'static>,
+    indent: usize,
+    width: usize,
+    list: &List,
+    styles: &Styles,
+) -> Vec<Line<'static>> {
+    let mut out: Vec<Line<'static>> = Vec::new();
+    for (i, block) in item.iter().enumerate() {
+        let nested = i > 0 && matches!(block, Block::List(_));
+        let pad = if nested { NEST_INDENT } else { indent };
+        let lines = block_lines(block, width.saturating_sub(pad).max(1), styles);
+        if lines.is_empty() {
+            continue;
+        }
+        let hang = Span::raw(" ".repeat(pad));
+        let lead = if out.is_empty() {
+            marker.clone()
+        } else {
+            hang.clone()
+        };
+        if !out.is_empty() && !list.tight {
+            out.push(Line::default());
+        }
+        out.extend(prefix(lines, lead, hang, false));
     }
     out
 }
