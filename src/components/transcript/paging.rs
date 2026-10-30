@@ -33,10 +33,10 @@ impl Transcript {
 
     /// Selects the first section of the next or previous User, Assistant or
     /// Compaction block, and scrolls so that the block's top border is the
-    /// top row of the viewport, as far as the end of the transcript allows
-    /// and the selected section stays on screen (an unfolded system section
-    /// in front of the prompt can push it below the viewport; then the
-    /// prompt is scrolled into view instead). System content never forms a
+    /// top row of the viewport, as far as the end of the transcript allows.
+    /// The selected section is scrolled into view only when it would
+    /// otherwise be off screen (an unfolded system section in front of the
+    /// prompt can push it below the viewport). System content never forms a
     /// block of its own.
     pub(super) fn jump_turn(&mut self, step: Step) -> CmdResult {
         let before = self.offset;
@@ -59,7 +59,7 @@ impl Transcript {
             if let Some(cur) = self.cursor() {
                 let height = usize::from(size.height);
                 let span = self.span(&cur, height);
-                self.offset = reveal(self.offset, height, &span, Reveal::Top);
+                self.offset = reveal(self.offset, height, &span, Reveal::InPlace);
             }
         }
         self.refresh();

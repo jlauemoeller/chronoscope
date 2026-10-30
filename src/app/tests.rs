@@ -92,6 +92,15 @@ fn resized_message_marks_the_state_dirty_and_records_the_size() {
 }
 
 #[test]
+fn a_transcript_change_asks_for_a_redraw() {
+    let mut app = app();
+    app.take_redraw();
+    app.update(Msg::TranscriptChanged);
+    assert_eq!(app.take_redraw(), RedrawRequest::Dirty);
+    assert_eq!(app.take_redraw(), RedrawRequest::None);
+}
+
+#[test]
 fn a_tick_changes_nothing_visible() {
     let mut app = app();
     app.take_redraw();

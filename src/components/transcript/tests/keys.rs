@@ -1013,14 +1013,21 @@ fn g_in_a_one_row_viewport_shows_the_selected_last_section() {
 
 #[test]
 fn g_on_a_tall_last_section_still_shows_its_end() {
-    let (mut t, tall) = tall_section_transcript();
-    ch(&mut t, 'j');
-    ch(&mut t, 'j');
+    let tall = arc(with_id(
+        blocks::assistant(None, vec![blocks::text("big", &tall_text_of(35))], None),
+        "a1",
+    ));
+    let mut t = transcript_of(vec![arc(prompt("p1", "Show me everything.")), tall], 80, 10);
+    assert_eq!(selected(&t), section_id("p1", SectionKey::Prompt));
     ch(&mut t, 'G');
-    assert_eq!(selected(&t), item_section("r1", "t1"));
-    let _ = tall;
+    let big = item_section("a1", "big");
+    assert_eq!(selected(&t), big);
+    assert!(
+        span_of(&mut t, &big).len() > 10,
+        "the last section is taller"
+    );
     let total = total_height(&mut t);
-    assert_eq!(t.offset(), total - 10);
+    assert_eq!(t.offset(), total - 10, "its end is shown");
 }
 
 #[test]
@@ -1049,7 +1056,26 @@ fn showing_system_content_keeps_the_top_of_the_transcript_on_screen() {
 #[test]
 fn showing_system_content_scrolls_a_pushed_down_selection_into_view() {
     let mut t = session_transcript(80, 12).show_system(false);
+    ch(&mut t, '+');
     assert!(t.select(&section_id("t6", SectionKey::Prompt)));
     ch(&mut t, 's');
     assert_selection_on_screen(&mut t, 12);
+}
+
+#[test]
+fn a_jump_into_a_block_with_a_tall_first_section_keeps_the_top_border_on_top() {
+    let (mut t, tall) = tall_section_transcript();
+    let top = t.measured(|c, m| c.top(1, m));
+    let check = |t: &mut Transcript, when: &str| {
+        assert_eq!(selected(t), tall, "{when}");
+        assert_eq!(t.offset(), top, "{when}: the block's top is the top row");
+        let rows = text_rows(&draw(t, 80, 10));
+        assert!(rows[0].starts_with('╭'), "{when}: {}", rows[0]);
+    };
+    ch(&mut t, ']');
+    check(&mut t, "]");
+    ch(&mut t, 'G');
+    assert_eq!(selected(&t), item_section("r1", "t1"));
+    ch(&mut t, '[');
+    check(&mut t, "[");
 }
