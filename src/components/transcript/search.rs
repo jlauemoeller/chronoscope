@@ -41,7 +41,8 @@ use super::Transcript;
 use super::folding::FoldOp;
 use super::nav::{Reveal, Step, reveal};
 use crate::components::payload_value;
-use crate::components::turn_block::{SectionId, derive_sections};
+use crate::components::turn_block::{SectionContent, SectionId, derive_sections};
+use crate::model::ToolKind;
 use crate::transcript_search::{
     Match, SearchCorpus, SearchMatches, SearchPosition, SearchQuery, SearchRequest, section_text,
 };
@@ -392,12 +393,27 @@ impl Transcript {
 
     /// The plain text of `section`, as the search saw it.
     fn section_source(&self, block: usize, section: &SectionId) -> Source {
-        let text = derive_sections(&self.content.turns[block], self.content.show_system)
-            .into_iter()
-            .find(|s| s.id == *section)
-            .map(|s| section_text(&s).into_owned())
-            .unwrap_or_default();
-        Source::new(text)
+        let sections = derive_sections(&self.content.turns[block], self.content.show_system);
+        let Some(found) = sections.iter().find(|s| s.id == *section) else {
+            return Source::new(String::new(), false, false);
+        };
+        // Only markdown draws `- `, `> ` or `#` as something else than itself.
+        let markdown = match found.content {
+            SectionContent::Prompt(_)
+            | SectionContent::Text(_)
+            | SectionContent::Thinking(_)
+            | SectionContent::Compaction(_) => true,
+            SectionContent::Tool(call) => matches!(call.tool, ToolKind::Subagent),
+            SectionContent::ModelChange(_)
+            | SectionContent::Stats(_)
+            | SectionContent::System(_) => false,
+        };
+        // A diff draws the context lines of an edit once.
+        let diff = matches!(
+            found.content,
+            SectionContent::Tool(call) if matches!(call.tool, ToolKind::Edit | ToolKind::Write)
+        );
+        Source::new(section_text(found).into_owned(), markdown, diff)
     }
 
     /// The rows `section` draws now; `None` when it draws none.
@@ -570,6 +586,22 @@ struct Source {
     /// `1. `, `> `, `## `) that are drawn as a gutter or not at all.
     bodies: Vec<usize>,
     squashed: Vec<String>,
+    /// Whether the section draws the context lines of a diff once.
+    diff: bool,
+}
+
+/// The fence of a fenced code block that `line` opens or closes: its
+/// character and length. A fence is at least three `` ` `` or `~`, indented
+/// by at most three spaces.
+fn fence_of(line: &str) -> Option<(char, usize)> {
+    let indent = line.len() - line.trim_start_matches(' ').len();
+    if indent > 3 {
+        return None;
+    }
+    let rest = &line[indent..];
+    let fence = rest.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let len = rest.chars().take_while(|&c| c == fence).count();
+    (len >= 3).then_some((fence, len))
 }
 
 /// The bytes at the start of `line` that are markdown markers: block quote
@@ -607,17 +639,36 @@ fn marker_len(line: &str) -> usize {
 }
 
 impl Source {
-    fn new(text: String) -> Self {
+    /// The lines of `text`. With `markdown`, the markers that markdown draws
+    /// differently are left out of the content of the lines, except in fenced
+    /// code blocks, which draw them as they are.
+    fn new(text: String, markdown: bool, diff: bool) -> Self {
         let mut bounds = Vec::new();
+        let mut bodies = Vec::new();
+        let mut fence: Option<(char, usize)> = None;
         let mut start = 0;
         for line in text.split('\n') {
             bounds.push(start..start + line.len());
             start += line.len() + 1;
+            let body = if !markdown {
+                0
+            } else if let Some((open, len)) = fence {
+                // It closes on a fence of the same character, at least as
+                // long, with nothing after it.
+                if fence_of(line).is_some_and(|(c, n)| c == open && n >= len)
+                    && line.trim().chars().all(|c| c == open)
+                {
+                    fence = None;
+                }
+                0
+            } else if let Some(opened) = fence_of(line) {
+                fence = Some(opened);
+                0
+            } else {
+                marker_len(line)
+            };
+            bodies.push(body);
         }
-        let bodies: Vec<usize> = bounds
-            .iter()
-            .map(|b| marker_len(&text[b.clone()]))
-            .collect();
         let squashed = bounds
             .iter()
             .zip(&bodies)
@@ -628,6 +679,7 @@ impl Source {
             bounds,
             bodies,
             squashed,
+            diff,
         }
     }
 
@@ -730,37 +782,63 @@ impl<'a> SectionView<'a> {
     }
 
     /// Where in the joined rows source line `index` is drawn.
+    ///
+    /// The drawings are counted against the source lines that read the same
+    /// (`written`, this one included):
+    /// - more drawings than lines: one belongs to no such line (the wrapped
+    ///   end of a longer line, say), so none can be told from the others;
+    /// - as many: the n-th drawing is the n-th line;
+    /// - fewer: lines were cut off by the truncation (the n-th drawing, if it
+    ///   is there; the caller expands and asks again), or the section draws
+    ///   a line less often than it is written.
     fn place(&self, index: usize) -> Option<usize> {
         let line = self.source.squashed.get(index)?;
         if line.is_empty() {
             return None;
         }
-        let earlier = (0..index)
-            .filter(|&i| self.source.is_drawing_of(i, line))
-            .count();
-        // Without a cut, a line may be drawn fewer times than it is written
-        // (the context lines of a diff): the last drawing stands for it.
-        self.nth_drawn(line, earlier, !self.truncated)
+        let (mut earlier, mut written) = (0, 0);
+        for (i, _) in self.source.squashed.iter().enumerate() {
+            if self.source.is_drawing_of(i, line) {
+                written += 1;
+                if i < index {
+                    earlier += 1;
+                }
+            }
+        }
+        let (drawn, nth, last) = self.drawings(line, earlier);
+        if drawn > written {
+            None
+        } else if drawn == written || self.truncated {
+            nth
+        } else if self.source.diff {
+            // The context lines of a diff are written in the old and in the
+            // new text and drawn once. When such a line repeats in the file,
+            // the surplus occurrences land on the row of the last copy.
+            last
+        } else {
+            None
+        }
     }
 
-    /// Where in the joined rows the `nth` drawing of the squashed `line`
-    /// starts; with `clamp`, the last one when there are fewer.
-    fn nth_drawn(&self, line: &str, nth: usize, clamp: bool) -> Option<usize> {
+    /// How many times the squashed `line` is drawn, where the `nth` drawing
+    /// starts and where the last one does.
+    fn drawings(&self, line: &str, nth: usize) -> (usize, Option<usize>, Option<usize>) {
         let mut seen = 0;
+        let mut found_nth = None;
         let mut last = None;
         let mut from = 0;
         while let Some(found) = self.joined[from..].find(line) {
             let at = from + found;
             if self.is_drawing(at, line.len()) {
                 if seen == nth {
-                    return Some(at);
+                    found_nth = Some(at);
                 }
                 seen += 1;
                 last = Some(at);
             }
             from = at + self.joined[at..].chars().next().map_or(1, char::len_utf8);
         }
-        last.filter(|_| clamp)
+        (seen, found_nth, last)
     }
 
     /// Whether `at..at + len` of the joined rows is a drawn line: it ends
@@ -778,7 +856,14 @@ impl<'a> SectionView<'a> {
     }
 
     /// The row of the occurrence of the query that `found` is, counted from
-    /// the nearest earlier line that is drawn as written.
+    /// the nearest earlier line that is drawn as written, and not looking
+    /// past the next later line that is.
+    ///
+    /// The rows between the two make the window. Matches in it whose text is
+    /// not drawn (a link URL, a fence info string) are counted but have no
+    /// occurrence, so the window may hold fewer than the match needs: then
+    /// the last one stands in for it, and a window without any starts at
+    /// its first row.
     fn anchored(
         &self,
         found: &Match,
@@ -791,7 +876,23 @@ impl<'a> SectionView<'a> {
             let end = start + self.source.squashed[line].len();
             Some((line, self.index_at(end.saturating_sub(1))))
         });
-        let first_row = anchor.map_or(0, |(_, row)| row + 1);
+        let first = anchor.map_or(0, |(_, row)| row + 1);
+        if first >= self.rows.len() {
+            return None;
+        }
+        // Source order is not draw order: a later line drawn above the
+        // window does not end it.
+        let until = (found.line + 1
+            ..self
+                .source
+                .squashed
+                .len()
+                .min(found.line + 1 + ANCHOR_LOOKBACK))
+            .find_map(|line| {
+                let row = self.index_at(self.place(line)?);
+                (row >= first).then_some(row)
+            })
+            .unwrap_or(self.rows.len());
         let before = in_section
             .iter()
             .filter(|&&(line, start)| {
@@ -799,17 +900,23 @@ impl<'a> SectionView<'a> {
                     && (line, start) < (found.line, found.range.start)
             })
             .count();
+        let window = &self.rows[first..until.max(first + 1)];
         let mut seen = 0;
-        for (row, text) in self.rows.iter().skip(first_row) {
+        let mut last = None;
+        for (row, text) in window {
             if is_label(text) {
                 continue;
             }
-            seen += query.find_all(text).len();
+            let count = query.find_all(text).len();
+            if count > 0 {
+                last = Some(*row);
+            }
+            seen += count;
             if seen > before {
                 return Some(*row);
             }
         }
-        None
+        Some(last.unwrap_or(window[0].0))
     }
 }
 
