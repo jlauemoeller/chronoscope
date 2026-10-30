@@ -484,7 +484,7 @@ impl App {
             self.session_sink.clone(),
         ) else {
             log::error!("cannot open a subagent: no {harness} harness or session channel");
-            self.toast_quiet("Cannot open the subagent");
+            self.toast_quiet("Could not open the subagent");
             return;
         };
         let Some(id) = loader.subagent(&parent, call) else {
@@ -507,7 +507,7 @@ impl App {
         let mounted = self.mount_subagent(depth, &id, &label);
         if let Err(err) = mounted {
             log::error!("could not mount the subagent transcript: {err}");
-            self.toast_quiet("Cannot open the subagent");
+            self.toast_quiet("Could not open the subagent");
             return;
         }
         // An answer to a search of the covered transcript would land in the

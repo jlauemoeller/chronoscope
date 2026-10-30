@@ -161,14 +161,7 @@ impl BrowserHeader {
             .chain(self.agents[hidden..].iter().map(String::as_str))
             .collect();
         let chrome = fit::chrome_width(self.agents.len(), shown);
-        // The names stay whole while the id can be shown, if cut, beside
-        // them; else they give way down to their floors.
-        let whole = names.iter().map(|name| name.width()).sum::<usize>();
-        let mut id = fit::fit_id(&self.session_id, room.saturating_sub(chrome + whole));
-        if id.is_empty() {
-            let floors = fit::names_floor(&names);
-            id = fit::fit_id(&self.session_id, room.saturating_sub(chrome + floors));
-        }
+        let id = self.fitted_id(room.saturating_sub(chrome), &names);
         let cut = fit::cut_names(&names, room.saturating_sub(chrome + id.width()));
         let used = chrome + cut.iter().map(|name| name.width()).sum::<usize>() + id.width();
         let border = self.border();
@@ -183,6 +176,27 @@ impl BrowserHeader {
         }
         spans.push(Span::styled("─╮", border));
         Line::from(spans)
+    }
+
+    /// The right title in `room` columns, which the names share with it.
+    ///
+    /// In a subagent's header the names stay whole while the id, cut from
+    /// its start, can be shown beside them. Otherwise, and always for the
+    /// session itself, the names give way down to their floors before the id
+    /// is cut: the start of the id is what a user types to find the
+    /// session.
+    fn fitted_id(&self, room: usize, names: &[&str]) -> String {
+        if !self.agents.is_empty() {
+            let whole = names.iter().map(|name| name.width()).sum::<usize>();
+            let id = fit::fit_id(&self.session_id, room.saturating_sub(whole));
+            if !id.is_empty() {
+                return id;
+            }
+        }
+        fit::fit_id(
+            &self.session_id,
+            room.saturating_sub(fit::names_floor(names)),
+        )
     }
 
     /// The left title: ` Project <name>`, a collapsed marker when outer
@@ -678,6 +692,40 @@ mod tests {
             assert!(rows[0].starts_with("╭─ Project "), "{}", rows[0]);
             assert!(rows[0].ends_with("─╮"), "{}", rows[0]);
         }
+    }
+
+    /// Row 0 of the session's own header (no breadcrumb) for `project`.
+    fn root_top(project: &str, width: u16) -> String {
+        let mut h = BrowserHeader::new(project, SESSION, CWD, builtin::default_theme());
+        rows(&mut h, width).remove(0)
+    }
+
+    #[test]
+    fn at_depth_0_the_project_gives_way_before_the_session_id_does() {
+        // Names too long to stay whole beside the whole id.
+        for (project, width) in [
+            ("chronoscope2", 60u16),
+            ("a-fairly-long-project-name-abc", 80),
+            ("a-fairly-long-project-name-here-x", 80),
+        ] {
+            let top = root_top(project, width);
+            assert!(top.contains(SESSION), "{project} at {width}: {top}");
+            assert!(top.contains('…'), "{project} at {width}: {top}");
+            assert!(!top.contains(project), "{project} at {width}: {top}");
+            assert_eq!(top.chars().count(), usize::from(width), "{top}");
+            assert!(top.ends_with("─╮"), "{top}");
+        }
+        assert_eq!(
+            root_top("chronoscope2", 60),
+            format!("╭─ Project chrono… ─ {SESSION} ─╮")
+        );
+    }
+
+    #[test]
+    fn the_fitting_constants_match_the_strings_they_stand_for() {
+        assert_eq!(AGENT_SEPARATOR.width(), fit::SEPARATOR_WIDTH);
+        assert_eq!(" Project ".width() + " ".width(), fit::TITLE_CHROME);
+        assert_eq!(fit::COLLAPSED, " › …");
     }
 
     #[test]
