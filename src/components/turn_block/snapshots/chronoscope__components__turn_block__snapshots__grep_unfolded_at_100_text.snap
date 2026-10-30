@@ -1,0 +1,18 @@
+---
+source: src/components/turn_block/snapshots.rs
+expression: "buffer_to_text(&draw(&turn, &unfolded(&turn), 100))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                  │
+│ ▼ Find the UVC extension unit code                                                               │
+│                                                                                                  │
+│   Pattern:                                                                                       │
+│                                                                                                  │
+│      guidExtensionCode in /home/jacob/projects/brio (glob: *.txt)                                │
+│                                                                                                  │
+│   Matches:                                                                                       │
+│                                                                                                  │
+│      lsusb.txt:412:guidExtensionCode {2c8a1d9a-0b52-4a6e-a1e0-5a9b3f6d7c10}                      │
+│      lsusb.txt:530:guidExtensionCode {8b3c7e11-4f90-4b0f-9a5d-1e2f3a4b5c6d}                      │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

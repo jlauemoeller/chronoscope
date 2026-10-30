@@ -142,11 +142,7 @@ fn fold_state_overrides_foldable_sections_only() {
 // ---- Renderers ----
 
 fn ctx(theme: &crate::theme::Theme, width: u16, folded: bool) -> SectionCtx<'_> {
-    SectionCtx {
-        theme,
-        width,
-        folded,
-    }
+    SectionCtx::new(theme, width, folded)
 }
 
 fn lines_text(lines: &[ratatui::text::Line<'_>]) -> Vec<String> {
@@ -255,11 +251,12 @@ fn tool_call_folded_shows_the_description_in_its_token() {
 }
 
 #[test]
-fn tool_call_unfolded_has_the_generic_body_in_its_tokens() {
+fn tool_call_unfolded_has_its_body_in_its_tokens() {
     let theme = distinct_theme();
     let turn = assistant(
         None,
-        vec![tool(
+        vec![tool_of(
+            crate::model::ToolKind::Other("mcp__x__y".into()),
             "c1",
             "Run it",
             json!({"command": "ls"}),
@@ -290,11 +287,12 @@ fn tool_call_unfolded_has_the_generic_body_in_its_tokens() {
         ]
     );
     let color = |row: usize, idx: usize| lines[row].spans[idx].style.fg.unwrap();
+    let last = |row: usize| lines[row].spans.last().unwrap().style.fg.unwrap();
     assert_eq!(color(0, 1), theme.role(Role::Primary));
     assert_eq!(color(2, 1), theme.role(Role::Warning));
-    assert_eq!(color(4, 1), theme.role(Role::Accent));
+    assert_eq!(last(4), theme.role(Role::Accent));
     assert_eq!(color(8, 1), theme.role(Role::Warning));
-    assert_eq!(color(10, 1), theme.role(Role::Secondary));
+    assert_eq!(last(10), theme.role(Role::Secondary));
 }
 
 #[test]
@@ -318,7 +316,8 @@ fn tool_result_is_error_output_when_the_status_is_error() {
     let lines = ToolCallSection(call).lines(&ctx(&theme, 60, false));
     let last = lines.last().unwrap();
     assert_eq!(last.to_string(), "     boom");
-    assert_eq!(last.spans[1].style.fg, Some(theme.role(Role::Destructive)));
+    let text = last.spans.last().unwrap();
+    assert_eq!(text.style.fg, Some(theme.role(Role::Destructive)));
 }
 
 #[test]
@@ -337,7 +336,7 @@ fn pending_tool_shows_muted_pending_at_column_7() {
     let last = lines.last().unwrap();
     assert_eq!(last.to_string(), "     (pending)");
     assert_eq!(
-        last.spans[1].style.fg,
+        last.spans.last().unwrap().style.fg,
         Some(theme.role(Role::MutedForeground))
     );
 }
@@ -600,13 +599,13 @@ fn tool_body_labels_are_at_column_4_and_content_at_column_7() {
     for width in [80usize, 120] {
         let rows = rows(&draw(&turn, &opts, u16::try_from(width).unwrap()));
         let at = |needle: &str| rows.iter().position(|r| r.contains(needle)).unwrap();
-        let input = at("Input:");
+        let input = at("Command:");
         let result = at("Result:");
-        assert_eq!(cols(&rows[input], 0, 11), "│   Input: ");
+        assert_eq!(cols(&rows[input], 0, 13), "│   Command: ");
         assert_eq!(cols(&rows[input - 1], 1, 4), "   ");
         assert_eq!(rows[input + 1].trim_matches(['│', ' ']), "");
-        assert_eq!(cols(&rows[input + 2], 0, 8), "│      {");
-        assert_eq!(cols(&rows[input + 2], 7, 8), "{");
+        assert_eq!(cols(&rows[input + 2], 0, 8), "│      s");
+        assert_eq!(cols(&rows[input + 2], 7, 11), "sudo");
         assert_eq!(cols(&rows[result], 4, 11), "Result:");
         assert_eq!(rows[result + 1].trim_matches(['│', ' ']), "");
         assert_eq!(cols(&rows[result + 2], 7, 11), "sudo");
@@ -626,7 +625,8 @@ fn tool_body_labels_are_at_column_4_and_content_at_column_7() {
 fn tool_body_wraps_json_to_the_body_width() {
     let turn = assistant(
         None,
-        vec![tool(
+        vec![tool_of(
+            crate::model::ToolKind::Other("mcp__x__y".into()),
             "c1",
             "d",
             json!({"k": "y".repeat(300)}),
@@ -850,7 +850,7 @@ fn selected_text_is_bold_with_its_token_colours_and_others_are_not() {
         buf[(4, u16::try_from(first).unwrap())].fg,
         theme.role(Role::Primary)
     );
-    // `Input:` label keeps its colour; the command text its token.
+    // `Command:` label keeps its colour; the command text its token.
     assert_eq!(
         buf[(4, u16::try_from(first + 2).unwrap())].fg,
         theme.role(Role::Warning)
@@ -1186,4 +1186,150 @@ fn text_never_reaches_the_padding_at_tiny_widths() {
             );
         }
     }
+}
+
+// ---- Task 019: truncation stops and the open_subagent hint ----
+
+fn long_result_turn(lines: usize) -> Turn {
+    let text: String = (1..=lines).map(|n| format!("row {n}\n")).collect();
+    assistant(
+        None,
+        vec![
+            tool(
+                "c1",
+                "Print the log",
+                json!({"command": "cat log"}),
+                Some((&text, false)),
+                ToolStatus::Ok,
+            ),
+            tool(
+                "c2",
+                "Next",
+                json!({"command": "true"}),
+                Some(("ok", false)),
+                ToolStatus::Ok,
+            ),
+        ],
+        None,
+    )
+}
+
+fn more_id(turn: &Turn, item: &str) -> SectionId {
+    key_id(turn, SectionKey::More(crate::model::ItemId::from(item)))
+}
+
+#[test]
+fn a_truncated_call_has_a_second_stop_directly_below_it() {
+    let turn = long_result_turn(30);
+    let opts = Opts::default().unfold(item_id(&turn, "c1")).truncate(10);
+    let (stops, height) = with_block(&turn, &opts, |block| {
+        let layout = block.layout(60);
+        (layout.section_rows().to_vec(), layout.height())
+    });
+    let ids: Vec<SectionId> = stops.iter().map(|(id, _)| id.clone()).collect();
+    assert_eq!(
+        ids,
+        [
+            item_id(&turn, "c1"),
+            more_id(&turn, "c1"),
+            item_id(&turn, "c2")
+        ]
+    );
+    assert_eq!(stops[0].1.end, stops[1].1.start, "no blank row between");
+    assert_eq!(stops[1].1.len(), 1);
+    assert_eq!(stops[1].1.end + 1, stops[2].1.start, "one blank row after");
+    assert_eq!(height, draw(&turn, &opts, 60).area.height as usize);
+}
+
+#[test]
+fn selecting_the_more_row_marks_that_row_only() {
+    let turn = long_result_turn(30);
+    let opts = Opts::default()
+        .unfold(item_id(&turn, "c1"))
+        .truncate(10)
+        .select(more_id(&turn, "c1"));
+    let rows = rows(&draw(&turn, &opts, 60));
+    let marked: Vec<&String> = rows.iter().filter(|r| r.starts_with('▒')).collect();
+    assert_eq!(marked.len(), 1);
+    assert_eq!(marked[0].trim_matches(['▒', '│', ' ']), "… 20 more lines");
+    // Selecting the tool section marks its rows but not the more row.
+    let opts = Opts::default()
+        .unfold(item_id(&turn, "c1"))
+        .truncate(10)
+        .select(item_id(&turn, "c1"));
+    let rows = self::rows(&draw(&turn, &opts, 60));
+    let more = rows.iter().find(|r| r.contains("more lines")).unwrap();
+    assert!(more.starts_with('│'));
+    assert!(rows.iter().filter(|r| r.starts_with('▒')).count() > 10);
+}
+
+#[test]
+fn an_expanded_call_has_all_its_lines_and_no_more_row() {
+    let turn = long_result_turn(30);
+    let opts = Opts::default()
+        .unfold(item_id(&turn, "c1"))
+        .truncate(10)
+        .expand(item_id(&turn, "c1"));
+    let rows = rows(&draw(&turn, &opts, 60));
+    assert!(rows.iter().any(|r| r.contains("row 30")));
+    assert!(rows.iter().all(|r| !r.contains("more line")));
+    let ids = with_block(&turn, &opts, |b| {
+        b.layout(60)
+            .section_rows()
+            .iter()
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(ids, [item_id(&turn, "c1"), item_id(&turn, "c2")]);
+}
+
+#[test]
+fn a_folded_truncated_call_has_no_more_row() {
+    let turn = long_result_turn(30);
+    let opts = Opts::default().truncate(10);
+    let ids = with_block(&turn, &opts, |b| b.layout(60).section_rows().len());
+    assert_eq!(ids, 2);
+}
+
+#[test]
+fn the_open_transcript_hint_follows_the_remapped_open_subagent_key() {
+    use crate::config::Config;
+    use crate::keymap::{Action, Context, Keymap};
+    let subagent = |opts: &Opts| {
+        let turn = assistant(
+            None,
+            vec![tool_of(
+                crate::model::ToolKind::Subagent,
+                "c1",
+                "Explore",
+                json!({"subagent_type": "Explore", "prompt": "Look"}),
+                Some(("Done", false)),
+                ToolStatus::Ok,
+            )],
+            None,
+        );
+        let opts = opts.clone().unfold(item_id(&turn, "c1"));
+        rows(&draw(&turn, &opts, 80))
+            .into_iter()
+            .find(|r| r.contains("to open transcript"))
+            .unwrap()
+            .trim_matches(['│', ' '])
+            .to_owned()
+    };
+    let label = |km: &Keymap| km.label(Context::Browser, Action::OpenSubagent).unwrap();
+    let default = Keymap::default();
+    assert_eq!(
+        subagent(&Opts::default().open_key(&label(&default))),
+        "a to open transcript"
+    );
+    let (config, warnings) = Config::from_toml_str(
+        "[keys.browser]\nopen_subagent = [\"o\"]\n",
+        std::path::Path::new("/home/tester"),
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let (remapped, _) = Keymap::from_config(&config.keys);
+    assert_eq!(
+        subagent(&Opts::default().open_key(&label(&remapped))),
+        "o to open transcript"
+    );
 }

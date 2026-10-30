@@ -17,13 +17,11 @@ expression: "buffer_to_styled(&draw(&turn, &opts.dim(false), 120))"
 │                                                                                                                      │
 ▒ ▼ Dump full USB descriptors for the BRIO                                                                             │
 ▒                                                                                                                      │
-▒   Input:                                                                                                             │
+▒   Command:                                                                                                           │
 ▒                                                                                                                      │
-▒      {                                                                                                               │
-▒        "command": "sudo -n true 2>&1 && echo SUDO_OK; lsusb -v -d 046d:085e > /tmp/claude-1000/-home-jacob-Develop   │
-▒      ment-projects-brio/scratchpad/lsusb.txt 2>&1; wc -l /tmp/claude-1000/-home-jacob-Development-projects-brio/sc   │
-▒      ratchpad/lsusb.txt"                                                                                             │
-▒      }                                                                                                               │
+▒      sudo -n true 2>&1 && echo SUDO_OK; lsusb -v -d 046d:085e > /tmp/claude-1000/-home-jacob-Development-projects-   │
+▒      brio/scratchpad/lsusb.txt 2>&1; wc -l /tmp/claude-1000/-home-jacob-Development-projects-brio/scratchpad/lsusb   │
+▒      .txt                                                                                                            │
 ▒                                                                                                                      │
 ▒   Result:                                                                                                            │
 ▒                                                                                                                      │
@@ -52,22 +50,20 @@ expression: "buffer_to_styled(&draw(&turn, &opts.dim(false), 120))"
 12: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 13: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..42 Rgb(250, 250, 250)/Reset/BOLD | 42..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 14: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-15: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..10 Rgb(161, 161, 161)/Reset/BOLD | 10..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+15: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..12 Rgb(161, 161, 161)/Reset/BOLD | 12..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 16: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-17: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..8 Rgb(250, 250, 250)/Reset/BOLD | 8..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+17: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..116 Rgb(250, 250, 250)/Reset/BOLD | 116..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 18: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..116 Rgb(250, 250, 250)/Reset/BOLD | 116..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-19: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..116 Rgb(250, 250, 250)/Reset/BOLD | 116..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-20: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..26 Rgb(250, 250, 250)/Reset/BOLD | 26..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-21: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..8 Rgb(250, 250, 250)/Reset/BOLD | 8..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+19: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..11 Rgb(250, 250, 250)/Reset/BOLD | 11..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+20: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+21: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..11 Rgb(161, 161, 161)/Reset/BOLD | 11..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 22: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-23: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..11 Rgb(161, 161, 161)/Reset/BOLD | 11..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-24: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-25: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..35 Rgb(161, 161, 161)/Reset/BOLD | 35..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-26: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..11 Rgb(161, 161, 161)/Reset/BOLD | 11..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-27: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..82 Rgb(161, 161, 161)/Reset/BOLD | 82..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+23: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..35 Rgb(161, 161, 161)/Reset/BOLD | 35..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+24: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..11 Rgb(161, 161, 161)/Reset/BOLD | 11..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+25: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/BOLD | 4..82 Rgb(161, 161, 161)/Reset/BOLD | 82..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+26: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+27: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..29 Rgb(161, 161, 161)/Reset/NONE | 29..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 28: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-29: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..29 Rgb(161, 161, 161)/Reset/NONE | 29..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+29: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..40 Rgb(161, 161, 161)/Reset/NONE | 40..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 30: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-31: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..40 Rgb(161, 161, 161)/Reset/NONE | 40..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-32: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-33: 0..120 Rgb(94, 94, 94)/Reset/NONE
+31: 0..120 Rgb(94, 94, 94)/Reset/NONE

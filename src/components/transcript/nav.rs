@@ -259,8 +259,11 @@ impl Transcript {
         if self.is_folded(id).is_none() {
             return;
         }
+        let before = self.sections_if(|turn| *turn == id.turn);
         self.content.folds.set_folded(id.clone(), folded);
         self.cache.invalidate(block);
+        // Folding a tool call removes its truncation row.
+        self.restore_selection(before);
         self.refresh();
     }
 
@@ -274,7 +277,21 @@ impl Transcript {
             .map(|section| self.content.folds.is_folded(section))
     }
 
-    /// Folds or unfolds the selected section. Only that block is measured
+    /// Expands the truncated output of the tool call `parent` in block
+    /// `block` (`Enter` on its `… N more lines` row): the row goes away and
+    /// the selection stays on the tool call. The viewport does not move, so
+    /// the rows that were on screen stay and the rest of the output follows
+    /// them.
+    fn expand_output(&mut self, parent: SectionId, block: usize) -> CmdResult {
+        self.content.folds.set_expanded(parent.clone());
+        self.cache.invalidate(block);
+        self.content.selected = Some(parent);
+        self.refresh();
+        CmdResult::Visual
+    }
+
+    /// Folds or unfolds the selected section, or expands the output the
+    /// selected truncation row stands for. Only that block is measured
     /// again.
     pub(super) fn toggle_fold(&mut self) -> CmdResult {
         let before = self.offset;
@@ -282,6 +299,9 @@ impl Transcript {
             return CmdResult::NoChange;
         };
         let id = cur.id().clone();
+        if let Some(parent) = id.more_parent() {
+            return self.expand_output(parent, cur.block);
+        }
         let Some(folded) = self.is_folded(&id) else {
             return CmdResult::NoChange;
         };

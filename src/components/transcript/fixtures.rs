@@ -139,3 +139,43 @@ pub fn block_rows(transcript: &Transcript, index: usize, width: u16) -> Vec<Stri
 pub fn text_rows(buf: &Buffer) -> Vec<String> {
     blocks::rows(buf)
 }
+
+/// The text `line 1\nline 2\n...\nline {n}`.
+pub fn numbered_lines(n: usize) -> String {
+    (1..=n)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// An assistant turn `a1` whose Shell call `c1` has a result of `lines` lines.
+pub fn long_output_turn(lines: usize) -> Arc<Turn> {
+    let text = numbered_lines(lines);
+    arc(with_id(
+        blocks::assistant(
+            Some("high"),
+            vec![blocks::tool(
+                "c1",
+                "Print the log",
+                json!({"command": "cat /var/log/build.log"}),
+                Some((&text, false)),
+                ToolStatus::Ok,
+            )],
+            None,
+        ),
+        "a1",
+    ))
+}
+
+/// A transcript of `long_output_turn(1434)` with its tool call unfolded.
+pub fn long_output_transcript(width: u16, height: u16) -> Transcript {
+    let mut t = transcript_of(vec![long_output_turn(1434)], width, height);
+    t.set_folded(
+        &crate::components::turn_block::SectionId {
+            turn: TurnId::from("a1"),
+            key: crate::components::turn_block::SectionKey::Item(crate::model::ItemId::from("c1")),
+        },
+        false,
+    );
+    t
+}

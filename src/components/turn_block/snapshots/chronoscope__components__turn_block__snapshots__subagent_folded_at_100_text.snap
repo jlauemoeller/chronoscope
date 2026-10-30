@@ -1,0 +1,9 @@
+---
+source: src/components/turn_block/snapshots.rs
+expression: "buffer_to_text(&draw(&turn, &Opts::default(), 100))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                  │
+│ ▶ Explore the UVC descriptors (Explore)                                                          │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

@@ -37,8 +37,9 @@ pub use session_list::{
 };
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 pub use transcript::{
-    DIM_UNSELECTED_ATTR, MODEL_UPDATE_ATTR, SHOW_SYSTEM_ATTR, TIMESTAMP_FORMATTER_ATTR,
-    TRUNCATE_OUTPUT_LINES_ATTR, Transcript, VIEWPORT_ATTR, model_update_value, viewport_value,
+    DIM_UNSELECTED_ATTR, MODEL_UPDATE_ATTR, OPEN_SUBAGENT_KEY_ATTR, SHOW_SYSTEM_ATTR,
+    TIMESTAMP_FORMATTER_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, Transcript, VIEWPORT_ATTR,
+    model_update_value, viewport_value,
 };
 pub use turn_block::{
     BlockLayout, FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, TitleBar,

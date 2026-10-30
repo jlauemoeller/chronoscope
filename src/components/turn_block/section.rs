@@ -3,7 +3,7 @@
 //! [`derive_sections`] derives the sections of a turn; [`FoldState`] answers whether
 //! a section is folded, starting from the defaults of the §5.2 table.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::model::{InjectedEntry, Item, ItemId, Thinking, ToolCall, Turn, TurnId, TurnStats};
 
@@ -18,6 +18,10 @@ pub enum SectionKey {
     Item(ItemId),
     /// The stats footer of an Assistant turn.
     Footer,
+    /// The `… N more lines` row below a truncated tool call (the tool call is
+    /// the item with this id). It is a selection stop of its own, but it is
+    /// never listed by [`derive_sections`]: it exists only in a layout.
+    More(ItemId),
 }
 
 /// The stable identity of a section: its turn and its part of the turn.
@@ -27,6 +31,32 @@ pub struct SectionId {
     pub turn: TurnId,
     /// The part of the turn.
     pub key: SectionKey,
+}
+
+impl SectionId {
+    /// The id of the truncation row below the tool call `self`, when `self`
+    /// is an item section.
+    pub fn more_row(&self) -> Option<SectionId> {
+        match &self.key {
+            SectionKey::Item(item) => Some(SectionId {
+                turn: self.turn.clone(),
+                key: SectionKey::More(item.clone()),
+            }),
+            _ => None,
+        }
+    }
+
+    /// The tool call section a truncation row belongs to; `None` for any
+    /// other section.
+    pub fn more_parent(&self) -> Option<SectionId> {
+        match &self.key {
+            SectionKey::More(item) => Some(SectionId {
+                turn: self.turn.clone(),
+                key: SectionKey::Item(item.clone()),
+            }),
+            _ => None,
+        }
+    }
 }
 
 /// The kinds of section (§5.2).
@@ -197,6 +227,9 @@ fn item_content(item: &Item, show_system: bool) -> Option<SectionContent<'_>> {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FoldState {
     overrides: HashMap<SectionId, bool>,
+    /// The tool calls whose truncated output was expanded. Independent of
+    /// folding: folding and unfolding a call keeps it.
+    expanded: HashSet<SectionId>,
 }
 
 impl FoldState {
@@ -215,6 +248,17 @@ impl FoldState {
                 .get(&section.id)
                 .copied()
                 .unwrap_or_else(|| kind.default_folded())
+    }
+
+    /// Whether the output of the tool call `id` was expanded past
+    /// `truncate_output_lines`.
+    pub fn is_expanded(&self, id: &SectionId) -> bool {
+        self.expanded.contains(id)
+    }
+
+    /// Marks the output of the tool call `id` as expanded.
+    pub fn set_expanded(&mut self, id: SectionId) {
+        self.expanded.insert(id);
     }
 
     /// Folds or unfolds the section with the given id.

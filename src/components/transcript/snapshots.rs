@@ -97,3 +97,48 @@ fn dim_unselected_false_at_120x40_styled() {
 fn selected_turn_id(t: &Transcript) -> String {
     t.selected().unwrap().turn.to_string()
 }
+
+// ---- Task 019: truncated tool output ----
+
+use crate::components::turn_block::SectionKey;
+use crate::model::ItemId;
+
+fn select_more_row(t: &mut Transcript) {
+    let want = SectionId {
+        turn: crate::model::TurnId::from("a1"),
+        key: SectionKey::More(ItemId::from("c1")),
+    };
+    for _ in 0..100 {
+        if t.selected() == Some(&want) {
+            return;
+        }
+        t.perform(Cmd::Move(Direction::Down));
+    }
+    panic!("the more row was never selected");
+}
+
+#[test]
+fn truncated_result_with_the_more_row_selected_at_80x24_text() {
+    let mut t = long_output_transcript(80, 24);
+    select_more_row(&mut t);
+    let text = text_at(&mut t, 80, 24);
+    assert_eq!(text.lines().filter(|r| r.starts_with('▒')).count(), 1);
+    insta::assert_snapshot!(text);
+}
+
+#[test]
+fn truncated_result_with_the_more_row_selected_at_80x24_styled() {
+    let mut t = long_output_transcript(80, 24);
+    select_more_row(&mut t);
+    insta::assert_snapshot!(buffer_to_styled(&draw(&mut t, 80, 24)));
+}
+
+#[test]
+fn expanded_result_after_submitting_the_more_row_at_80x24_text() {
+    let mut t = long_output_transcript(80, 24);
+    select_more_row(&mut t);
+    t.perform(Cmd::Submit);
+    let text = text_at(&mut t, 80, 24);
+    assert!(!text.contains("more lines"));
+    insta::assert_snapshot!(text);
+}

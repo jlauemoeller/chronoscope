@@ -28,6 +28,20 @@ pub fn char_wrap(text: &str, width: u16, style: Style) -> Vec<Line<'static>> {
         .collect()
 }
 
+/// Char-wraps already styled lines (say, highlighted code) at `width` cells,
+/// as [`char_wrap`] does for plain text: an empty line stays one empty line,
+/// and each span keeps its style. A `width` of 0 gives no lines.
+pub fn wrap_styled_lines(lines: &[Line<'static>], width: u16) -> Vec<Line<'static>> {
+    if width == 0 {
+        return Vec::new();
+    }
+    lines
+        .iter()
+        .flat_map(|line| wrap_spans(&line.spans, usize::from(width)))
+        .map(Line::from)
+        .collect()
+}
+
 /// Appends `grapheme` to `line`, merging it into the last span when the style
 /// matches.
 fn push(line: &mut Vec<Span<'static>>, grapheme: &str, style: Style) {

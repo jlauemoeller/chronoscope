@@ -15,6 +15,7 @@ use crate::theme::{Role, builtin};
 
 mod cache_lookup;
 mod property;
+mod truncation;
 
 pub(super) fn section_id(turn: &str, key: SectionKey) -> SectionId {
     SectionId {
@@ -32,11 +33,11 @@ fn tall_text() -> String {
     (1..=40).map(|n| format!("- item {n}\n")).collect()
 }
 
-fn down() -> Cmd {
+pub(super) fn down() -> Cmd {
     Cmd::Move(Direction::Down)
 }
 
-fn up() -> Cmd {
+pub(super) fn up() -> Cmd {
     Cmd::Move(Direction::Up)
 }
 

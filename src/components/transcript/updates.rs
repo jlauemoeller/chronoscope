@@ -96,7 +96,7 @@ impl Transcript {
     /// The sections of the selected block as they are now, when the turn of
     /// the selected section satisfies `touched`: the state to restore the
     /// selection from after a change.
-    fn sections_if(&self, touched: impl Fn(&TurnId) -> bool) -> Option<Vec<SectionId>> {
+    pub(super) fn sections_if(&self, touched: impl Fn(&TurnId) -> bool) -> Option<Vec<SectionId>> {
         let selected = self.content.selected.as_ref()?;
         let &at = self.content.index.get(&selected.turn)?;
         touched(&selected.turn).then(|| self.sections_of(at))
@@ -125,7 +125,7 @@ impl Transcript {
     /// the nearest section that followed it (in `before`, the sections of its
     /// block before the change) and still exists is selected; else the first
     /// section of a later block; else the last section of all.
-    fn restore_selection(&mut self, before: Option<Vec<SectionId>>) {
+    pub(super) fn restore_selection(&mut self, before: Option<Vec<SectionId>>) {
         let Some(selected) = self.content.selected.clone() else {
             self.ensure_selection();
             return;
@@ -136,6 +136,15 @@ impl Transcript {
         };
         let now = self.sections_of(at);
         if now.contains(&selected) {
+            return;
+        }
+        // A truncation row that is gone (its output fits now, or the call is
+        // folded) leaves the selection on its tool call.
+        if let Some(parent) = selected.more_parent()
+            && now.contains(&parent)
+        {
+            self.content.selected = Some(parent);
+            self.reveal_selection();
             return;
         }
         let following = before.unwrap_or_default();

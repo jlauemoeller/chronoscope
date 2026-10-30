@@ -9,7 +9,7 @@ use ratatui::text::Line;
 use ratatui::widgets::Widget;
 
 use super::emphasis::emphasize;
-use super::renderers::{render_section, text_width};
+use super::renderers::{DEFAULT_OPEN_KEY, Rendered, SectionCtx, render_section, text_width};
 use super::section::{FoldState, SectionId, derive_sections};
 use super::title::TitleBar;
 use crate::model::Turn;
@@ -64,6 +64,8 @@ pub struct TurnBlock<'a> {
     selected: Option<&'a SectionId>,
     show_system: bool,
     dim_unselected: bool,
+    truncate: usize,
+    open_key: &'a str,
     skip: usize,
 }
 
@@ -80,6 +82,8 @@ impl<'a> TurnBlock<'a> {
             selected: None,
             show_system: true,
             dim_unselected: true,
+            truncate: crate::config::DEFAULT_TRUNCATE_OUTPUT_LINES,
+            open_key: DEFAULT_OPEN_KEY,
             skip: 0,
         }
     }
@@ -112,6 +116,22 @@ impl<'a> TurnBlock<'a> {
         self
     }
 
+    /// Sets `truncate_output_lines`: tool output longer than this many lines
+    /// is cut, with a `… N more lines` row that is a selection stop.
+    #[must_use]
+    pub fn truncate_output_lines(mut self, lines: usize) -> Self {
+        self.truncate = lines;
+        self
+    }
+
+    /// Sets the label of the key that opens a subagent transcript, for the
+    /// hint of subagent sections.
+    #[must_use]
+    pub fn open_subagent_key(mut self, label: &'a str) -> Self {
+        self.open_key = label;
+        self
+    }
+
     /// Skips the first `rows` rows of the block when rendering.
     #[must_use]
     pub fn skip_rows(mut self, rows: usize) -> Self {
@@ -131,7 +151,15 @@ impl<'a> TurnBlock<'a> {
         let mut rows = vec![blank()];
         let mut spans = Vec::new();
         for section in derive_sections(self.turn, self.show_system) {
-            let lines = render_section(&section, self.theme, text_width, folds.is_folded(&section));
+            let ctx = SectionCtx {
+                theme: self.theme,
+                width: text_width,
+                folded: folds.is_folded(&section),
+                truncate: self.truncate,
+                expanded: folds.is_expanded(&section.id),
+                open_key: self.open_key,
+            };
+            let Rendered { lines, more } = render_section(&section, &ctx);
             if lines.is_empty() {
                 continue;
             }
@@ -143,7 +171,18 @@ impl<'a> TurnBlock<'a> {
             // Row 0 of the block is the top border.
             let start = rows.len() + 1;
             rows.extend(lines.into_iter().map(|line| BlockRow { line, selected }));
+            let more_id = section.id.more_row();
             spans.push((section.id, start..rows.len() + 1));
+            // The truncation row follows its section directly and is a
+            // selection stop of its own.
+            if let (Some(more), Some(id)) = (more, more_id) {
+                let selected = self.selected == Some(&id);
+                let line =
+                    emphasize(vec![more], selected, self.dim_unselected, self.theme).remove(0);
+                let start = rows.len() + 1;
+                rows.push(BlockRow { line, selected });
+                spans.push((id, start..rows.len() + 1));
+            }
         }
         if !spans.is_empty() {
             rows.push(blank());

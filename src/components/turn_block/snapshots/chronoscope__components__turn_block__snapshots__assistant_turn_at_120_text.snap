@@ -17,13 +17,11 @@ expression: "buffer_to_text(&draw(&turn, &opts, 120))"
 │                                                                                                                      │
 ▒ ▼ Dump full USB descriptors for the BRIO                                                                             │
 ▒                                                                                                                      │
-▒   Input:                                                                                                             │
+▒   Command:                                                                                                           │
 ▒                                                                                                                      │
-▒      {                                                                                                               │
-▒        "command": "sudo -n true 2>&1 && echo SUDO_OK; lsusb -v -d 046d:085e > /tmp/claude-1000/-home-jacob-Develop   │
-▒      ment-projects-brio/scratchpad/lsusb.txt 2>&1; wc -l /tmp/claude-1000/-home-jacob-Development-projects-brio/sc   │
-▒      ratchpad/lsusb.txt"                                                                                             │
-▒      }                                                                                                               │
+▒      sudo -n true 2>&1 && echo SUDO_OK; lsusb -v -d 046d:085e > /tmp/claude-1000/-home-jacob-Development-projects-   │
+▒      brio/scratchpad/lsusb.txt 2>&1; wc -l /tmp/claude-1000/-home-jacob-Development-projects-brio/scratchpad/lsusb   │
+▒      .txt                                                                                                            │
 ▒                                                                                                                      │
 ▒   Result:                                                                                                            │
 ▒                                                                                                                      │
