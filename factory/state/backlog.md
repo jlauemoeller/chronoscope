@@ -2,7 +2,7 @@
 
 | Task | Status |
 |------|--------|
-| 001-scaffold-crate | Planned |
+| 001-scaffold-crate | In progress |
 | 002-theme-model | Planned |
 | 003-config-file | Planned |
 | 004-theme-registry | Planned |
