@@ -2,6 +2,7 @@
 //! snapshots. All data comes from [`fixtures`]: fixed times, a fixed clock
 //! and UTC timestamps.
 
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -25,10 +26,10 @@ use crate::test_support::{buffer_to_styled, buffer_to_text, render};
 use crate::theme::{Role, TerminalEnv, Theme, ThemeRegistry, resolve_by_id};
 use tuirealm::props::AttrValue;
 
-const CLAUDE: HarnessId = HarnessId::Claude;
-const OPENCODE: HarnessId = HarnessId::OpenCode;
+pub(super) const CLAUDE: HarnessId = HarnessId::Claude;
+pub(super) const OPENCODE: HarnessId = HarnessId::OpenCode;
 
-fn theme(id: &str) -> Theme {
+pub(super) fn theme(id: &str) -> Theme {
     let env = TerminalEnv {
         colorterm: Some("truecolor".to_owned()),
         no_color: false,
@@ -62,7 +63,7 @@ fn distinct_theme() -> Theme {
     theme
 }
 
-fn init(harnesses: &[HarnessId], theme: Theme) -> AppInit {
+pub(super) fn init(harnesses: &[HarnessId], theme: Theme) -> AppInit {
     let config = Config {
         utc: true,
         ..Config::default()
@@ -79,13 +80,23 @@ fn init(harnesses: &[HarnessId], theme: Theme) -> AppInit {
 
 /// An app of 120x40 with a fixed clock, before any index data arrived.
 fn empty_app(harnesses: &[HarnessId], theme: Theme) -> App {
-    let mut app = App::new(init(harnesses, theme), EventListenerCfg::default()).unwrap();
+    empty_app_in(harnesses, theme, "/nowhere")
+}
+
+/// Like [`empty_app`], started in the directory `working_dir`.
+pub(super) fn empty_app_in(harnesses: &[HarnessId], theme: Theme, working_dir: &str) -> App {
+    let mut app = App::new(
+        init(harnesses, theme),
+        EventListenerCfg::default(),
+        PathBuf::from(working_dir),
+    )
+    .unwrap();
     app.set_clock(now);
     app.update(Msg::Resized(120, 40));
     app
 }
 
-fn send(app: &mut App, event: IndexEvent) {
+pub(super) fn send(app: &mut App, event: IndexEvent) {
     app.update(message(event));
 }
 
@@ -98,11 +109,11 @@ fn loaded_with(theme: Theme) -> App {
     app
 }
 
-fn loaded() -> App {
+pub(super) fn loaded() -> App {
     loaded_with(theme("default"))
 }
 
-fn query<T: Clone + 'static>(app: &App, id: Id, attr: tuirealm::props::Attribute) -> T {
+pub(super) fn query<T: Clone + 'static>(app: &App, id: Id, attr: tuirealm::props::Attribute) -> T {
     let value = app
         .application()
         .query(&id, attr)
@@ -112,19 +123,19 @@ fn query<T: Clone + 'static>(app: &App, id: Id, attr: tuirealm::props::Attribute
     payload_from_value(&value).unwrap()
 }
 
-fn project_rows(app: &App) -> ProjectRows {
+pub(super) fn project_rows(app: &App) -> ProjectRows {
     query(app, Id::ProjectList, PROJECT_ROWS_ATTR)
 }
 
-fn session_rows(app: &App) -> SessionRows {
+pub(super) fn session_rows(app: &App) -> SessionRows {
     query(app, Id::SessionList, SESSION_ROWS_ATTR)
 }
 
-fn tabs(app: &App) -> Tabs {
+pub(super) fn tabs(app: &App) -> Tabs {
     query(app, Id::HarnessTabs, TABS_ATTR)
 }
 
-fn cwd(app: &App) -> String {
+pub(super) fn cwd(app: &App) -> String {
     match app
         .application()
         .query(&Id::WorkingDir, CWD_ATTR)
@@ -137,25 +148,29 @@ fn cwd(app: &App) -> String {
     }
 }
 
-fn row_ids(rows: &SessionRows) -> Vec<&str> {
+pub(super) fn row_ids(rows: &SessionRows) -> Vec<&str> {
     rows.rows.iter().map(|r| r.id.as_str()).collect()
 }
 
-/// Presses `code` in the focused component and applies the message, if any.
-fn press(app: &mut App, code: Key) {
+/// Presses `code` in the focused component and returns its message, if any,
+/// without applying it.
+pub(super) fn key_msg(app: &mut App, code: Key) -> Option<Msg> {
     let event: Event<UserEvent> = Event::Keyboard(KeyEvent::new(code, KeyModifiers::NONE));
     let focus = app.application().focus().cloned().unwrap();
-    let msg = app
-        .application
+    app.application
         .get_component_mut(&focus)
         .unwrap()
-        .on(&event);
-    if let Some(msg) = msg {
+        .on(&event)
+}
+
+/// Presses `code` in the focused component and applies the message, if any.
+pub(super) fn press(app: &mut App, code: Key) {
+    if let Some(msg) = key_msg(app, code) {
         app.update(msg);
     }
 }
 
-fn focus_sessions(app: &mut App) {
+pub(super) fn focus_sessions(app: &mut App) {
     app.update(Msg::Selector(SelectorMsg::Focus(Pane::Sessions)));
 }
 
@@ -283,7 +298,12 @@ fn a_snapshot_travels_from_the_port_through_global_events_to_update() {
         Duration::from_millis(5),
         8,
     );
-    let mut app = App::new(init(&[CLAUDE], theme("default")), listener).unwrap();
+    let mut app = App::new(
+        init(&[CLAUDE], theme("default")),
+        listener,
+        PathBuf::from("/nowhere"),
+    )
+    .unwrap();
     tx.send(fixture_snapshot(CLAUDE)).unwrap();
     let mut msgs = Vec::new();
     for _ in 0..100 {
@@ -587,7 +607,7 @@ fn stats_of_vanished_sessions_are_dropped_on_a_snapshot() {
 
 /// Claude's fixture snapshot with `edit` applied to its projects and
 /// sessions.
-fn edited_snapshot(
+pub(super) fn edited_snapshot(
     edit: impl FnOnce(&mut Vec<crate::model::Project>, &mut SessionMap),
 ) -> IndexEvent {
     let IndexEvent::Snapshot {
@@ -602,7 +622,7 @@ fn edited_snapshot(
     fixtures::snapshot_event(CLAUDE, true, projects, sessions)
 }
 
-fn selected_project_name(app: &App) -> String {
+pub(super) fn selected_project_name(app: &App) -> String {
     let rows = project_rows(app);
     rows.rows[rows.selected.unwrap()].name.clone()
 }
@@ -958,16 +978,16 @@ fn a_scrolled_sessions_list_does_not_carry_its_offset_to_the_next_project() {
 
 // -- screens
 
-fn screen(app: &mut App, width: u16, height: u16) -> Buffer {
+pub(super) fn screen(app: &mut App, width: u16, height: u16) -> Buffer {
     app.update(Msg::Resized(width, height));
     render(width, height, |frame| app.view(frame))
 }
 
-fn text(app: &mut App, width: u16, height: u16) -> String {
+pub(super) fn text(app: &mut App, width: u16, height: u16) -> String {
     buffer_to_text(&screen(app, width, height))
 }
 
-fn styled(app: &mut App, width: u16, height: u16) -> String {
+pub(super) fn styled(app: &mut App, width: u16, height: u16) -> String {
     buffer_to_styled(&screen(app, width, height))
 }
 
@@ -1119,7 +1139,7 @@ const SESSIONS_X: u16 = 41;
 const PROJECTS_X: u16 = 4;
 const SESSIONS_WIDTH: u16 = 75;
 
-fn cell(buffer: &Buffer, x: u16, y: u16) -> &ratatui::buffer::Cell {
+pub(super) fn cell(buffer: &Buffer, x: u16, y: u16) -> &ratatui::buffer::Cell {
     &buffer[(x, y)]
 }
 

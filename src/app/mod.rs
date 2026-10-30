@@ -20,10 +20,13 @@ pub mod startup;
 #[cfg(test)]
 mod fixtures;
 #[cfg(test)]
+mod selection_tests;
+#[cfg(test)]
 mod selector_tests;
 #[cfg(test)]
 mod tests;
 
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -40,6 +43,7 @@ use crate::components::{
 use crate::config::{Config, ConfigWarning};
 use crate::index::{IndexEvent, IndexHandle};
 use crate::keymap::Keymap;
+use crate::model::{HarnessId, SessionId};
 use crate::theme::{Role, Theme, ThemeRegistry};
 use crate::timestamp::{DisplayTz, TimestampFormatter};
 use hints::{selector_hints, startup_toast_text};
@@ -89,6 +93,12 @@ pub enum Msg {
     Index(IndexUpdate),
     /// Something happened in the session selector.
     Selector(SelectorMsg),
+    /// The user asked to open this session of this harness. The browser
+    /// handles it.
+    OpenSession(HarnessId, SessionId),
+    /// `Esc` in the selector with a session open behind it: close the
+    /// selector. The browser handles it.
+    CloseSelector,
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -148,10 +158,13 @@ impl App {
     /// Builds the application and mounts its components.
     ///
     /// `listener` configures the event listener: [`production_listener`] for
-    /// the real application, or one without ports for tests.
+    /// the real application, or one without ports for tests. `working_dir`
+    /// is the directory the user started in (`std::env::current_dir()`); the
+    /// selector starts on the project that contains it (SPEC §4.1).
     pub fn new(
         init: AppInit,
         listener: EventListenerCfg<UserEvent>,
+        working_dir: PathBuf,
     ) -> Result<Self, ApplicationError> {
         let AppInit {
             config,
@@ -225,7 +238,7 @@ impl App {
             size: (0, 0),
             quit: false,
             redraw: RedrawRequest::Dirty,
-            selector: SelectorState::new(harnesses),
+            selector: SelectorState::new(harnesses, working_dir),
             timestamps,
             clock: Box::new(Utc::now),
             index: None,
@@ -352,6 +365,8 @@ impl App {
             Msg::ToastExpired(id) => self.toast_expired(id),
             Msg::Index(update) => self.index_update(&update),
             Msg::Selector(msg) => self.selector_msg(msg),
+            // The browser (task 021) handles these.
+            Msg::OpenSession(..) | Msg::CloseSelector => {}
         }
     }
 

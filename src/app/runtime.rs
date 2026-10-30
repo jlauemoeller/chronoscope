@@ -1,5 +1,6 @@
 //! The main loop (SPEC §1.1) and the startup sequence.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
@@ -79,7 +80,11 @@ pub fn run_app() -> anyhow::Result<()> {
     let mut guard = TerminalGuard::enter(setup)?;
     let mut index = start_index(&init.config, paths.as_ref());
     let events = index.as_mut().and_then(IndexHandle::take_events);
-    let mut app = App::new(init, production_listener(events))?;
+    let working_dir = std::env::current_dir().unwrap_or_else(|err| {
+        log::warn!("could not read the working directory: {err}");
+        PathBuf::new()
+    });
+    let mut app = App::new(init, production_listener(events), working_dir)?;
     if let Some(index) = index {
         app.set_index(index);
     }

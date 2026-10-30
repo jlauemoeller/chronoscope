@@ -17,11 +17,13 @@ use tuirealm::props::{AttrValue, Attribute, PropPayload};
 
 use crate::theme::Theme;
 
-pub use empty_state::{EmptyState, TOO_SMALL};
+pub use empty_state::{EmptyState, NO_SESSIONS, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};
 pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
 pub use help_line::{HelpLine, Hint};
-pub use list_pane::{ListCursor, SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value, visible_rows};
+pub use list_pane::{
+    ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_value, visible_rows,
+};
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
 pub use selector_frame::SelectorFrame;
 pub use session_list::{

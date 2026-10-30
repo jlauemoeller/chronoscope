@@ -1,0 +1,27 @@
+VERDICT: PASS
+
+## Summary
+Round 2 fixes the round-1 must-fix. `settle_preselection` no longer ends the preselection while the shown harness has no projects. `preselect_again` now compares the project as well as the harness, using the new `Preselection { harness, project, matched }`, so an empty first snapshot (a failed build) no longer loses the working-directory match, and a fallback preselection is never moved by live updates. The round-1 nits are handled too: non-absolute cwds are skipped, `IndexEventParts` is replaced by `fixtures::unavailable_snapshot_of`, `harness_empty` now means "no projects", and the empty message keeps the 2-cell row margin and is cut with an ellipsis. Each fix has a test that fails without it. The gate passes and no `.snap.new` files are present.
+
+## Test gate
+- cargo fmt --check: pass
+- cargo clippy --all-targets -- -D warnings: pass
+- cargo test: pass
+
+## Round-1 findings
+- Code 1 (must-fix), preselection lost after an empty first snapshot: fixed in `src/app/selector.rs` `preselect_again` / `settle_preselection`, as asked in (a) and (b). It is covered by `an_empty_first_snapshot_does_not_lose_the_preselection`, with both the one-harness case and the case where the other harness has already reported, and by `a_better_match_in_the_shown_harness_wins_before_the_user_acts`. I traced both paths by hand. In the first, the empty snapshot enters `(Claude, None)` and does not settle, then the real snapshot sees a matched project that differs from `None`, so `enter_harness_at` selects `/w/brio`. In the second, the OpenCode snapshot computes the fallback `(Claude, None, matched=false)`, which is the same harness, so nothing moves, and the shown harness is still empty, so it does not settle.
+- Code 2 (nit), non-absolute cwd: fixed (`filter(|cwd| cwd.is_absolute())`) and tested by `a_project_without_an_absolute_cwd_never_matches`, which covers both an empty and a relative cwd.
+- Code 3 (nit), `IndexEventParts`: removed.
+- Code 4 (nit), `$PWD`: left as is. This is correct, because the planner note binds `current_dir()`.
+
+## Findings
+1. [nit] `src/app/selector.rs:89-92`: the doc comment on `SelectorState::preselecting` is now stale. It says the preselection holds "until the user acts or every harness has reported once" and that "a snapshot of another harness may change the preselection". Since this round, it also needs the shown harness to have projects, and a later snapshot of the shown harness can change it as well. Change: reword it to match `settle_preselection` and `preselect_again`, for example: "true until the user acts, or until every harness has reported and the shown one has projects. While it is true, a snapshot may replace the preselection with a better working-directory match."
+2. [nit] `src/app/selector.rs` `settle_preselection`: a side effect of the fix is that when the shown harness is legitimately empty (the fallback lands on an empty Claude), `preselecting` stays true until the user sends a `SelectorMsg`. A later snapshot from any harness that holds a cwd match will then switch the harness without any user action. This fits "before the user has acted" and no test contradicts it, but no test pins it down either. Change, optional: add an update test that pins it. Claude is empty and available, OpenCode first reports no match, then reports a project that matches the working directory, and the selector is expected to switch to OpenCode.
+3. [nit] `src/components/empty_state.rs` `view`: `truncate_with_ellipsis` now also applies to the "Terminal too small" and "Session file is empty" uses of `EmptyState`. That is harmless and arguably better, but the change is not covered by an `EmptyState` component test of its own; the only narrow-width test is in `session_list.rs`. Change, optional: add a small `EmptyState` test that renders it narrower than its message and asserts the `…`.
+4. [nit] `src/app/selector.rs` `harness_empty`: the trigger is now "the harness has no projects" rather than "no sessions in any project". Read literally, the acceptance criterion and the planner note use the words "zero sessions" / "has no sessions". I rate this a nit, not a must-fix, for three reasons:
+   - The planner note scopes the case to "an empty data dir, or no available harness at all". Both have no projects, and both are covered by the required snapshots and update tests.
+   - The acceptance criterion requires "an empty Projects pane", which a harness that does list projects cannot show without hiding real rows.
+   - The round-1 feature and UI reviews both offered this narrowing, as option (b) and as "also require `data.projects.is_empty()`".
+
+   The state cannot be reached with today's Claude adapter. If the OpenCode adapter task produces projects without sessions, `a_harness_with_projects_but_no_sessions_shows_an_ordinary_empty_list` pins the chosen behaviour, and the planner can revisit it then. Change, optional: add a sentence to the `harness_empty` doc comment that names this decision and the task-text wording it narrows.
+5. [nit] `src/app/selector.rs:105-108`: the `harness_empty` doc comment says the result holds "once every registered harness has reported (before that the lists are still loading)". The `Some(data)` branch has no `all_reported()` guard, so an empty, available first snapshot of the shown harness shows the message while other harnesses are still loading. That is reasonable, because the shown harness has reported. Change: make it clear that the `all_reported` condition applies only to the "no harness available" case.

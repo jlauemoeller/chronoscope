@@ -141,6 +141,7 @@ impl AppComponent<Msg, UserEvent> for ProjectList {
                 Some(Msg::Selector(SelectorMsg::Focus(Pane::Sessions)))
             }
             PaneKey::FocusProjects => None,
+            PaneKey::Cancel => Some(self.pane.cancel()),
             PaneKey::Harness(harness) => Some(Msg::Selector(SelectorMsg::SwitchHarness(harness))),
         }
     }
@@ -149,7 +150,7 @@ impl AppComponent<Msg, UserEvent> for ProjectList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value};
+    use crate::components::{SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_value};
     use crate::test_support::{buffer_to_styled, render};
     use crate::theme::builtin;
     use tuirealm::event::{Key, KeyEvent, KeyModifiers};
@@ -289,6 +290,30 @@ mod tests {
     }
 
     #[test]
+    fn esc_quits_without_an_open_session_and_closes_the_selector_with_one() {
+        let mut l = list(&NAMES, Some(0), true);
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
+        l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(true));
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::CloseSelector));
+        l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(false));
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
+    }
+
+    #[test]
+    fn enter_focuses_sessions_and_does_not_open_anything() {
+        let mut l = list(&NAMES, Some(0), true);
+        assert_eq!(l.on(&key(Key::Enter)), focus(Pane::Sessions));
+    }
+
+    #[test]
+    fn an_empty_list_draws_only_its_border_and_title() {
+        let text = crate::test_support::buffer_to_text(&render(36, 10, |frame| {
+            list(&[], None, true).view(frame, frame.area())
+        }));
+        insta::assert_snapshot!(text);
+    }
+
+    #[test]
     fn harness_numbers_ask_for_a_switch() {
         let mut l = list(&NAMES, Some(0), true);
         for (c, harness) in [
@@ -307,13 +332,7 @@ mod tests {
     #[test]
     fn other_keys_and_events_produce_nothing() {
         let mut l = list(&NAMES, Some(0), true);
-        for event in [
-            ch('x'),
-            ch('q'),
-            key(Key::Esc),
-            Event::Tick,
-            Event::WindowResize(1, 1),
-        ] {
+        for event in [ch('x'), ch('q'), Event::Tick, Event::WindowResize(1, 1)] {
             assert_eq!(l.on(&event), None, "{event:?}");
         }
     }

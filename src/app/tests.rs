@@ -2,6 +2,7 @@
 //! `TestBackend`) and screen snapshots of `App::view`.
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
@@ -52,12 +53,17 @@ fn warning(message: &str) -> ConfigWarning {
 fn app_with_warnings(messages: &[&str]) -> App {
     let mut init = init_with(theme("default"));
     init.warnings = messages.iter().map(|m| warning(m)).collect();
-    App::new(init, EventListenerCfg::default()).unwrap()
+    App::new(init, EventListenerCfg::default(), PathBuf::from("/nowhere")).unwrap()
 }
 
 /// An app without event ports: nothing reads the terminal.
 fn app_with(theme: Theme) -> App {
-    App::new(init_with(theme), EventListenerCfg::default()).unwrap()
+    App::new(
+        init_with(theme),
+        EventListenerCfg::default(),
+        PathBuf::from("/nowhere"),
+    )
+    .unwrap()
 }
 
 fn app() -> App {
@@ -109,7 +115,7 @@ fn the_app_owns_the_domain_state_it_was_built_with() {
         key: "k".to_owned(),
         message: "m".to_owned(),
     });
-    let app = App::new(init, EventListenerCfg::default()).unwrap();
+    let app = App::new(init, EventListenerCfg::default(), PathBuf::from("/nowhere")).unwrap();
     assert_eq!(app.config(), &Config::default());
     assert_eq!(app.theme(), &theme("default"));
     assert_eq!(app.keymap(), &Keymap::default());
@@ -263,7 +269,12 @@ fn scripted_app(events: Vec<Event<UserEvent>>) -> App {
     let listener = EventListenerCfg::default()
         .add_port(Box::new(Script(events.into())), Duration::from_millis(5), 1)
         .tick_interval(Duration::from_millis(20));
-    App::new(init_with(theme("default")), listener).unwrap()
+    App::new(
+        init_with(theme("default")),
+        listener,
+        PathBuf::from("/nowhere"),
+    )
+    .unwrap()
 }
 
 fn key(code: Key, modifiers: KeyModifiers) -> Event<UserEvent> {
@@ -462,7 +473,7 @@ fn a_remapped_search_key_shows_in_the_drawn_help_line() {
     assert!(warnings.is_empty());
     let mut init = init_with(theme("default"));
     init.keymap = keymap;
-    let mut app = App::new(init, EventListenerCfg::default()).unwrap();
+    let mut app = App::new(init, EventListenerCfg::default(), PathBuf::from("/nowhere")).unwrap();
     let text = buffer_to_text(&screen(&mut app, 120, 40));
     assert!(
         text.lines()

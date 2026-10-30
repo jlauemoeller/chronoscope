@@ -8,6 +8,7 @@
 //! the same index) and pushes rows and selection into the components.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tuirealm::props::{AttrValue, Attribute};
@@ -18,9 +19,9 @@ use super::redraw::RedrawRequest;
 use super::{App, Id};
 use crate::components::{
     ACTIVE_ATTR, ActiveSessions, CWD_ATTR, PROJECT_ROWS_ATTR, ProjectRow, ProjectRows,
-    SELECTED_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SessionRow, SessionRows,
-    SessionStatsUpdate, TABS_ATTR, Tab, Tabs, VISIBLE_ROWS_ATTR, payload_value, selected_value,
-    visible_rows,
+    SELECTED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SessionRow,
+    SessionRows, SessionStatsUpdate, TABS_ATTR, Tab, Tabs, VISIBLE_ROWS_ATTR, payload_value,
+    selected_value, visible_rows,
 };
 use crate::index::{IndexEvent, SessionMap};
 use crate::model::{
@@ -58,6 +59,15 @@ pub(super) struct HarnessData {
     sessions: Arc<SessionMap>,
 }
 
+/// Where the selector starts (see [`SelectorState::preselection`]).
+struct Preselection {
+    harness: HarnessId,
+    project: Option<ProjectId>,
+    /// Whether the project contains the working directory; false for the
+    /// fallback to the first project.
+    matched: bool,
+}
+
 /// The selector's domain state.
 #[derive(Debug, Default)]
 pub(super) struct SelectorState {
@@ -74,14 +84,91 @@ pub(super) struct SelectorState {
     pane: Pane,
     /// The sessions of the selected project pushed as active last.
     active: Vec<SessionId>,
+    /// The directory the user started in.
+    working_dir: PathBuf,
+    /// Whether the harness and project are still the startup preselection:
+    /// true until the user acts or every harness has reported once. While it
+    /// is, a snapshot of another harness may change the preselection.
+    preselecting: bool,
 }
 
 impl SelectorState {
-    pub(super) fn new(registered: Vec<HarnessId>) -> Self {
+    pub(super) fn new(registered: Vec<HarnessId>, working_dir: PathBuf) -> Self {
         Self {
             registered,
+            working_dir,
+            preselecting: true,
             ..Self::default()
         }
+    }
+
+    /// Whether the harness shown has nothing to list: it has no projects, or
+    /// no harness is available, once every registered harness has reported
+    /// (before that the lists are still loading). A project without sessions
+    /// in a harness that has projects is an ordinary empty list.
+    fn harness_empty(&self) -> bool {
+        match self.current_data() {
+            Some(data) => data.projects.is_empty(),
+            None => self.current.is_none() && self.all_reported(),
+        }
+    }
+
+    /// Whether every registered harness has sent a snapshot.
+    fn all_reported(&self) -> bool {
+        self.registered.iter().all(|h| self.data.contains_key(h))
+    }
+
+    /// The harness and project to start on (SPEC §4.1): the project whose
+    /// cwd is the working directory or its deepest ancestor, in the lowest
+    /// numbered harness on a tie and the most recently active project of a
+    /// harness on a tie; else the first project of the first available
+    /// harness. Only available harnesses take part.
+    fn preselection(&self) -> Option<Preselection> {
+        let mut harnesses: Vec<HarnessId> = self
+            .registered
+            .iter()
+            .copied()
+            .filter(|&h| self.is_available(h))
+            .collect();
+        harnesses.sort_by_key(|h| h.number());
+        let mut best: Option<(usize, HarnessId, &ProjectId)> = None;
+        for &harness in &harnesses {
+            let projects = self
+                .data
+                .get(&harness)
+                .map_or(&[][..], |d| d.projects.as_slice());
+            for project in projects {
+                let Some(cwd) = project.cwd.as_ref().filter(|cwd| cwd.is_absolute()) else {
+                    continue;
+                };
+                // `starts_with` compares whole path components.
+                if !self.working_dir.starts_with(cwd) {
+                    continue;
+                }
+                let depth = cwd.components().count();
+                if best.is_none_or(|(deepest, ..)| depth > deepest) {
+                    best = Some((depth, harness, &project.id));
+                }
+            }
+        }
+        if let Some((_, harness, project)) = best {
+            return Some(Preselection {
+                harness,
+                project: Some(project.clone()),
+                matched: true,
+            });
+        }
+        let first = *harnesses.first()?;
+        let project = self
+            .data
+            .get(&first)
+            .and_then(|d| d.projects.first())
+            .map(|p| p.id.clone());
+        Some(Preselection {
+            harness: first,
+            project,
+            matched: false,
+        })
     }
 
     fn current_data(&self) -> Option<&HarnessData> {
@@ -170,6 +257,14 @@ impl App {
         self.selector.pane
     }
 
+    /// Tells the selector whether a session is open behind it, which decides
+    /// what `Esc` does: close the selector, or quit.
+    pub fn set_session_open(&mut self, open: bool) {
+        for id in [Id::ProjectList, Id::SessionList] {
+            self.set_attr(id, SESSION_OPEN_ATTR, AttrValue::Flag(open));
+        }
+    }
+
     /// The sessions of the selected project that show the `●` marker.
     pub fn active_sessions(&self) -> &[SessionId] {
         &self.selector.active
@@ -216,7 +311,7 @@ impl App {
         let old = self.selector.data.insert(harness, data);
         if !available && self.selector.current == Some(harness) {
             // An unavailable harness cannot stay selected (SPEC §6.6): show
-            // the first available one, or nothing.
+            // the preselection among the others, or nothing.
             self.selector.current = None;
             self.selector.project = None;
             self.selector.session = None;
@@ -225,16 +320,50 @@ impl App {
                 return;
             }
         }
-        if self.selector.current.is_none() {
-            if let Some(first) = self.selector.first_available() {
-                self.enter_harness(first);
-                return;
-            }
-        } else if self.selector.current == Some(harness) {
-            self.keep_selection(old.as_ref());
+        if self.preselect_again() {
             return;
         }
-        self.push_tabs();
+        if self.selector.current == Some(harness) {
+            self.keep_selection(old.as_ref());
+        } else if self.selector.current.is_none() {
+            // The last harness may just have reported that none is available.
+            self.push_all();
+        } else {
+            self.push_tabs();
+        }
+        self.settle_preselection();
+    }
+
+    /// Before the user has acted, a snapshot can change the harness and
+    /// project: the first one that holds data picks them, one that arrives
+    /// from another harness may hold a better match for the working
+    /// directory, and so may a later snapshot of the shown harness (the
+    /// first can be empty when its build failed). Live updates of the shown
+    /// harness never move a selection the working directory did not pick.
+    /// Returns whether the selection was replaced.
+    fn preselect_again(&mut self) -> bool {
+        if self.selector.current.is_some() && !self.selector.preselecting {
+            return false;
+        }
+        let Some(want) = self.selector.preselection() else {
+            return false;
+        };
+        let same_harness = self.selector.current == Some(want.harness);
+        if same_harness && (!want.matched || want.project == self.selector.project) {
+            return false;
+        }
+        self.enter_harness_at(want.harness, want.project);
+        self.settle_preselection();
+        true
+    }
+
+    /// Ends the preselection once every harness has reported and the shown
+    /// one has projects: an empty first snapshot (a failed build) does not
+    /// count.
+    fn settle_preselection(&mut self) {
+        if self.selector.all_reported() && !self.selector.projects().is_empty() {
+            self.selector.preselecting = false;
+        }
     }
 
     /// The sessions of the current harness were replaced: keep the selected
@@ -300,6 +429,8 @@ impl App {
 
     /// Applies a message from the selector's components.
     pub(super) fn selector_msg(&mut self, msg: SelectorMsg) {
+        // The user has taken over from the startup preselection.
+        self.selector.preselecting = false;
         match msg {
             SelectorMsg::ProjectSelected(id) => self.project_selected(id),
             SelectorMsg::SessionSelected(id) => self.session_selected(id),
@@ -365,8 +496,15 @@ impl App {
 
     /// Shows `harness` from its first project.
     fn enter_harness(&mut self, harness: HarnessId) {
+        self.enter_harness_at(harness, None);
+    }
+
+    /// Shows `harness` with `project` selected (its first project when
+    /// `None`) and no session, unless Sessions has focus.
+    fn enter_harness_at(&mut self, harness: HarnessId, project: Option<ProjectId>) {
         self.selector.current = Some(harness);
-        self.selector.project = self.selector.projects().first().map(|p| p.id.clone());
+        self.selector.project =
+            project.or_else(|| self.selector.projects().first().map(|p| p.id.clone()));
         self.selector.session = None;
         self.selector.select_newest_if_focused();
         self.push_all();
@@ -474,8 +612,10 @@ impl App {
             .unwrap_or_default();
         let rows = SessionRows {
             project,
+            harness,
             rows: Arc::new(rows),
             selected: self.selector.session_index(),
+            harness_empty: self.selector.harness_empty(),
         };
         self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
     }
