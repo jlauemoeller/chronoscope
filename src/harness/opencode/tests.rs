@@ -114,21 +114,6 @@ fn an_insert_through_the_helper_is_rejected_and_nothing_is_written() {
 }
 
 #[test]
-fn the_connection_itself_is_read_only() {
-    // Even the SQL that the helper's checks cannot see would be refused by
-    // SQLite: the connection was opened with SQLITE_OPEN_READ_ONLY.
-    let db = TempDb::new();
-    let conn = rusqlite::Connection::open_with_flags(
-        &db.path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .unwrap();
-    assert!(conn.execute("DELETE FROM project", []).is_err());
-    let opened = Db::open(&db.path).unwrap();
-    assert_eq!(opened.mode(), OpenMode::ReadOnly);
-}
-
-#[test]
 fn a_full_load_leaves_the_database_file_and_its_directory_unchanged() {
     let db = TempDb::new();
     let before = std::fs::read(&db.path).unwrap();
@@ -171,6 +156,10 @@ fn a_database_that_cannot_be_opened_read_only_is_read_as_immutable() {
     let opened = opened.unwrap();
     if !can_write {
         assert_eq!(opened.mode(), OpenMode::Immutable);
+        let err = opened
+            .select("DELETE FROM project", [], |_| Ok(()))
+            .unwrap_err();
+        assert!(err.to_string().contains("refusing"), "{err:#}");
     }
     let count: i64 = opened
         .select_one("SELECT count(*) FROM project", [], |r| r.get(0))

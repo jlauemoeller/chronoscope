@@ -187,8 +187,8 @@ fn selector_with_opencode_selected_120x40_styled() {
     insta::assert_snapshot!(styled(&mut rig.rig.app, 120, 40));
 }
 
-#[test]
-fn an_unavailable_opencode_is_muted_and_cannot_be_selected_80x24_text() {
+/// Claude selected, OpenCode unavailable.
+fn unavailable_opencode_app() -> App {
     let mut app = super::super::selector_tests::empty_app_in(
         &[CLAUDE, HarnessId::OpenCode],
         theme("default"),
@@ -199,6 +199,12 @@ fn an_unavailable_opencode_is_muted_and_cannot_be_selected_80x24_text() {
         &mut app,
         snapshot_event(HarnessId::OpenCode, false, Vec::new(), SessionMap::new()),
     );
+    app
+}
+
+#[test]
+fn an_unavailable_opencode_is_muted_and_cannot_be_selected_80x24_text() {
+    let mut app = unavailable_opencode_app();
     press_in_selector(&mut app, Key::Char('2'));
     assert_eq!(app.selected_harness(), Some(CLAUDE), "cannot be selected");
     let all = tabs(&app);
@@ -211,6 +217,27 @@ fn an_unavailable_opencode_is_muted_and_cannot_be_selected_80x24_text() {
     let screen = text(&mut app, 80, 24);
     assert!(screen.contains("[1] Claude  [2] OpenCode"), "{screen}");
     insta::assert_snapshot!(screen);
+}
+
+#[test]
+fn an_unavailable_opencode_tab_is_muted_foreground_80x24_styled() {
+    let mut app = unavailable_opencode_app();
+    let buffer = super::super::selector_tests::screen(&mut app, 80, 24);
+    let theme = theme("default");
+    // Tabs at column 5 (row 3 text, row 4 underline); `[2] OpenCode` starts
+    // two spaces after `[1] Claude` (10 cells).
+    let muted = theme.role(Role::MutedForeground);
+    for (i, ch) in "[2] OpenCode".chars().enumerate() {
+        let cell = &buffer[(5 + 12 + i as u16, 3)];
+        assert_eq!(cell.symbol(), ch.to_string());
+        assert_eq!(cell.fg, muted, "cell {i}");
+    }
+    let primary = theme.role(Role::Primary);
+    assert_eq!(buffer[(5, 3)].fg, primary, "the selected tab is primary");
+    assert_eq!(buffer[(5, 4)].symbol(), "━");
+    // No underline under the unavailable tab.
+    assert_eq!(buffer[(5 + 12, 4)].symbol(), " ");
+    insta::assert_snapshot!(buffer_to_styled(&buffer));
 }
 
 // -- the browser

@@ -41,8 +41,9 @@ impl Db {
     /// fails, retries with the `immutable=1` URI parameter (and logs it).
     pub fn open(path: &Path) -> Result<Self> {
         let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-        let first =
-            Connection::open_with_flags(path, flags).and_then(|conn| probe(&conn).map(|()| conn));
+        let first = Connection::open_with_flags(path, flags)
+            .map_err(anyhow::Error::from)
+            .and_then(|conn| probe(&conn).map(|()| conn));
         match first {
             Ok(conn) => Ok(Self {
                 conn,
@@ -52,6 +53,7 @@ impl Db {
                 let uri = immutable_uri(path);
                 let flags = flags | OpenFlags::SQLITE_OPEN_URI;
                 let conn = Connection::open_with_flags(&uri, flags)
+                    .map_err(anyhow::Error::from)
                     .and_then(|conn| probe(&conn).map(|()| conn))
                     .with_context(|| {
                         format!(
@@ -86,21 +88,7 @@ impl Db {
         params: P,
         mut map: impl FnMut(&Row<'_>) -> rusqlite::Result<T>,
     ) -> Result<Vec<T>> {
-        if !starts_with_select(sql) {
-            bail!("refusing to run a statement that is not a SELECT: {sql}");
-        }
-        let mut stmt = self
-            .conn
-            .prepare(sql)
-            .with_context(|| format!("preparing {sql}"))?;
-        if !stmt.readonly() {
-            bail!("refusing to run a statement that writes: {sql}");
-        }
-        let rows = stmt
-            .query_map(params, |row| map(row))
-            .with_context(|| format!("running {sql}"))?;
-        rows.collect::<rusqlite::Result<Vec<T>>>()
-            .with_context(|| format!("reading the rows of {sql}"))
+        guarded_select(&self.conn, sql, params, &mut map)
     }
 
     /// Like [`select`](Self::select), for a statement that gives at most one
@@ -125,11 +113,38 @@ impl Db {
     }
 }
 
+/// The one place a statement is prepared and run: it must start with
+/// `SELECT` and SQLite itself must report it as read-only.
+fn guarded_select<T, P: Params>(
+    conn: &Connection,
+    sql: &str,
+    params: P,
+    map: &mut dyn FnMut(&Row<'_>) -> rusqlite::Result<T>,
+) -> Result<Vec<T>> {
+    if !starts_with_select(sql) {
+        bail!("refusing to run a statement that is not a SELECT: {sql}");
+    }
+    let mut stmt = conn
+        .prepare(sql)
+        .with_context(|| format!("preparing {sql}"))?;
+    if !stmt.readonly() {
+        bail!("refusing to run a statement that writes: {sql}");
+    }
+    let rows = stmt
+        .query_map(params, |row| map(row))
+        .with_context(|| format!("running {sql}"))?;
+    rows.collect::<rusqlite::Result<Vec<T>>>()
+        .with_context(|| format!("reading the rows of {sql}"))
+}
+
 /// A cheap read that proves the file is a database that can be read now (an
 /// open succeeds lazily, and a read-only open of a write-ahead-log database
 /// fails on the first read when its `-shm` cannot be created).
-fn probe(conn: &Connection) -> rusqlite::Result<()> {
-    conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
+fn probe(conn: &Connection) -> Result<()> {
+    guarded_select(conn, "SELECT count(*) FROM sqlite_master", [], &mut |_| {
+        Ok(())
+    })
+    .map(|_| ())
 }
 
 fn starts_with_select(sql: &str) -> bool {
@@ -168,6 +183,44 @@ pub fn wal_path(db: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::opencode::testing::TempDb;
+
+    /// Writes through the connection itself, bypassing the helper: SQLite
+    /// must refuse, because the connection was opened read-only.
+    fn assert_sqlite_refuses_writes(db: &Db) {
+        let err = db
+            .conn
+            .execute("INSERT INTO migration VALUES ('29990101000000_x', 1)", [])
+            .unwrap_err();
+        assert_eq!(
+            err.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ReadOnly),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn the_connection_is_opened_read_only_so_sqlite_refuses_writes() {
+        let tmp = TempDb::new();
+        let db = Db::open(&tmp.path).unwrap();
+        assert_eq!(db.mode(), OpenMode::ReadOnly);
+        assert_sqlite_refuses_writes(&db);
+    }
+
+    #[test]
+    fn the_immutable_fallback_connection_refuses_writes_too() {
+        let tmp = TempDb::new();
+        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_URI;
+        let conn = Connection::open_with_flags(immutable_uri(&tmp.path), flags).unwrap();
+        let db = Db {
+            conn,
+            mode: OpenMode::Immutable,
+        };
+        probe(&db.conn).unwrap();
+        assert_sqlite_refuses_writes(&db);
+    }
 
     #[test]
     fn the_uri_encodes_what_a_uri_would_misread() {
