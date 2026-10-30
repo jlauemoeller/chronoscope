@@ -1,6 +1,8 @@
 //! Helpers for rendering widgets into a Ratatui `TestBackend` and turning the
 //! resulting buffer into text that `insta` can snapshot.
 
+use std::fmt::Write;
+
 use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -44,18 +46,33 @@ pub fn buffer_to_text(buffer: &Buffer) -> String {
 /// Each row is written as `y: x0..x1 fg/bg/modifiers | ...`, one entry per
 /// run of horizontally adjacent cells with identical style (`x1` exclusive).
 /// Modifiers are `NONE` or the flag names joined with ` | `.
+///
+/// The continuation cells that follow a wide glyph take the style of the glyph
+/// itself (Ratatui resets them), so a styled run of wide characters stays one
+/// run. Underline colour is deliberately left out of the style.
 pub fn buffer_to_styled(buffer: &Buffer) -> String {
     let mut out = buffer_to_text(buffer);
     out.push_str("--- styles (fg/bg/modifiers) ---\n");
     let width = usize::from(buffer.area.width);
     for (y, row) in buffer.content().chunks(width.max(1)).enumerate() {
+        // Each glyph with the number of columns it covers.
+        let mut glyphs: Vec<(usize, (Color, Color, Modifier))> = Vec::new();
+        let mut x = 0;
+        while x < row.len() {
+            let cell = &row[x];
+            let cols = cell.symbol().width().max(1).min(row.len() - x);
+            glyphs.push((cols, style_key(cell)));
+            x += cols;
+        }
         let mut runs: Vec<String> = Vec::new();
         let mut start = 0;
-        while start < row.len() {
-            let key = style_key(&row[start]);
-            let mut end = start + 1;
-            while end < row.len() && style_key(&row[end]) == key {
-                end += 1;
+        let mut i = 0;
+        while i < glyphs.len() {
+            let key = glyphs[i].1;
+            let mut end = start;
+            while i < glyphs.len() && glyphs[i].1 == key {
+                end += glyphs[i].0;
+                i += 1;
             }
             let (fg, bg, modifier) = key;
             runs.push(format!(
@@ -64,7 +81,7 @@ pub fn buffer_to_styled(buffer: &Buffer) -> String {
             ));
             start = end;
         }
-        out.push_str(&format!("{y}: {}\n", runs.join(" | ")));
+        writeln!(out, "{y}: {}", runs.join(" | ")).expect("writing to a String never fails");
     }
     out
 }
@@ -126,6 +143,20 @@ mod tests {
              --- styles (fg/bg/modifiers) ---\n\
              0: 0..2 Red/Reset/BOLD | 2..6 Reset/Reset/NONE\n\
              1: 0..6 Reset/Reset/NONE\n"
+        );
+    }
+
+    #[test]
+    fn styled_keeps_wide_characters_in_one_run() {
+        let buffer = render(7, 1, |frame| {
+            let line = ratatui::text::Line::from("日本語x".on_blue());
+            frame.render_widget(Paragraph::new(line), frame.area());
+        });
+        assert_eq!(
+            buffer_to_styled(&buffer),
+            "日本語x\n\
+             --- styles (fg/bg/modifiers) ---\n\
+             0: 0..7 Reset/Blue/NONE\n"
         );
     }
 }
