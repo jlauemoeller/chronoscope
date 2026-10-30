@@ -6,7 +6,7 @@
 | 002-theme-model | Complete |
 | 003-config-file | Complete |
 | 004-theme-registry | Complete |
-| 005-keymap-bindings | Planned |
+| 005-keymap-bindings | In progress |
 | 006-claude-turn-assembly | Planned |
 | 007-claude-injected-content | Planned |
 | 008-claude-session-discovery | Planned |
