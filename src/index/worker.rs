@@ -5,6 +5,7 @@
 //! stop) and to timers (coalesced rebuilds, polling, debounced cache saves).
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -35,6 +36,8 @@ pub(super) struct Done {
     harness: usize,
     session: SessionId,
     key: String,
+    /// The `seq` of the job.
+    seq: u64,
     result: Result<SessionStats>,
 }
 
@@ -54,6 +57,8 @@ struct StatsJob {
     harness: usize,
     summary: SessionSummary,
     key: String,
+    /// When the job was made, on the coordinator's counter.
+    seq: u64,
 }
 
 #[derive(Default)]
@@ -124,6 +129,8 @@ struct HarnessState {
     last: Option<Last>,
     /// The `stats_key`s of the sessions in the last snapshot.
     live_keys: Option<HashSet<String>>,
+    /// The ids of the sessions in the last snapshot.
+    live_sessions: HashSet<SessionId>,
     warned_watch: bool,
     /// A failed build was logged and none has succeeded since.
     warned_build: bool,
@@ -153,8 +160,12 @@ struct Coordinator {
     deferred: HashMap<(usize, SessionId), StatsJob>,
     /// Keys whose computation failed; not retried while the key is current.
     failed: HashSet<(usize, String)>,
-    /// The key of the stats last sent per session.
-    sent: HashMap<(usize, SessionId), String>,
+    /// The key and `seq` of the stats last sent per session.
+    sent: HashMap<(usize, SessionId), (String, u64)>,
+    /// Counts stats jobs and cached sends, in the order they were made. A
+    /// result is only sent when its `seq` is newer than the last one sent
+    /// for its session, so an older result never overwrites a newer one.
+    seq: u64,
 }
 
 /// The worker thread's body.
@@ -193,6 +204,7 @@ pub(super) fn run(job: Job) {
                 poll_at: None,
                 last: None,
                 live_keys: None,
+                live_sessions: HashSet::new(),
                 warned_watch: false,
                 warned_build: false,
             })
@@ -204,6 +216,7 @@ pub(super) fn run(job: Job) {
         deferred: HashMap::new(),
         failed: HashSet::new(),
         sent: HashMap::new(),
+        seq: 0,
     };
     coordinator.main_loop(&job.ctl_rx);
 
@@ -228,11 +241,17 @@ pub(super) fn run(job: Job) {
 
 fn pool_thread(queue: &Queue, harnesses: &[Arc<dyn Harness>], tx: &Sender<Msg>) {
     while let Some(job) = queue.pop() {
-        let result = harnesses[job.harness].stats(&job.summary);
+        // A harness that panics on a transcript must not take the thread (and
+        // the session's slot) with it.
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            harnesses[job.harness].stats(&job.summary)
+        }))
+        .unwrap_or_else(|_| Err(anyhow::anyhow!("stats computation panicked")));
         let done = Done {
             harness: job.harness,
             session: job.summary.id,
             key: job.key,
+            seq: job.seq,
             result,
         };
         if tx.send(Msg::Stats(done)).is_err() {
@@ -423,8 +442,8 @@ impl Coordinator {
             let key = harness.stats_key(summary);
             live.insert(key.clone());
             if let Some(stats) = self.cache.get(&key) {
-                let sent = (i, summary.id.clone());
-                if self.sent.get(&sent) != Some(&key) {
+                let slot = (i, summary.id.clone());
+                if self.sent.get(&slot).map(|(k, _)| k) != Some(&key) {
                     let event = IndexEvent::Stats {
                         harness: harness.id(),
                         session: summary.id.clone(),
@@ -433,13 +452,18 @@ impl Coordinator {
                     if self.events.send(event).is_err() {
                         return false;
                     }
-                    self.sent.insert(sent, key);
+                    // A fresh seq: a job still running for an older key of this
+                    // session cannot overwrite this later.
+                    self.seq += 1;
+                    self.sent.insert(slot, (key, self.seq));
                 }
             } else if !self.failed.contains(&(i, key.clone())) {
+                self.seq += 1;
                 wanted.push(StatsJob {
                     harness: i,
                     summary: summary.clone(),
                     key,
+                    seq: self.seq,
                 });
             }
         }
@@ -448,6 +472,7 @@ impl Coordinator {
         self.sent.retain(|(h, id), _| *h != i || ids.contains(id));
         self.failed.retain(|(h, key)| *h != i || live.contains(key));
         self.harnesses[i].live_keys = Some(live);
+        self.harnesses[i].live_sessions = ids.into_iter().cloned().collect();
 
         // The newest list replaces what harness `i` still has waiting; the
         // other harnesses' waiting jobs and all running ones stay.
@@ -484,9 +509,19 @@ impl Coordinator {
     }
 
     /// Takes a finished job into the cache and, with `send`, reports it.
-    /// A result for a key that is no longer current (the session changed
-    /// meanwhile) is dropped, so it can never overwrite a newer one. `false`
-    /// when the receiver is gone.
+    ///
+    /// - A result for a current key (one in the harness's latest snapshot)
+    ///   is cached and sent.
+    /// - A result for an outdated key (the session changed while the job
+    ///   ran) is still sent, so that a session written to continuously does
+    ///   not go without stats until the writing stops, but only when its
+    ///   `seq` is newer than that of the stats last sent for the session
+    ///   and the session is still listed. It is not cached: the next prune
+    ///   would remove it.
+    /// - Anything else is dropped: the session is gone, or something newer
+    ///   was sent already (so an older result never overwrites a newer one).
+    ///
+    /// `false` when the receiver is gone.
     fn record(&mut self, done: Done, send: bool) -> bool {
         let slot = (done.harness, done.session.clone());
         if self.pending.get(&slot) == Some(&done.key) {
@@ -499,27 +534,38 @@ impl Coordinator {
                 self.queue.push(job);
             }
         }
-        if !self.is_live(done.harness, &done.key) {
-            return true;
-        }
+        let current = self.is_live(done.harness, &done.key);
         let stats = match done.result {
             Ok(stats) => stats,
             Err(err) => {
                 log::warn!("could not compute the stats of {}: {err}", done.session);
-                self.failed.insert((done.harness, done.key));
+                if current {
+                    self.failed.insert((done.harness, done.key));
+                }
                 return true;
             }
         };
-        self.cache.insert(done.key.clone(), stats);
+        if current {
+            self.cache.insert(done.key.clone(), stats);
+        }
         if !send {
             return true;
+        }
+        if !current {
+            let listed = self.harnesses[done.harness]
+                .live_sessions
+                .contains(&done.session);
+            let last = self.sent.get(&slot).map_or(0, |(_, seq)| *seq);
+            if !listed || done.seq <= last {
+                return true;
+            }
         }
         let event = IndexEvent::Stats {
             harness: self.harnesses[done.harness].harness.id(),
             session: done.session.clone(),
             stats,
         };
-        self.sent.insert((done.harness, done.session), done.key);
+        self.sent.insert(slot, (done.key, done.seq));
         self.events.send(event).is_ok()
     }
 
@@ -555,7 +601,7 @@ impl Coordinator {
 
 /// The prefix every `stats_key` of harness `id` starts with.
 fn key_prefix(id: crate::model::HarnessId) -> String {
-    format!("{}:", id.display_name().to_lowercase())
+    format!("{}:", id.cache_prefix())
 }
 
 /// Reads a harness's projects and all their sessions.

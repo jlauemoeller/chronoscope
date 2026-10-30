@@ -396,6 +396,7 @@ impl Harness for ClaudeHarness {
     /// cannot be stat'ed gives size and mtime `missing`.
     fn stats_key(&self, session: &SessionSummary) -> String {
         let path = session.path.display();
+        let prefix = HarnessId::Claude.cache_prefix();
         match fs::metadata(&session.path) {
             Ok(meta) => {
                 let nanos = meta
@@ -403,9 +404,9 @@ impl Harness for ClaudeHarness {
                     .ok()
                     .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
                     .map_or(0, |d| d.as_nanos());
-                format!("claude:{path}:{}:{nanos}", meta.len())
+                format!("{prefix}:{path}:{}:{nanos}", meta.len())
             }
-            Err(_) => format!("claude:{path}:missing"),
+            Err(_) => format!("{prefix}:{path}:missing"),
         }
     }
 

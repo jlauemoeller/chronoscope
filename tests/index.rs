@@ -529,3 +529,21 @@ fn an_index_without_harnesses_ends_quietly() {
     assert_eq!(rx.recv_timeout(WAIT), Err(RecvTimeoutError::Disconnected));
     assert!(!env.cache.join(CACHE_FILE).exists());
 }
+
+#[test]
+fn claude_stats_keys_start_with_the_cache_prefix_and_change_with_the_file() {
+    let env = env();
+    let harness = claude(&env.data);
+    let path = env.data.join("-home-user-alpha").join("aaaa0001.jsonl");
+    let summary = harness
+        .sessions(&"/home/user/alpha".into())
+        .unwrap()
+        .into_iter()
+        .find(|s| s.path == path)
+        .unwrap();
+    let key = harness.stats_key(&summary);
+    assert!(key.starts_with("claude:"), "{key}");
+    assert!(key.starts_with(&format!("{}:", HarnessId::Claude.cache_prefix())));
+    append(&path, "\n");
+    assert_ne!(harness.stats_key(&summary), key);
+}

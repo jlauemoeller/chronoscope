@@ -113,6 +113,18 @@ impl HarnessId {
         Self::ALL.into_iter().find(|h| h.number() == number)
     }
 
+    /// The stable, lowercase name that starts every stats cache key of the
+    /// harness (`claude` gives keys `claude:...`). Unlike the display name it
+    /// never changes, because cache files outlive versions.
+    pub fn cache_prefix(self) -> &'static str {
+        match self {
+            HarnessId::Claude => "claude",
+            HarnessId::OpenCode => "opencode",
+            HarnessId::Codex => "codex",
+            HarnessId::Pi => "pi",
+        }
+    }
+
     /// The name shown to the user.
     pub fn display_name(self) -> &'static str {
         match self {
@@ -512,6 +524,12 @@ mod tests {
         DateTime::parse_from_rfc3339("2026-03-01T12:00:00Z")
             .unwrap()
             .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn cache_prefixes_are_distinct_lowercase_names() {
+        let prefixes: Vec<_> = HarnessId::ALL.iter().map(|h| h.cache_prefix()).collect();
+        assert_eq!(prefixes, ["claude", "opencode", "codex", "pi"]);
     }
 
     #[test]

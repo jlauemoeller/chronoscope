@@ -54,7 +54,7 @@ pub trait Harness: Send + Sync {
     /// `time_updated`). It keys the stats cache (SPEC §9.2), so equal keys
     /// must mean equal stats. Cheap: it may stat a file but never parses.
     ///
-    /// The key starts with the lowercase harness name and a colon
+    /// The key starts with [`HarnessId::cache_prefix`] and a colon
     /// (`claude:`): the cache is shared by all harnesses, and each prunes
     /// only the entries with its own prefix.
     fn stats_key(&self, session: &SessionSummary) -> String;

@@ -31,22 +31,37 @@ struct Stub {
     /// When set, the first `stats` call reports on `entered`, then waits for
     /// `gate`.
     block_first: Option<(Sender<()>, Mutex<Receiver<()>>)>,
+    /// The first `stats` call panics.
+    panic_first: bool,
+    /// `projects` fails.
+    fail_projects: bool,
 }
 
 impl Stub {
     fn new(id: HarnessId, names: &[&str], delay: Duration) -> Arc<Self> {
-        Arc::new(Self {
+        Arc::new(Self::plain(id, names, delay))
+    }
+
+    fn plain(id: HarnessId, names: &[&str], delay: Duration) -> Self {
+        Self {
             id,
             sessions: names.iter().map(|n| (*n).to_owned()).collect(),
             version: AtomicU32::new(1),
             delay,
             calls: AtomicUsize::new(0),
             block_first: None,
-        })
+            panic_first: false,
+            fail_projects: false,
+        }
     }
 
-    fn prefix(&self) -> String {
-        self.id.display_name().to_lowercase()
+    /// Holds the first `stats` call until the returned sender is used; the
+    /// receiver tells when that call has started.
+    fn blocking_first(mut self) -> (Self, Receiver<()>, Sender<()>) {
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (gate_tx, gate_rx) = mpsc::channel();
+        self.block_first = Some((entered_tx, Mutex::new(gate_rx)));
+        (self, entered_rx, gate_tx)
     }
 
     fn summary(&self, name: &str, rank: i64) -> SessionSummary {
@@ -80,6 +95,9 @@ impl Harness for Stub {
         Vec::new()
     }
     fn projects(&self) -> Result<Vec<Project>> {
+        if self.fail_projects {
+            anyhow::bail!("the store cannot be read");
+        }
         Ok(vec![Project {
             id: ProjectId::from("/p"),
             harness: self.id,
@@ -109,11 +127,14 @@ impl Harness for Stub {
     fn stats(&self, _: &SessionSummary) -> Result<SessionStats> {
         // The version this computation is for.
         let version = self.version.load(Ordering::SeqCst);
-        if self.calls.fetch_add(1, Ordering::SeqCst) == 0
-            && let Some((entered, gate)) = &self.block_first
-        {
-            entered.send(()).unwrap();
-            gate.lock().unwrap().recv_timeout(WAIT).unwrap();
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            if self.panic_first {
+                panic!("stats() panics on purpose");
+            }
+            if let Some((entered, gate)) = &self.block_first {
+                entered.send(()).unwrap();
+                gate.lock().unwrap().recv_timeout(WAIT).unwrap();
+            }
         }
         std::thread::sleep(self.delay);
         Ok(SessionStats {
@@ -124,7 +145,7 @@ impl Harness for Stub {
     fn stats_key(&self, session: &SessionSummary) -> String {
         format!(
             "{}:{}:v{}",
-            self.prefix(),
+            self.id.cache_prefix(),
             session.id,
             self.version.load(Ordering::SeqCst)
         )
@@ -175,56 +196,126 @@ fn every_session_of_every_harness_gets_stats() {
     handle.shutdown();
 }
 
-#[test]
-fn a_late_result_for_an_old_key_is_dropped_and_the_new_key_is_computed_after_it() {
-    let (entered_tx, entered_rx) = mpsc::channel();
-    let (gate_tx, gate_rx) = mpsc::channel();
-    let stub = Arc::new(Stub {
-        id: HarnessId::Claude,
-        sessions: vec!["s".to_owned()],
-        version: AtomicU32::new(1),
-        delay: Duration::ZERO,
-        calls: AtomicUsize::new(0),
-        block_first: Some((entered_tx, Mutex::new(gate_rx))),
-    });
-    let cache = tempfile::tempdir().unwrap();
-    let timing = Timing {
+fn poll_50ms() -> Timing {
+    Timing {
         poll: Duration::from_millis(50),
         ..Timing::default()
-    };
-    let harness: Arc<dyn Harness> = stub.clone();
-    let mut handle =
-        SessionIndex::start_with_timing(vec![harness], cache.path().to_owned(), timing);
-    let rx = handle.take_events().unwrap();
+    }
+}
 
-    // The computation for version 1 is running (and held).
-    entered_rx.recv_timeout(WAIT).unwrap();
-    // The session changes: a snapshot with the new title is sent while the
-    // old computation is still running.
-    stub.version.store(2, Ordering::SeqCst);
+/// Receives events until a snapshot lists a session titled `title`.
+fn wait_for_title(rx: &Receiver<IndexEvent>, title: &str) {
     loop {
         match rx.recv_timeout(WAIT).unwrap() {
             IndexEvent::Snapshot { sessions, .. }
-                if sessions.values().flatten().any(|s| s.title == "s v2") =>
+                if sessions.values().flatten().any(|s| s.title == title) =>
             {
-                break;
+                return;
             }
             IndexEvent::Stats { .. } => panic!("stats before the held computation ended"),
             IndexEvent::Snapshot { .. } => {}
         }
     }
-    // The session is not parsed twice at once.
-    std::thread::sleep(Duration::from_millis(200));
-    assert_eq!(stub.calls.load(Ordering::SeqCst), 1);
+}
 
-    gate_tx.send(()).unwrap();
-    // Version 1's result is dropped; the first stats are those of version 2.
+fn next_stats(rx: &Receiver<IndexEvent>) -> SessionStats {
     loop {
         if let IndexEvent::Stats { stats, .. } = rx.recv_timeout(WAIT).unwrap() {
-            assert_eq!(stats.turns, 2);
-            break;
+            return stats;
         }
     }
+}
+
+#[test]
+fn a_stale_result_is_sent_so_a_busy_session_is_not_starved() {
+    let (stub, entered, gate) =
+        Stub::plain(HarnessId::Claude, &["s"], Duration::ZERO).blocking_first();
+    let stub = Arc::new(stub);
+    let cache = tempfile::tempdir().unwrap();
+    let harness: Arc<dyn Harness> = stub.clone();
+    let mut handle =
+        SessionIndex::start_with_timing(vec![harness], cache.path().to_owned(), poll_50ms());
+    let rx = handle.take_events().unwrap();
+
+    // The computation for version 1 is running (and held).
+    entered.recv_timeout(WAIT).unwrap();
+    // The session changes twice meanwhile; no stats are due yet.
+    stub.version.store(2, Ordering::SeqCst);
+    wait_for_title(&rx, "s v2");
+    stub.version.store(3, Ordering::SeqCst);
+    wait_for_title(&rx, "s v3");
+    // The session is not parsed twice at once.
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 1);
+
+    gate.send(()).unwrap();
+    // Version 1's result is outdated but the first the session gets, and it
+    // comes without waiting for the current version.
+    assert_eq!(next_stats(&rx).turns, 1);
+    assert_eq!(next_stats(&rx).turns, 3);
+    // Version 2 was replaced by version 3 before it ever ran.
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 2);
+    handle.shutdown();
+}
+
+#[test]
+fn a_stale_result_after_newer_stats_were_sent_is_dropped() {
+    // The first harness' computation is held while its session changes to a
+    // version whose stats are already cached. The other harness never builds
+    // (so pruning does not remove the seeded entry).
+    let (stub, entered, gate) =
+        Stub::plain(HarnessId::Claude, &["s"], Duration::ZERO).blocking_first();
+    let stub = Arc::new(stub);
+    let mut broken = Stub::plain(HarnessId::OpenCode, &["x"], Duration::ZERO);
+    broken.fail_projects = true;
+    let cache = tempfile::tempdir().unwrap();
+    std::fs::write(
+        cache.path().join(chronoscope::index::CACHE_FILE),
+        r#"{"claude:s:v2":{"turns":42,"duration":0}}"#,
+    )
+    .unwrap();
+    let first: Arc<dyn Harness> = stub.clone();
+    let harnesses = vec![first, Arc::new(broken) as Arc<dyn Harness>];
+    let mut handle =
+        SessionIndex::start_with_timing(harnesses, cache.path().to_owned(), poll_50ms());
+    let rx = handle.take_events().unwrap();
+
+    entered.recv_timeout(WAIT).unwrap();
+    stub.version.store(2, Ordering::SeqCst);
+    assert_eq!(next_stats(&rx).turns, 42);
+
+    gate.send(()).unwrap();
+    // The held version-1 result is older than the cached stats just sent.
+    let end = std::time::Instant::now() + Duration::from_millis(500);
+    while let Some(left) = end.checked_duration_since(std::time::Instant::now()) {
+        if let Ok(IndexEvent::Stats {
+            harness,
+            session,
+            stats,
+        }) = rx.recv_timeout(left)
+        {
+            panic!("unexpected stats for {harness} {session}: {stats:?}");
+        }
+    }
+    handle.shutdown();
+}
+
+#[test]
+fn a_panicking_stats_call_does_not_block_the_session_or_the_pool() {
+    let mut stub = Stub::plain(HarnessId::Claude, &["s"], Duration::ZERO);
+    stub.panic_first = true;
+    let stub = Arc::new(stub);
+    let cache = tempfile::tempdir().unwrap();
+    let harness: Arc<dyn Harness> = stub.clone();
+    let mut handle =
+        SessionIndex::start_with_timing(vec![harness], cache.path().to_owned(), poll_50ms());
+    let rx = handle.take_events().unwrap();
+
+    // Version 1 panicked: no stats. Once the session changes, it gets some.
+    while stub.calls.load(Ordering::SeqCst) == 0 {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    stub.version.store(2, Ordering::SeqCst);
+    assert_eq!(next_stats(&rx).turns, 2);
     assert_eq!(stub.calls.load(Ordering::SeqCst), 2);
     handle.shutdown();
 }
