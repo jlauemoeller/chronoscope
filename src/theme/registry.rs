@@ -111,7 +111,8 @@ impl ThemeRegistry {
 
     /// Merges user themes (`(id, parse result)`) into the registry.
     fn with_user_themes(mut self, mut user: Vec<(String, Result<Theme, ThemeError>)>) -> Self {
-        user.sort_by(|a, b| a.0.cmp(&b.0));
+        // Alphabetical ignoring case; the raw id breaks ties.
+        user.sort_by_cached_key(|(id, _)| (id.to_lowercase(), id.clone()));
         for (id, result) in user {
             let entry = match result {
                 Ok(theme) => ThemeEntry::valid(id, theme),
@@ -165,9 +166,8 @@ fn read_user_themes(dir: &Path) -> Vec<(String, Result<Theme, ThemeError>)> {
                 continue;
             }
         };
-        let is_toml = path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
+        // Exactly `*.toml`, so two files never share an id.
+        let is_toml = path.extension().is_some_and(|ext| ext == "toml");
         if !is_toml || !path.is_file() {
             continue;
         }
@@ -179,7 +179,7 @@ fn read_user_themes(dir: &Path) -> Vec<(String, Result<Theme, ThemeError>)> {
             continue;
         };
         let result = std::fs::read_to_string(&path)
-            .map_err(|err| ThemeError::Syntax(format!("could not read file: {err}")))
+            .map_err(|err| ThemeError::Io(err.to_string()))
             .and_then(|text| Theme::from_toml(&text));
         if let Err(err) = &result {
             log::warn!("themes: invalid theme {} ({id}): {err}", path.display());
@@ -233,6 +233,34 @@ mod tests {
         );
         assert!(registry.entries().iter().all(ThemeEntry::is_selectable));
         assert_eq!(registry, ThemeRegistry::builtin());
+    }
+
+    #[test]
+    fn with_user_themes_sorts_its_input_by_id_ignoring_case() {
+        let theme = |name: &str| Theme::from_toml(&theme_toml(name, None));
+        let registry = ThemeRegistry::builtin().with_user_themes(vec![
+            ("zeta".into(), theme("Z")),
+            ("Mid".into(), theme("M")),
+            ("alpha".into(), theme("A")),
+        ]);
+        assert_eq!(&ids(&registry)[7..], ["alpha", "Mid", "zeta"]);
+    }
+
+    #[test]
+    fn file_that_cannot_be_read_is_an_io_error_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("binary.toml"), [0xff, 0xfe, 0x00]).unwrap();
+        let registry = ThemeRegistry::load(dir.path());
+        let entry = registry.get("binary").unwrap();
+        assert!(!entry.is_selectable());
+        assert!(matches!(entry.error(), Some(ThemeError::Io(_))));
+    }
+
+    #[test]
+    fn only_lowercase_toml_extension_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("shout.TOML"), theme_toml("Shout", None)).unwrap();
+        assert!(ThemeRegistry::load(dir.path()).get("shout").is_none());
     }
 
     #[test]
@@ -327,10 +355,8 @@ mod tests {
 
     #[test]
     fn registry_never_reads_the_environment() {
-        let production = include_str!("registry.rs")
-            .split("#[cfg(test)]")
-            .next()
-            .unwrap();
+        let source = include_str!("registry.rs").replace("\r\n", "\n");
+        let production = source.split("#[cfg(test)]").next().unwrap();
         assert!(!production.contains("env::var"));
         assert!(!production.contains("env::args"));
     }

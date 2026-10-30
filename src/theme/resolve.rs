@@ -10,9 +10,9 @@
 
 use std::fmt;
 
-use crate::config::{ConfigWarning, DEFAULT_THEME};
+use crate::config::ConfigWarning;
 
-use super::{Theme, ThemeError, ThemeRegistry, builtin};
+use super::{Theme, ThemeEntry, ThemeError, ThemeRegistry, builtin};
 
 /// The terminal capabilities that affect colours.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -66,9 +66,10 @@ impl std::error::Error for ResolveError {}
 ///
 /// `transparent_override`, when present, replaces the theme's own
 /// `transparent_background`. Then the terminal transforms apply: `NO_COLOR`
-/// gives the Terminal theme without colours (whatever the id, once it is
-/// known to be selectable), a truecolor terminal keeps RGB colours, and
-/// anything else maps them to xterm-256.
+/// gives the built-in Terminal theme without colours (whatever the id, once it
+/// is known to be selectable; a user theme replacing `terminal` is not used,
+/// as it would be colourless anyway), a truecolor terminal keeps RGB colours,
+/// and anything else maps them to xterm-256.
 ///
 /// Fails for an unknown id and for an invalid user theme.
 pub fn resolve_by_id(
@@ -77,27 +78,30 @@ pub fn resolve_by_id(
     env: &TerminalEnv,
     transparent_override: Option<bool>,
 ) -> Result<Theme, ResolveError> {
-    let entry = registry
-        .get(id)
-        .ok_or_else(|| ResolveError::Unknown(id.to_owned()))?;
-    match entry.theme() {
-        Some(theme) => Ok(adapt(theme.clone(), env, transparent_override)),
-        None => Err(ResolveError::Invalid {
+    match registry.get(id) {
+        Some(ThemeEntry::Valid { theme, .. }) => {
+            let base = if env.no_color {
+                builtin::terminal_theme()
+            } else {
+                theme.clone()
+            };
+            Ok(adapt(base, env, transparent_override))
+        }
+        Some(ThemeEntry::Invalid { error, .. }) => Err(ResolveError::Invalid {
             id: id.to_owned(),
-            error: entry
-                .error()
-                .cloned()
-                .unwrap_or_else(|| ThemeError::Syntax(String::new())),
+            error: error.clone(),
         }),
+        None => Err(ResolveError::Unknown(id.to_owned())),
     }
 }
 
 /// Resolves the active theme from the config's `theme` and
 /// `transparent_background`.
 ///
-/// `NO_COLOR` wins over the configured theme and gives no warning. Otherwise
-/// an unknown id, or one naming an invalid user theme, falls back to
-/// `default` with a warning (also written to the log).
+/// `NO_COLOR` wins over the configured theme and gives no warning (see
+/// [`resolve_by_id`] for which theme it yields). Otherwise an unknown id, or
+/// one naming an invalid user theme, falls back to `default` with a warning
+/// (also written to the log).
 pub fn resolve(
     registry: &ThemeRegistry,
     theme_id: &str,
@@ -105,35 +109,30 @@ pub fn resolve(
     env: &TerminalEnv,
 ) -> (Theme, Vec<ConfigWarning>) {
     if env.no_color {
-        return (
-            adapt(builtin::default_theme(), env, transparent_background),
-            Vec::new(),
-        );
+        let theme = adapt(builtin::terminal_theme(), env, transparent_background);
+        return (theme, Vec::new());
     }
     match resolve_by_id(registry, theme_id, env, transparent_background) {
         Ok(theme) => (theme, Vec::new()),
         Err(err) => {
             let warning = ConfigWarning {
                 key: "theme".to_owned(),
-                message: format!("{err}; using \"{DEFAULT_THEME}\""),
+                message: format!("{err}; using \"{}\"", builtin::DEFAULT_ID),
             };
             log::warn!("config: {warning}");
-            let fallback = resolve_by_id(registry, DEFAULT_THEME, env, transparent_background)
-                .unwrap_or_else(|_| adapt(builtin::default_theme(), env, transparent_background));
+            let fallback =
+                resolve_by_id(registry, builtin::DEFAULT_ID, env, transparent_background)
+                    .unwrap_or_else(|_| {
+                        adapt(builtin::default_theme(), env, transparent_background)
+                    });
             (fallback, vec![warning])
         }
     }
 }
 
-/// Applies the terminal transforms and the transparency override.
-///
-/// `NO_COLOR` replaces `theme` with the Terminal theme.
+/// Applies the transparency override and the terminal transforms to `theme`.
+/// Under `NO_COLOR` the caller passes the Terminal theme.
 fn adapt(theme: Theme, env: &TerminalEnv, transparent_override: Option<bool>) -> Theme {
-    let theme = if env.no_color {
-        builtin::get(builtin::TERMINAL_ID).unwrap_or(theme)
-    } else {
-        theme
-    };
     let theme = match transparent_override {
         Some(transparent) => theme.with_transparent_background(transparent),
         None => theme,
@@ -382,11 +381,14 @@ mod tests {
     }
 
     #[test]
+    fn default_theme_id_is_shared_with_the_config() {
+        assert_eq!(crate::config::DEFAULT_THEME, builtin::DEFAULT_ID);
+    }
+
+    #[test]
     fn colorterm_and_no_color_are_parsed_from_the_environment_in_one_place() {
-        let production = include_str!("resolve.rs")
-            .split("#[cfg(test)]")
-            .next()
-            .unwrap();
+        let source = include_str!("resolve.rs").replace("\r\n", "\n");
+        let production = source.split("#[cfg(test)]").next().unwrap();
         assert_eq!(production.matches("env::var").count(), 2);
         assert_eq!(production.matches("fn from_env").count(), 1);
         let (before, after) = production.split_once("pub fn from_env").unwrap();

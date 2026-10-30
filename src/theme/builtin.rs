@@ -60,6 +60,11 @@ pub fn default_theme() -> Theme {
     default_dark()
 }
 
+/// The Terminal built-in theme (id [`TERMINAL_ID`]).
+pub fn terminal_theme() -> Theme {
+    terminal()
+}
+
 /// ratcn's `RING_DIM`: how far `ring` is dimmed from `primary` toward
 /// `background`.
 const RING_DIM: u16 = 10;

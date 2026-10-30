@@ -30,6 +30,8 @@ use super::{Palette, Role, Theme, Token, TokenOverride, parse_color};
 pub enum ThemeError {
     /// The document is not valid TOML.
     Syntax(String),
+    /// The file could not be read (the message holds the I/O error).
+    Io(String),
     /// A required key (`name` or a base role) is missing.
     MissingKey(String),
     /// A key has a value of the wrong type.
@@ -45,6 +47,7 @@ impl fmt::Display for ThemeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ThemeError::Syntax(msg) => write!(f, "invalid theme TOML: {msg}"),
+            ThemeError::Io(msg) => write!(f, "could not read theme file: {msg}"),
             ThemeError::MissingKey(key) => write!(f, "missing required key `{key}`"),
             ThemeError::WrongType { key, expected } => {
                 write!(f, "`{key}` must be {expected}")
