@@ -7,7 +7,7 @@
 | 003-config-file | Complete |
 | 004-theme-registry | Complete |
 | 005-keymap-bindings | Complete |
-| 006-claude-turn-assembly | In progress |
+| 006-claude-turn-assembly | Complete |
 | 007-claude-injected-content | Planned |
 | 008-claude-session-discovery | Planned |
 | 009-claude-session-loading | Planned |
