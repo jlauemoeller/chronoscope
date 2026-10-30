@@ -1,0 +1,2 @@
+{"isSidechain":true,"cwd":"/home/user/loading","sessionId":"pppp0001","version":"2.1.306","uuid":"r2-u1","timestamp":"2026-04-01T10:01:10.000Z","agentId":"r2","type":"user","message":{"role":"user","content":"Write a short story"}}
+{"isSidechain":true,"cwd":"/home/user/loading","sessionId":"pppp0001","version":"2.1.306","uuid":"r2-a1","timestamp":"2026-04-01T10:01:1030.000Z","agentId":"r2","type":"assistant","message":{"id":"msg_r2","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"Once upon a time."}]}}

@@ -10,17 +10,24 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
 use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 
+use super::load::{self, LoadHook, Tuning};
+use super::resume::{self, DEFAULT_RESUME_COMMAND};
 use super::scan::{FileScan, scan_reader};
+use super::subagent::{self, SubagentInfo};
 use crate::config::Config;
-use crate::harness::{Harness, Result};
-use crate::model::{HarnessId, Project, ProjectId, SessionId, SessionSummary};
+use crate::harness::{Harness, Result, WatchHandle};
+use crate::model::{
+    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionSummary, ToolCallId,
+};
 
 /// Title of a session with neither an `ai-title` nor a prompt.
 pub const UNTITLED: &str = "(untitled)";
@@ -89,6 +96,9 @@ pub struct ClaudeHarness {
     scans: AtomicUsize,
     state: Mutex<State>,
     on_scan: Option<ScanHook>,
+    resume_command: String,
+    tuning: Tuning,
+    on_batch: Option<LoadHook>,
 }
 
 impl ClaudeHarness {
@@ -102,6 +112,7 @@ impl ClaudeHarness {
             .clone()
             .unwrap_or_else(|| default_data_dir(home));
         Self::with_data_dir(data_dir, config.projects.aliases.clone())
+            .with_resume_command(config.harness.claude.resume_command.clone())
     }
 
     /// Builds the harness for an explicit data directory.
@@ -113,7 +124,47 @@ impl ClaudeHarness {
             scans: AtomicUsize::new(0),
             state: Mutex::new(State::default()),
             on_scan: None,
+            resume_command: DEFAULT_RESUME_COMMAND.to_owned(),
+            tuning: Tuning::default(),
+            on_batch: None,
         }
+    }
+
+    /// Sets the resume command template (`harness.claude.resume_command`):
+    /// `{id}` stands for the session id.
+    #[must_use]
+    pub fn with_resume_command(mut self, template: impl Into<String>) -> Self {
+        self.resume_command = template.into();
+        self
+    }
+
+    /// Sets when [`load`](Harness::load) sends batches (defaults: the first
+    /// after 50 turns or 256 KiB of input, then every 2 MiB). Meant for tests.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_batch_limits(mut self, first_turns: usize, first_bytes: u64, bytes: u64) -> Self {
+        self.tuning = Tuning {
+            first_turns,
+            first_bytes,
+            batch_bytes: bytes,
+        };
+        self
+    }
+
+    /// Calls `hook` on the loader's worker thread before each batch is sent.
+    /// A test hook.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_load_hook(mut self, hook: impl Fn() + Send + Sync + 'static) -> Self {
+        self.on_batch = Some(Arc::new(hook));
+        self
+    }
+
+    /// What the subagent's meta file says (`agentType`, `description`), for
+    /// the breadcrumb. `None` for a session that is not a subagent, or whose
+    /// meta file is missing or unreadable.
+    pub fn subagent_info(&self, session: &SessionId) -> Option<SubagentInfo> {
+        subagent::info(&self.data_dir, session)
     }
 
     /// Caps the scan worker threads (default: `available_parallelism()`).
@@ -314,6 +365,37 @@ impl Harness for ClaudeHarness {
             .get(project)
             .cloned()
             .unwrap_or_default())
+    }
+
+    /// Returns at once: the worker thread finds the transcript, opens it and
+    /// parses it. A session that cannot be found or read ends in
+    /// [`ModelUpdate::Loaded`] with the error logged, not in an `Err`.
+    fn load(&self, session: &SessionId, tx: Sender<ModelUpdate>) -> Result<WatchHandle> {
+        let stop = Arc::new(AtomicBool::new(false));
+        let job = load::Job {
+            data_dir: self.data_dir.clone(),
+            session: session.clone(),
+            tx,
+            stop: Arc::clone(&stop),
+            tuning: self.tuning,
+            hook: self.on_batch.clone(),
+        };
+        let thread = std::thread::Builder::new()
+            .name("claude-load".to_owned())
+            .spawn(move || load::run(job))
+            .context("starting the session loader")?;
+        Ok(WatchHandle::new(stop, thread))
+    }
+
+    /// Looks in the parent's `subagents` directory for the meta file naming
+    /// `call`, then in the parent transcript for the call's `toolUseResult`.
+    /// Reads files, so it is not for the UI thread.
+    fn subagent(&self, parent: &SessionId, call: &ToolCallId) -> Option<SessionId> {
+        subagent::find(&self.data_dir, parent, call.as_str())
+    }
+
+    fn resume_command(&self, session: &SessionSummary) -> Option<Command> {
+        resume::build(&self.resume_command, session)
     }
 }
 
