@@ -1,6 +1,6 @@
 //! Sections: the unit of selection, folding, copying and saving (SPEC §5.2).
 //!
-//! [`sections`] derives the sections of a turn; [`FoldState`] answers whether
+//! [`derive_sections`] derives the sections of a turn; [`FoldState`] answers whether
 //! a section is folded, starting from the defaults of the §5.2 table.
 
 use std::collections::HashMap;
@@ -116,7 +116,13 @@ impl Section<'_> {
 /// Redacted (and empty) thinking yields no section; injected items yield none
 /// when `show_system` is false. A User turn lists its items before the
 /// prompt, an Assistant turn ends with the stats footer when it has stats.
-pub fn sections(turn: &Turn, show_system: bool) -> Vec<Section<'_>> {
+///
+/// Derivation does not render, so a section whose markdown renders to no
+/// rows at all (say, text that is only an HTML comment) is still listed here.
+/// Such a section has no entry in
+/// [`BlockLayout::section_rows`](super::BlockLayout::section_rows), which is
+/// therefore the list of sections that can be selected.
+pub fn derive_sections(turn: &Turn, show_system: bool) -> Vec<Section<'_>> {
     let mut out = Vec::new();
     let id = |key| SectionId {
         turn: turn.id().clone(),

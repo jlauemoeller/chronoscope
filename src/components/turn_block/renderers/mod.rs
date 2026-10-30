@@ -29,9 +29,6 @@ pub use thinking::ThinkingSection;
 pub use tool::ToolCallSection;
 pub use user::UserPromptSection;
 
-/// The columns taken by the block's border, padding and marker cells on the
-/// left of the text: border, padding, and the two marker cells.
-pub const TEXT_COLUMN: u16 = 4;
 /// The width the block leaves for the text: 4 cells on the left and 4 on the
 /// right of it (3 of padding and the border).
 pub const CHROME: u16 = 8;
@@ -180,6 +177,25 @@ pub(crate) fn ellipsize(line: Line<'static>, width: usize, always: bool) -> Line
     }
     spans.push(Span::styled("…", style));
     Line::from(spans)
+}
+
+/// Word-wraps prose `text` at `width` cells; a word longer than a line is
+/// broken. Control characters become spaces, and a blank `text` gives one
+/// empty line.
+pub(crate) fn word_wrap(text: &str, width: u16, style: Style) -> Vec<Line<'static>> {
+    let text: String = text
+        .chars()
+        .map(|c| if c != '\n' && c.is_control() { ' ' } else { c })
+        .collect();
+    textwrap::wrap(&text, usize::from(width.max(1)))
+        .into_iter()
+        .map(|line| Line::from(Span::styled(line.into_owned(), style)))
+        .collect()
+}
+
+/// Whether a rendered line has nothing to show.
+pub(crate) fn is_blank(line: &Line<'_>) -> bool {
+    line.spans.iter().all(|s| s.content.trim().is_empty())
 }
 
 /// The first non-blank line of `text`, trimmed, with control characters

@@ -2,10 +2,9 @@
 
 use std::time::Duration;
 
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 
-use super::{SectionCtx, SectionRenderer, with_lead};
-use crate::markdown::char_wrap;
+use super::{SectionCtx, SectionRenderer, with_lead, word_wrap};
 use crate::model::TurnStats;
 
 /// The duration of a turn: `12s`, `5m 02s` or `1h 05m`. Sub-second parts are
@@ -24,11 +23,11 @@ pub fn format_tokens(tokens: u64) -> String {
     if tokens < 1_000 {
         return tokens.to_string();
     }
-    let thousands = (tokens + 50) / 100;
+    let thousands = tokens.saturating_add(50) / 100;
     if thousands < 10_000 {
         return format!("{}.{}k", thousands / 10, thousands % 10);
     }
-    let millions = (tokens + 50_000) / 100_000;
+    let millions = tokens.saturating_add(50_000) / 100_000;
     format!("{}.{}M", millions / 10, millions % 10)
 }
 
@@ -61,10 +60,6 @@ pub struct StatsSection<'a>(pub &'a TurnStats);
 impl SectionRenderer for StatsSection<'_> {
     fn lines(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {
         let text = format_stats(self.0);
-        let mut lines = char_wrap(&text, ctx.width, ctx.muted());
-        if lines.is_empty() {
-            lines.push(Line::from(Span::styled(text, ctx.muted())));
-        }
-        with_lead(lines, "  ", ctx.muted())
+        with_lead(word_wrap(&text, ctx.width, ctx.muted()), "  ", ctx.muted())
     }
 }

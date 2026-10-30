@@ -12,7 +12,7 @@ mod prompt;
 mod selector_frame;
 mod session_list;
 mod toast;
-mod turn_block;
+pub mod turn_block;
 mod working_dir;
 
 use tuirealm::props::{AttrValue, Attribute, PropPayload};
@@ -37,7 +37,7 @@ pub use session_list::{
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 pub use turn_block::{
     BlockLayout, FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, TitleBar,
-    TurnBlock, derive_sections, emphasize, sections as section_renderers,
+    TurnBlock, derive_sections, emphasize,
 };
 pub use working_dir::{CWD_ATTR, WorkingDir};
 

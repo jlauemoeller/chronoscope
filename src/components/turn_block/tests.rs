@@ -3,11 +3,12 @@
 use std::time::Duration;
 
 use ratatui::style::{Color, Modifier};
+use ratatui::widgets::Widget;
 use serde_json::json;
 use unicode_width::UnicodeWidthStr;
 
 use super::fixtures::*;
-use super::sections::{
+use super::renderers::{
     CompactionSection, SectionCtx, SectionRenderer, StatsSection, SystemSection, ThinkingSection,
     ToolCallSection, UserPromptSection, format_duration, format_stats, format_tokens,
 };
@@ -951,4 +952,238 @@ fn thinking_gets_the_thinking_token_when_not_dimmed() {
         buf[(4, u16::try_from(row).unwrap())].fg,
         theme.role(Role::PrimaryForeground)
     );
+}
+
+// ---- Round 2: markdown in folded thinking, prose wrapping, titles ----
+
+fn tool_item(call: &Turn) -> &crate::model::ToolCall {
+    let Turn::Assistant(a) = call else { panic!() };
+    let Item::ToolCall(call) = &a.items[0] else {
+        panic!()
+    };
+    call
+}
+
+#[test]
+fn folded_thinking_shows_the_rendered_first_line_not_markdown_source() {
+    let theme = theme();
+    let show = |src: &str| ThinkingSection(src).lines(&ctx(&theme, 70, true))[0].to_string();
+    assert_eq!(
+        show("**Investigating USB descriptors**\n\nBody"),
+        "▶ Thinking: Investigating USB descriptors"
+    );
+    assert_eq!(
+        show("- first bullet\n- second"),
+        "▶ Thinking: • first bullet"
+    );
+    assert_eq!(show("## Plan\n\ntext"), "▶ Thinking: Plan");
+    assert_eq!(show("Use `lsusb` *now*"), "▶ Thinking: Use lsusb now");
+    let long =
+        ThinkingSection(&format!("**{}**", "word ".repeat(40))).lines(&ctx(&theme, 30, true));
+    assert_eq!(long.len(), 1);
+    assert_eq!(long[0].width(), 32);
+    assert!(long[0].to_string().ends_with('…'));
+}
+
+#[test]
+fn folded_thinking_stays_in_the_thinking_token() {
+    let theme = distinct_theme();
+    let lines = ThinkingSection("**Bold** start").lines(&ctx(&theme, 60, true));
+    let style = theme.style(Token::Thinking);
+    assert!(lines[0].spans.iter().all(|s| s.style == style));
+}
+
+#[test]
+fn unfolded_tool_description_is_word_wrapped_at_the_text_width() {
+    let theme = theme();
+    let description = "Dump the full USB descriptors for the Logitech BRIO and list every extension unit with its controls";
+    let turn = assistant(
+        None,
+        vec![tool(
+            "c1",
+            description,
+            json!({}),
+            None,
+            ToolStatus::Pending,
+        )],
+        None,
+    );
+    let lines = ToolCallSection(tool_item(&turn)).lines(&ctx(&theme, 72, false));
+    assert_eq!(
+        lines_text(&lines[..2]),
+        [
+            "▼ Dump the full USB descriptors for the Logitech BRIO and list every",
+            "  extension unit with its controls",
+        ]
+    );
+    let opts = Opts::default().unfold(item_id(&turn, "c1"));
+    let rows = rows(&draw(&turn, &opts, 80));
+    assert_eq!(cols(&rows[3], 0, 6), "│   ex");
+    let narrow = ToolCallSection(tool_item(&turn)).lines(&ctx(&theme, 32, false));
+    for line in &narrow[..4] {
+        assert!(line.width() <= 34);
+        assert!(!line.to_string().starts_with("   "), "{line}");
+    }
+    // A single token longer than the width is still broken.
+    let long = assistant(
+        None,
+        vec![tool(
+            "c1",
+            &"x".repeat(100),
+            json!({}),
+            None,
+            ToolStatus::Ok,
+        )],
+        None,
+    );
+    let lines = ToolCallSection(tool_item(&long)).lines(&ctx(&theme, 40, false));
+    assert_eq!(lines[0].width(), 42);
+    assert!(lines[1].to_string().starts_with("  x"));
+}
+
+#[test]
+fn blank_descriptions_fall_back_to_the_tool_name_and_tabs_agree() {
+    let theme = theme();
+    let blank = assistant(
+        None,
+        vec![tool("c1", " ", json!({}), None, ToolStatus::Ok)],
+        None,
+    );
+    let folded = ToolCallSection(tool_item(&blank)).lines(&ctx(&theme, 40, true));
+    assert_eq!(lines_text(&folded), ["▶ Shell"]);
+    let tabbed = assistant(
+        None,
+        vec![tool("c1", "Run\tthings", json!({}), None, ToolStatus::Ok)],
+        None,
+    );
+    let folded = ToolCallSection(tool_item(&tabbed)).lines(&ctx(&theme, 40, true));
+    let unfolded = ToolCallSection(tool_item(&tabbed)).lines(&ctx(&theme, 40, false));
+    assert_eq!(folded[0].to_string(), "▶ Run things");
+    assert_eq!(unfolded[0].to_string(), "▼ Run things");
+}
+
+#[test]
+fn folded_prompt_skips_blank_separator_rows() {
+    let theme = distinct_theme();
+    let fg = theme.role(Role::Foreground);
+    let two = UserPromptSection("Para one.\n\nPara two.").lines(&ctx(&theme, 60, true));
+    assert_eq!(lines_text(&two), ["▶ Para one.", "  Para two."]);
+    let three =
+        UserPromptSection("Para one.\n\nPara two.\n\nPara three.").lines(&ctx(&theme, 60, true));
+    assert_eq!(lines_text(&three), ["▶ Para one.", "  Para two.…"]);
+    assert!(three[1].spans.iter().all(|s| s.style.fg == Some(fg)));
+    let heading =
+        UserPromptSection("# Bug report\n\nIt breaks.\n\nMore.").lines(&ctx(&theme, 60, true));
+    assert_eq!(lines_text(&heading), ["▶ Bug report", "  It breaks.…"]);
+    // Unfolded keeps the blank rows.
+    let unfolded = UserPromptSection("Para one.\n\nPara two.").lines(&ctx(&theme, 60, false));
+    assert_eq!(lines_text(&unfolded), ["▼ Para one.", "", "  Para two."]);
+}
+
+#[test]
+fn long_model_is_cut_before_the_timestamp_is_dropped() {
+    let mut turn = assistant(Some("xhigh"), vec![], None);
+    if let Turn::Assistant(a) = &mut turn {
+        a.model = "claude-opus-5.5-20261021-extended-context-preview-1m".into();
+    }
+    for width in [80usize, 60, 50] {
+        let top = rows(&draw(
+            &turn,
+            &Opts::default(),
+            u16::try_from(width).unwrap(),
+        ))[0]
+            .clone();
+        assert_eq!(top.chars().count(), width);
+        assert!(top.starts_with("╭─ Assistant ── claude-"), "{top}");
+        assert!(top.ends_with(" 08:35:18Z ─╮"), "{top}");
+    }
+    let top = rows(&draw(&turn, &Opts::default(), 60))[0].clone();
+    assert!(top.contains("… ─"), "{top}");
+    let wide = rows(&draw(&turn, &Opts::default(), 120))[0].clone();
+    assert!(wide.contains("-1m @ xhigh "), "no cut when it fits: {wide}");
+    // Without room for the model the timestamp goes, then the left title is cut.
+    let top = rows(&draw(&turn, &Opts::default(), 30))[0].clone();
+    assert_eq!(top.chars().count(), 30);
+    assert!(top.ends_with('╮'));
+    assert!(!top.contains("08:35"));
+}
+
+#[test]
+fn the_top_border_is_always_the_width_and_ends_in_a_corner() {
+    let turns = [user("x", vec![]), full_assistant(), compaction("s")];
+    for turn in &turns {
+        let formatter = formatter();
+        let theme = theme();
+        let bar = TitleBar::new(turn, &theme, &formatter);
+        for width in 2..=140u16 {
+            let line = bar.line(width).to_string();
+            assert_eq!(line.width(), usize::from(width), "{line}");
+            assert!(line.starts_with('╭') && line.ends_with('╮'), "{line}");
+        }
+    }
+}
+
+#[test]
+fn stats_footer_and_model_note_wrap_at_word_boundaries() {
+    let theme = theme();
+    let stats = stats();
+    let lines = StatsSection(&stats).lines(&ctx(&theme, 24, false));
+    assert_eq!(
+        lines_text(&lines),
+        ["  5m 02s · 112 messages ·", "  45.2k tokens"]
+    );
+    let note = super::renderers::ModelChangeSection("claude-sonnet-5.5 preview mode");
+    let lines = note.lines(&ctx(&theme, 30, false));
+    assert_eq!(
+        lines_text(&lines),
+        ["  model → claude-sonnet-5.5", "  preview mode"]
+    );
+}
+
+#[test]
+fn token_counts_near_u64_max_do_not_overflow() {
+    assert!(format_tokens(u64::MAX).ends_with('M'));
+}
+
+#[test]
+fn rendering_a_cached_layout_equals_rendering_the_block() {
+    let turn = full_assistant();
+    let opts = Opts::default()
+        .unfold(item_id(&turn, "c2"))
+        .select(item_id(&turn, "c2"));
+    let width = 90;
+    let direct = render_into(&turn, &opts, width, 40, 3);
+    let cached = with_block(&turn, &opts, |block| {
+        let block = block.skip_rows(3);
+        let layout = block.layout(width);
+        crate::test_support::render(width, 40, |frame| {
+            block.render_layout(&layout, frame.area(), frame.buffer_mut());
+        })
+    });
+    assert_eq!(direct, cached);
+    let by_ref = with_block(&turn, &opts, |block| {
+        let block = block.skip_rows(3);
+        crate::test_support::render(width, 40, |frame| {
+            (&block).render(frame.area(), frame.buffer_mut());
+        })
+    });
+    assert_eq!(direct, by_ref);
+}
+
+#[test]
+fn text_never_reaches_the_padding_at_tiny_widths() {
+    let turn = assistant(None, vec![text("t1", "Hello there")], None);
+    for width in 3..=8u16 {
+        let rows = rows(&render_into(&turn, &Opts::default(), width, 6, 0));
+        for row in &rows[1..rows.len() - 1] {
+            let w = usize::from(width);
+            assert!(
+                row.chars()
+                    .skip(w.saturating_sub(4))
+                    .take(3)
+                    .all(|c| c == ' ' || c == '│' || c == '╯'),
+                "{row}"
+            );
+        }
+    }
 }

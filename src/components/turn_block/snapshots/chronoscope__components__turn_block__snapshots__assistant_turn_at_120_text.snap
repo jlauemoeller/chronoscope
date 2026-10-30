@@ -11,7 +11,7 @@ expression: "buffer_to_text(&draw(&turn, &opts, 120))"
 │                                                                                                                      │
 │   Then I'll compare the results.                                                                                     │
 │                                                                                                                      │
-│ ▶ Thinking: The user wants the UVC extension units.                                                                  │
+│ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.                                                │
 │                                                                                                                      │
 │ ▶ Find the BRIO on USB and check available tools                                                                     │
 │                                                                                                                      │

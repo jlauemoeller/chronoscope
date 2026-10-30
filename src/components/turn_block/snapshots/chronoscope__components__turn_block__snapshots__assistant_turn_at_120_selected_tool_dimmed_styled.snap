@@ -11,7 +11,7 @@ expression: "buffer_to_styled(&draw(&turn, &opts, 120))"
 │                                                                                                                      │
 │   Then I'll compare the results.                                                                                     │
 │                                                                                                                      │
-│ ▶ Thinking: The user wants the UVC extension units.                                                                  │
+│ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.                                                │
 │                                                                                                                      │
 │ ▶ Find the BRIO on USB and check available tools                                                                     │
 │                                                                                                                      │
@@ -46,7 +46,7 @@ expression: "buffer_to_styled(&draw(&turn, &opts, 120))"
 6: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 7: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..34 Rgb(161, 161, 161)/Reset/NONE | 34..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 8: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
-9: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..53 Rgb(161, 161, 161)/Reset/NONE | 53..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
+9: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..71 Rgb(161, 161, 161)/Reset/NONE | 71..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 10: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 11: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..50 Rgb(161, 161, 161)/Reset/NONE | 50..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE
 12: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..119 Reset/Reset/NONE | 119..120 Rgb(94, 94, 94)/Reset/NONE

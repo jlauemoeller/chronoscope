@@ -5,12 +5,12 @@ use std::ops::Range;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::Widget;
 
 use super::emphasis::emphasize;
-use super::section::{FoldState, SectionId, sections};
-use super::sections::{render_section, text_width};
+use super::renderers::{render_section, text_width};
+use super::section::{FoldState, SectionId, derive_sections};
 use super::title::TitleBar;
 use crate::model::Turn;
 use crate::theme::{Role, Theme, Token};
@@ -130,7 +130,7 @@ impl<'a> TurnBlock<'a> {
         };
         let mut rows = vec![blank()];
         let mut spans = Vec::new();
-        for section in sections(self.turn, self.show_system) {
+        for section in derive_sections(self.turn, self.show_system) {
             let lines = render_section(&section, self.theme, text_width, folds.is_folded(&section));
             if lines.is_empty() {
                 continue;
@@ -178,35 +178,53 @@ impl<'a> TurnBlock<'a> {
     }
 
     fn draw_interior(&self, row: &BlockRow, area: Rect, y: u16, buf: &mut Buffer) {
-        let inner = area.width.saturating_sub(2);
-        let mut spans = vec![Span::raw(" ")];
-        spans.extend(row.line.spans.iter().cloned());
-        let pad = usize::from(inner).saturating_sub(Line::from(spans.clone()).width());
-        spans.push(Span::raw(" ".repeat(pad)));
         let (symbol, style) = if row.selected {
             ("▒", self.theme.style(Token::SelectionMarker))
         } else {
             ("│", self.border_style())
         };
         buf.set_string(area.x, y, symbol, style);
-        buf.set_line(area.x + 1, y, &Line::from(spans), inner);
+        buf.set_string(
+            area.x + 1,
+            y,
+            " ".repeat(usize::from(area.width.saturating_sub(2))),
+            Style::default(),
+        );
+        // The content may use columns 2 to W - 4; the rest is padding.
+        buf.set_line(area.x + 2, y, &row.line, area.width.saturating_sub(6));
         buf.set_string(area.x + area.width - 1, y, "│", self.border_style());
     }
-}
 
-impl Widget for TurnBlock<'_> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
+    /// Draws a layout made by [`layout`](Self::layout) for `area.width`,
+    /// without laying the block out again. A caller that cached the layout
+    /// (the virtualised transcript) renders it every frame this way.
+    pub fn render_layout(&self, layout: &BlockLayout, area: Rect, buf: &mut Buffer) {
         let area = area.intersection(buf.area);
         if area.width < 2 || area.height == 0 {
             return;
         }
-        let layout = self.layout(area.width);
         for dy in 0..area.height {
             let row = self.skip + usize::from(dy);
             if row >= layout.height() {
                 break;
             }
-            self.draw_row(&layout, row, area, area.y + dy, buf);
+            self.draw_row(layout, row, area, area.y + dy, buf);
         }
+    }
+}
+
+impl Widget for &TurnBlock<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let area = area.intersection(buf.area);
+        if area.width < 2 || area.height == 0 {
+            return;
+        }
+        self.render_layout(&self.layout(area.width), area, buf);
+    }
+}
+
+impl Widget for TurnBlock<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        (&self).render(area, buf);
     }
 }

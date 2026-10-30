@@ -5,10 +5,10 @@ use ratatui::text::{Line, Span};
 
 use super::{
     BODY_INDENT, SectionCtx, SectionRenderer, ellipsize, first_line, fold_marker, indent, label,
-    with_lead,
+    with_lead, word_wrap,
 };
 use crate::markdown::char_wrap;
-use crate::model::{ToolCall, ToolStatus};
+use crate::model::{ToolCall, ToolKind, ToolStatus};
 use crate::theme::Token;
 
 /// The text shown for a call that has no result yet.
@@ -22,17 +22,35 @@ pub const PENDING: &str = "(pending)";
 pub struct ToolCallSection<'a>(pub &'a ToolCall);
 
 impl ToolCallSection<'_> {
+    /// The description, or the tool's name when the description is blank.
+    fn description_text(&self) -> String {
+        if !self.0.description.trim().is_empty() {
+            return self.0.description.trim().to_owned();
+        }
+        match &self.0.tool {
+            ToolKind::Shell => "Shell",
+            ToolKind::Read => "Read",
+            ToolKind::Write => "Write",
+            ToolKind::Edit => "Edit",
+            ToolKind::Grep => "Grep",
+            ToolKind::Glob => "Glob",
+            ToolKind::WebFetch => "WebFetch",
+            ToolKind::WebSearch => "WebSearch",
+            ToolKind::Subagent => "Subagent",
+            ToolKind::Other(name) => name,
+        }
+        .to_owned()
+    }
+
+    /// Folded: one row, cut with `…`. Unfolded: the description is prose, so
+    /// it is word-wrapped.
     fn description(&self, ctx: &SectionCtx<'_>, style: Style) -> Vec<Line<'static>> {
+        let text = self.description_text();
         if ctx.folded {
-            let line = Line::from(Span::styled(first_line(&self.0.description), style));
+            let line = Line::from(Span::styled(first_line(&text), style));
             return vec![ellipsize(line, usize::from(ctx.width), false)];
         }
-        let lines = char_wrap(&self.0.description, ctx.width, style);
-        if lines.is_empty() {
-            vec![Line::from(Span::styled(String::new(), style))]
-        } else {
-            lines
-        }
+        word_wrap(&text, ctx.width, style)
     }
 
     fn input(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {

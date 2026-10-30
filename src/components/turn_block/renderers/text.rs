@@ -1,9 +1,9 @@
 //! Assistant text and the model-change note: the sections that cannot fold.
 
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 
-use super::{SectionCtx, SectionRenderer, with_lead};
-use crate::markdown::{char_wrap, render_markdown};
+use super::{SectionCtx, SectionRenderer, with_lead, word_wrap};
+use crate::markdown::render_markdown;
 
 /// Markdown text of the assistant, in `foreground`, indented by two spaces.
 #[derive(Debug, Clone, Copy)]
@@ -23,12 +23,6 @@ pub struct ModelChangeSection<'a>(pub &'a str);
 impl SectionRenderer for ModelChangeSection<'_> {
     fn lines(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {
         let note = format!("model → {}", self.0);
-        let lines = char_wrap(&note, ctx.width, ctx.muted());
-        let lines = if lines.is_empty() {
-            vec![Line::from(Span::styled(note, ctx.muted()))]
-        } else {
-            lines
-        };
-        with_lead(lines, "  ", ctx.muted())
+        with_lead(word_wrap(&note, ctx.width, ctx.muted()), "  ", ctx.muted())
     }
 }
