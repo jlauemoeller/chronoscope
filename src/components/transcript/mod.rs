@@ -11,7 +11,7 @@
 //!
 //! Data flows in through [`attr`](Component::attr): [`THEME_ATTR`],
 //! [`DIM_UNSELECTED_ATTR`], [`SHOW_SYSTEM_ATTR`], [`TRUNCATE_OUTPUT_LINES_ATTR`],
-//! [`TIMESTAMP_FORMATTER_ATTR`], [`MODEL_UPDATE_ATTR`] (an `Arc<ModelUpdate>`
+//! [`OPEN_SUBAGENT_KEY_ATTR`], [`TIMESTAMP_FORMATTER_ATTR`], [`MODEL_UPDATE_ATTR`] (an `Arc<ModelUpdate>`
 //! payload, see [`model_update_value`]) and [`VIEWPORT_ATTR`].
 //!
 //! # The pre-render step
@@ -28,7 +28,8 @@
 //!
 //! Basic `Cmd`s: `Scroll(Up/Down)` scrolls one row, `Move(Up/Down)` selects
 //! the previous/next section and `Submit` toggles the selected section's
-//! fold. Task 020 binds the keys.
+//! fold, or, on the `… N more lines` row of a truncated tool call, expands
+//! its output. Task 020 binds the keys.
 
 mod cache;
 mod content;
@@ -73,6 +74,9 @@ pub const DIM_UNSELECTED_ATTR: Attribute = Attribute::Custom("dim_unselected");
 pub const SHOW_SYSTEM_ATTR: Attribute = Attribute::Custom("show_system");
 /// The `truncate_output_lines` setting (a length).
 pub const TRUNCATE_OUTPUT_LINES_ATTR: Attribute = Attribute::Custom("truncate_output_lines");
+/// The label of the key that opens a subagent transcript, shown in the hint
+/// of subagent sections (a string).
+pub const OPEN_SUBAGENT_KEY_ATTR: Attribute = Attribute::Custom("open_subagent_key");
 /// The [`TimestampFormatter`] for block titles (a payload).
 pub const TIMESTAMP_FORMATTER_ATTR: Attribute = Attribute::Custom("timestamp_formatter");
 /// A [`ModelUpdate`] to apply (an `Arc<ModelUpdate>` payload).
@@ -168,8 +172,7 @@ impl Transcript {
         self.content.turns.get(index)
     }
 
-    /// The `truncate_output_lines` setting. Block renderers do not use it
-    /// yet; it is held for them.
+    /// The `truncate_output_lines` setting.
     pub fn truncate_output_lines(&self) -> usize {
         self.content.truncate_output_lines
     }
@@ -320,11 +323,34 @@ impl Transcript {
         self.refresh();
     }
 
-    /// Stores the setting. No block renderer reads it yet, so heights do not
-    /// depend on it; when one does (task 019 truncates tool output), this
-    /// must invalidate every height.
+    /// Sets `truncate_output_lines`. Tool bodies depend on it, so every
+    /// height is forgotten; a selected truncation row that no longer exists
+    /// is replaced by the nearest section.
     fn set_truncate_output_lines(&mut self, lines: usize) {
+        if self.content.truncate_output_lines == lines {
+            return;
+        }
+        let before = self.sections_if(|_| true);
         self.content.truncate_output_lines = lines;
+        self.relayout_all(before);
+    }
+
+    /// Sets the label of the `open_subagent` key and lays out again.
+    fn set_open_subagent_key(&mut self, label: String) {
+        if self.content.open_subagent_key == label {
+            return;
+        }
+        let before = self.sections_if(|_| true);
+        self.content.open_subagent_key = label;
+        self.relayout_all(before);
+    }
+
+    /// Forgets every height after a setting that changes bodies, and keeps
+    /// the selection on a section that still exists.
+    fn relayout_all(&mut self, before: Option<Vec<SectionId>>) {
+        self.cache.invalidate_all();
+        self.restore_selection(before);
+        self.refresh();
     }
 }
 
@@ -348,6 +374,8 @@ impl Component for Transcript {
             AttrValue::Flag(self.content.show_system)
         } else if attr == TRUNCATE_OUTPUT_LINES_ATTR {
             AttrValue::Length(self.content.truncate_output_lines)
+        } else if attr == OPEN_SUBAGENT_KEY_ATTR {
+            AttrValue::String(self.content.open_subagent_key.clone())
         } else if attr == TIMESTAMP_FORMATTER_ATTR {
             payload_value(self.content.formatter.clone())
         } else if attr == VIEWPORT_ATTR {
@@ -374,6 +402,10 @@ impl Component for Transcript {
         } else if attr == TRUNCATE_OUTPUT_LINES_ATTR {
             if let AttrValue::Length(lines) = value {
                 self.set_truncate_output_lines(lines);
+            }
+        } else if attr == OPEN_SUBAGENT_KEY_ATTR {
+            if let AttrValue::String(label) = value {
+                self.set_open_subagent_key(label);
             }
         } else if attr == TIMESTAMP_FORMATTER_ATTR {
             if let Some(formatter) = payload_from_value::<TimestampFormatter>(&value) {

@@ -1,0 +1,25 @@
+===== write no path, long content, failed, truncate 4 @ 50 (height 24)
+╭─ Assistant ── claude-… ─ 2026-10-21 08:35:18Z ─╮
+│                                                │
+│ ▼ No path fail                                 │
+│                                                │
+│   Path:                                        │
+│                                                │
+│      {"content":"let x1 = 1;\nlet x2 = 2;\nl   │
+│      et x3 = 3;\nlet x4 = 4;\nlet x5 = 5;\nl   │
+│      et x6 = 6;\nlet x7 = 7;\nlet x8 = 8;\nl   │
+│      et x9 = 9;\nlet x10 = 10;\n"}             │
+│                                                │
+│   Result:                                      │
+│                                                │
+│      denied                                    │
+│                                                │
+│   Content:                                     │
+│                                                │
+│      let x1 = 1;                               │
+│      let x2 = 2;                               │
+│      let x3 = 3;                               │
+│      let x4 = 4;                               │
+│      … 6 more lines                            │
+│                                                │
+╰────────────────────────────────────────────────╯

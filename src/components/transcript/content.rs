@@ -19,6 +19,8 @@ pub struct Content {
     pub dim_unselected: bool,
     pub show_system: bool,
     pub truncate_output_lines: usize,
+    /// The label of the key that opens a subagent transcript.
+    pub open_subagent_key: String,
     pub turns: Vec<Arc<Turn>>,
     /// The position of every turn in `turns`.
     pub index: HashMap<TurnId, usize>,
@@ -43,6 +45,8 @@ impl Content {
             dim_unselected: true,
             show_system: true,
             truncate_output_lines: crate::config::DEFAULT_TRUNCATE_OUTPUT_LINES,
+            open_subagent_key: crate::components::turn_block::renderers::DEFAULT_OPEN_KEY
+                .to_owned(),
             turns: Vec::new(),
             index: HashMap::new(),
             folds: FoldState::new(),
@@ -61,6 +65,8 @@ impl Content {
             .selected(self.selected.as_ref())
             .show_system(self.show_system)
             .dim_unselected(self.dim_unselected)
+            .truncate_output_lines(self.truncate_output_lines)
+            .open_subagent_key(&self.open_subagent_key)
     }
 
     /// The selectable sections of `turn` with the rows each covers, counted

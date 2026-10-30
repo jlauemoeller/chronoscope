@@ -15,6 +15,8 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+pub(crate) use output::text_calls;
 pub use output::{ByteSource, LineFormat, OutputSource, ToolOutput, ToolOutputError, ToolResult};
 
 /// Tool results longer than this many bytes are stored lazily (SPEC §9.2).

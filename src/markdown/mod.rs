@@ -29,7 +29,7 @@ use crate::theme::{Role, Theme, Token};
 
 pub use highlight::highlight_code;
 pub use widget::Markdown;
-pub use wrap::char_wrap;
+pub use wrap::{char_wrap, wrap_styled_lines};
 
 /// The styles the renderer derives from the base style and the theme.
 #[derive(Clone, Copy)]

@@ -1,0 +1,18 @@
+# Subagent, 300-line result, truncate_output_lines=3, width 60: the more row sits directly under the hint, with no blank row.
+===== subagent 300 truncate 3 @ 60 (height 16)
+╭─ Assistant ── claude-opus-5.5 @… ─ 2026-10-21 08:35:18Z ─╮
+│                                                          │
+│ ▼ Long result (Explore)                                  │
+│                                                          │
+│   Prompt:                                                │
+│                                                          │
+│      Go                                                  │
+│                                                          │
+│   Result:                                                │
+│                                                          │
+│      row 1 row 2 row 3                                   │
+│                                                          │
+│   a to open transcript                                   │
+│      … 297 more lines                                    │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯

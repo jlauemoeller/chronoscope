@@ -26,7 +26,7 @@ pub use stats::{StatsSection, format_duration, format_stats, format_tokens};
 pub use system::SystemSection;
 pub use text::{AssistantTextSection, ModelChangeSection};
 pub use thinking::ThinkingSection;
-pub use tool::ToolCallSection;
+pub use tool::{Block, Body, ToolBodyRenderer, ToolCallSection};
 pub use user::UserPromptSection;
 
 /// The width the block leaves for the text: 4 cells on the left and 4 on the
@@ -49,6 +49,30 @@ pub struct SectionCtx<'a> {
     pub width: u16,
     /// Whether the section is folded. Ignored by sections that cannot fold.
     pub folded: bool,
+    /// `truncate_output_lines`: tool output longer than this many lines is cut.
+    pub truncate: usize,
+    /// Whether the section's truncated output was expanded.
+    pub expanded: bool,
+    /// The label of the key that opens a subagent transcript.
+    pub open_key: &'a str,
+}
+
+/// The label of the default `open_subagent` key.
+pub const DEFAULT_OPEN_KEY: &str = "a";
+
+impl<'a> SectionCtx<'a> {
+    /// A context with the default truncation, nothing expanded and the
+    /// default `open_subagent` key.
+    pub fn new(theme: &'a Theme, width: u16, folded: bool) -> Self {
+        Self {
+            theme,
+            width,
+            folded,
+            truncate: crate::config::DEFAULT_TRUNCATE_OUTPUT_LINES,
+            expanded: false,
+            open_key: DEFAULT_OPEN_KEY,
+        }
+    }
 }
 
 impl SectionCtx<'_> {
@@ -74,28 +98,31 @@ pub trait SectionRenderer {
     fn lines(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>>;
 }
 
-/// The lines of `section`, folded or not, at `width` text cells.
-pub fn render_section(
-    section: &Section<'_>,
-    theme: &Theme,
-    width: u16,
-    folded: bool,
-) -> Vec<Line<'static>> {
-    let ctx = SectionCtx {
-        theme,
-        width,
-        folded,
+/// The lines of a section, with the `… N more lines` row of a truncated tool
+/// call kept apart: it is a selection stop of its own.
+#[derive(Debug, Clone, Default)]
+pub struct Rendered {
+    /// The lines of the section itself.
+    pub lines: Vec<Line<'static>>,
+    /// The truncation row, to be drawn directly below `lines`.
+    pub more: Option<Line<'static>>,
+}
+
+/// The lines of `section`, folded or not, for `ctx`.
+pub fn render_section(section: &Section<'_>, ctx: &SectionCtx<'_>) -> Rendered {
+    let lines = match section.content {
+        SectionContent::Prompt(text) => UserPromptSection(text).lines(ctx),
+        SectionContent::Text(text) => AssistantTextSection(text).lines(ctx),
+        SectionContent::Thinking(text) => ThinkingSection(text).lines(ctx),
+        SectionContent::Tool(call) => {
+            return ToolCallSection(call).render(ctx);
+        }
+        SectionContent::ModelChange(model) => ModelChangeSection(model).lines(ctx),
+        SectionContent::Stats(stats) => StatsSection(stats).lines(ctx),
+        SectionContent::Compaction(summary) => CompactionSection(summary).lines(ctx),
+        SectionContent::System(entries) => SystemSection(entries).lines(ctx),
     };
-    match section.content {
-        SectionContent::Prompt(text) => UserPromptSection(text).lines(&ctx),
-        SectionContent::Text(text) => AssistantTextSection(text).lines(&ctx),
-        SectionContent::Thinking(text) => ThinkingSection(text).lines(&ctx),
-        SectionContent::Tool(call) => ToolCallSection(call).lines(&ctx),
-        SectionContent::ModelChange(model) => ModelChangeSection(model).lines(&ctx),
-        SectionContent::Stats(stats) => StatsSection(stats).lines(&ctx),
-        SectionContent::Compaction(summary) => CompactionSection(summary).lines(&ctx),
-        SectionContent::System(entries) => SystemSection(entries).lines(&ctx),
-    }
+    Rendered { lines, more: None }
 }
 
 /// The marker of a foldable section.

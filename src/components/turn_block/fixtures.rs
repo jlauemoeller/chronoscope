@@ -58,9 +58,21 @@ pub fn tool(
     result: Option<(&str, bool)>,
     status: ToolStatus,
 ) -> Item {
+    tool_of(ToolKind::Shell, id, description, input, result, status)
+}
+
+/// Like [`tool`], for a call of any kind.
+pub fn tool_of(
+    kind: ToolKind,
+    id: &str,
+    description: &str,
+    input: serde_json::Value,
+    result: Option<(&str, bool)>,
+    status: ToolStatus,
+) -> Item {
     Item::ToolCall(ToolCall {
         id: ItemId::from(id),
-        tool: ToolKind::Shell,
+        tool: kind,
         description: description.to_owned(),
         input,
         result: result.map(|(text, is_error)| ToolResult {
@@ -206,6 +218,8 @@ pub struct Opts {
     pub show_system: bool,
     pub dim: bool,
     pub theme: Theme,
+    pub truncate: usize,
+    pub open_key: String,
 }
 
 impl Default for Opts {
@@ -216,6 +230,8 @@ impl Default for Opts {
             show_system: true,
             dim: true,
             theme: theme(),
+            truncate: crate::config::DEFAULT_TRUNCATE_OUTPUT_LINES,
+            open_key: "a".to_owned(),
         }
     }
 }
@@ -236,6 +252,21 @@ impl Opts {
         self
     }
 
+    pub fn truncate(mut self, lines: usize) -> Self {
+        self.truncate = lines;
+        self
+    }
+
+    pub fn open_key(mut self, label: &str) -> Self {
+        self.open_key = label.to_owned();
+        self
+    }
+
+    pub fn expand(mut self, id: SectionId) -> Self {
+        self.folds.set_expanded(id);
+        self
+    }
+
     pub fn themed(mut self, theme: Theme) -> Self {
         self.theme = theme;
         self
@@ -249,7 +280,9 @@ pub fn with_block<R>(turn: &Turn, opts: &Opts, f: impl FnOnce(TurnBlock<'_>) -> 
         .folds(&opts.folds)
         .selected(opts.selected.as_ref())
         .show_system(opts.show_system)
-        .dim_unselected(opts.dim);
+        .dim_unselected(opts.dim)
+        .truncate_output_lines(opts.truncate)
+        .open_subagent_key(&opts.open_key);
     f(block)
 }
 

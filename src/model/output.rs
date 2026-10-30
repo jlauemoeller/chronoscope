@@ -128,6 +128,19 @@ enum Repr {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolOutput(Repr);
 
+#[cfg(test)]
+thread_local! {
+    /// How many times `text()` was called on this thread (tests assert that
+    /// folded sections never materialise output).
+    static TEXT_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times [`ToolOutput::text`] was called on this thread.
+#[cfg(test)]
+pub(crate) fn text_calls() -> usize {
+    TEXT_CALLS.with(std::cell::Cell::get)
+}
+
 /// Counts lines the way [`ToolOutput::line_count`] reports them.
 pub(crate) fn count_lines(text: &str) -> usize {
     text.lines().count()
@@ -181,6 +194,8 @@ impl ToolOutput {
 
     /// The full text, re-read from the transcript if it is stored lazily.
     pub fn text(&self) -> Result<Cow<'_, str>, ToolOutputError> {
+        #[cfg(test)]
+        TEXT_CALLS.with(|calls| calls.set(calls.get() + 1));
         match &self.0 {
             Repr::Inline { text, .. } => Ok(Cow::Borrowed(text)),
             Repr::Lazy {

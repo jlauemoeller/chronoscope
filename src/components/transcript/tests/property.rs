@@ -7,7 +7,7 @@ use super::super::fixtures::*;
 use super::super::*;
 use crate::components::turn_block::derive_sections;
 use crate::components::turn_block::fixtures as blocks;
-use crate::model::{Thinking, ToolStatus, Turn};
+use crate::model::{Thinking, ToolKind, ToolStatus, Turn};
 use crate::test_support::render;
 
 /// What an item of a generated assistant turn is.
@@ -16,10 +16,13 @@ enum ItemSpec {
     Text(String),
     Thinking(String),
     Tool {
+        /// An index into `KINDS`.
+        kind: usize,
         description: String,
         command: String,
         output: Option<String>,
-        is_error: bool,
+        /// 0 is Ok, 1 is Error, 2 is Pending (and has no output).
+        status: u8,
     },
     Injected(String),
     Model,
@@ -36,18 +39,60 @@ fn text() -> impl Strategy<Value = String> {
     "([a-zA-Z0-9 .,`*_#>\n-]|日|é){0,300}"
 }
 
+/// Every kind of tool call, so that every body renderer is measured.
+fn kind_of(index: usize) -> ToolKind {
+    match index % 10 {
+        0 => ToolKind::Shell,
+        1 => ToolKind::Read,
+        2 => ToolKind::Write,
+        3 => ToolKind::Edit,
+        4 => ToolKind::Grep,
+        5 => ToolKind::Glob,
+        6 => ToolKind::WebFetch,
+        7 => ToolKind::WebSearch,
+        8 => ToolKind::Subagent,
+        _ => ToolKind::Other("mcp__x__y".to_owned()),
+    }
+}
+
+/// An input that has the fields of every kind, so each renderer finds its own.
+fn input_of(text: &str) -> serde_json::Value {
+    json!({
+        "command": text,
+        "file_path": format!("/src/{}.rs", text.len()),
+        "offset": text.len() % 7,
+        "pattern": text,
+        "path": "/work",
+        "url": text,
+        "prompt": text,
+        "query": text,
+        "content": text,
+        "subagent_type": "Explore",
+        "old_string": text,
+        "new_string": text.to_uppercase(),
+    })
+}
+
 fn item() -> impl Strategy<Value = ItemSpec> {
     prop_oneof![
         text().prop_map(ItemSpec::Text),
         text().prop_map(ItemSpec::Thinking),
-        (text(), text(), proptest::option::of(text()), any::<bool>()).prop_map(
-            |(description, command, output, is_error)| ItemSpec::Tool {
-                description,
-                command,
-                output,
-                is_error,
-            }
-        ),
+        (
+            0usize..10,
+            text(),
+            text(),
+            proptest::option::of(prop_oneof![text(), "(1[0-9]\n|é\n|日本\n){0,30}"]),
+            0u8..3
+        )
+            .prop_map(
+                |(kind, description, command, output, status)| ItemSpec::Tool {
+                    kind,
+                    description,
+                    command,
+                    output,
+                    status,
+                }
+            ),
         text().prop_map(ItemSpec::Injected),
         Just(ItemSpec::Model),
     ]
@@ -69,19 +114,24 @@ fn build_item(n: usize, spec: &ItemSpec) -> crate::model::Item {
         ItemSpec::Text(t) => blocks::text(&id, t),
         ItemSpec::Thinking(t) => blocks::thinking(&id, Thinking::Text(t.clone())),
         ItemSpec::Tool {
+            kind,
             description,
             command,
             output,
-            is_error,
-        } => blocks::tool(
+            status,
+        } => blocks::tool_of(
+            kind_of(*kind),
             &id,
             description,
-            json!({ "command": command }),
-            output.as_deref().map(|o| (o, *is_error)),
-            if *is_error {
-                ToolStatus::Error
-            } else {
-                ToolStatus::Ok
+            input_of(command),
+            output
+                .as_deref()
+                .filter(|_| *status != 2)
+                .map(|o| (o, *status == 1)),
+            match status {
+                1 => ToolStatus::Error,
+                2 => ToolStatus::Pending,
+                _ => ToolStatus::Ok,
             },
         ),
         ItemSpec::Injected(t) => blocks::injected(&id, &[("file", t)]),
@@ -147,13 +197,20 @@ proptest! {
         width in 20u16..=200,
         height in 5u16..40,
         folds in proptest::collection::vec(any::<bool>(), 1..16),
+        expands in proptest::collection::vec(any::<bool>(), 1..16),
+        truncate in 1usize..8,
         offset in 0usize..400,
     ) {
         let turns: Vec<_> = specs.iter().enumerate().map(|(n, s)| arc(build_turn(n, s))).collect();
         let mut t = transcript_of(turns, width, height);
+        // A small limit so that the generated outputs get truncated.
+        t.attr(TRUNCATE_OUTPUT_LINES_ATTR, AttrValue::Length(truncate));
         let mut bit = 0;
         for index in 0..t.turn_count() {
             for section in derive_sections(&t.turn(index).unwrap().clone(), true) {
+                if expands[bit % expands.len()] {
+                    t.content.folds.set_expanded(section.id.clone());
+                }
                 t.set_folded(&section.id, folds[bit % folds.len()]);
                 bit += 1;
             }
@@ -165,6 +222,18 @@ proptest! {
         }
         let total = t.measured(|cache, m| cache.total(m));
         prop_assert_eq!(total, cached.iter().sum::<usize>());
+
+        // The selection stops (sections and truncation rows) are in order,
+        // inside the block and do not overlap.
+        for (i, h) in cached.iter().enumerate() {
+            let rows = t.content.section_rows(t.turn(i).unwrap(), width);
+            let mut next = 1;
+            for (_, range) in &rows {
+                prop_assert!(range.start >= next && range.end > range.start, "{:?}", rows);
+                next = range.end;
+            }
+            prop_assert!(next < *h, "{:?} in {}", rows, h);
+        }
 
         // The frame is the matching slice of the stacked blocks.
         t.scroll_to(offset);

@@ -1,0 +1,50 @@
+# Edit, failed with a 30-line error result, truncate_output_lines=3, width 50. The result is not truncated.
+===== edit long error truncate 3 @ 50 (height 48)
+╭─ Assistant ── claude-… ─ 2026-10-21 08:35:18Z ─╮
+│                                                │
+│ ▼ Edit long error                              │
+│                                                │
+│   Path:                                        │
+│                                                │
+│      /x/a.rs                                   │
+│                                                │
+│   Diff:                                        │
+│                                                │
+│      @@ -1 +1 @@                               │
+│      -a                                        │
+│      +b                                        │
+│                                                │
+│   Result:                                      │
+│                                                │
+│      err 1                                     │
+│      err 2                                     │
+│      err 3                                     │
+│      err 4                                     │
+│      err 5                                     │
+│      err 6                                     │
+│      err 7                                     │
+│      err 8                                     │
+│      err 9                                     │
+│      err 10                                    │
+│      err 11                                    │
+│      err 12                                    │
+│      err 13                                    │
+│      err 14                                    │
+│      err 15                                    │
+│      err 16                                    │
+│      err 17                                    │
+│      err 18                                    │
+│      err 19                                    │
+│      err 20                                    │
+│      err 21                                    │
+│      err 22                                    │
+│      err 23                                    │
+│      err 24                                    │
+│      err 25                                    │
+│      err 26                                    │
+│      err 27                                    │
+│      err 28                                    │
+│      err 29                                    │
+│      err 30                                    │
+│                                                │
+╰────────────────────────────────────────────────╯
