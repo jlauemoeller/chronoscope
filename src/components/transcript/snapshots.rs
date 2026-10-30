@@ -86,8 +86,11 @@ fn after_a_resize_from_120_to_80_columns_text_is_wrapped_again_at_80x24_text() {
 
 #[test]
 fn dim_unselected_false_at_120x40_styled() {
+    let mut dimmed = session_transcript(120, 40);
     let mut t = session_transcript(120, 40).dim_unselected(false);
-    insta::assert_snapshot!(buffer_to_styled(&draw(&mut t, 120, 40)));
+    let styled = buffer_to_styled(&draw(&mut t, 120, 40));
+    assert_ne!(styled, buffer_to_styled(&draw(&mut dimmed, 120, 40)));
+    insta::assert_snapshot!(styled);
 }
 
 fn selected_turn_id(t: &Transcript) -> String {

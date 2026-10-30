@@ -196,9 +196,14 @@ fn the_selection_starts_at_the_first_section_once_turns_arrive() {
 fn updated_replaces_a_turn_in_place_keeping_selection_and_folds() {
     let mut t = session_transcript(80, 24);
     let tool = item_section("t2", "c2");
+    let thinking = item_section("t2", "th1");
     t.set_folded(&tool, false);
+    t.set_folded(&thinking, false);
     assert!(t.select(&tool));
     let before = all_rows(&t, 80);
+    let joined = before.join("\n");
+    assert!(joined.contains("sudo: a password is required"));
+    assert!(joined.contains("Start with lsusb."));
     let mut changed = (*t.turn(1).unwrap().clone()).clone();
     if let Turn::Assistant(a) = &mut changed {
         a.items.push(blocks::text("t9", "A late addition."));
@@ -207,7 +212,12 @@ fn updated_replaces_a_turn_in_place_keeping_selection_and_folds() {
     assert_eq!(t.turn_count(), 8);
     assert_eq!(t.selected(), Some(&tool));
     assert_eq!(t.is_folded(&tool), Some(false));
+    assert_eq!(t.is_folded(&thinking), Some(false));
     let after = all_rows(&t, 80);
+    // Both sections are still unfolded in what is drawn.
+    let joined = after.join("\n");
+    assert!(joined.contains("sudo: a password is required"));
+    assert!(joined.contains("Start with lsusb."));
     assert!(after.len() > before.len());
     assert!(after.iter().any(|row| row.contains("A late addition.")));
 }
@@ -405,6 +415,12 @@ fn only_the_blocks_overlapping_the_viewport_are_laid_out() {
         "one layout per visible block"
     );
     assert_eq!(t.cache().computed(), visible.len());
+    // `view` draws exactly the placements of the window, one per block.
+    let window = t.window.as_ref().unwrap();
+    assert_eq!(
+        window.placements(Rect::new(0, 0, 80, 24)).len(),
+        visible.len()
+    );
 }
 
 #[test]
