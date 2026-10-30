@@ -10,6 +10,7 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
+use crate::app::index_port::index_event_kind;
 use crate::app::{Id, Msg, UserEvent};
 use crate::keymap::{Action, Context, KeySpec, Keymap};
 
@@ -19,8 +20,8 @@ const CTRL_C: KeyEvent = KeyEvent {
     modifiers: KeyModifiers::CONTROL,
 };
 
-/// Draws nothing. It is subscribed to the global keys, to resizes and to
-/// ticks, and turns them into messages.
+/// Draws nothing. It is subscribed to the global keys, to resizes, to ticks
+/// and to the session index's user events, and turns them into messages.
 ///
 /// The quit keys come from the keymap's `global` context; `Ctrl-c` always
 /// quits. The other global keys (help, theme selector, session selector) are
@@ -49,6 +50,10 @@ impl GlobalEvents {
             .collect();
         subs.push(Sub::new(EventClause::WindowResize, subscription_clause()));
         subs.push(Sub::new(EventClause::Tick, subscription_clause()));
+        subs.push(Sub::new(
+            EventClause::Discriminant(index_event_kind()),
+            subscription_clause(),
+        ));
         subs
     }
 }
@@ -108,6 +113,7 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
             Event::Keyboard(key) => self.on_key(key),
             Event::WindowResize(width, height) => Some(Msg::Resized(*width, *height)),
             Event::Tick => Some(Msg::Tick),
+            Event::User(UserEvent::Index(update)) => Some(Msg::Index(update.clone())),
             _ => None,
         }
     }
@@ -233,10 +239,31 @@ mod tests {
     }
 
     #[test]
-    fn subscriptions_include_resize_and_tick() {
+    fn subscriptions_include_resize_tick_and_index_events() {
         let subs = GlobalEvents::subscriptions(&Keymap::default());
         let keys = quit_key_events(&Keymap::default()).len();
-        assert_eq!(subs.len(), keys + 2);
+        assert_eq!(subs.len(), keys + 3);
+    }
+
+    #[test]
+    fn an_index_user_event_becomes_an_index_message() {
+        use crate::app::IndexUpdate;
+        use crate::index::IndexEvent;
+        use crate::model::{HarnessId, SessionId, SessionStats};
+        let update = IndexUpdate::new(
+            7,
+            IndexEvent::Stats {
+                harness: HarnessId::Claude,
+                session: SessionId::from("s"),
+                stats: SessionStats {
+                    turns: 1,
+                    duration: std::time::Duration::ZERO,
+                },
+            },
+        );
+        let mut component = GlobalEvents::new(Keymap::default());
+        let msg = component.on(&Event::User(UserEvent::Index(update.clone())));
+        assert_eq!(msg, Some(Msg::Index(update)));
     }
 
     #[test]

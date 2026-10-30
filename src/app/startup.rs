@@ -1,7 +1,9 @@
 //! Building the application's domain state at startup.
 
 use crate::config::{Config, ConfigWarning};
+use crate::harness::registered_harnesses;
 use crate::keymap::Keymap;
+use crate::model::HarnessId;
 use crate::paths::Paths;
 use crate::theme::{TerminalEnv, Theme, ThemeRegistry, resolve};
 
@@ -12,6 +14,8 @@ pub struct AppInit {
     pub registry: ThemeRegistry,
     pub theme: Theme,
     pub keymap: Keymap,
+    /// The harnesses with a tab, in tab order (those the config enables).
+    pub harnesses: Vec<HarnessId>,
     /// Every config, theme and keymap warning, in the order they arose.
     pub warnings: Vec<ConfigWarning>,
 }
@@ -46,11 +50,13 @@ impl AppInit {
         warnings.extend(theme_warnings);
         let (keymap, keymap_warnings) = Keymap::from_config(&config.keys);
         warnings.extend(keymap_warnings);
+        let harnesses = registered_harnesses(&config);
         Self {
             config,
             registry,
             theme,
             keymap,
+            harnesses,
             warnings,
         }
     }
@@ -87,6 +93,17 @@ mod tests {
         assert!(init.warnings.is_empty(), "{:?}", init.warnings);
         assert_eq!(init.keymap, Keymap::default());
         assert_eq!(init.theme.name(), "Default");
+        assert_eq!(init.harnesses, [HarnessId::Claude]);
+    }
+
+    #[test]
+    fn a_disabled_harness_has_no_tab() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        fs::create_dir_all(paths.config_file.parent().unwrap()).unwrap();
+        fs::write(&paths.config_file, "[harness.claude]\nenabled = false\n").unwrap();
+        let init = AppInit::load(Some(&paths), &env());
+        assert!(init.harnesses.is_empty());
     }
 
     #[test]

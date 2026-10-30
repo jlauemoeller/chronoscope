@@ -4,9 +4,14 @@
 
 mod empty_state;
 mod global_events;
+mod harness_tabs;
 mod help_line;
+mod list_pane;
+mod project_list;
 mod selector_frame;
+mod session_list;
 mod toast;
+mod working_dir;
 
 use tuirealm::props::{AttrValue, Attribute, PropPayload};
 
@@ -14,9 +19,17 @@ use crate::theme::Theme;
 
 pub use empty_state::{EmptyState, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};
+pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
 pub use help_line::{HelpLine, Hint};
+pub use list_pane::{ListCursor, SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value, visible_rows};
+pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
 pub use selector_frame::SelectorFrame;
+pub use session_list::{
+    ACTIVE_ATTR, ActiveSessions, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SessionList, SessionRow,
+    SessionRows, SessionStatsUpdate, format_duration, format_stats,
+};
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
+pub use working_dir::{CWD_ATTR, WorkingDir};
 
 /// The attribute that carries the theme to a component.
 pub const THEME_ATTR: Attribute = Attribute::Custom("theme");
@@ -30,6 +43,22 @@ pub fn theme_value(theme: &Theme) -> AttrValue {
 pub fn theme_from_value(value: &AttrValue) -> Option<Theme> {
     match value {
         AttrValue::Payload(PropPayload::Any(any)) => any.as_any().downcast_ref::<Theme>().cloned(),
+        _ => None,
+    }
+}
+
+/// An attribute value carrying any plain-data `payload` (rows, tabs, ...).
+pub fn payload_value<T>(payload: T) -> AttrValue
+where
+    T: tuirealm::props::PropBound,
+{
+    AttrValue::Payload(PropPayload::Any(Box::new(payload)))
+}
+
+/// The payload of type `T` in an attribute value made by [`payload_value`].
+pub fn payload_from_value<T: Clone + 'static>(value: &AttrValue) -> Option<T> {
+    match value {
+        AttrValue::Payload(PropPayload::Any(any)) => any.as_any().downcast_ref::<T>().cloned(),
         _ => None,
     }
 }

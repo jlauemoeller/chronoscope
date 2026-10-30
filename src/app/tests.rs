@@ -15,6 +15,7 @@ use super::runtime::run_loop;
 use super::{App, AppInit, Id, Msg, UserEvent};
 use crate::config::{Config, ConfigWarning};
 use crate::keymap::Keymap;
+use crate::model::HarnessId;
 use crate::test_support::{buffer_to_styled, buffer_to_text, render};
 use crate::theme::{TerminalEnv, Theme, ThemeRegistry, resolve_by_id};
 
@@ -35,6 +36,7 @@ fn init_with(theme: Theme) -> AppInit {
         registry: ThemeRegistry::builtin(),
         theme,
         keymap: Keymap::default(),
+        harnesses: vec![HarnessId::Claude],
         warnings: Vec::new(),
     }
 }
@@ -116,17 +118,21 @@ fn the_app_owns_the_domain_state_it_was_built_with() {
 }
 
 #[test]
-fn startup_mounts_the_components_and_nothing_has_focus() {
+fn startup_mounts_the_components_and_focuses_the_projects_pane() {
     let app = app();
     for id in [
         Id::GlobalEvents,
         Id::SelectorFrame,
+        Id::HarnessTabs,
+        Id::ProjectList,
+        Id::SessionList,
+        Id::WorkingDir,
         Id::EmptyState,
         Id::HelpLine,
     ] {
         assert!(app.application().mounted(&id), "{id:?}");
     }
-    assert_eq!(app.application().focus(), None);
+    assert_eq!(app.application().focus(), Some(&Id::ProjectList));
 }
 
 // -- toast

@@ -112,6 +112,16 @@ impl Drop for WatchHandle {
     }
 }
 
+/// The harnesses [`build_harnesses`] constructs for `config`, in tab order:
+/// the ones with a tab in the selector.
+pub fn registered_harnesses(config: &Config) -> Vec<HarnessId> {
+    let mut harnesses = Vec::new();
+    if config.harness.claude.enabled {
+        harnesses.push(HarnessId::Claude);
+    }
+    harnesses
+}
+
 /// Constructs the enabled harnesses from `config` (SPEC §6.6), in tab order.
 ///
 /// A harness with `enabled = false` is not constructed, so its tab is hidden
@@ -141,4 +151,23 @@ pub fn build_harnesses_with_home(config: &Config, home: &Path) -> Vec<Arc<dyn Ha
         harnesses.push(Arc::new(claude::ClaudeHarness::new(config, home)));
     }
     harnesses
+}
+
+#[cfg(test)]
+mod registered_tests {
+    use super::*;
+
+    #[test]
+    fn registered_harnesses_match_the_constructed_ones() {
+        let mut config = Config::default();
+        let home = Path::new("/nonexistent");
+        for enabled in [true, false] {
+            config.harness.claude.enabled = enabled;
+            let built: Vec<HarnessId> = build_harnesses_with_home(&config, home)
+                .iter()
+                .map(|h| h.id())
+                .collect();
+            assert_eq!(registered_harnesses(&config), built);
+        }
+    }
 }

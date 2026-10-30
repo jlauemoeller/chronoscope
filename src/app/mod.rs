@@ -10,30 +10,44 @@
 //! calls [`Application::view`] for it.
 
 pub mod hints;
+pub mod index_port;
 pub mod layout;
 pub mod redraw;
 pub mod runtime;
+pub mod selector;
 pub mod startup;
 
 #[cfg(test)]
+mod fixtures;
+#[cfg(test)]
+mod selector_tests;
+#[cfg(test)]
 mod tests;
 
+use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
+use chrono::{DateTime, Utc};
 use ratatui::Frame;
 use tuirealm::application::{Application, ApplicationError, PollStrategy};
 use tuirealm::listener::EventListenerCfg;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
 use crate::components::{
-    EmptyState, GlobalEvents, HelpLine, SelectorFrame, TOAST_DURATION, TOO_SMALL, Toast,
+    EmptyState, GlobalEvents, HarnessTabs, HelpLine, ProjectList, SelectorFrame, SessionList,
+    TOAST_DURATION, TOO_SMALL, Toast, WorkingDir,
 };
 use crate::config::{Config, ConfigWarning};
+use crate::index::{IndexEvent, IndexHandle};
 use crate::keymap::Keymap;
 use crate::theme::{Role, Theme, ThemeRegistry};
+use crate::timestamp::{DisplayTz, TimestampFormatter};
 use hints::{selector_hints, startup_toast_text};
+pub use index_port::{IndexPort, IndexUpdate};
 use layout::{LayoutInput, Screen, layout};
 use redraw::RedrawRequest;
+use selector::SelectorState;
+pub use selector::{Pane, SelectorMsg};
 pub use startup::AppInit;
 use unicode_width::UnicodeWidthStr;
 
@@ -46,6 +60,14 @@ pub enum Id {
     SelectorFrame,
     /// "Terminal too small" (and, later, other empty states).
     EmptyState,
+    /// The harness tabs of the selector.
+    HarnessTabs,
+    /// The Projects pane of the selector.
+    ProjectList,
+    /// The Sessions pane of the selector.
+    SessionList,
+    /// The Working Directory box of the selector.
+    WorkingDir,
     /// Key hints and status items.
     HelpLine,
     /// The notification in the bottom-right corner.
@@ -63,15 +85,19 @@ pub enum Msg {
     Tick,
     /// The toast with this id has been shown for its duration.
     ToastExpired(u64),
+    /// The session index worker reported something.
+    Index(IndexUpdate),
+    /// Something happened in the session selector.
+    Selector(SelectorMsg),
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
 /// payloads are `Arc`-wrapped and compared by a sequence number.
-///
-/// There are no variants yet; the first ones come with the session index
-/// worker.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UserEvent {}
+pub enum UserEvent {
+    /// The session index worker reported a new snapshot or stats.
+    Index(IndexUpdate),
+}
 
 /// How often the event listener sends `Event::Tick`.
 pub const TICK_INTERVAL: Duration = Duration::from_millis(250);
@@ -82,12 +108,20 @@ pub const POLL_TIMEOUT: Duration = Duration::from_millis(20);
 /// The most events one loop iteration handles.
 const MAX_EVENTS_PER_TICK: usize = 64;
 
-/// The event listener configuration of the real application: crossterm input
-/// and a tick.
-pub fn production_listener() -> EventListenerCfg<UserEvent> {
-    EventListenerCfg::default()
+/// The event listener configuration of the real application: crossterm input,
+/// a tick, and, when the session index runs, its events.
+pub fn production_listener(index: Option<Receiver<IndexEvent>>) -> EventListenerCfg<UserEvent> {
+    let cfg = EventListenerCfg::default()
         .crossterm_input_listener(INPUT_POLL_INTERVAL, 10)
-        .tick_interval(TICK_INTERVAL)
+        .tick_interval(TICK_INTERVAL);
+    match index {
+        Some(events) => cfg.add_port(
+            Box::new(IndexPort::new(events)),
+            index_port::INDEX_POLL_INTERVAL,
+            index_port::INDEX_MAX_PER_POLL,
+        ),
+        None => cfg,
+    }
 }
 
 /// The application: the component tree and the domain state.
@@ -104,6 +138,10 @@ pub struct App {
     size: (u16, u16),
     quit: bool,
     redraw: RedrawRequest,
+    selector: SelectorState,
+    timestamps: TimestampFormatter,
+    clock: Box<dyn Fn() -> DateTime<Utc>>,
+    index: Option<IndexHandle>,
 }
 
 impl App {
@@ -121,6 +159,7 @@ impl App {
             theme,
             keymap,
             warnings,
+            harnesses,
         } = init;
         let mut application = Application::init(listener);
         application.mount(
@@ -131,6 +170,26 @@ impl App {
         application.mount(
             Id::SelectorFrame,
             Box::new(SelectorFrame::new(theme.clone())),
+            Vec::new(),
+        )?;
+        application.mount(
+            Id::HarnessTabs,
+            Box::new(HarnessTabs::new(theme.clone())),
+            Vec::new(),
+        )?;
+        application.mount(
+            Id::ProjectList,
+            Box::new(ProjectList::new(keymap.clone(), theme.clone())),
+            Vec::new(),
+        )?;
+        application.mount(
+            Id::SessionList,
+            Box::new(SessionList::new(keymap.clone(), theme.clone())),
+            Vec::new(),
+        )?;
+        application.mount(
+            Id::WorkingDir,
+            Box::new(WorkingDir::new(String::new(), theme.clone())),
             Vec::new(),
         )?;
         application.mount(
@@ -148,7 +207,11 @@ impl App {
             )),
             Vec::new(),
         )?;
+        // The selector starts on the Projects pane.
+        application.active(&Id::ProjectList)?;
         let toast_text = startup_toast_text(&warnings);
+        let timestamps =
+            TimestampFormatter::new(&config.timestamp_format, config.utc, DisplayTz::Local);
         let mut app = Self {
             application,
             config,
@@ -162,12 +225,36 @@ impl App {
             size: (0, 0),
             quit: false,
             redraw: RedrawRequest::Dirty,
+            selector: SelectorState::new(harnesses),
+            timestamps,
+            clock: Box::new(Utc::now),
+            index: None,
         };
+        app.push_tabs();
         // The startup warnings are shown once, here, and never again.
         if let Some(text) = toast_text {
             app.show_toast(text)?;
         }
         Ok(app)
+    }
+
+    /// Replaces the clock the `●` marker is computed with (tests inject a
+    /// fixed time).
+    pub fn set_clock(&mut self, clock: impl Fn() -> DateTime<Utc> + 'static) {
+        self.clock = Box::new(clock);
+    }
+
+    /// Hands the app the session index worker it displays. The app owns it
+    /// from now on; [`shutdown`](Self::shutdown) stops it.
+    pub fn set_index(&mut self, index: IndexHandle) {
+        self.index = Some(index);
+    }
+
+    /// Stops the session index worker and waits until it has saved its cache.
+    pub fn shutdown(&mut self) {
+        if let Some(index) = self.index.take() {
+            index.shutdown();
+        }
     }
 
     /// Shows `text` as a toast for [`TOAST_DURATION`], replacing the toast on
@@ -263,6 +350,8 @@ impl App {
             Msg::Resized(width, height) => self.resized(width, height),
             Msg::Tick => self.tick_elapsed(),
             Msg::ToastExpired(id) => self.toast_expired(id),
+            Msg::Index(update) => self.index_update(&update),
+            Msg::Selector(msg) => self.selector_msg(msg),
         }
     }
 
@@ -272,12 +361,14 @@ impl App {
 
     fn resized(&mut self, width: u16, height: u16) {
         self.size = (width, height);
+        self.push_viewports();
         self.request_redraw(RedrawRequest::Resized);
     }
 
     fn tick_elapsed(&mut self) {
-        // The live marker and activity flags come with the components that
-        // need them. The toast expires itself on `Tick` (see `Toast`).
+        // The toast expires itself on `Tick` (see `Toast`). The browser's live
+        // marker comes with the browser.
+        self.refresh_activity();
     }
 
     /// Removes the toast, unless `id` is that of a toast that was replaced.

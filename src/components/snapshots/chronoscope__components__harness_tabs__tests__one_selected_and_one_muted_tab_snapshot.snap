@@ -1,0 +1,9 @@
+---
+source: src/components/harness_tabs.rs
+expression: buffer_to_styled(&buffer)
+---
+[1] Claude  [2] OpenCode                                    
+━━━━━━━━━━                                                  
+--- styles (fg/bg/modifiers) ---
+0: 0..10 Rgb(229, 229, 229)/Reset/NONE | 10..12 Reset/Reset/NONE | 12..24 Rgb(161, 161, 161)/Reset/NONE | 24..60 Reset/Reset/NONE
+1: 0..10 Rgb(229, 229, 229)/Reset/NONE | 10..60 Reset/Reset/NONE
