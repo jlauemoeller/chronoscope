@@ -26,6 +26,18 @@
 //! area on a copy of the cache and discards it: slower, but correct, and
 //! still without side effects.
 //!
+//! # Following
+//!
+//! While the viewport shows the last row the transcript *follows*: an
+//! `Appended` or `Updated` batch keeps the view pinned to the end (and moves
+//! the selection to the new last section if it was on the last one). Once the
+//! user leaves the end it keeps the position and counts the sections that
+//! arrive ([`NEW_SECTIONS_ATTR`]); `G` / `End`, or scrolling back to the end,
+//! resumes following. Until `Loaded` arrives (see [`Transcript::loading`])
+//! the view stays where it is. A key that changes the count answers
+//! [`Msg::NewSections`]; the App reads the count after the updates it
+//! forwards. See the `follow` module.
+//!
 //! # Keys and `Cmd`s
 //!
 //! `on` resolves a key with the shared [`Keymap`] for the `browser` context
@@ -50,6 +62,7 @@
 mod cache;
 mod content;
 mod folding;
+mod follow;
 mod keys;
 mod nav;
 mod paging;
@@ -110,6 +123,11 @@ pub const TIMESTAMP_FORMATTER_ATTR: Attribute = Attribute::Custom("timestamp_for
 pub const MODEL_UPDATE_ATTR: Attribute = Attribute::Custom("model_update");
 /// The number of turns the transcript holds (a length; query only).
 pub const TURN_COUNT_ATTR: Attribute = Attribute::Custom("turn_count");
+/// The number of sections that arrived while the user was away from the end,
+/// the `N` of `↓ N new` (a length; query only).
+pub const NEW_SECTIONS_ATTR: Attribute = Attribute::Custom("new_sections");
+/// Whether the transcript follows new content (a flag; query only).
+pub const FOLLOWING_ATTR: Attribute = Attribute::Custom("following");
 /// The [`Size`] of the area the transcript is drawn in (a payload).
 pub const VIEWPORT_ATTR: Attribute = Attribute::Custom("viewport");
 
@@ -138,6 +156,17 @@ pub struct Transcript {
     /// The blocks overlapping the viewport, laid out; `None` until a
     /// viewport is announced.
     window: Option<Window>,
+    /// Whether new content scrolls into view: the viewport shows the last
+    /// row.
+    following: bool,
+    /// Whether the initial load is still streaming: nothing scrolls until
+    /// it is done.
+    loading: bool,
+    /// The sections that arrived since the user left the end.
+    new_sections: usize,
+    /// The first turn whose growth counts as new content while the user is
+    /// away from the end.
+    tail_from: usize,
     /// How many block layouts were run to measure or draw blocks (read by
     /// tests).
     #[cfg_attr(not(test), allow(dead_code))]
@@ -155,6 +184,10 @@ impl Transcript {
             keymap: Keymap::default(),
             resolver: KeyResolver::new(Context::Browser),
             window: None,
+            following: true,
+            loading: false,
+            new_sections: 0,
+            tail_from: 0,
             layouts_run: 0,
         }
     }
@@ -246,8 +279,10 @@ impl Transcript {
         if self.viewport == Some(size) {
             return;
         }
+        let resized = self.viewport.is_some();
+        let pinned = resized && self.following && !self.loading;
         let anchor = match self.viewport {
-            Some(old) if old.width != size.width => self.anchor(),
+            Some(old) if old.width != size.width && !pinned => self.anchor(),
             _ => None,
         };
         self.viewport = Some(size);
@@ -259,7 +294,12 @@ impl Transcript {
             });
         }
         self.ensure_selection();
+        if pinned {
+            // At the end of the transcript, a new size keeps it there.
+            self.pin_to_bottom();
+        }
         self.refresh();
+        self.update_following();
     }
 
     /// The block at the top of the viewport and how far into it the viewport
@@ -423,6 +463,10 @@ impl Component for Transcript {
             payload_value(self.content.formatter.clone())
         } else if attr == TURN_COUNT_ATTR {
             AttrValue::Length(self.content.turns.len())
+        } else if attr == NEW_SECTIONS_ATTR {
+            AttrValue::Length(self.new_sections)
+        } else if attr == FOLLOWING_ATTR {
+            AttrValue::Flag(self.following)
         } else if attr == VIEWPORT_ATTR {
             payload_value(self.viewport?)
         } else {
@@ -473,6 +517,15 @@ impl Component for Transcript {
     }
 
     fn perform(&mut self, cmd: Cmd) -> CmdResult {
+        let result = self.run(cmd);
+        self.update_following();
+        result
+    }
+}
+
+impl Transcript {
+    /// Runs a `Cmd` (`perform` then decides whether the view follows).
+    fn run(&mut self, cmd: Cmd) -> CmdResult {
         match cmd {
             Cmd::Scroll(Direction::Down) => self.scroll_down(),
             Cmd::Scroll(Direction::Up) => self.scroll_up(),
@@ -500,7 +553,13 @@ impl AppComponent<Msg, UserEvent> for Transcript {
         if let Resolved::Action(action) = self.resolver.feed(&self.keymap, key)
             && let Some(cmd) = keys::cmd_for(action)
         {
-            return match self.perform(cmd) {
+            let new_before = self.new_sections;
+            let result = self.perform(cmd);
+            // The count changed (`G` resumed following): the App shows it.
+            if self.new_sections != new_before {
+                return Some(Msg::NewSections(self.new_sections));
+            }
+            return match result {
                 CmdResult::NoChange | CmdResult::Invalid(_) => None,
                 _ => Some(Msg::TranscriptChanged),
             };

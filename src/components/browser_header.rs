@@ -22,6 +22,10 @@ use crate::theme::{Role, Theme, Token};
 /// parsed (an `AttrValue::Length`).
 pub const PARSE_WARNINGS_ATTR: Attribute = Attribute::Custom("parse_warnings");
 
+/// The attribute that sets whether the `● live` marker is shown (an
+/// `AttrValue::Flag`).
+pub const LIVE_ATTR: Attribute = Attribute::Custom("live");
+
 /// The header is this many rows high: the border, a blank row, the working
 /// directory, a blank row and the border.
 pub const HEADER_HEIGHT: u16 = 5;
@@ -32,8 +36,13 @@ const CWD_COLUMN: usize = 2;
 /// The project name keeps at least this many columns before the session id
 /// is dropped to make room for it.
 const MIN_NAME_WIDTH: usize = 6;
-/// The least number of cells between the working directory and the note.
+/// The least number of cells between the working directory and what is
+/// right-aligned, and between the note and the live marker.
 const NOTE_GAP: usize = 2;
+/// The dot of the live marker, drawn in `primary`.
+const LIVE_DOT: &str = "●";
+/// The word after the dot, drawn in `muted_foreground`.
+const LIVE_WORD: &str = " live";
 
 /// The note for `count` entries that could not be parsed, or `None` for 0.
 pub fn parse_warning_note(count: usize) -> Option<String> {
@@ -47,7 +56,10 @@ pub fn parse_warning_note(count: usize) -> Option<String> {
 /// A rounded block in `border`: `╭─ Project <name> ─…─ <session id> ─╮`, a
 /// blank row, the working directory (cut from the left when it is too long),
 /// a blank row and the bottom border. When entries of the session could not
-/// be parsed, a note is right-aligned on the working directory's row.
+/// be parsed, a note is right-aligned on the working directory's row. While
+/// the session is live, `● live` (`●` in `primary`, `live` in
+/// `muted_foreground`) is right-aligned there too, with the note two cells to
+/// its left.
 ///
 /// `Project` is `muted_foreground`, the project name bold `foreground`, the
 /// session id `timestamp`, the working directory `foreground` and the note
@@ -59,6 +71,7 @@ pub struct BrowserHeader {
     session_id: String,
     cwd: String,
     parse_warnings: usize,
+    live: bool,
     theme: Theme,
 }
 
@@ -76,8 +89,16 @@ impl BrowserHeader {
             session_id: session_id.into(),
             cwd: cwd.into(),
             parse_warnings: 0,
+            live: false,
             theme,
         }
+    }
+
+    /// Sets whether the `● live` marker is shown.
+    #[must_use]
+    pub fn live(mut self, live: bool) -> Self {
+        self.live = live;
+        self
     }
 
     /// Sets how many entries could not be parsed.
@@ -146,39 +167,51 @@ impl BrowserHeader {
         ])
     }
 
-    /// The row with the working directory and the note.
+    /// The row with the working directory, the note and the live marker.
     fn cwd_row(&self, width: usize) -> Line<'static> {
         let border = self.border();
         let inner = width.saturating_sub(2);
         let note = parse_warning_note(self.parse_warnings);
         let note_width = note.as_deref().map_or(0, UnicodeWidthStr::width);
-        let reserved = if note.is_some() {
-            note_width + NOTE_GAP
+        let live_width = if self.live {
+            LIVE_DOT.width() + LIVE_WORD.width()
         } else {
             0
         };
+        let gap = if note.is_some() && self.live {
+            NOTE_GAP
+        } else {
+            0
+        };
+        // What is right-aligned, and the blank column before the border.
+        let right = note_width + gap + live_width;
+        let trailing = if right > 0 { right + PADDING } else { 0 };
         // One blank column before the border, and the columns before the
         // directory.
+        let reserved = if right > 0 { right + NOTE_GAP } else { 0 };
         let available = inner.saturating_sub(CWD_COLUMN - 1 + PADDING + reserved);
         let cwd = truncate_start(&self.cwd, available);
         let cwd_width = cwd.width();
+        let before = inner.saturating_sub(CWD_COLUMN - 1 + cwd_width + trailing);
         let mut spans = vec![
             Span::styled("│", border),
             Span::raw(" ".repeat((CWD_COLUMN - 1).min(inner))),
             Span::styled(cwd, self.foreground()),
+            Span::raw(" ".repeat(before)),
         ];
-        match note {
-            Some(note) => {
-                let before =
-                    inner.saturating_sub(CWD_COLUMN - 1 + cwd_width + note_width + PADDING);
-                spans.push(Span::raw(" ".repeat(before)));
-                spans.push(Span::styled(note, self.muted()));
-                spans.push(Span::raw(" ".repeat(PADDING.min(inner))));
-            }
-            None => {
-                let after = inner.saturating_sub(CWD_COLUMN - 1 + cwd_width);
-                spans.push(Span::raw(" ".repeat(after)));
-            }
+        if let Some(note) = note {
+            spans.push(Span::styled(note, self.muted()));
+        }
+        if gap > 0 {
+            spans.push(Span::raw(" ".repeat(gap)));
+        }
+        if self.live {
+            let dot = Style::new().fg(self.theme.role(Role::Primary));
+            spans.push(Span::styled(LIVE_DOT, dot));
+            spans.push(Span::styled(LIVE_WORD, self.muted()));
+        }
+        if right > 0 {
+            spans.push(Span::raw(" ".repeat(PADDING.min(inner))));
         }
         spans.push(Span::styled("│", border));
         Line::from(spans)
@@ -218,6 +251,7 @@ impl Component for BrowserHeader {
         match attr {
             THEME_ATTR => Some(QueryResult::Owned(theme_value(&self.theme))),
             PARSE_WARNINGS_ATTR => Some(QueryResult::Owned(AttrValue::Length(self.parse_warnings))),
+            LIVE_ATTR => Some(QueryResult::Owned(AttrValue::Flag(self.live))),
             _ => None,
         }
     }
@@ -230,6 +264,7 @@ impl Component for BrowserHeader {
                 }
             }
             (PARSE_WARNINGS_ATTR, AttrValue::Length(count)) => self.parse_warnings = count,
+            (LIVE_ATTR, AttrValue::Flag(live)) => self.live = live,
             _ => {}
         }
     }
@@ -383,6 +418,93 @@ mod tests {
         assert!(rows(&mut h, 120)[2].contains("1 entry could not be parsed"));
         h.attr(PARSE_WARNINGS_ATTR, AttrValue::Length(0));
         assert!(!rows(&mut h, 120)[2].contains("parsed"));
+    }
+
+    #[test]
+    fn the_live_marker_ends_in_column_w_minus_3_on_the_cwd_row() {
+        for width in [60u16, 80, 120] {
+            let mut h = header(0).live(true);
+            let rows = rows(&mut h, width);
+            let chars: Vec<char> = rows[2].chars().collect();
+            let w = usize::from(width);
+            assert_eq!(chars.len(), w);
+            assert_eq!(chars[w - 3], 'e', "{}", rows[2]);
+            assert_eq!(chars[w - 2], ' ');
+            assert_eq!(chars[w - 1], '│');
+            assert_eq!(chars[w - 8..w - 2].iter().collect::<String>(), "● live");
+        }
+    }
+
+    #[test]
+    fn without_the_flag_there_is_no_live_marker() {
+        let rows = rows(&mut header(0), 120);
+        assert!(!rows[2].contains("live"));
+    }
+
+    #[test]
+    fn the_note_sits_two_cells_left_of_the_live_marker() {
+        let mut h = header(2).live(true);
+        let rows = rows(&mut h, 120);
+        let tail = "2 entries could not be parsed  ● live │";
+        assert!(rows[2].ends_with(tail), "{}", rows[2]);
+        assert_eq!(rows[2].chars().count(), 120);
+        assert!(rows[2].starts_with("│ /home/user/projects/brio"));
+    }
+
+    #[test]
+    fn a_long_cwd_is_cut_to_leave_room_for_the_note_and_the_marker() {
+        let cwd = "/home/jacob/Development/projects/clients/very-long-customer-name/monorepo";
+        let mut h = BrowserHeader::new("BRIO", SESSION, cwd, builtin::default_theme())
+            .parse_warnings(3)
+            .live(true);
+        let rows = rows(&mut h, 80);
+        let row = &rows[2];
+        assert_eq!(row.chars().count(), 80);
+        assert!(row.starts_with("│ …"), "{row}");
+        assert!(
+            row.ends_with("3 entries could not be parsed  ● live │"),
+            "{row}"
+        );
+        let before = &row[..row.find("3 entries").unwrap()];
+        assert_eq!(before.chars().rev().take_while(|c| *c == ' ').count(), 2);
+    }
+
+    #[test]
+    fn the_live_flag_is_set_through_an_attribute() {
+        let mut h = header(0);
+        assert_eq!(
+            h.query(LIVE_ATTR).unwrap().into_attr(),
+            AttrValue::Flag(false)
+        );
+        h.attr(LIVE_ATTR, AttrValue::Flag(true));
+        assert_eq!(
+            h.query(LIVE_ATTR).unwrap().into_attr(),
+            AttrValue::Flag(true)
+        );
+        assert!(rows(&mut h, 120)[2].contains("● live"));
+        h.attr(LIVE_ATTR, AttrValue::Flag(false));
+        assert!(!rows(&mut h, 120)[2].contains("live"));
+    }
+
+    #[test]
+    fn the_dot_is_primary_and_the_word_is_muted_foreground() {
+        let theme = distinct_theme().with_role(Role::Primary, Color::Rgb(7, 200, 7));
+        let mut h = BrowserHeader::new("BRIO", SESSION, CWD, theme.clone())
+            .parse_warnings(3)
+            .live(true);
+        let buffer = render(120, 5, |frame| h.view(frame, frame.area()));
+        let at = |x: u16| &buffer[(x, 2)];
+        assert_eq!(at(112).symbol(), "●");
+        assert_eq!(at(112).fg, theme.role(Role::Primary));
+        for x in 114..=117 {
+            assert_eq!(at(x).fg, theme.role(Role::MutedForeground), "col {x}");
+        }
+        assert_eq!(at(117).symbol(), "e");
+        assert_eq!(
+            at(120 - 4 - 12).fg,
+            theme.role(Role::MutedForeground),
+            "note"
+        );
     }
 
     #[test]

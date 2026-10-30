@@ -21,8 +21,8 @@ impl Transcript {
             ModelUpdate::Appended(turns) => self.change_turns(turns, |c, t| c.append(t)),
             ModelUpdate::Updated(turns) => self.change_turns(turns, |c, t| c.update(t)),
             ModelUpdate::Reset => self.reset(),
+            ModelUpdate::Loaded => self.finish_loading(),
             ModelUpdate::Progress(_)
-            | ModelUpdate::Loaded
             | ModelUpdate::ParseWarnings(_)
             | ModelUpdate::Activity { .. } => {}
         }
@@ -32,6 +32,7 @@ impl Transcript {
         self.content.reset();
         self.cache.clear();
         self.offset = 0;
+        self.start_loading();
         self.refresh();
     }
 
@@ -40,6 +41,18 @@ impl Transcript {
         turns: &[Arc<Turn>],
         change: impl FnOnce(&mut Content, &[Arc<Turn>]) -> Changes,
     ) {
+        let pinned = self.following && !self.loading;
+        let counting = !self.following && !self.loading;
+        // Whether the selection moves on to the new end (SPEC §7.2).
+        let was_last = pinned
+            && self.content.selected.is_some()
+            && self.content.selected == self.last_section();
+        let old_len = self.content.turns.len();
+        let grown = if counting {
+            self.tail_sections(turns)
+        } else {
+            Vec::new()
+        };
         let before = self.sections_if(|id| turns.iter().any(|t| t.id() == id));
         let top_block = self.visible_blocks().start;
         let changes = change(&mut self.content, turns);
@@ -49,6 +62,15 @@ impl Transcript {
         // section; an untouched selection needs no layout to check.
         if before.is_some() || self.content.selected.is_none() {
             self.restore_selection(before);
+        }
+        if counting {
+            self.count_new(old_len, grown);
+        }
+        if pinned {
+            if was_last {
+                self.content.selected = self.last_section();
+            }
+            self.pin_to_bottom();
         }
         self.refresh();
     }

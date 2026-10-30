@@ -14,6 +14,7 @@ use crate::test_support::{buffer_to_text, render};
 use crate::theme::{Role, builtin};
 
 mod cache_lookup;
+mod follow;
 pub(super) mod keys;
 mod property;
 mod truncation;
