@@ -30,7 +30,7 @@
 | 026-save-and-export | Complete |
 | 027-subagent-transcripts | Complete |
 | 028-opencode-adapter | Complete |
-| 029-opencode-live-watch | Planned |
+| 029-opencode-live-watch | In progress |
 | 030-help-overlay | Planned |
 | 031-theme-selector | Planned |
 | 032-resume-in-harness | Planned |
