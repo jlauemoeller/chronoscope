@@ -1,0 +1,28 @@
+---
+source: src/components/transcript/snapshots.rs
+expression: text
+---
+│   • Look at v4l2-ctl --list-ctrls                                            │
+│                                                                              │
+│   Then I'll compare the results.                                             │
+│                                                                              │
+│ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.        │
+│                                                                              │
+│ ▶ Find the BRIO on USB and check available tools                             │
+│                                                                              │
+│ ▶ Dump full USB descriptors for the BRIO                                     │
+│                                                                              │
+│   model → claude-sonnet-5.5                                                  │
+│                                                                              │
+│   5m 02s · 112 messages · 45.2k tokens                                       │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                              │
+│ ▶ Dump the full descriptors and look for extension units.                    │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│   Reading the dump now.                                                      │
+│                                                                              │

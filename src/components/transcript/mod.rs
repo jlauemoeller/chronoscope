@@ -1,0 +1,417 @@
+//! The transcript (SPEC §4.2, §5, §9.2): the open session's turns as a
+//! vertically scrolling stack of [`TurnBlock`](super::TurnBlock)s.
+//!
+//! [`Transcript`] is one mounted component, virtualised: it lays blocks out
+//! lazily for the current width, keeps their heights in a [`LayoutCache`] and
+//! draws only the blocks that overlap the viewport, clipping the first and
+//! the last. It owns the turns, the fold states and the selection (keyed by
+//! [`SectionId`], so they survive updates), and the scroll offset.
+//!
+//! # Props
+//!
+//! Data flows in through [`attr`](Component::attr): [`THEME_ATTR`],
+//! [`DIM_UNSELECTED_ATTR`], [`SHOW_SYSTEM_ATTR`], [`TRUNCATE_OUTPUT_LINES_ATTR`],
+//! [`TIMESTAMP_FORMATTER_ATTR`], [`MODEL_UPDATE_ATTR`] (an `Arc<ModelUpdate>`
+//! payload, see [`model_update_value`]) and [`VIEWPORT_ATTR`].
+//!
+//! # The pre-render step
+//!
+//! `view` never changes the transcript. The width and height a layout is for
+//! are announced beforehand with [`VIEWPORT_ATTR`] (or
+//! [`Transcript::set_viewport`]): the App sets it whenever the transcript's
+//! area changes. That step re-wraps for a new width, fills the cache for the
+//! visible blocks and prepares the window `view` draws. Every later change
+//! (a `Cmd`, an update, a prop) refreshes it again. If `view` is given an
+//! area the viewport was not announced for, it computes the window for that
+//! area on a copy of the cache and discards it: slower, but correct, and
+//! still without side effects.
+//!
+//! Basic `Cmd`s: `Scroll(Up/Down)` scrolls one row, `Move(Up/Down)` selects
+//! the previous/next section and `Submit` toggles the selected section's
+//! fold. Task 020 binds the keys.
+
+mod cache;
+mod content;
+mod nav;
+mod updates;
+mod window;
+
+#[cfg(test)]
+mod fixtures;
+#[cfg(test)]
+mod snapshots;
+#[cfg(test)]
+mod tests;
+
+use std::borrow::Cow;
+use std::sync::Arc;
+
+use ratatui::Frame;
+use ratatui::layout::{Rect, Size};
+use ratatui::style::Style;
+use ratatui::widgets::Block;
+use tuirealm::command::{Cmd, CmdResult, Direction};
+use tuirealm::component::{AppComponent, Component};
+use tuirealm::event::Event;
+use tuirealm::props::{AttrValue, Attribute, QueryResult};
+use tuirealm::state::{State, StateValue};
+
+pub(crate) use cache::LayoutCache;
+
+use self::content::{Content, Measurer};
+use self::window::Window;
+use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
+use crate::app::{Msg, UserEvent};
+use crate::components::turn_block::SectionId;
+use crate::model::{ModelUpdate, Turn};
+use crate::theme::{Role, Theme};
+use crate::timestamp::TimestampFormatter;
+
+/// Whether unselected sections are drawn in `muted_foreground` (a flag).
+pub const DIM_UNSELECTED_ATTR: Attribute = Attribute::Custom("dim_unselected");
+/// Whether system / injected sections are shown (a flag).
+pub const SHOW_SYSTEM_ATTR: Attribute = Attribute::Custom("show_system");
+/// The `truncate_output_lines` setting (a length).
+pub const TRUNCATE_OUTPUT_LINES_ATTR: Attribute = Attribute::Custom("truncate_output_lines");
+/// The [`TimestampFormatter`] for block titles (a payload).
+pub const TIMESTAMP_FORMATTER_ATTR: Attribute = Attribute::Custom("timestamp_formatter");
+/// A [`ModelUpdate`] to apply (an `Arc<ModelUpdate>` payload).
+pub const MODEL_UPDATE_ATTR: Attribute = Attribute::Custom("model_update");
+/// The [`Size`] of the area the transcript is drawn in (a payload).
+pub const VIEWPORT_ATTR: Attribute = Attribute::Custom("viewport");
+
+/// The attribute value that applies `update` to the transcript.
+pub fn model_update_value(update: ModelUpdate) -> AttrValue {
+    payload_value(Arc::new(update))
+}
+
+/// The attribute value that announces the viewport size.
+pub fn viewport_value(size: Size) -> AttrValue {
+    payload_value(size)
+}
+
+/// The virtualised transcript component.
+#[derive(Debug, Clone)]
+pub struct Transcript {
+    content: Content,
+    cache: LayoutCache,
+    /// The top row of the viewport, in transcript rows.
+    offset: usize,
+    viewport: Option<Size>,
+    /// The blocks overlapping the viewport, laid out; `None` until a
+    /// viewport is announced.
+    window: Option<Window>,
+    /// How many block layouts were run to measure or draw blocks (read by
+    /// tests).
+    #[cfg_attr(not(test), allow(dead_code))]
+    layouts_run: usize,
+}
+
+impl Transcript {
+    /// An empty transcript with the given theme and timestamp format.
+    pub fn new(theme: Theme, formatter: TimestampFormatter) -> Self {
+        Self {
+            content: Content::new(theme, formatter),
+            cache: LayoutCache::new(),
+            offset: 0,
+            viewport: None,
+            window: None,
+            layouts_run: 0,
+        }
+    }
+
+    /// Sets whether unselected sections are dimmed.
+    #[must_use]
+    pub fn dim_unselected(mut self, dim: bool) -> Self {
+        self.set_dim_unselected(dim);
+        self
+    }
+
+    /// Sets whether system sections are shown.
+    #[must_use]
+    pub fn show_system(mut self, show: bool) -> Self {
+        self.set_show_system(show);
+        self
+    }
+
+    /// Sets the viewport the first layout is for.
+    #[must_use]
+    pub fn viewport(mut self, size: Size) -> Self {
+        self.set_viewport(size);
+        self
+    }
+
+    /// Adds `turns` at the end.
+    #[must_use]
+    pub fn with_turns(mut self, turns: Vec<Arc<Turn>>) -> Self {
+        self.apply_update(&ModelUpdate::Appended(turns));
+        self
+    }
+
+    /// The selected section.
+    pub fn selected(&self) -> Option<&SectionId> {
+        self.content.selected.as_ref()
+    }
+
+    /// The scroll offset: the top row of the viewport.
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /// The number of turns.
+    pub fn turn_count(&self) -> usize {
+        self.content.turns.len()
+    }
+
+    /// The turn at `index`.
+    pub fn turn(&self, index: usize) -> Option<&Arc<Turn>> {
+        self.content.turns.get(index)
+    }
+
+    /// The `truncate_output_lines` setting. Block renderers do not use it
+    /// yet; it is held for them.
+    pub fn truncate_output_lines(&self) -> usize {
+        self.content.truncate_output_lines
+    }
+
+    /// The layout cache (tests read its counters).
+    #[cfg(test)]
+    pub(crate) fn cache(&self) -> &LayoutCache {
+        &self.cache
+    }
+
+    /// How many block layouts were run to measure or draw blocks (not
+    /// counting the ones navigation and selection need).
+    #[cfg(test)]
+    pub(crate) fn layouts_run(&self) -> usize {
+        self.layouts_run
+    }
+
+    /// The indices of the blocks the prepared window draws.
+    pub(crate) fn visible_blocks(&self) -> std::ops::Range<usize> {
+        self.window.as_ref().map_or(0..0, Window::block_range)
+    }
+
+    /// Announces the area the transcript is drawn in: the pre-render step.
+    ///
+    /// A new width re-wraps every block; the top visible block stays at the
+    /// top. The offset is clamped to the new height.
+    pub fn set_viewport(&mut self, size: Size) {
+        if self.viewport == Some(size) {
+            return;
+        }
+        let anchor = match self.viewport {
+            Some(old) if old.width != size.width => self.anchor(),
+            _ => None,
+        };
+        self.viewport = Some(size);
+        self.cache.set_width(size.width);
+        if let Some((block, within)) = anchor {
+            self.offset = self.measured(|cache, m| {
+                let top = cache.top(block, m);
+                top + within.min(cache.height(block, m).saturating_sub(1))
+            });
+        }
+        self.ensure_selection();
+        self.refresh();
+    }
+
+    /// The block at the top of the viewport and how far into it the viewport
+    /// starts.
+    fn anchor(&mut self) -> Option<(usize, usize)> {
+        let offset = self.offset;
+        let found = self.measured(|cache, m| cache.locate(offset, m))?;
+        Some((found.block, offset - found.top))
+    }
+
+    /// Runs `f` with the cache and a measurer for the cache's width.
+    fn measured<R>(&mut self, f: impl FnOnce(&mut LayoutCache, &mut Measurer<'_>) -> R) -> R {
+        let mut measurer = Measurer::new(&self.content, self.cache.width());
+        let result = f(&mut self.cache, &mut measurer);
+        self.layouts_run += measurer.calls;
+        result
+    }
+
+    /// Like [`measured`](Self::measured), with `layouts` of blocks that the
+    /// measurer hands out instead of laying them out again.
+    fn measured_reusing<R>(
+        &mut self,
+        layouts: std::collections::HashMap<usize, crate::components::turn_block::BlockLayout>,
+        f: impl FnOnce(&mut LayoutCache, &mut Measurer<'_>) -> R,
+    ) -> R {
+        let mut measurer = Measurer::new(&self.content, self.cache.width()).reusing(layouts);
+        let result = f(&mut self.cache, &mut measurer);
+        self.layouts_run += measurer.calls;
+        result
+    }
+
+    /// Brings the window up to date with the content, the offset and the
+    /// viewport. Called after every change.
+    fn refresh(&mut self) {
+        let Some(size) = self.viewport else {
+            self.window = None;
+            return;
+        };
+        let offset = self.offset;
+        let window = self.measured(|cache, m| Window::build_clamped(cache, m, size, offset));
+        self.offset = window.offset;
+        self.window = Some(window);
+    }
+
+    /// Like [`refresh`](Self::refresh) after a change of the offset alone:
+    /// the layouts of the blocks that stay in the window are reused, and only
+    /// the newly exposed blocks are laid out.
+    fn refresh_scrolled(&mut self) {
+        let Some(size) = self.viewport else {
+            return;
+        };
+        let reuse = self.window.take().map(Window::into_layouts);
+        let offset = self.offset;
+        let window = self.measured_reusing(reuse.unwrap_or_default(), |cache, m| {
+            Window::build_clamped(cache, m, size, offset)
+        });
+        self.offset = window.offset;
+        self.window = Some(window);
+    }
+
+    /// The window for `size`: the prepared one, or one computed on a copy of
+    /// the cache so that `view` leaves the transcript untouched.
+    fn window_for(&self, size: Size) -> Cow<'_, Window> {
+        match &self.window {
+            Some(window) if window.size == size => Cow::Borrowed(window),
+            _ => {
+                log::debug!(
+                    "transcript drawn into {size:?} without an announced viewport; \
+                     send VIEWPORT_ATTR when the area changes"
+                );
+                let mut cache = self.cache.clone();
+                cache.set_width(size.width);
+                let mut measurer = Measurer::new(&self.content, size.width);
+                let offset = self.offset;
+                Cow::Owned(Window::build_clamped(
+                    &mut cache,
+                    &mut measurer,
+                    size,
+                    offset,
+                ))
+            }
+        }
+    }
+
+    fn paint_background(&self, frame: &mut Frame, area: Rect) {
+        if !self.content.theme.transparent_background() {
+            let style = Style::new().bg(self.content.theme.role(Role::Background));
+            frame.render_widget(Block::new().style(style), area);
+        }
+    }
+
+    fn set_dim_unselected(&mut self, dim: bool) {
+        self.content.dim_unselected = dim;
+        self.refresh();
+    }
+
+    fn set_theme(&mut self, theme: Theme) {
+        self.content.theme = theme;
+        self.refresh();
+    }
+
+    fn set_formatter(&mut self, formatter: TimestampFormatter) {
+        self.content.formatter = formatter;
+        self.refresh();
+    }
+
+    /// Stores the setting. No block renderer reads it yet, so heights do not
+    /// depend on it; when one does (task 019 truncates tool output), this
+    /// must invalidate every height.
+    fn set_truncate_output_lines(&mut self, lines: usize) {
+        self.content.truncate_output_lines = lines;
+    }
+}
+
+impl Component for Transcript {
+    fn view(&mut self, frame: &mut Frame, area: Rect) {
+        let area = area.intersection(frame.area());
+        if area.is_empty() {
+            return;
+        }
+        self.paint_background(frame, area);
+        let window = self.window_for(area.as_size());
+        window.render(&self.content, area, frame.buffer_mut());
+    }
+
+    fn query<'a>(&'a self, attr: Attribute) -> Option<QueryResult<'a>> {
+        let value = if attr == THEME_ATTR {
+            theme_value(&self.content.theme)
+        } else if attr == DIM_UNSELECTED_ATTR {
+            AttrValue::Flag(self.content.dim_unselected)
+        } else if attr == SHOW_SYSTEM_ATTR {
+            AttrValue::Flag(self.content.show_system)
+        } else if attr == TRUNCATE_OUTPUT_LINES_ATTR {
+            AttrValue::Length(self.content.truncate_output_lines)
+        } else if attr == TIMESTAMP_FORMATTER_ATTR {
+            payload_value(self.content.formatter.clone())
+        } else if attr == VIEWPORT_ATTR {
+            payload_value(self.viewport?)
+        } else {
+            return None;
+        };
+        Some(QueryResult::Owned(value))
+    }
+
+    fn attr(&mut self, attr: Attribute, value: AttrValue) {
+        if attr == THEME_ATTR {
+            if let Some(theme) = theme_from_value(&value) {
+                self.set_theme(theme);
+            }
+        } else if attr == DIM_UNSELECTED_ATTR {
+            if let AttrValue::Flag(dim) = value {
+                self.set_dim_unselected(dim);
+            }
+        } else if attr == SHOW_SYSTEM_ATTR {
+            if let AttrValue::Flag(show) = value {
+                self.set_show_system(show);
+            }
+        } else if attr == TRUNCATE_OUTPUT_LINES_ATTR {
+            if let AttrValue::Length(lines) = value {
+                self.set_truncate_output_lines(lines);
+            }
+        } else if attr == TIMESTAMP_FORMATTER_ATTR {
+            if let Some(formatter) = payload_from_value::<TimestampFormatter>(&value) {
+                self.set_formatter(formatter);
+            }
+        } else if attr == MODEL_UPDATE_ATTR {
+            if let Some(update) = payload_from_value::<Arc<ModelUpdate>>(&value) {
+                self.apply_update(&update);
+            }
+        } else if attr == VIEWPORT_ATTR
+            && let Some(size) = payload_from_value::<Size>(&value)
+        {
+            self.set_viewport(size);
+        }
+    }
+
+    /// The scroll offset.
+    fn state(&self) -> State {
+        State::Single(StateValue::Usize(self.offset))
+    }
+
+    fn perform(&mut self, cmd: Cmd) -> CmdResult {
+        match cmd {
+            Cmd::Scroll(Direction::Down) => self.scroll_down(),
+            Cmd::Scroll(Direction::Up) => self.scroll_up(),
+            Cmd::Move(Direction::Down) => self.move_selection(nav::Step::Next),
+            Cmd::Move(Direction::Up) => self.move_selection(nav::Step::Previous),
+            Cmd::Submit => self.toggle_fold(),
+            Cmd::None => CmdResult::NoChange,
+            other => CmdResult::Invalid(other),
+        }
+    }
+}
+
+impl AppComponent<Msg, UserEvent> for Transcript {
+    /// Keys are bound in task 020; until then the transcript only answers
+    /// `Cmd`s.
+    fn on(&mut self, _ev: &Event<UserEvent>) -> Option<Msg> {
+        None
+    }
+}

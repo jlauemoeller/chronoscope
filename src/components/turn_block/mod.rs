@@ -28,6 +28,6 @@ pub use title::TitleBar;
 pub use widget::{BlockLayout, TurnBlock};
 
 #[cfg(test)]
-mod fixtures;
+pub(crate) mod fixtures;
 #[cfg(test)]
 mod snapshots;
