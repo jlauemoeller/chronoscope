@@ -2,7 +2,7 @@
 source: src/app/browser_tests/subagent.rs
 expression: "screen_text(&mut rig, 80, 24)"
 ---
-╭─ Project BRIO › Agent: story-writer ─────────────────────────────────────────╮
+╭─ Project BRIO › Agent: story-writer ─ …a21a-0f4476babd5c/subagents/agent-r2 ─╮
 │                                                                              │
 │ /home/user/projects/brio                                              ● live │
 │                                                                              │
@@ -25,4 +25,4 @@ expression: "screen_text(&mut rig, 80, 24)"
                                                                                 
                                                                                 
                                                                                 
- / to search | ENTER to fold or unfold sections | y to copy current
+ / to search | Backspace to go back | ENTER to fold or unfold sections

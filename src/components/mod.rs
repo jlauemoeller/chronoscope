@@ -28,7 +28,7 @@ pub use browser_header::{
 pub use empty_state::{EMPTY_SESSION, EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};
 pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
-pub use help_line::{HelpLine, Hint, STATUS_ATTR, status_value};
+pub use help_line::{HINTS_ATTR, HelpLine, Hint, STATUS_ATTR, hints_value, status_value};
 pub use list_pane::{
     ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
     selected_value, visible_rows,

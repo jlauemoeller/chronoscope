@@ -15,7 +15,7 @@ use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 use tuirealm::props::{AttrValue, PropPayload};
 
-use super::hints::browser_hints;
+use super::hints::{browser_hints, browser_hints_at};
 use super::layout::Screen;
 use super::redraw::RedrawRequest;
 use super::selector::{SELECTOR_IDS, mount_selector};
@@ -23,10 +23,10 @@ use super::session_port::{SessionUpdate, forward_to};
 use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
-    BREADCRUMB_ATTR, BrowserHeader, EMPTY_SESSION, EmptyState, HelpLine, LIVE_ATTR,
+    BREADCRUMB_ATTR, BrowserHeader, EMPTY_SESSION, EmptyState, HINTS_ATTR, HelpLine, LIVE_ATTR,
     MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR, PARSE_WARNINGS_ATTR,
     SESSION_ID_ATTR, STATUS_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript,
-    payload_value, status_value,
+    hints_value, payload_value, status_value,
 };
 use crate::harness::WatchHandle;
 use crate::keymap::{Action, Context};
@@ -491,7 +491,10 @@ impl App {
             self.toast_quiet(NO_SUBAGENT_TRANSCRIPT);
             return;
         };
+        // The number is taken before the worker starts, so it is never given
+        // again, whatever happens next.
         let generation = self.browser.load_seq + 1;
+        self.browser.load_seq = generation;
         let watch = match loader.load(&id, forward_to(generation, sink)) {
             Ok(watch) => watch,
             Err(err) => {
@@ -504,9 +507,12 @@ impl App {
         let mounted = self.mount_subagent(depth, &id, &label);
         if let Err(err) = mounted {
             log::error!("could not mount the subagent transcript: {err}");
+            self.toast_quiet("Cannot open the subagent");
             return;
         }
-        self.browser.load_seq = generation;
+        // An answer to a search of the covered transcript would land in the
+        // subagent's view and be dropped: forget that it is waited for.
+        self.browser.search.forget_pending();
         self.browser.levels.push(Level {
             id,
             label,
@@ -607,6 +613,11 @@ impl App {
             AttrValue::Length(warnings),
         );
         self.set_attr(Id::BrowserHeader, LIVE_ATTR, AttrValue::Flag(live));
+        self.set_attr(
+            Id::BrowserHelpLine,
+            HINTS_ATTR,
+            hints_value(browser_hints_at(&self.keymap, self.browser.depth())),
+        );
         self.refresh_status();
     }
 

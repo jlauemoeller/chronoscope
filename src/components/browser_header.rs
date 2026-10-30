@@ -13,11 +13,10 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
+mod fit;
+
 use super::working_dir::truncate_start;
-use super::{
-    THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value,
-    truncate_with_ellipsis,
-};
+use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme, Token};
 
@@ -45,9 +44,6 @@ pub const HEADER_HEIGHT: u16 = 5;
 const PADDING: usize = 1;
 /// The columns the working directory starts after the left border.
 const CWD_COLUMN: usize = 2;
-/// The project name keeps at least this many columns before the session id
-/// is dropped to make room for it.
-const MIN_NAME_WIDTH: usize = 6;
 /// The least number of cells between the working directory and what is
 /// right-aligned, and between the note and the live marker.
 const NOTE_GAP: usize = 2;
@@ -151,77 +147,63 @@ impl BrowserHeader {
 
     /// The top border for `width` columns.
     ///
-    /// The project name and the agents are cut with `…` to leave room for the
-    /// session id, the longest first; on a width where even short ones do
-    /// not fit next to it, the id goes.
+    /// The right title is the session id; the left one the project and, for
+    /// each open subagent, ` › Agent: <label>`. They are fitted by [`fit`]:
+    /// names are cut longest first, the id is cut from the start to its
+    /// distinguishing end, and the agents of the outer levels collapse into
+    /// ` › …` when even the separators would not fit.
     fn top(&self, width: usize) -> Line<'static> {
-        let border = self.border();
         // `╭─`, the titles, at least one `─`, `─╮`.
         let room = width.saturating_sub(5);
-        let mut id = format!(" {} ", self.session_id);
-        // " Project " before the name and a blank after it, and a separator
-        // before every agent.
-        let chrome = "Project".width() + 3 + self.agents.len() * AGENT_SEPARATOR.width();
-        // The name, then the agents.
+        let shown = fit::visible_agents(self.agents.len(), room);
+        let hidden = self.agents.len() - shown;
         let names: Vec<&str> = std::iter::once(self.project.as_str())
-            .chain(self.agents.iter().map(String::as_str))
+            .chain(self.agents[hidden..].iter().map(String::as_str))
             .collect();
-        let floors: Vec<usize> = names
-            .iter()
-            .map(|name| MIN_NAME_WIDTH.min(name.width()))
-            .collect();
-        let mut widths: Vec<usize> = names.iter().map(|name| name.width()).collect();
-        let mut names_room = room.saturating_sub(chrome + id.width());
-        if names_room < floors.iter().sum::<usize>() {
-            id.clear();
-            names_room = room.saturating_sub(chrome);
+        let chrome = fit::chrome_width(self.agents.len(), shown);
+        // The names stay whole while the id can be shown, if cut, beside
+        // them; else they give way down to their floors.
+        let whole = names.iter().map(|name| name.width()).sum::<usize>();
+        let mut id = fit::fit_id(&self.session_id, room.saturating_sub(chrome + whole));
+        if id.is_empty() {
+            let floors = fit::names_floor(&names);
+            id = fit::fit_id(&self.session_id, room.saturating_sub(chrome + floors));
         }
-        // Shrink the longest first, down to the floors, then from the end.
-        while widths.iter().sum::<usize>() > names_room {
-            let longest = (0..widths.len())
-                .filter(|&n| widths[n] > floors[n])
-                .max_by_key(|&n| (widths[n], n));
-            match longest {
-                Some(n) => widths[n] -= 1,
-                None => match widths.iter().rposition(|&w| w > 0) {
-                    Some(n) => widths[n] -= 1,
-                    None => break,
-                },
-            }
-        }
-        let cut: Vec<String> = names
-            .iter()
-            .zip(&widths)
-            .map(|(name, &w)| {
-                if w == 0 {
-                    String::new()
-                } else {
-                    truncate_with_ellipsis(name, w)
-                }
-            })
-            .collect();
+        let cut = fit::cut_names(&names, room.saturating_sub(chrome + id.width()));
         let used = chrome + cut.iter().map(|name| name.width()).sum::<usize>() + id.width();
-        let fill = width.saturating_sub(4 + used);
-        let mut cut = cut.into_iter();
-        let mut spans = vec![
-            Span::styled("╭─", border),
-            Span::styled(" Project ", self.muted()),
-            Span::styled(
-                cut.next().unwrap_or_default(),
-                self.foreground().add_modifier(Modifier::BOLD),
-            ),
-        ];
-        for agent in cut {
-            spans.push(Span::styled(AGENT_SEPARATOR, self.muted()));
-            spans.push(Span::styled(agent, self.foreground()));
-        }
-        spans.push(Span::styled(" ", self.muted()));
-        spans.push(Span::styled("─".repeat(fill), border));
+        let border = self.border();
+        let mut spans = vec![Span::styled("╭─", border)];
+        spans.extend(self.title_spans(cut, hidden > 0));
+        spans.push(Span::styled(
+            "─".repeat(width.saturating_sub(4 + used)),
+            border,
+        ));
         if !id.is_empty() {
             spans.push(Span::styled(id, self.theme.style(Token::Timestamp)));
         }
         spans.push(Span::styled("─╮", border));
         Line::from(spans)
+    }
+
+    /// The left title: ` Project <name>`, a collapsed marker when outer
+    /// agents are left out, ` › Agent: <label>` for each shown agent and a
+    /// blank.
+    fn title_spans(&self, cut: Vec<String>, collapsed: bool) -> Vec<Span<'static>> {
+        let mut cut = cut.into_iter();
+        let project = cut.next().unwrap_or_default();
+        let mut spans = vec![
+            Span::styled(" Project ", self.muted()),
+            Span::styled(project, self.foreground().add_modifier(Modifier::BOLD)),
+        ];
+        if collapsed {
+            spans.push(Span::styled(fit::COLLAPSED, self.muted()));
+        }
+        for agent in cut {
+            spans.push(Span::styled(AGENT_SEPARATOR, self.muted()));
+            spans.push(Span::styled(agent, self.foreground()));
+        }
+        spans.push(Span::styled(" ", self.muted()));
+        spans
     }
 
     /// A body row of `width` columns holding only the borders.
@@ -696,11 +678,74 @@ mod tests {
             assert!(rows[0].starts_with("╭─ Project "), "{}", rows[0]);
             assert!(rows[0].ends_with("─╮"), "{}", rows[0]);
         }
-        // At 80 columns the id (53 characters) would not leave room for the
-        // names, so it goes and the breadcrumb is whole.
+    }
+
+    #[test]
+    fn a_long_id_is_cut_from_the_start_and_keeps_its_end() {
+        // At 80 columns the 53-character id does not fit beside the whole
+        // breadcrumb: the id is cut, the breadcrumb is not.
         let rows = rows(&mut nested(&["story-writer"]), 80);
-        assert!(rows[0].starts_with("╭─ Project BRIO › Agent: story-writer ─"));
-        assert!(!rows[0].contains("agent-r2"), "{}", rows[0]);
+        assert!(
+            rows[0].starts_with("╭─ Project BRIO › Agent: story-writer ─"),
+            "{}",
+            rows[0]
+        );
+        assert!(rows[0].ends_with("/subagents/agent-r2 ─╮"), "{}", rows[0]);
+        assert!(rows[0].contains(" …"), "{}", rows[0]);
+        assert_eq!(rows[0].chars().count(), 80);
+    }
+
+    /// The agents of a breadcrumb `depth` levels deep.
+    fn deep(depth: usize) -> Vec<&'static str> {
+        [
+            "story-writer",
+            "Explore",
+            "general-purpose",
+            "Plan",
+            "code-reviewer",
+        ][..depth]
+            .to_vec()
+    }
+
+    #[test]
+    fn a_deep_breadcrumb_never_blanks_a_name_and_keeps_the_corner() {
+        for width in [60u16, 70, 80] {
+            for depth in 1..=5 {
+                let rows = rows(&mut nested(&deep(depth)), width);
+                let top = &rows[0];
+                let context = format!("depth {depth} at {width}: {top}");
+                assert_eq!(top.chars().count(), usize::from(width), "{context}");
+                assert!(top.ends_with("─╮"), "{context}");
+                assert!(top.starts_with("╭─ Project "), "{context}");
+                // No agent segment without a name.
+                let blank = top.contains("Agent:  ") || top.contains("Agent: ─");
+                assert!(!blank, "{context}");
+                // The agent on screen is named, at least by its first letter.
+                let last = deep(depth)[depth - 1];
+                let first: String = last.chars().take(1).collect();
+                let tail = top.rsplit("Agent: ").next().unwrap();
+                assert!(tail.starts_with(&first), "{context}");
+                // The project keeps at least `…`.
+                let project = top.trim_start_matches("╭─ Project ");
+                assert!(!project.starts_with('›'), "{context}");
+            }
+        }
+    }
+
+    #[test]
+    fn three_levels_at_60_columns_keep_a_label_each() {
+        let top = rows(&mut nested(&deep(3)), 60).remove(0);
+        assert_eq!(top.matches("Agent:").count(), 3, "{top}");
+        assert!(!top.contains('›') || top.matches('›').count() == 3, "{top}");
+    }
+
+    #[test]
+    fn five_levels_at_60_columns_collapse_the_outer_agents() {
+        let top = rows(&mut nested(&deep(5)), 60).remove(0);
+        assert!(top.contains(" › … › Agent: "), "{top}");
+        assert!(top.matches("Agent:").count() < 5, "{top}");
+        assert!(top.contains("Agent: c"), "the innermost agent stays: {top}");
+        assert_eq!(top.chars().count(), 60);
     }
 
     #[test]

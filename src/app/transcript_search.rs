@@ -153,6 +153,13 @@ pub(super) struct BrowserSearch {
     pub(super) position: Option<SearchPosition>,
 }
 
+impl BrowserSearch {
+    /// Stops waiting for the answer to a search that is under way.
+    pub(super) fn forget_pending(&mut self) {
+        self.pending = None;
+    }
+}
+
 impl App {
     /// Hands the app the thread that searches transcripts; without one the
     /// search runs on the calling thread. The app owns it from now on;

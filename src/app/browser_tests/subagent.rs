@@ -504,8 +504,47 @@ fn a_covered_session_keeps_receiving_its_turns_and_the_header_stays_the_subagent
     assert_eq!(turns_in(&rig.app, Id::Transcript), parent + 1);
     assert_eq!(turns_in(&rig.app, Id::Subagent(1)), child);
     assert_eq!(header_warnings(&rig.app), 0, "the header is the subagent's");
+    let folds = presentation(&rig.app, Id::Transcript).folds;
     rig.back_to(0);
+    assert_eq!(presentation(&rig.app, Id::Transcript).folds, folds);
     assert_eq!(header_warnings(&rig.app), 2, "and the session's again");
+}
+
+#[test]
+fn a_scrolled_up_parent_keeps_its_presentation_when_its_turns_change_while_covered() {
+    let mut rig = subagent_rig(120, 40);
+    // Away from the end, so that new turns do not move the view.
+    rig.press(Key::Char('g'));
+    rig.settle();
+    let before = presentation(&rig.app, Id::Transcript);
+    assert_eq!(before.offset, 0);
+    rig.app.update(Msg::OpenSubagent {
+        call_id: ItemId::from("call-a"),
+        label: "story-writer".to_owned(),
+    });
+    rig.pump_until(|app| app.subagent_depth() == 1 && app.session_loaded());
+    // The call gets a changed result, and a turn arrives.
+    let changed = assistant_of(
+        "s9",
+        vec![
+            blocks::text("x1", "I will ask the story writer."),
+            subagent_call("call-a", "story-writer", "Write a short story", "The end."),
+        ],
+    );
+    rig.harness.send(0, ModelUpdate::Updated(vec![changed]));
+    rig.harness.send(
+        0,
+        ModelUpdate::Appended(vec![arc(reply("t30", "Another reply."))]),
+    );
+    rig.settle();
+    assert_eq!(turns_in(&rig.app, Id::Transcript), parent_turns().len() + 1);
+    rig.back_to(0);
+    assert_eq!(presentation(&rig.app, Id::Transcript), before);
+    assert_eq!(
+        rig.app.new_sections(),
+        1,
+        "the new turn is counted for the parent"
+    );
 }
 
 #[test]
@@ -694,6 +733,38 @@ fn after_backspace_the_screen_is_the_parent_as_it_was_120x40_text() {
 }
 
 #[test]
+fn a_subagent_view_hints_at_the_back_key_and_the_session_does_not() {
+    let mut rig = subagent_rig(120, 40);
+    let last = |text: String| text.lines().last().unwrap().to_owned();
+    let root = last(screen_text(&mut rig, 120, 40));
+    assert!(!root.contains("go back"), "{root}");
+    rig.open_subagent(1);
+    for (width, height) in [(120, 40), (80, 24)] {
+        let line = last(screen_text(&mut rig, width, height));
+        assert!(line.contains("Backspace to go back"), "{line}");
+        assert!(
+            line.starts_with(" / to search | Backspace to go back"),
+            "{line}"
+        );
+    }
+    rig.back_to(0);
+    assert_eq!(last(screen_text(&mut rig, 120, 40)), root);
+}
+
+#[test]
+fn the_subagent_id_is_cut_from_the_start_at_80_columns() {
+    let mut rig = subagent_rig(80, 24);
+    rig.open_subagent(1);
+    let rows = rows_of(&screen_buffer(&mut rig, 80, 24));
+    assert!(
+        rows[0].starts_with("╭─ Project BRIO › Agent: story-writer ─"),
+        "{}",
+        rows[0]
+    );
+    assert!(rows[0].ends_with("/subagents/agent-r2 ─╮"), "{}", rows[0]);
+}
+
+#[test]
 fn the_selected_subagent_section_shows_the_hint() {
     let mut rig = subagent_rig(120, 40);
     let rows = rows_of(&screen_buffer(&mut rig, 120, 40));
@@ -816,6 +887,17 @@ fn with_the_claude_harness_the_subagent_opens_with_its_prompt_as_the_first_user_
         2,
         "the user turn and the reply"
     );
+}
+
+#[test]
+fn with_the_claude_harness_the_subagent_120x40_text() {
+    let (mut rig, _tmp) = claude_rig(120, 40);
+    rig.app.update(Msg::OpenSession(CLAUDE, id("pppp0001")));
+    rig.pump_until(App::session_loaded);
+    rig.settle();
+    rig.select_call("toolu_res02");
+    rig.open_subagent(1);
+    insta::assert_snapshot!(screen_text(&mut rig, 120, 40));
 }
 
 #[test]
