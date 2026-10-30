@@ -64,6 +64,10 @@ pub struct SessionRows {
     pub harness: Option<HarnessId>,
     pub rows: Arc<Vec<SessionRow>>,
     pub selected: Option<usize>,
+    /// Whether the harness has nothing to list at all. The pane then shows
+    /// "No sessions for this harness". A project without sessions in a
+    /// harness that has some does not.
+    pub harness_empty: bool,
 }
 
 /// The stats of one session, for the row that has its id.
@@ -105,8 +109,8 @@ pub fn format_stats(stats: &SessionStats) -> String {
 /// are updated one by one through [`SESSION_STATS_ATTR`] and
 /// [`ACTIVE_ATTR`]. Moving the selection reports
 /// [`SelectorMsg::SessionSelected`]; `Enter` on the selected session asks to
-/// open it ([`Msg::OpenSession`]). With no rows, the pane shows the
-/// [`EmptyState`] "No sessions for this harness".
+/// open it ([`Msg::OpenSession`]). When the app says the harness has nothing
+/// to list, the pane shows the [`EmptyState`] "No sessions for this harness".
 #[derive(Debug, Clone)]
 pub struct SessionList {
     pane: PaneState,
@@ -114,6 +118,7 @@ pub struct SessionList {
     project: String,
     harness: Option<HarnessId>,
     rows: Arc<Vec<SessionRow>>,
+    harness_empty: bool,
     empty: EmptyState,
 }
 
@@ -127,6 +132,7 @@ impl SessionList {
             project: String::new(),
             harness: None,
             rows: Arc::default(),
+            harness_empty: false,
         }
     }
 
@@ -218,7 +224,7 @@ impl Component for SessionList {
         let title = self.title(area.width);
         let block = titled_block(&self.pane.theme, &title, border_role(self.pane.focused));
         frame.render_widget(block, area);
-        if self.rows.is_empty() {
+        if self.harness_empty {
             self.empty.view(frame, area.inner(Margin::new(1, 1)));
             return;
         }
@@ -236,6 +242,7 @@ impl Component for SessionList {
                 harness: self.harness,
                 rows: Arc::clone(&self.rows),
                 selected: self.pane.cursor.selected(),
+                harness_empty: self.harness_empty,
             };
             return Some(QueryResult::Owned(payload_value(rows)));
         }
@@ -250,8 +257,10 @@ impl Component for SessionList {
                     harness,
                     rows,
                     selected,
+                    harness_empty,
                 }) = payload_from_value(&value)
                 {
+                    self.harness_empty = harness_empty;
                     self.pane.cursor.set(rows.len(), selected);
                     self.project = project;
                     self.harness = harness;
@@ -344,6 +353,7 @@ mod tests {
             harness: Some(HarnessId::Claude),
             rows: Arc::new(rows),
             selected,
+            harness_empty: false,
         })
     }
 
@@ -482,6 +492,7 @@ mod tests {
                 harness: None,
                 rows: Arc::default(),
                 selected: None,
+                harness_empty: false,
             }),
         );
         let text = buffer_to_text(&draw_sized(&mut l, 30));
@@ -581,6 +592,7 @@ mod tests {
                 harness: None,
                 rows: Arc::new(sample(false)),
                 selected: Some(0),
+                harness_empty: false,
             }),
         );
         assert_eq!(l.on(&key(Key::Enter)), None);
@@ -601,9 +613,16 @@ mod tests {
     }
 
     #[test]
-    fn a_list_without_rows_shows_the_empty_state_in_muted_foreground() {
+    fn a_list_of_an_empty_harness_shows_the_empty_state_in_muted_foreground() {
         let theme = builtin::default_theme();
         let mut l = list(Vec::new(), None, false);
+        l.attr(
+            SESSION_ROWS_ATTR,
+            payload_value(SessionRows {
+                harness_empty: true,
+                ..SessionRows::default()
+            }),
+        );
         let buffer = render(60, 10, |frame| l.view(frame, frame.area()));
         let text = buffer_to_text(&buffer);
         let line = text.lines().nth(5).unwrap();
@@ -616,8 +635,15 @@ mod tests {
             theme.role(Role::MutedForeground)
         );
         // The pane keeps its border and its title.
-        assert!(text.starts_with("╭─ Sessions in BRIO ─"), "{text}");
+        assert!(text.starts_with("╭─ Sessions ─"), "{text}");
         insta::assert_snapshot!(buffer_to_styled(&buffer));
+    }
+
+    #[test]
+    fn a_project_without_sessions_in_a_harness_that_has_some_shows_no_message() {
+        let text = buffer_to_text(&draw_sized(&mut list(Vec::new(), None, false), 60));
+        assert!(text.contains("Sessions in BRIO"), "{text}");
+        assert!(!text.contains("No sessions"), "{text}");
     }
 
     #[test]

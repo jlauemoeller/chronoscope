@@ -93,6 +93,16 @@ impl SelectorState {
         }
     }
 
+    /// Whether the harness shown has nothing to list: it has no sessions in
+    /// any project, or no harness is available, once every registered
+    /// harness has reported (before that the lists are still loading).
+    fn harness_empty(&self) -> bool {
+        match self.current_data() {
+            Some(data) => data.sessions.values().all(Vec::is_empty),
+            None => self.current.is_none() && self.all_reported(),
+        }
+    }
+
     /// Whether every registered harness has sent a snapshot.
     fn all_reported(&self) -> bool {
         self.registered.iter().all(|h| self.data.contains_key(h))
@@ -297,6 +307,9 @@ impl App {
         }
         if self.selector.current == Some(harness) {
             self.keep_selection(old.as_ref());
+        } else if self.selector.current.is_none() {
+            // The last harness may just have reported that none is available.
+            self.push_all();
         } else {
             self.push_tabs();
         }
@@ -578,6 +591,7 @@ impl App {
             harness,
             rows: Arc::new(rows),
             selected: self.selector.session_index(),
+            harness_empty: self.selector.harness_empty(),
         };
         self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
     }

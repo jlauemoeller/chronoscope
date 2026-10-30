@@ -2,7 +2,7 @@
 source: src/components/session_list.rs
 expression: buffer_to_styled(&buffer)
 ---
-╭─ Sessions in BRIO ───────────────────────────────────────╮
+╭─ Sessions ───────────────────────────────────────────────╮
 │                                                          │
 │                                                          │
 │                                                          │
@@ -13,7 +13,7 @@ expression: buffer_to_styled(&buffer)
 │                                                          │
 ╰──────────────────────────────────────────────────────────╯
 --- styles (fg/bg/modifiers) ---
-0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..20 Rgb(250, 250, 250)/Reset/NONE | 20..60 Rgb(94, 94, 94)/Reset/NONE
+0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..12 Rgb(250, 250, 250)/Reset/NONE | 12..60 Rgb(94, 94, 94)/Reset/NONE
 1: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
 2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE
 3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(94, 94, 94)/Reset/NONE

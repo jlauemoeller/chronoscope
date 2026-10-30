@@ -452,6 +452,40 @@ fn keys_do_not_break_the_empty_state() {
 }
 
 #[test]
+fn an_empty_project_in_a_harness_with_sessions_does_not_show_the_message() {
+    let mut app = loaded();
+    send(
+        &mut app,
+        edited_snapshot(|projects, sessions| {
+            sessions.insert(projects[1].id.clone(), Vec::new());
+        }),
+    );
+    press(&mut app, Key::Char('j'));
+    assert_eq!(selected_project_name(&app), "BRIO");
+    assert!(session_rows(&app).rows.is_empty());
+    assert!(!session_rows(&app).harness_empty);
+    let shown = text(&mut app, 120, 40);
+    assert!(shown.contains("Sessions in BRIO"), "{shown}");
+    assert!(!shown.contains("No sessions for this harness"), "{shown}");
+}
+
+#[test]
+fn the_message_waits_until_every_harness_has_reported() {
+    let mut app = empty_app_in(&[CLAUDE, OPENCODE], theme("default"), "/nowhere");
+    assert!(!session_rows(&app).harness_empty);
+    let none = || fixtures::snapshot_event(CLAUDE, false, Vec::new(), SessionMap::new());
+    send(&mut app, none());
+    assert!(!session_rows(&app).harness_empty, "OpenCode is loading");
+    send(
+        &mut app,
+        fixtures::snapshot_event(OPENCODE, false, Vec::new(), SessionMap::new()),
+    );
+    assert!(session_rows(&app).harness_empty);
+    let shown = text(&mut app, 120, 40);
+    assert!(shown.contains("No sessions for this harness"), "{shown}");
+}
+
+#[test]
 fn a_harness_that_empties_shows_the_empty_state_again() {
     let mut app = loaded();
     send(
@@ -552,6 +586,12 @@ fn preselection_before_the_first_resize_is_scrolled_too() {
 fn startup_with_the_9th_project_preselected_80x24_text() {
     let mut app = twelve_app("/home/jacob/Development/projects/Quill/src");
     insta::assert_snapshot!(text(&mut app, 80, 24));
+}
+
+#[test]
+fn startup_with_the_9th_project_preselected_80x24_styled() {
+    let mut app = twelve_app("/home/jacob/Development/projects/Quill/src");
+    insta::assert_snapshot!(styled(&mut app, 80, 24));
 }
 
 #[test]
