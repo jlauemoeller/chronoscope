@@ -136,8 +136,23 @@ impl ThemeSelector {
         else {
             return false;
         };
-        self.cursor.select(Some(target));
+        self.move_cursor(target);
         true
+    }
+
+    /// Puts the cursor on `index`, scrolling the least that shows it. On the
+    /// first or last theme that can be selected the rows that cannot be (and
+    /// are listed before or after it) are scrolled into view too, or they
+    /// could never be seen.
+    fn move_cursor(&mut self, index: usize) {
+        let last = self.items.len().saturating_sub(1);
+        if self.neighbour(index, true).is_none() {
+            self.cursor.select(Some(last));
+        }
+        if self.neighbour(index, false).is_none() {
+            self.cursor.select(Some(0));
+        }
+        self.cursor.select(Some(index));
     }
 
     fn block(&self) -> Block<'static> {
@@ -217,6 +232,9 @@ impl Component for ThemeSelector {
             (VISIBLE_ROWS_ATTR, AttrValue::Length(rows)) => {
                 self.rows = rows;
                 self.cursor.set_visible(rows);
+                if let Some(selected) = self.cursor.selected() {
+                    self.move_cursor(selected);
+                }
             }
             _ => {}
         }
@@ -649,6 +667,138 @@ mod tests {
         assert!(rows.iter().any(|r| r.contains("> Theme 8")), "{rows:?}");
     }
 
+    // -- invalid themes at the ends of a scrolled list
+
+    /// The built-ins, nine valid user themes named `User 01` ... and the
+    /// user files `extra` (`(id, valid)`).
+    fn long_registry(extra: &[(&str, bool)]) -> ThemeRegistry {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 1..=9 {
+            let text = theme_toml(&format!("User {i:02}"));
+            std::fs::write(dir.path().join(format!("user-{i:02}.toml")), text).unwrap();
+        }
+        for (id, valid) in extra {
+            let text = if *valid {
+                theme_toml(id)
+            } else {
+                "name = \"broken\"\nforeground = \"not a colour\"\n".to_owned()
+            };
+            std::fs::write(dir.path().join(format!("{id}.toml")), text).unwrap();
+        }
+        ThemeRegistry::load(dir.path())
+    }
+
+    /// The overlay as the app places it at 60x20 (41x18 at (9, 1)), with the
+    /// rows announced.
+    fn draw_at_60x20(selector: &mut ThemeSelector) -> ratatui::buffer::Buffer {
+        selector.attr(
+            VISIBLE_ROWS_ATTR,
+            AttrValue::Length(ThemeSelector::rows_in(18)),
+        );
+        render(60, 20, |frame| {
+            selector.view(frame, Rect::new(9, 1, 41, 18))
+        })
+    }
+
+    fn go_down(selector: &mut ThemeSelector, times: usize) {
+        for _ in 0..times {
+            press(selector, Key::Down);
+        }
+    }
+
+    fn go_up(selector: &mut ThemeSelector, times: usize) {
+        for _ in 0..times {
+            press(selector, Key::Up);
+        }
+    }
+
+    #[test]
+    fn a_trailing_invalid_theme_is_scrolled_into_view_with_the_last_valid_one() {
+        let registry = long_registry(&[("zz-broken", false)]);
+        let mut s = selector_for(&registry, "default");
+        go_down(&mut s, 30);
+        assert_eq!(selected(&s).as_deref(), Some("user-09"));
+        let rows = rows_of(&draw_at_60x20(&mut s));
+        assert!(rows[14].contains("│  > User 09  "), "{}", rows[14]);
+        assert!(
+            rows[15].contains("│    zz-broken (invalid)  "),
+            "{}",
+            rows[15]
+        );
+        assert!(!rows.iter().any(|r| r.contains("Default")));
+    }
+
+    #[test]
+    fn a_leading_invalid_theme_is_scrolled_back_into_view_with_the_first_valid_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let broken = "name = \"broken\"\nforeground = \"not a colour\"\n";
+        std::fs::write(dir.path().join("default.toml"), broken).unwrap();
+        for i in 1..=9 {
+            let text = theme_toml(&format!("User {i:02}"));
+            std::fs::write(dir.path().join(format!("user-{i:02}.toml")), text).unwrap();
+        }
+        let registry = ThemeRegistry::load(dir.path());
+        let mut s = selector_for(&registry, "terminal");
+        assert_eq!(selected(&s).as_deref(), Some("terminal"));
+        let open = rows_of(&draw_at_60x20(&mut s));
+        assert!(open[3].contains("│    default (invalid)  "), "{}", open[3]);
+        go_down(&mut s, 30);
+        let end = rows_of(&draw_at_60x20(&mut s));
+        assert!(!end.iter().any(|r| r.contains("default (invalid)")));
+        go_up(&mut s, 30);
+        assert_eq!(selected(&s).as_deref(), Some("terminal"));
+        let back = rows_of(&draw_at_60x20(&mut s));
+        assert!(back[3].contains("│    default (invalid)  "), "{}", back[3]);
+        assert!(back[4].contains("│  > Terminal  "), "{}", back[4]);
+    }
+
+    #[test]
+    fn the_invalid_rows_show_when_the_rows_are_announced_after_the_cursor_moved() {
+        let registry = long_registry(&[("zz-broken", false)]);
+        let mut s = selector_for(&registry, "user-09");
+        let rows = rows_of(&draw_at_60x20(&mut s));
+        assert!(rows[15].contains("zz-broken (invalid)"), "{}", rows[15]);
+    }
+
+    #[test]
+    fn several_trailing_invalid_themes_show_when_they_fit() {
+        let registry = long_registry(&[("zz-a", false), ("zz-b", false)]);
+        let mut s = selector_for(&registry, "default");
+        go_down(&mut s, 30);
+        let rows = rows_of(&draw_at_60x20(&mut s));
+        assert!(rows[14].contains("zz-a (invalid)"), "{}", rows[14]);
+        assert!(rows[15].contains("zz-b (invalid)"), "{}", rows[15]);
+        assert!(rows[13].contains("> User 09"), "{}", rows[13]);
+    }
+
+    #[test]
+    fn a_long_run_of_invalid_themes_never_hides_the_cursor() {
+        let items: Vec<ThemeItem> = std::iter::once(ThemeItem::valid("ok", "Ok"))
+            .chain((0..20).map(|i| ThemeItem::invalid(format!("bad-{i}"))))
+            .collect();
+        let mut s = ThemeSelector::new(items, "ok", builtin::default_theme(), Keymap::default());
+        let rows = rows_of(&draw_at_60x20(&mut s));
+        assert!(rows.iter().any(|r| r.contains("> Ok")), "{rows:?}");
+    }
+
+    #[test]
+    fn a_label_wider_than_the_overlay_is_cut_with_an_ellipsis() {
+        let long = "An Extremely Long User Theme Name That Goes On And On Forever And Ever";
+        let items = vec![
+            ThemeItem::valid("a", "Short"),
+            ThemeItem::valid("b", long),
+            ThemeItem::invalid("an-extremely-long-invalid-theme-id-that-goes-on-and-on"),
+        ];
+        let mut s = ThemeSelector::new(items, "b", builtin::default_theme(), Keymap::default());
+        // 41 columns: 39 inside, the label gets 34.
+        let area = Rect::new(0, 0, 41, 8);
+        s.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(3));
+        let rows = rows_of(&render(41, 8, |f| s.view(f, area)));
+        assert_eq!(rows[3], "│  > An Extremely Long User Theme Name… │");
+        assert_eq!(rows[4], "│    an-extremely-long-invalid-theme-i… │");
+        assert!(rows[2].contains("│    Short  "));
+    }
+
     // -- drawing
 
     #[test]
@@ -843,6 +993,14 @@ mod tests {
         let registry = registry_with(&[("alpha", true), ("my-theme", false)]);
         let mut s = selector_for(&registry, "nord");
         insta::assert_snapshot!(buffer_to_styled(&draw(&mut s)));
+    }
+
+    #[test]
+    fn snapshot_scrolled_with_a_trailing_invalid_theme_60x20_text() {
+        let registry = long_registry(&[("zz-broken", false)]);
+        let mut s = selector_for(&registry, "default");
+        go_down(&mut s, 30);
+        insta::assert_snapshot!(buffer_to_text(&draw_at_60x20(&mut s)));
     }
 
     #[test]

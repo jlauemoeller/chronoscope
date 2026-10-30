@@ -6,6 +6,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
 
+use crate::components::truncate_with_ellipsis;
 use crate::theme::{Role, Theme};
 
 /// The columns before the marker, counted from the inside of the border: the
@@ -15,6 +16,9 @@ const MARKER_INDENT: &str = "  ";
 const NO_MARKER: &str = " ";
 /// What stands between the marker and the label.
 const LABEL_GAP: &str = " ";
+/// The columns of a row that are not label: the indent, the marker, the gap
+/// and one column before the border.
+const ROW_CHROME: usize = 5;
 
 /// One theme as the list shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,22 +64,24 @@ pub struct ThemeRows<'a> {
 }
 
 impl ThemeRows<'_> {
-    fn line(&self, index: usize, item: &ThemeItem) -> Line<'static> {
+    /// The row for `item`, its label cut to `width` columns.
+    fn line(&self, index: usize, item: &ThemeItem, width: usize) -> Line<'static> {
+        let label = truncate_with_ellipsis(&item.label, width.saturating_sub(ROW_CHROME));
         if self.selected == Some(index) {
             let marker = Style::new().fg(self.theme.role(Role::Primary));
-            let label = Style::new()
+            let bold = Style::new()
                 .fg(self.theme.role(Role::Foreground))
                 .add_modifier(Modifier::BOLD);
             Line::from(vec![
                 Span::raw(MARKER_INDENT),
                 Span::styled(">", marker),
                 Span::raw(LABEL_GAP),
-                Span::styled(item.label.clone(), label),
+                Span::styled(label, bold),
             ])
         } else {
             let muted = Style::new().fg(self.theme.role(Role::MutedForeground));
             Line::from(Span::styled(
-                format!("{MARKER_INDENT}{NO_MARKER}{LABEL_GAP}{}", item.label),
+                format!("{MARKER_INDENT}{NO_MARKER}{LABEL_GAP}{label}"),
                 muted,
             ))
         }
@@ -90,7 +96,7 @@ impl Widget for ThemeRows<'_> {
             .enumerate()
             .skip(self.offset)
             .take(usize::from(area.height))
-            .map(|(index, item)| self.line(index, item))
+            .map(|(index, item)| self.line(index, item, usize::from(area.width)))
             .collect();
         Paragraph::new(lines).render(area, buf);
     }

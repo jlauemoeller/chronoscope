@@ -11,30 +11,13 @@ use super::*;
 use crate::components::{THEME_ATTR, theme_from_value};
 use crate::theme::{TerminalEnv, ThemeRegistry, resolve_by_id};
 
-/// Every component that draws with the theme. The match below is exhaustive
-/// on purpose: a new `Id` makes this fail to compile until it is placed here
-/// and, if it draws, in `THEMED` of `app/theme_selector.rs`.
-const THEMED_IDS: [Id; 15] = [
-    Id::SelectorFrame,
-    Id::EmptyState,
-    Id::HarnessTabs,
-    Id::ProjectList,
-    Id::SessionList,
-    Id::WorkingDir,
-    Id::HelpLine,
-    Id::BrowserHeader,
-    Id::Transcript,
-    Id::BrowserHelpLine,
-    Id::EmptySession,
-    Id::Prompt,
-    Id::HelpOverlay,
-    Id::ThemeSelector,
-    Id::Toast,
-];
+use super::super::theme_selector::THEMED;
 
+/// The match is exhaustive on purpose: a new `Id` makes this fail to compile
+/// until it is classified, and every themed one must be in `THEMED`.
 #[test]
 fn every_id_is_themed_but_the_global_events() {
-    for id in THEMED_IDS {
+    for id in THEMED {
         let themed = match id {
             Id::GlobalEvents => false,
             Id::SelectorFrame
@@ -60,7 +43,7 @@ fn every_id_is_themed_but_the_global_events() {
 
 /// The theme of each mounted component that has one.
 pub(super) fn mounted_themes(app: &App) -> Vec<(Id, Theme)> {
-    let mut ids = THEMED_IDS.to_vec();
+    let mut ids = THEMED.to_vec();
     ids.extend((1..=app.subagent_depth()).map(Id::Subagent));
     ids.into_iter()
         .filter(|id| app.application().mounted(id))

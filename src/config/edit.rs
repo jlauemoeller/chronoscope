@@ -6,7 +6,7 @@
 use std::fmt;
 use std::path::Path;
 
-use toml_edit::{Document, Item, Value};
+use toml_edit::{Document, Item, Table, Value};
 
 /// Why the theme could not be saved.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,32 +51,77 @@ pub fn save_theme(path: &Path, id: &str) -> Result<(), SaveThemeError> {
 }
 
 /// `text` with the top-level `theme` set to `id`.
+///
+/// Everything outside the old value (or the new line) is copied from `text`
+/// as it is, so comments, spacing and line endings of any kind survive.
 fn with_theme(text: &str, id: &str) -> Result<String, SaveThemeError> {
     let parsed = Document::parse(text).map_err(|_| SaveThemeError::InvalidToml)?;
-    let old = parsed.get("theme").and_then(Item::as_value);
-    if let Some(range) = old.and_then(Value::span) {
-        // Only the characters of the old value change: the spaces, the
-        // comment and the line endings around it stay as they are.
-        let mut edited = text.to_owned();
-        edited.replace_range(range, &Value::from(id).to_string());
-        return Ok(edited);
+    let value = Value::from(id).to_string();
+    match parsed.get("theme") {
+        Some(Item::Value(old)) => {
+            if let Some(range) = old.span() {
+                let mut edited = text.to_owned();
+                edited.replace_range(range, &value);
+                return Ok(edited);
+            }
+        }
+        Some(_) => {
+            // A table or the like: it is replaced, which loses what is in it.
+            log::warn!("config: replacing the non-string `theme` entry with the chosen theme");
+            let mut doc = parsed.into_mut();
+            doc["theme"] = toml_edit::value(id);
+            return Ok(doc.to_string());
+        }
+        None => {}
     }
-    let mut doc = parsed.into_mut();
-    doc["theme"] = toml_edit::value(id);
-    Ok(restore_line_endings(text, doc.to_string()))
+    let at = insertion_point(text, &parsed);
+    Ok(insert_line(text, at, &format!("theme = {value}")))
 }
 
-/// `edited` (which `toml_edit` writes with `\n` line ends and a final one)
-/// with the line endings of `original`.
-fn restore_line_endings(original: &str, edited: String) -> String {
-    let mut edited = edited;
-    if !original.ends_with('\n') && !original.is_empty() {
-        edited.truncate(edited.trim_end_matches('\n').len());
+/// Where a new top-level key goes: after the line of the last top-level
+/// key-value; else before the first table (the top of the file); else at the
+/// end of the file.
+fn insertion_point(text: &str, doc: &Document<&str>) -> usize {
+    match root_values_end(doc.as_table()) {
+        Some(end) => text[end..].find('\n').map_or(text.len(), |n| end + n + 1),
+        None if doc.as_table().iter().next().is_some() => 0,
+        None => text.len(),
     }
-    if original.contains("\r\n") {
-        edited = edited.replace("\r\n", "\n").replace('\n', "\r\n");
+}
+
+/// The end of the last value that is a top-level key-value (dotted keys
+/// included), if any.
+fn root_values_end(table: &Table) -> Option<usize> {
+    table
+        .iter()
+        .filter_map(|(_, item)| match item {
+            Item::Value(value) => value.span().map(|span| span.end),
+            Item::Table(table) if table.is_dotted() => root_values_end(table),
+            _ => None,
+        })
+        .max()
+}
+
+/// `text` with `line` as a line of its own at byte `at`, which is at the
+/// start of a line or the end of the text. The line ends like the text does.
+fn insert_line(text: &str, at: usize, line: &str) -> String {
+    let eol = match text.find('\n') {
+        Some(n) if text[..n].ends_with('\r') => "\r\n",
+        _ => "\n",
+    };
+    let mut out = String::with_capacity(text.len() + line.len() + 2);
+    out.push_str(&text[..at]);
+    let at_end = at == text.len();
+    if at_end && !text.is_empty() && !text.ends_with('\n') {
+        // The last line has no end; the new one gets none either.
+        out.push_str(eol);
+        out.push_str(line);
+        return out;
     }
-    edited
+    out.push_str(line);
+    out.push_str(eol);
+    out.push_str(&text[at..]);
+    out
 }
 
 fn io_error(err: std::io::Error) -> SaveThemeError {
@@ -208,6 +253,40 @@ mod tests {
         assert_eq!(without_theme(&after), before);
         assert!(!after.replace("\r\n", "").contains('\n'), "{after:?}");
         assert!(after.contains("theme = \"nord\"\r\n"), "{after:?}");
+    }
+
+    #[test]
+    fn mixed_line_endings_stay_as_they_are() {
+        let before = "mouse = true\r\n# note\nutc = true\r\n[keys.global]\nquit = \"x\"\r\n";
+        let added = saved(before, "nord");
+        assert_eq!(without_theme(&added), before);
+        let replaced = saved(&format!("theme = \"default\"\n{before}"), "nord");
+        assert_eq!(replaced, format!("theme = \"nord\"\n{before}"));
+    }
+
+    #[test]
+    fn the_theme_goes_after_the_last_top_level_key_not_into_a_table() {
+        let before = "a = 1\nkeys.global.quit = \"x\" # dotted\n# about the table\n[harness.claude]\nenabled = false\n";
+        let after = saved(before, "nord");
+        assert_eq!(without_theme(&after), before);
+        let parsed: toml::Table = after.parse().unwrap();
+        assert_eq!(parsed["theme"].as_str(), Some("nord"));
+        assert_eq!(
+            after,
+            "a = 1\nkeys.global.quit = \"x\" # dotted\ntheme = \"nord\"\n# about the table\n[harness.claude]\nenabled = false\n"
+        );
+    }
+
+    #[test]
+    fn a_file_of_only_comments_gets_the_theme_at_the_end() {
+        assert_eq!(
+            saved("# nothing yet\n", "nord"),
+            "# nothing yet\ntheme = \"nord\"\n"
+        );
+        assert_eq!(
+            saved("# nothing yet", "nord"),
+            "# nothing yet\ntheme = \"nord\""
+        );
     }
 
     #[test]

@@ -26,7 +26,7 @@ pub(super) struct ThemeSelection {
 
 /// The components that draw with the theme (every one but `GlobalEvents`).
 /// The transcripts of subagents are added for the depths that are open.
-const THEMED: [Id; 15] = [
+pub(super) const THEMED: [Id; 15] = [
     Id::SelectorFrame,
     Id::EmptyState,
     Id::HarnessTabs,
@@ -47,7 +47,7 @@ const THEMED: [Id; 15] = [
 impl App {
     /// Mounts the theme selector with the cursor on the active theme and
     /// gives it the focus, remembering the active theme for `Esc`. Does
-    /// nothing when it, or another overlay or prompt, is open.
+    /// nothing when it, the help overlay or a prompt is open.
     pub(super) fn open_theme_selector(&mut self) {
         let busy = [Id::ThemeSelector, Id::HelpOverlay, Id::Prompt];
         if busy.iter().any(|id| self.application.mounted(id)) {
