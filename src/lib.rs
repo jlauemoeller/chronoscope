@@ -4,9 +4,13 @@
 
 use clap::Parser;
 
+pub mod config;
+pub mod logging;
+pub mod paths;
 #[doc(hidden)]
 pub mod test_support;
 pub mod theme;
+pub mod timestamp;
 
 /// Command-line interface. Only `--help` and `--version` exist for now.
 #[derive(Debug, Parser)]
