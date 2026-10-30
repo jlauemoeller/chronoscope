@@ -145,7 +145,9 @@ impl Assembler {
     }
 
     /// Consumes the assembler, returning its turns. Injected entries still
-    /// waiting for a turn are placed in the current one.
+    /// waiting for a turn go into the current User or Assistant turn if
+    /// there is one; with no turn yet, or a Compaction turn last, they are
+    /// dropped (and logged at debug level).
     pub fn into_turns(mut self) -> Vec<Arc<Turn>> {
         self.end_of_input();
         self.turns
@@ -539,9 +541,11 @@ impl Assembler {
     fn end_of_input(&mut self) {
         self.flush_current();
         if !self.held.is_empty() {
+            let n = self.held.len();
             log::debug!(
-                "{} injected entries have no turn to go into yet (none, or a compaction last)",
-                self.held.len()
+                "{n} injected {} ha{} no turn to go into yet (none, or a compaction last)",
+                if n == 1 { "entry" } else { "entries" },
+                if n == 1 { "s" } else { "ve" },
             );
         }
         for (kind, count) in &self.unknown_kinds {

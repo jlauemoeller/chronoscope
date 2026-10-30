@@ -486,6 +486,44 @@ fn entries_before_and_after_a_prompt_stay_in_separate_items() {
 }
 
 #[test]
+fn entries_before_and_after_a_later_prompt_stay_in_separate_items() {
+    let text = lines(&[
+        prompt("u1", "one"),
+        hook("a1", "A"),
+        reply("r1", "msg_1", "hi"),
+        hook("x2", "X"),
+        prompt("u2", "two"),
+        hook("b2", "B"),
+        reply("r2", "msg_2", "ho"),
+    ]);
+    let turns = assemble(&text).into_turns();
+    let items = &user(&turns[2]).items;
+    assert_eq!(item_names(items), ["injected", "injected"]);
+    assert_eq!(injected(&items[0])[0].text, "X");
+    assert_eq!(injected(&items[1])[0].text, "B");
+}
+
+#[test]
+fn entries_before_and_after_a_later_prompt_stay_apart_across_a_live_flush() {
+    let text = lines(&[
+        prompt("u1", "one"),
+        hook("a1", "A"),
+        reply("r1", "msg_1", "hi"),
+        hook("x2", "X"),
+        prompt("u2", "two"),
+        hook("b2", "B"),
+    ]);
+    let mut asm = Assembler::new(ByteSource::Memory(Arc::from(&b""[..])));
+    asm.push_chunk(text.as_bytes());
+    asm.flush_held();
+    let turns = asm.turns();
+    let items = &user(&turns[2]).items;
+    assert_eq!(item_names(items), ["injected", "injected"]);
+    assert_eq!(injected(&items[0])[0].text, "X");
+    assert_eq!(injected(&items[1])[0].text, "B");
+}
+
+#[test]
 fn entries_left_without_a_turn_are_logged_at_debug_level() {
     capture_logs();
     let text = lines(&[
@@ -498,7 +536,7 @@ fn entries_left_without_a_turn_are_logged_at_debug_level() {
     assert!(
         logged(Level::Debug)
             .iter()
-            .any(|m| m.starts_with("1 injected entries have no turn"))
+            .any(|m| m.starts_with("1 injected entry has no turn"))
     );
 }
 
