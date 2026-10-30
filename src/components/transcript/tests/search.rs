@@ -960,3 +960,262 @@ fn a_thousand_matches_in_a_hidden_section_do_not_stop_the_stepping() {
     ch(&mut t, 'n');
     assert_eq!(t.selected(), Some(&item_section("a1", "t1")));
 }
+
+// ---- A line that is the end of another, and lines drawn differently ----
+
+/// After the jump: the position, the hit's row is on screen and drawn with
+/// the `search_match` style.
+fn assert_hit_shown(t: &mut Transcript, position: &str, row_text: &str, hit: &str) {
+    assert_eq!(shown(t).as_deref(), Some(position));
+    let screen = rows(t);
+    assert!(
+        screen.contains(row_text),
+        "{row_text:?} on screen\n{screen}"
+    );
+    let marked = highlighted(t);
+    assert!(
+        marked.iter().any(|m| m == hit),
+        "{hit:?} highlighted, not {marked:?}\n{screen}"
+    );
+}
+
+fn suffix_case(lines: Vec<String>, query: &str) -> Transcript {
+    let mut t = log_of(&lines);
+    assert_eq!(search(&mut t, query).as_deref(), Some("1/2"));
+    ch(&mut t, 'n');
+    t
+}
+
+fn assert_near(t: &mut Transcript, hit_line: usize, query: &str) {
+    assert_eq!(shown(t).as_deref(), Some("2/2"));
+    let screen = rows(t);
+    assert!(
+        screen.contains(&format!("line {}", hit_line - 1))
+            || screen.contains(&format!("line {}", hit_line + 1)),
+        "{screen}"
+    );
+    assert!(highlighted(t).iter().any(|m| m == query), "{screen}");
+}
+
+#[test]
+fn a_line_that_ends_an_earlier_one_beyond_the_limit_is_expanded_and_shown() {
+    let mut lines = filler(500, 350, "done");
+    lines[4] = "build done".to_owned();
+    let mut t = suffix_case(lines, "done");
+    assert!(t.content.folds.is_expanded(&tool()));
+    assert_near(&mut t, 350, "done");
+}
+
+#[test]
+fn a_line_that_ends_an_earlier_one_within_the_limit_is_shown() {
+    let mut lines = filler(150, 120, "done");
+    lines[4] = "build done".to_owned();
+    let mut t = suffix_case(lines, "done");
+    assert_near(&mut t, 120, "done");
+}
+
+#[test]
+fn a_longer_earlier_line_with_a_prefix_beyond_the_limit_is_expanded_and_shown() {
+    let mut lines = filler(500, 350, "usb disconnected");
+    lines[10] = "error: usb disconnected".to_owned();
+    let mut t = suffix_case(lines, "usb");
+    assert!(t.content.folds.is_expanded(&tool()));
+    assert_near(&mut t, 350, "usb");
+}
+
+#[test]
+fn a_longer_earlier_line_with_a_prefix_within_the_limit_is_shown() {
+    let mut lines = filler(150, 120, "usb disconnected");
+    lines[10] = "error: usb disconnected".to_owned();
+    let mut t = suffix_case(lines, "usb");
+    assert_near(&mut t, 120, "usb");
+}
+
+/// 41 paragraphs: `filler 0`..`filler 19`, `hit`, `more filler 0`..
+fn paragraphs_around(hit: &str) -> String {
+    let before = (0..20).map(|n| format!("filler {n}"));
+    let after = (0..20).map(|n| format!("more filler {n}"));
+    before
+        .chain(std::iter::once(hit.to_owned()))
+        .chain(after)
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn assert_paragraph_hit(hit: &str, query: &str, drawn: &str) {
+    let mut t = markdown_turn(&paragraphs_around(hit), 80);
+    assert_eq!(search(&mut t, query).as_deref(), Some("1/1"), "{hit}");
+    assert_hit_shown(&mut t, "1/1", drawn, query);
+}
+
+#[test]
+fn a_hit_before_a_code_span_is_scrolled_into_view() {
+    assert_paragraph_hit("Plug it into the `usb` port.", "usb", "into the usb port.");
+}
+
+#[test]
+fn a_hit_before_bold_text_is_scrolled_into_view() {
+    assert_paragraph_hit("Plug it into the **USB** hub.", "USB", "into the USB hub.");
+}
+
+#[test]
+fn a_hit_before_a_link_is_scrolled_into_view() {
+    assert_paragraph_hit(
+        "The usb hub, see [the docs](https://example.org).",
+        "usb",
+        "The usb hub, see the docs",
+    );
+}
+
+#[test]
+fn a_hit_before_a_code_span_further_on_the_line_is_scrolled_into_view() {
+    assert_paragraph_hit(
+        "The usb hub is `fine` here.",
+        "usb",
+        "The usb hub is fine here.",
+    );
+}
+
+#[test]
+fn two_hits_with_code_spans_each_land_on_their_own_row() {
+    let filler_block = |tag: &str| {
+        (0..15)
+            .map(|n| format!("{tag} {n}"))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    };
+    let text = format!(
+        "{}\n\nUse the `usb` cable.\n\n{}\n\nUse the `usb` hub.\n\n{}",
+        filler_block("a"),
+        filler_block("b"),
+        filler_block("c")
+    );
+    let mut t = markdown_turn(&text, 80);
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/2"));
+    assert_hit_shown(&mut t, "1/2", "Use the usb cable.", "usb");
+    ch(&mut t, 'n');
+    assert_hit_shown(&mut t, "2/2", "Use the usb hub.", "usb");
+    ch(&mut t, 'N');
+    assert_hit_shown(&mut t, "1/2", "Use the usb cable.", "usb");
+}
+
+#[test]
+fn a_hit_in_a_multi_line_string_of_a_generic_tool_input_is_scrolled_into_view() {
+    let body = (1..=120)
+        .map(|n| {
+            if n == 100 {
+                "the usb here".to_owned()
+            } else {
+                format!("line {n}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let call = blocks::tool_of(
+        crate::model::ToolKind::Other("mcp__x__post".to_owned()),
+        "c1",
+        "Post it",
+        json!({"title": "x", "body": body}),
+        Some(("ok", false)),
+        ToolStatus::Ok,
+    );
+    let turn = arc(with_id(blocks::assistant(None, vec![call], None), "a1"));
+    let mut t = transcript_of(vec![turn], 80, 17);
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/1"));
+    let screen = rows(&mut t);
+    // The string is wrapped inside the JSON; the hit's row is on screen.
+    assert!(screen.contains("usb here"), "{screen}");
+    assert!(highlighted(&mut t).iter().any(|m| m == "usb"), "{screen}");
+}
+
+fn tool_turn(kind: crate::model::ToolKind, input: serde_json::Value, output: &str) -> Transcript {
+    let call = blocks::tool_of(
+        kind,
+        "c1",
+        "Do it",
+        input,
+        Some((output, false)),
+        ToolStatus::Ok,
+    );
+    let turn = arc(with_id(blocks::assistant(None, vec![call], None), "a1"));
+    transcript_of(vec![turn], 80, 17)
+}
+
+#[test]
+fn a_hit_in_numbered_read_output_lands_on_its_own_row() {
+    let text: String = (1..=150)
+        .map(|n| {
+            if n == 120 {
+                format!("{n:>6}→the usb here\n")
+            } else {
+                format!("{n:>6}→text {n}\n")
+            }
+        })
+        .collect();
+    let mut t = tool_turn(
+        crate::model::ToolKind::Read,
+        json!({"file_path": "/a/b.rs"}),
+        &text,
+    );
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/1"));
+    assert_hit_shown(&mut t, "1/1", "the usb here", "usb");
+}
+
+#[test]
+fn a_hit_on_a_plus_line_of_an_edit_diff_lands_on_its_own_row() {
+    let old: String = (1..=60).map(|n| format!("old {n}\n")).collect();
+    let new: String = (1..=60)
+        .map(|n| {
+            if n == 45 {
+                "new usb here\n".to_owned()
+            } else {
+                format!("new {n}\n")
+            }
+        })
+        .collect();
+    let mut t = tool_turn(
+        crate::model::ToolKind::Edit,
+        json!({"file_path": "/a/b.rs", "old_string": old, "new_string": new}),
+        "ok",
+    );
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/1"));
+    assert_hit_shown(&mut t, "1/1", "+new usb here", "usb");
+}
+
+#[test]
+fn a_hit_on_a_markdown_bullet_lands_on_its_own_row() {
+    let mut text: String = (1..=30).map(|n| format!("- filler {n}\n")).collect();
+    text.push_str("- the usb item\n");
+    text.extend((31..=60).map(|n| format!("- filler {n}\n")));
+    let mut t = markdown_turn(&text, 80);
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/1"));
+    assert_hit_shown(&mut t, "1/1", "• the usb item", "usb");
+}
+
+#[test]
+fn a_hit_on_a_quote_line_lands_on_its_own_row() {
+    let mut text = (1..=20)
+        .map(|n| format!("filler {n}"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    text.push_str("\n\n> the usb quote\n\n");
+    text.push_str(
+        &(21..=40)
+            .map(|n| format!("filler {n}"))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    );
+    let mut t = markdown_turn(&text, 80);
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/1"));
+    assert_hit_shown(&mut t, "1/1", "│ the usb quote", "usb");
+}
+
+#[test]
+fn a_hit_on_a_numbered_list_line_lands_on_its_own_row() {
+    let mut text: String = (1..=30).map(|n| format!("{n}. filler {n}\n")).collect();
+    text.push_str("31. the usb step\n");
+    text.extend((32..=60).map(|n| format!("{n}. filler {n}\n")));
+    let mut t = markdown_turn(&text, 80);
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/1"));
+    assert_hit_shown(&mut t, "1/1", "the usb step", "usb");
+}

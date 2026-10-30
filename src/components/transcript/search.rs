@@ -304,7 +304,8 @@ impl Transcript {
         let Some(active) = &self.search.active else {
             return false;
         };
-        let Some(found) = active.matches.get(index).cloned() else {
+        let active_matches = Arc::clone(&active.matches);
+        let Some(found) = active_matches.get(index).cloned() else {
             return false;
         };
         let section = found.section.clone();
@@ -317,7 +318,12 @@ impl Transcript {
         if !listed {
             return false;
         }
-        let Some(mut view) = self.section_view(block, &section) else {
+        let source = self.section_source(block, &section);
+        let in_section = section_matches(&active_matches, index);
+        let Some(query) = self.content.highlight.clone() else {
+            return false;
+        };
+        let Some(mut view) = self.section_view(block, &section, &source) else {
             // The section draws no rows: there is nothing to select.
             return false;
         };
@@ -343,16 +349,16 @@ impl Transcript {
             self.content.folds.set_folded(section.clone(), false);
             self.cache.invalidate(block);
             temp.unfolded = true;
-            view = self.section_view(block, &section).unwrap_or(view);
+            view = self.section_view(block, &section, &source).unwrap_or(view);
         }
-        let mut row = view.row_of(&found);
+        let mut row = view.row_of(&found, &query, &in_section);
         if row.is_none() && view.truncated {
             // The line of the match is among those cut off.
             self.content.folds.set_expanded(section.clone());
             self.cache.invalidate(block);
             temp.expanded = true;
-            if let Some(expanded) = self.section_view(block, &section) {
-                row = expanded.row_of(&found);
+            if let Some(expanded) = self.section_view(block, &section, &source) {
+                row = expanded.row_of(&found, &query, &in_section);
             }
         }
         self.search.temp = (temp.unfolded || temp.expanded).then_some(temp);
@@ -384,8 +390,23 @@ impl Transcript {
         }
     }
 
+    /// The plain text of `section`, as the search saw it.
+    fn section_source(&self, block: usize, section: &SectionId) -> Source {
+        let text = derive_sections(&self.content.turns[block], self.content.show_system)
+            .into_iter()
+            .find(|s| s.id == *section)
+            .map(|s| section_text(&s).into_owned())
+            .unwrap_or_default();
+        Source::new(text)
+    }
+
     /// The rows `section` draws now; `None` when it draws none.
-    fn section_view(&self, block: usize, section: &SectionId) -> Option<SectionView> {
+    fn section_view<'a>(
+        &self,
+        block: usize,
+        section: &SectionId,
+        source: &'a Source,
+    ) -> Option<SectionView<'a>> {
         let layout = self.content.block(block).layout(self.nav_width());
         let rows = layout
             .section_rows()
@@ -398,13 +419,8 @@ impl Transcript {
             .iter()
             .any(|(id, _)| id.more_parent().as_ref() == Some(section));
         let rows: Vec<(usize, String)> = rows
-            .filter_map(|row| Some((row, squash(&layout.row_text(row)?))))
+            .filter_map(|row| Some((row, layout.row_text(row)?)))
             .collect();
-        let source = derive_sections(&self.content.turns[block], self.content.show_system)
-            .into_iter()
-            .find(|s| s.id == *section)
-            .map(|s| section_text(&s).into_owned())
-            .unwrap_or_default();
         Some(SectionView::new(rows, truncated, source))
     }
 
@@ -509,43 +525,166 @@ impl Transcript {
     }
 }
 
-/// The characters of `text` that are not white space: what stays the same
-/// when a line is wrapped or indented.
-fn squash(text: &str) -> String {
-    text.chars().filter(|c| !c.is_whitespace()).collect()
+/// The `(line, start)` of the matches in the section of match `index`, in
+/// order (they are next to each other in `matches`).
+fn section_matches(matches: &[Match], index: usize) -> Vec<(usize, usize)> {
+    let section = &matches[index].section;
+    let first = matches[..index]
+        .iter()
+        .rposition(|m| m.section != *section)
+        .map_or(0, |at| at + 1);
+    matches[first..]
+        .iter()
+        .take_while(|m| m.section == *section)
+        .map(|m| (m.line, m.range.start))
+        .collect()
 }
 
-/// How far into a row, in squashed bytes, a source line may start: the
-/// gutter of a numbered or diff row in front of it.
-const GUTTER: usize = 12;
+/// The characters of `text` that are not white space, and not the `→` of a
+/// numbered line (the Read renderer draws a gutter instead): what stays the
+/// same when a line is wrapped, indented or numbered.
+fn squash(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_whitespace() && *c != '→')
+        .collect()
+}
+
+/// Whether `prefix` (squashed) holds only what the renderers draw in front
+/// of a line: digits (line numbers, list numbers), `.`, the diff marks `+`
+/// and `-`, the list bullet `•`, the quote bar `│` and the fold markers.
+fn is_gutter(prefix: &str) -> bool {
+    prefix
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | '.' | '•' | '│' | '▶' | '▼'))
+}
+
+/// How many lines before a match are looked at for one that is drawn, to
+/// anchor the search for a line that is drawn differently from its source.
+const ANCHOR_LOOKBACK: usize = 200;
+
+/// The lines of a section's plain text, split and squashed once.
+struct Source {
+    text: String,
+    bounds: Vec<std::ops::Range<usize>>,
+    /// Where each line's content starts, after the markdown markers (`- `,
+    /// `1. `, `> `, `## `) that are drawn as a gutter or not at all.
+    bodies: Vec<usize>,
+    squashed: Vec<String>,
+}
+
+/// The bytes at the start of `line` that are markdown markers: block quote
+/// bars, list bullets and numbers, heading hashes.
+fn marker_len(line: &str) -> usize {
+    let mut rest = line;
+    loop {
+        let trimmed = rest.trim_start();
+        let after = if let Some(after) = trimmed.strip_prefix('>') {
+            after
+        } else if let Some(after) = ["- ", "* ", "+ "]
+            .iter()
+            .find_map(|bullet| trimmed.strip_prefix(bullet))
+        {
+            after
+        } else if let Some(after) = trimmed
+            .trim_start_matches('#')
+            .strip_prefix(' ')
+            .filter(|_| trimmed.starts_with('#'))
+        {
+            after
+        } else {
+            let digits = trimmed.len()
+                - trimmed
+                    .trim_start_matches(|c: char| c.is_ascii_digit())
+                    .len();
+            match trimmed[digits..].strip_prefix(['.', ')']) {
+                Some(after) if digits > 0 && after.starts_with(' ') => after,
+                _ => break,
+            }
+        };
+        rest = after;
+    }
+    line.len() - rest.len()
+}
+
+impl Source {
+    fn new(text: String) -> Self {
+        let mut bounds = Vec::new();
+        let mut start = 0;
+        for line in text.split('\n') {
+            bounds.push(start..start + line.len());
+            start += line.len() + 1;
+        }
+        let bodies: Vec<usize> = bounds
+            .iter()
+            .map(|b| marker_len(&text[b.clone()]))
+            .collect();
+        let squashed = bounds
+            .iter()
+            .zip(&bodies)
+            .map(|(b, body)| squash(&text[b.start + body..b.end]))
+            .collect();
+        Self {
+            text,
+            bounds,
+            bodies,
+            squashed,
+        }
+    }
+
+    fn line(&self, index: usize) -> Option<&str> {
+        Some(&self.text[self.bounds.get(index)?.clone()])
+    }
+
+    /// The content of line `index` before byte `at` of the line, without
+    /// the markers; empty when `at` is within them.
+    fn content_before(&self, index: usize, at: usize) -> String {
+        let (Some(line), Some(&body)) = (self.line(index), self.bodies.get(index)) else {
+            return String::new();
+        };
+        squash(line.get(body..at.max(body)).unwrap_or_default())
+    }
+
+    /// Whether line `other` is a drawing of `line` for the purposes of
+    /// counting: it is `line` after nothing but a gutter.
+    fn is_drawing_of(&self, other: usize, line: &str) -> bool {
+        let other = &self.squashed[other];
+        other.strip_suffix(line).is_some_and(is_gutter)
+    }
+}
 
 /// What a section draws, to find the row a match is on.
 ///
 /// A match knows the line of the section's plain text it is in. That line is
 /// looked for among the drawn rows, ignoring white space: it is one row (or a
 /// few, when wrapped) that ends where the line ends and starts at the row's
-/// start or after a short gutter. That shows labels such as `Result:` for
-/// what they are, and a line that is not drawn (cut off by the truncation,
-/// or changed by markdown) does not shift the matches that are.
-struct SectionView {
-    /// The drawn rows, counted from the block's top border, squashed.
+/// start or after a gutter ([`is_gutter`]). That shows labels such as
+/// `Result:` for what they are. A line that occurs more than once is found as
+/// the n-th drawing, counting the earlier source lines by the same rule.
+///
+/// A line that is not found is either cut off by the truncation (the
+/// caller expands the output and asks again) or drawn differently from its
+/// source (inline markdown, a string of a JSON input). Then the query is
+/// looked for in the drawn rows after the nearest earlier line that is
+/// found. The matches between that line and this one say which occurrence it
+/// is. Only a match whose text is not drawn at all gets no row.
+struct SectionView<'a> {
+    /// The drawn rows with their text, counted from the block's top border.
     rows: Vec<(usize, String)>,
     /// Whether the output is cut with a `… N more lines` row.
     truncated: bool,
-    /// The plain text of the section.
-    source: String,
+    source: &'a Source,
     /// The squashed rows joined, and where each starts in it.
     joined: String,
     starts: Vec<usize>,
 }
 
-impl SectionView {
-    fn new(rows: Vec<(usize, String)>, truncated: bool, source: String) -> Self {
+impl<'a> SectionView<'a> {
+    fn new(rows: Vec<(usize, String)>, truncated: bool, source: &'a Source) -> Self {
         let mut joined = String::new();
         let mut starts = Vec::with_capacity(rows.len());
         for (_, text) in &rows {
             starts.push(joined.len());
-            joined.push_str(text);
+            joined.push_str(&squash(text));
         }
         Self {
             rows,
@@ -556,71 +695,59 @@ impl SectionView {
         }
     }
 
-    /// The drawn row that holds the start of `found`; `None` when its line is
-    /// not drawn.
+    /// The drawn row that holds `found`; `None` when it is not drawn, or when
+    /// its line was cut off by the truncation.
     ///
-    /// A line that is not drawn as it is written (markdown changes `- ` to a
-    /// bullet, say) is looked for by its end, from the match on, unless the
-    /// output is cut: then a line that is not found was cut, and some other
-    /// row ending alike must not stand for it.
-    fn row_of(&self, found: &Match) -> Option<usize> {
-        let lines: Vec<&str> = self.source.split('\n').collect();
-        let text = lines.get(found.line)?;
-        let line = squash(text);
+    /// `in_section` is the `(line, start)` of every match of the section.
+    fn row_of(
+        &self,
+        found: &Match,
+        query: &SearchQuery,
+        in_section: &[(usize, usize)],
+    ) -> Option<usize> {
+        if let Some(start) = self.place(found.line) {
+            let at = start
+                + self
+                    .source
+                    .content_before(found.line, found.range.start)
+                    .len();
+            return Some(self.row_at(at));
+        }
+        if self.truncated {
+            return None;
+        }
+        self.anchored(found, query, in_section)
+    }
+
+    /// The index in `rows` of the row that holds the byte `at` of the joined
+    /// rows.
+    fn index_at(&self, at: usize) -> usize {
+        self.starts.partition_point(|&s| s <= at).saturating_sub(1)
+    }
+
+    fn row_at(&self, at: usize) -> usize {
+        self.rows[self.index_at(at)].0
+    }
+
+    /// Where in the joined rows source line `index` is drawn.
+    fn place(&self, index: usize) -> Option<usize> {
+        let line = self.source.squashed.get(index)?;
         if line.is_empty() {
             return None;
         }
-        // The same line may occur more than once: this is the n-th.
-        let earlier = lines[..found.line]
-            .iter()
-            .filter(|other| squash(other) == line)
+        let earlier = (0..index)
+            .filter(|&i| self.source.is_drawing_of(i, line))
             .count();
-        let at = match self.nth_drawn(&line, earlier) {
-            Some(start) => start + squash(&text[..found.range.start]).len(),
-            None if self.truncated => return None,
-            None => {
-                let tail = squash(&text[found.range.start..]);
-                let earlier = lines[..found.line]
-                    .iter()
-                    .filter(|other| squash(other).ends_with(&tail))
-                    .count();
-                self.nth_ending(&tail, earlier)?
-            }
-        };
-        let row = self.starts.partition_point(|&s| s <= at).checked_sub(1)?;
-        Some(self.rows[row].0)
-    }
-
-    /// Where the `nth` drawing of the squashed `tail` starts, which ends
-    /// where a row ends (and may start in an earlier row).
-    fn nth_ending(&self, tail: &str, nth: usize) -> Option<usize> {
-        let mut seen = 0;
-        let mut from = 0;
-        while let Some(found) = self.joined[from..].find(tail) {
-            let at = from + found;
-            if self.ends_a_row(at + tail.len()) {
-                if seen == nth {
-                    return Some(at);
-                }
-                seen += 1;
-            }
-            from = at + self.joined[at..].chars().next().map_or(1, char::len_utf8);
-        }
-        None
-    }
-
-    /// Whether the joined rows have a row end at `end`.
-    fn ends_a_row(&self, end: usize) -> bool {
-        self.starts
-            .partition_point(|&s| s < end)
-            .checked_sub(1)
-            .is_some_and(|last| self.starts[last] + self.rows[last].1.len() == end)
+        // Without a cut, a line may be drawn fewer times than it is written
+        // (the context lines of a diff): the last drawing stands for it.
+        self.nth_drawn(line, earlier, !self.truncated)
     }
 
     /// Where in the joined rows the `nth` drawing of the squashed `line`
-    /// starts.
-    fn nth_drawn(&self, line: &str, nth: usize) -> Option<usize> {
+    /// starts; with `clamp`, the last one when there are fewer.
+    fn nth_drawn(&self, line: &str, nth: usize, clamp: bool) -> Option<usize> {
         let mut seen = 0;
+        let mut last = None;
         let mut from = 0;
         while let Some(found) = self.joined[from..].find(line) {
             let at = from + found;
@@ -629,21 +756,69 @@ impl SectionView {
                     return Some(at);
                 }
                 seen += 1;
+                last = Some(at);
             }
             from = at + self.joined[at..].chars().next().map_or(1, char::len_utf8);
         }
-        None
+        last.filter(|_| clamp)
     }
 
     /// Whether `at..at + len` of the joined rows is a drawn line: it ends
-    /// with a row and starts with one or within its gutter.
+    /// with a row and starts with one or after a gutter.
     fn is_drawing(&self, at: usize, len: usize) -> bool {
-        if !self.ends_a_row(at + len) {
-            return false;
-        }
-        let Some(first) = self.starts.partition_point(|&s| s <= at).checked_sub(1) else {
+        let end = at + len;
+        let Some(last) = self.starts.partition_point(|&s| s < end).checked_sub(1) else {
             return false;
         };
-        at - self.starts[first] <= GUTTER
+        if self.starts[last] + squash(&self.rows[last].1).len() != end {
+            return false;
+        }
+        let first = self.index_at(at);
+        is_gutter(&self.joined[self.starts[first]..at])
     }
+
+    /// The row of the occurrence of the query that `found` is, counted from
+    /// the nearest earlier line that is drawn as written.
+    fn anchored(
+        &self,
+        found: &Match,
+        query: &SearchQuery,
+        in_section: &[(usize, usize)],
+    ) -> Option<usize> {
+        let from = found.line.saturating_sub(ANCHOR_LOOKBACK);
+        let anchor = (from..found.line).rev().find_map(|line| {
+            let start = self.place(line)?;
+            let end = start + self.source.squashed[line].len();
+            Some((line, self.index_at(end.saturating_sub(1))))
+        });
+        let first_row = anchor.map_or(0, |(_, row)| row + 1);
+        let before = in_section
+            .iter()
+            .filter(|&&(line, start)| {
+                anchor.is_none_or(|(anchor, _)| line > anchor)
+                    && (line, start) < (found.line, found.range.start)
+            })
+            .count();
+        let mut seen = 0;
+        for (row, text) in self.rows.iter().skip(first_row) {
+            if is_label(text) {
+                continue;
+            }
+            seen += query.find_all(text).len();
+            if seen > before {
+                return Some(*row);
+            }
+        }
+        None
+    }
+}
+
+/// Whether a drawn row is a label such as `Result:` or `Command:`.
+fn is_label(row: &str) -> bool {
+    let row = row.trim();
+    row.len() <= 12
+        && row.strip_suffix(':').is_some_and(|name| {
+            name.chars().next().is_some_and(char::is_uppercase)
+                && name.chars().all(|c| c.is_alphabetic() || c == ' ')
+        })
 }
