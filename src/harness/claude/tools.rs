@@ -73,7 +73,7 @@ fn str_input<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 fn path_input(input: &Value) -> Option<&str> {
-    ["file_path", "path", "notebook_path"]
+    ["file_path", "path", "notebook_path", "filePath"]
         .into_iter()
         .find_map(|key| str_input(input, key))
 }

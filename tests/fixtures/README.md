@@ -128,3 +128,41 @@ Claude Code 2.1.304 to 2.1.311 sessions.
     string content and no `origin`, the second an `assistant` entry;
   - `agent-m1.meta.json` and `agent-r2.meta.json`: `agentType`, `description`
     and `toolUseId`.
+
+## opencode/fixture.sql
+
+- **Origin:** hand-written (generated once with a throw-away script that is
+  not part of the repository), following the schema and the `session_message`
+  data shapes observed in a real OpenCode `opencode.db`. Only the tables and
+  columns the adapter reads are created, plus the NOT NULL ones. Nothing was
+  copied from a real database; ids and texts are made up and paths use
+  `/home/user/...`. The tests build a temporary database from the script with
+  `rusqlite` (rollback-journal mode, so read-only opens create no side
+  files); no `.db` file is committed.
+- **Used by:** `src/harness/opencode/tests.rs`, `src/app/browser_tests/opencode.rs`,
+  `tests/opencode_log.rs` and `tests/harness_registry.rs`.
+- **Covers:**
+  - the `migration` table, whose newest row is the one the adapter knows;
+  - three projects: `prj_alpha` (named `Alpha App`), `prj_beta` (no `name`, so
+    the basename of its worktree names it) and `prj_empty` (no session, not
+    listed);
+  - `ses_main`, a parent session of 10 messages: a `synthetic` row before the
+    first prompt, a `system` row (with `description`) after it, an assistant
+    turn of two rows (variant `high`, a `reasoning` part, whitespace-only
+    `text` parts, a completed `read` and `shell` tool, a failed `shell` tool
+    with content and a failed `write` tool with only `error.message`), an
+    `idle` row, a second prompt, and a second assistant turn of two rows
+    (variant `default`, two `subagent` tools - one linked through
+    `state.metadata.sessionID`, one without metadata - then a row of another
+    model with a `pending` tool) followed by a trailing `synthetic` row;
+  - `ses_child1` and `ses_child2`, child sessions of `ses_main` (`parent_id`),
+    which are not listed as sessions;
+  - `ses_untitled` (no title: the first non-empty line of the first prompt),
+    `ses_long` (no title, a prompt over 80 characters, `time_idle` NULL),
+    `ses_blank` (no title, no messages) and `ses_bad` (two rows whose `data`
+    does not parse: invalid JSON, and valid JSON that is not an object).
+
+## opencode/newer_migration.sql
+
+Applied on top of `fixture.sql` by the version tests: a `migration` row newer
+than the newest one the adapter knows.
