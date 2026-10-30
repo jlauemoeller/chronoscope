@@ -12,6 +12,7 @@ Decisions where the task was open:
 - Title truncation: first non-blank line of the prompt; if it is over 80 chars, the first 79 chars plus `…` (80 in total).
 - A file with no `cwd` (the 0-byte case included) always gets `(untitled)` and the file mtime as its start, as the task says, even if it has an `ai-title`. `cwd` is `None` on its `SessionSummary` and `Project`.
 - `first_prompt` is kept up to 4096 chars; prompts that are blank do not count as the first prompt.
+- A no-cwd file still carries the scanned `first_prompt` on its summary while its title is forced to `(untitled)`; in practice such files have no prompts.
 - A file that fails to open or read is logged and left out of the build (not cached, so it is retried).
 - Missing data dir: `projects()` is `Ok(empty)`; unknown project: `sessions()` is `Ok(empty)`.
 - `refresh()` is an inherent method of `ClaudeHarness`, not on the trait.

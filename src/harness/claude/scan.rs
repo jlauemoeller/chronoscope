@@ -32,8 +32,10 @@ pub(super) struct FileScan {
     pub last_timestamp: Option<DateTime<Utc>>,
 }
 
-/// The fields every line is classified by. Fields are read as loose JSON
-/// values so that an unexpected type loses that one field, not the line.
+/// The fields every line is classified by. `timestamp`, `cwd` and `aiTitle`
+/// are read as loose JSON values, so an unexpected type loses that one field,
+/// not the line. (A non-object `attachment` still fails the line, as in the
+/// assembler.)
 #[derive(Deserialize)]
 struct ScanHead {
     #[serde(rename = "type")]
