@@ -52,11 +52,14 @@ pub struct Row {
     pub seq: i64,
     /// `session_message.time_created`, in Unix milliseconds.
     pub created: i64,
+    /// `session_message.time_updated`, in Unix milliseconds. Not used for
+    /// assembly; the live watcher compares it to find rows updated in place.
+    pub updated: i64,
     /// `session_message.data`, a JSON document.
     pub data: String,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 struct Time {
     created: Option<i64>,
     streamed: Option<i64>,
@@ -97,20 +100,71 @@ struct AssistantData {
     tokens: Option<Tokens>,
 }
 
-/// State of the Assistant turn currently being built.
+/// What one assistant row contributes to its turn's stats.
+#[derive(Debug, Clone, Copy)]
+struct Contribution {
+    created: i64,
+    end: i64,
+    tokens: Option<u64>,
+    cost: Option<f64>,
+}
+
+/// State of an Assistant turn being built.
 struct Builder {
     /// Index of the turn in `Assembler::turns`.
     idx: usize,
-    /// Position of each item in the turn, for in-place replacement.
+    /// Position of each item in the turn, for in-place replacement. Empty
+    /// while the builder is archived (see `Assembler::archived`).
     index: HashMap<ItemId, usize>,
     /// The model of the most recent row.
     last_model: String,
-    /// Assistant rows in the turn.
-    rows: usize,
-    tokens: Option<u64>,
-    cost: Option<f64>,
-    first_created: Option<i64>,
-    last_end: Option<i64>,
+    /// What each assistant row of the turn contributes, in row order, so
+    /// that a row updated in place replaces its share instead of adding to
+    /// it.
+    rows: Vec<(String, Contribution)>,
+}
+
+impl Builder {
+    fn new(idx: usize, model: &str) -> Self {
+        Self {
+            idx,
+            index: HashMap::new(),
+            last_model: model.to_owned(),
+            rows: Vec::new(),
+        }
+    }
+
+    /// Records the share of row `id`, replacing the one it had.
+    fn contribute(&mut self, id: &str, share: Contribution) {
+        match self.rows.iter_mut().rev().find(|(row, _)| row == id) {
+            Some((_, old)) => *old = share,
+            None => self.rows.push((id.to_owned(), share)),
+        }
+    }
+
+    /// The turn's stats, summed over its rows in order.
+    fn stats(&self) -> TurnStats {
+        let shares = || self.rows.iter().map(|(_, share)| share);
+        let sum = |pick: fn(&Contribution) -> Option<u64>| {
+            shares().filter_map(pick).fold(None, |sum: Option<u64>, n| {
+                Some(sum.unwrap_or_default() + n)
+            })
+        };
+        let cost = shares()
+            .filter_map(|share| share.cost)
+            .fold(None, |sum: Option<f64>, c| {
+                Some(sum.unwrap_or_default() + c)
+            });
+        TurnStats {
+            duration: duration(
+                shares().map(|share| share.created).min(),
+                shares().map(|share| share.end).max(),
+            ),
+            message_count: self.rows.len(),
+            tokens: sum(|share| share.tokens),
+            cost,
+        }
+    }
 }
 
 /// Incremental OpenCode turn assembler.
@@ -118,10 +172,18 @@ pub struct Assembler {
     cwd: Option<PathBuf>,
     turns: Vec<Arc<Turn>>,
     cur: Option<Builder>,
+    /// The builders of the Assistant turns that are no longer the current
+    /// one, kept for rows updated in place after a later turn began. Their
+    /// `index` is empty and rebuilt from the turn when needed.
+    archived: HashMap<usize, Builder>,
+    /// The index in `turns` of the turn each `user` and `assistant` row went
+    /// into.
+    row_turn: HashMap<String, usize>,
     dirty: BTreeSet<usize>,
     /// How many of `turns` `take_updates` has handed out.
     sent_len: usize,
-    unparsed: usize,
+    /// The ids of the rows whose `data` could not be parsed.
+    unparsed: BTreeSet<String>,
     held: Vec<InjectedEntry>,
     held_key: Option<String>,
     /// Whether the last User turn already received entries flushed after its
@@ -144,9 +206,11 @@ impl Assembler {
             cwd: None,
             turns: Vec::new(),
             cur: None,
+            archived: HashMap::new(),
+            row_turn: HashMap::new(),
             dirty: BTreeSet::new(),
             sent_len: 0,
-            unparsed: 0,
+            unparsed: BTreeSet::new(),
             held: Vec::new(),
             held_key: None,
             user_flushed: false,
@@ -168,7 +232,7 @@ impl Assembler {
 
     /// How many rows were skipped because their `data` could not be parsed.
     pub fn unparsed_count(&self) -> usize {
-        self.unparsed
+        self.unparsed.len()
     }
 
     /// Declares the end of the input: injected entries still waiting go into
@@ -253,9 +317,12 @@ impl Assembler {
             ))
         };
         match parsed {
-            Ok(data) => Some(data),
+            Ok(data) => {
+                self.unparsed.remove(&row.id);
+                Some(data)
+            }
             Err(err) => {
-                self.unparsed += 1;
+                self.unparsed.insert(row.id.clone());
                 log::warn!(
                     "session_message {} (seq {}, type {}): skipped, {err}",
                     row.id,
@@ -281,7 +348,9 @@ impl Assembler {
 
     /// Starts a User turn; held injected entries become its first item.
     fn start_user_turn(&mut self, id: TurnId, timestamp: DateTime<Utc>, text: Option<String>) {
-        self.cur = None;
+        self.archive_current();
+        self.row_turn
+            .insert(id.as_str().to_owned(), self.turns.len());
         self.user_flushed = false;
         let items = take_held(&mut self.held, &mut self.held_key)
             .into_iter()
@@ -338,20 +407,9 @@ impl Assembler {
     fn on_assistant(&mut self, row: &Row, data: AssistantData) {
         self.flush_current();
         let held_item = take_held(&mut self.held, &mut self.held_key);
-        let time = data.time.unwrap_or_default();
+        let time = data.time.clone().unwrap_or_default();
         let created = time.created.unwrap_or(row.created);
-        let model = data
-            .model
-            .as_ref()
-            .and_then(|m| m.id.clone())
-            .unwrap_or_default();
-        let effort = data
-            .model
-            .as_ref()
-            .and_then(|m| m.variant.as_deref())
-            .map(str::trim)
-            .filter(|v| !v.is_empty() && *v != DEFAULT_VARIANT)
-            .map(str::to_owned);
+        let model = model_id(&data);
 
         let mut b = match self.cur.take() {
             Some(b) => b,
@@ -365,46 +423,67 @@ impl Assembler {
                     items: Vec::new(),
                     stats: None,
                 })));
-                Builder {
-                    idx,
-                    index: HashMap::new(),
-                    last_model: model.clone(),
-                    rows: 0,
-                    tokens: None,
-                    cost: None,
-                    first_created: None,
-                    last_end: None,
-                }
+                Builder::new(idx, &model)
             }
         };
+        self.row_turn.insert(row.id.clone(), b.idx);
+        self.apply_assistant(&mut b, row, data, held_item, true);
+        self.dirty.insert(b.idx);
+        self.cur = Some(b);
+    }
+
+    /// Adds (or, for a row seen before, replaces) the contribution of an
+    /// assistant row to the turn of `b`. `new`: the row is the next one in
+    /// `seq` order; it may change the turn's model, which an update of an
+    /// older row does not.
+    fn apply_assistant(
+        &mut self,
+        b: &mut Builder,
+        row: &Row,
+        data: AssistantData,
+        held_item: Option<Item>,
+        new: bool,
+    ) {
+        let time = data.time.clone().unwrap_or_default();
+        let created = time.created.unwrap_or(row.created);
+        let model = model_id(&data);
+        let effort = data
+            .model
+            .as_ref()
+            .and_then(|m| m.variant.as_deref())
+            .map(str::trim)
+            .filter(|v| !v.is_empty() && *v != DEFAULT_VARIANT)
+            .map(str::to_owned);
 
         let items: Vec<Item> = data
             .content
+            .as_deref()
             .unwrap_or_default()
             .iter()
             .enumerate()
             .filter_map(|(i, part)| self.part_item(part, row, i))
             .collect();
-        b.rows += 1;
-        if let Some(tokens) = &data.tokens {
-            let total = tokens.input.unwrap_or_default() + tokens.output.unwrap_or_default();
-            b.tokens = Some(b.tokens.unwrap_or_default() + total);
-        }
-        if let Some(cost) = data.cost {
-            b.cost = Some(b.cost.unwrap_or_default() + cost);
-        }
-        b.first_created = Some(b.first_created.map_or(created, |first| first.min(created)));
-        let end = time.completed.or(time.streamed).unwrap_or(created);
-        b.last_end = Some(b.last_end.map_or(end, |last| last.max(end)));
+        b.contribute(
+            &row.id,
+            Contribution {
+                created,
+                end: time.completed.or(time.streamed).unwrap_or(created),
+                tokens: data
+                    .tokens
+                    .as_ref()
+                    .map(|t| t.input.unwrap_or_default() + t.output.unwrap_or_default()),
+                cost: data.cost,
+            },
+        );
 
         if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[b.idx]) {
             if let Some(item) = held_item {
-                upsert(turn, &mut b, item);
+                upsert(turn, b, item);
             }
             if turn.effort.is_none() && effort.is_some() {
                 turn.effort = effort;
             }
-            if !model.is_empty() {
+            if new && !model.is_empty() {
                 if turn.model.is_empty() {
                     turn.model.clone_from(&model);
                 } else if model != b.last_model {
@@ -412,22 +491,95 @@ impl Assembler {
                         id: ItemId::from(format!("model:{}", row.id)),
                         model: model.clone(),
                     };
-                    upsert(turn, &mut b, item);
+                    upsert(turn, b, item);
                 }
                 b.last_model = model;
             }
             for item in items {
-                upsert(turn, &mut b, item);
+                upsert(turn, b, item);
             }
-            turn.stats = Some(TurnStats {
-                duration: duration(b.first_created, b.last_end),
-                message_count: b.rows,
-                tokens: b.tokens,
-                cost: b.cost,
-            });
+            turn.stats = Some(b.stats());
         }
-        self.dirty.insert(b.idx);
-        self.cur = Some(b);
+    }
+
+    /// Moves the current Assistant builder (if any) to the archive.
+    fn archive_current(&mut self) {
+        if let Some(mut b) = self.cur.take() {
+            b.index = HashMap::new();
+            self.archived.insert(b.idx, b);
+        }
+    }
+
+    /// Feeds a row that was fed before and has changed in place (OpenCode
+    /// updates a streaming message's `data` and `time_updated`). The turn the
+    /// row went into is rebuilt from its new content: items keep their ids
+    /// and positions (parts that are new are added at the end of the turn), a
+    /// replaced tool part keeps its place, and the turn's stats count the row
+    /// once. Rows that were not fed before are ignored: feed those with
+    /// [`push_row`](Self::push_row), in `seq` order.
+    pub fn replace_row(&mut self, row: &Row) {
+        let Some(&idx) = self.row_turn.get(&row.id) else {
+            log::debug!(
+                "session_message {} was not seen before; not replaced",
+                row.id
+            );
+            return;
+        };
+        match row.kind.as_str() {
+            "user" => {
+                let Some(data) = self.parse::<UserData>(row) else {
+                    return;
+                };
+                if let Turn::User(turn) = Arc::make_mut(&mut self.turns[idx]) {
+                    turn.timestamp = timestamp(data.time.as_ref(), row);
+                    turn.text = data.text.unwrap_or_default();
+                    self.dirty.insert(idx);
+                }
+            }
+            "assistant" => {
+                let Some(data) = self.parse::<AssistantData>(row) else {
+                    return;
+                };
+                let Some((mut b, current)) = self.take_builder(idx) else {
+                    return;
+                };
+                self.apply_assistant(&mut b, row, data, None, false);
+                self.dirty.insert(idx);
+                self.put_builder(b, current);
+            }
+            // Injected rows are not tracked; they do not stream.
+            _ => {}
+        }
+    }
+
+    /// The builder of the Assistant turn `idx`, with its index of items, and
+    /// whether it was the current one.
+    fn take_builder(&mut self, idx: usize) -> Option<(Builder, bool)> {
+        let current = self.cur.as_ref().is_some_and(|b| b.idx == idx);
+        let mut b = if current {
+            self.cur.take()?
+        } else {
+            self.archived.remove(&idx)?
+        };
+        if let Turn::Assistant(turn) = &*self.turns[idx] {
+            b.index = turn
+                .items
+                .iter()
+                .enumerate()
+                .map(|(pos, item)| (item.id().clone(), pos))
+                .collect();
+        }
+        Some((b, current))
+    }
+
+    /// Puts back a builder taken by [`take_builder`](Self::take_builder).
+    fn put_builder(&mut self, mut b: Builder, current: bool) {
+        if current {
+            self.cur = Some(b);
+        } else {
+            b.index = HashMap::new();
+            self.archived.insert(b.idx, b);
+        }
     }
 
     /// The item of content part `index` of `row`; `None` for a part that
@@ -558,6 +710,14 @@ fn upsert(turn: &mut AssistantTurn, b: &mut Builder, item: Item) {
     }
 }
 
+/// The model id of an assistant row's data; empty without one.
+fn model_id(data: &AssistantData) -> String {
+    data.model
+        .as_ref()
+        .and_then(|m| m.id.clone())
+        .unwrap_or_default()
+}
+
 fn timestamp(time: Option<&Time>, row: &Row) -> DateTime<Utc> {
     millis(time.and_then(|t| t.created).unwrap_or(row.created))
 }
@@ -573,5 +733,190 @@ fn duration(first: Option<i64>, last: Option<i64>) -> Duration {
             Duration::from_millis(u64::try_from(last - first).unwrap_or_default())
         }
         _ => Duration::ZERO,
+    }
+}
+
+#[cfg(test)]
+mod replace_tests {
+    use super::*;
+
+    fn user(id: &str, seq: i64, text: &str) -> Row {
+        Row {
+            id: id.to_owned(),
+            kind: "user".to_owned(),
+            seq,
+            created: 1_000 * seq,
+            updated: 1_000 * seq,
+            data: format!(
+                r#"{{"time":{{"created":{}}},"text":"{text}"}}"#,
+                1_000 * seq
+            ),
+        }
+    }
+
+    /// An assistant row with one text part, a tool part in state `status`
+    /// and `tokens` output tokens.
+    fn assistant(id: &str, seq: i64, text: &str, status: &str, tokens: u64) -> Row {
+        let result = if status == "completed" {
+            r#","content":[{"type":"text","text":"done"}]"#
+        } else {
+            ""
+        };
+        Row {
+            id: id.to_owned(),
+            kind: "assistant".to_owned(),
+            seq,
+            created: 1_000 * seq,
+            updated: 1_000 * seq,
+            data: format!(
+                r#"{{"time":{{"created":{c},"completed":{e}}},"model":{{"id":"m"}},"content":[{{"type":"text","text":"{text}"}},{{"type":"tool","id":"call-{id}","name":"shell","state":{{"status":"{status}","input":{{"command":"ls"}}{result}}}}}],"cost":0.5,"tokens":{{"input":10,"output":{tokens}}}}}"#,
+                c = 1_000 * seq,
+                e = 1_000 * seq + 500,
+            ),
+        }
+    }
+
+    fn assemble(rows: &[Row]) -> Vec<Arc<Turn>> {
+        let mut asm = Assembler::new();
+        for row in rows {
+            asm.push_row(row);
+        }
+        asm.into_turns()
+    }
+
+    fn updated_ids(updates: &[ModelUpdate]) -> Vec<String> {
+        updates
+            .iter()
+            .filter_map(|u| match u {
+                ModelUpdate::Updated(turns) => Some(turns),
+                _ => None,
+            })
+            .flatten()
+            .map(|t| t.id().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn a_streamed_row_replaced_in_place_equals_a_fresh_assembly_of_the_final_rows() {
+        let rows = [
+            user("u1", 1, "go"),
+            assistant("a1", 2, "first", "completed", 5),
+            assistant("a2", 3, "second", "pending", 1),
+        ];
+        let mut asm = Assembler::new();
+        for row in &rows {
+            asm.push_row(row);
+        }
+        asm.finish();
+        let _ = asm.take_updates();
+
+        let grown = assistant("a2", 3, "second, longer", "completed", 40);
+        asm.replace_row(&grown);
+        let updates = asm.take_updates();
+        assert_eq!(updated_ids(&updates), ["a1"], "{updates:?}");
+        assert_eq!(updates.len(), 1);
+
+        let expected = assemble(&[rows[0].clone(), rows[1].clone(), grown]);
+        assert_eq!(asm.turns(), expected.as_slice());
+        let Turn::Assistant(turn) = &*asm.turns()[1] else {
+            panic!("an assistant turn")
+        };
+        // The replaced row counts once: two rows, 15 + 50 tokens.
+        let stats = turn.stats.as_ref().unwrap();
+        assert_eq!(stats.message_count, 2);
+        assert_eq!(stats.tokens, Some(65));
+        assert_eq!(stats.cost, Some(1.0));
+        // The items keep their ids: the pending tool call is now complete.
+        let ids: Vec<&str> = turn.items.iter().map(|i| i.id().as_str()).collect();
+        assert_eq!(ids, ["a1:0", "call-a1", "a2:0", "call-a2"]);
+    }
+
+    #[test]
+    fn rows_pushed_after_a_replacement_still_extend_the_current_turn() {
+        let mut asm = Assembler::new();
+        asm.push_row(&user("u1", 1, "go"));
+        asm.push_row(&assistant("a1", 2, "x", "pending", 1));
+        asm.finish();
+        let _ = asm.take_updates();
+        asm.replace_row(&assistant("a1", 2, "xy", "completed", 2));
+        asm.push_row(&assistant("a2", 3, "z", "completed", 3));
+        asm.push_row(&user("u2", 4, "again"));
+        asm.finish();
+        let expected = assemble(&[
+            user("u1", 1, "go"),
+            assistant("a1", 2, "xy", "completed", 2),
+            assistant("a2", 3, "z", "completed", 3),
+            user("u2", 4, "again"),
+        ]);
+        assert_eq!(asm.turns(), expected.as_slice());
+    }
+
+    #[test]
+    fn a_row_of_an_earlier_turn_can_be_replaced_after_a_later_turn_began() {
+        let rows = [
+            user("u1", 1, "go"),
+            assistant("a1", 2, "old", "pending", 1),
+            user("u2", 3, "next"),
+            assistant("a2", 4, "new", "completed", 2),
+        ];
+        let mut asm = Assembler::new();
+        for row in &rows {
+            asm.push_row(row);
+        }
+        asm.finish();
+        let _ = asm.take_updates();
+
+        let late = assistant("a1", 2, "old, finished", "completed", 9);
+        asm.replace_row(&late);
+        let updates = asm.take_updates();
+        assert_eq!(updated_ids(&updates), ["a1"], "{updates:?}");
+        let expected = assemble(&[
+            rows[0].clone(),
+            late.clone(),
+            rows[2].clone(),
+            rows[3].clone(),
+        ]);
+        assert_eq!(asm.turns(), expected.as_slice());
+
+        // And again, and the current turn is still extended afterwards.
+        let later = assistant("a1", 2, "old, finished twice", "completed", 9);
+        asm.replace_row(&later);
+        asm.push_row(&assistant("a3", 5, "more", "completed", 1));
+        asm.finish();
+        let expected = assemble(&[
+            rows[0].clone(),
+            later,
+            rows[2].clone(),
+            rows[3].clone(),
+            assistant("a3", 5, "more", "completed", 1),
+        ]);
+        assert_eq!(asm.turns(), expected.as_slice());
+    }
+
+    #[test]
+    fn a_user_row_replaced_changes_its_text_and_keeps_its_id() {
+        let mut asm = Assembler::new();
+        asm.push_row(&user("u1", 1, "draft"));
+        asm.finish();
+        let _ = asm.take_updates();
+        asm.replace_row(&user("u1", 1, "final"));
+        let updates = asm.take_updates();
+        assert_eq!(updated_ids(&updates), ["u1"]);
+        let Turn::User(turn) = &*asm.turns()[0] else {
+            panic!("a user turn")
+        };
+        assert_eq!(turn.text, "final");
+        assert_eq!(asm.turns().len(), 1);
+    }
+
+    #[test]
+    fn a_row_that_was_never_fed_is_not_replaced() {
+        let mut asm = Assembler::new();
+        asm.push_row(&user("u1", 1, "hi"));
+        asm.finish();
+        let _ = asm.take_updates();
+        asm.replace_row(&assistant("a9", 9, "ghost", "completed", 1));
+        assert!(asm.take_updates().is_empty());
+        assert_eq!(asm.turns().len(), 1);
     }
 }

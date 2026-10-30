@@ -8,8 +8,8 @@
 //! rows read). The stream ends with `Progress(1.0)`,
 //! [`ModelUpdate::ParseWarnings`], [`ModelUpdate::Loaded`] and an
 //! [`ModelUpdate::Activity`] with the session's `time_updated` and idleness.
-//! Watching the session for new rows is not done here (task 029): the worker
-//! ends after the initial load.
+//! The worker then keeps the session live (modules `watch` and `follow`)
+//! until it is stopped.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,6 +23,8 @@ use rusqlite::types::ValueRef;
 use super::assemble::{Assembler, Row};
 use super::db::Db;
 use super::discovery::connect;
+use super::follow::{Cursor, Follower};
+use super::watch;
 use crate::harness::Result;
 use crate::model::{ModelUpdate, SessionId};
 
@@ -37,6 +39,16 @@ pub(super) struct Job {
     pub stop: Arc<AtomicBool>,
     pub page_size: usize,
     pub warned: Arc<AtomicBool>,
+    pub mode: WatchMode,
+}
+
+/// How the worker learns that the database changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WatchMode {
+    /// A `notify` watch; polling when it cannot be started.
+    Notify,
+    /// Polling only (a test seam for "watching is unavailable").
+    Poll,
 }
 
 /// The worker's body. Never panics on bad input: a session that cannot be
@@ -56,8 +68,9 @@ struct SessionInfo {
     idle: Option<i64>,
 }
 
-/// Reads and streams the session. `Ok` also when the worker was stopped or
-/// the receiver is gone; an error when the session cannot be found or read.
+/// Reads and streams the session, then keeps it live. `Ok` also when the
+/// worker was stopped or the receiver is gone; an error when the session
+/// cannot be found or read.
 fn stream(job: &Job) -> Result<()> {
     let db = connect(&job.db_path, &job.warned)?;
     let id = job.session.as_str();
@@ -83,6 +96,7 @@ fn stream(job: &Job) -> Result<()> {
         .unwrap_or_default()
         .max(0) as f64;
 
+    let mut cursor = Cursor::default();
     let mut asm = Assembler::new();
     if !info.directory.is_empty() {
         asm = asm.with_cwd(&info.directory);
@@ -97,6 +111,7 @@ fn stream(job: &Job) -> Result<()> {
         let rows = fetch_page(&db, id, after, job.page_size)?;
         for row in &rows {
             asm.push_row(row);
+            cursor.note(row);
         }
         let Some(last) = rows.last() else { break };
         after = last.seq;
@@ -129,21 +144,27 @@ fn stream(job: &Job) -> Result<()> {
         (progress < 1.0).then_some(ModelUpdate::Progress(1.0)),
         Some(ModelUpdate::ParseWarnings(asm.unparsed_count())),
         Some(ModelUpdate::Loaded),
-        Some(ModelUpdate::Activity {
-            last_modified: UNIX_EPOCH
-                + Duration::from_millis(u64::try_from(info.updated).unwrap_or(0)),
-            idle: Some(info.idle.is_some()),
-        }),
+        Some(activity_update(info.updated, info.idle)),
     ];
     for update in tail.into_iter().flatten() {
         if job.tx.send(update).is_err() {
-            break;
+            return Ok(());
         }
     }
+    let follower = Follower::new(job, db, asm, cursor, (info.updated, info.idle));
+    watch::run(job, follower);
     Ok(())
 }
 
-fn send_all(tx: &Sender<ModelUpdate>, updates: Vec<ModelUpdate>) -> bool {
+/// The `Activity` for a session row's `time_updated` and `time_idle`.
+pub(super) fn activity_update(updated: i64, idle: Option<i64>) -> ModelUpdate {
+    ModelUpdate::Activity {
+        last_modified: UNIX_EPOCH + Duration::from_millis(u64::try_from(updated).unwrap_or(0)),
+        idle: Some(idle.is_some()),
+    }
+}
+
+pub(super) fn send_all(tx: &Sender<ModelUpdate>, updates: Vec<ModelUpdate>) -> bool {
     updates.into_iter().all(|update| tx.send(update).is_ok())
 }
 
@@ -152,19 +173,28 @@ fn send_all(tx: &Sender<ModelUpdate>, updates: Vec<ModelUpdate>) -> bool {
 pub(super) fn fetch_page(db: &Db, session: &str, after: i64, limit: usize) -> Result<Vec<Row>> {
     let limit = i64::try_from(limit).unwrap_or(i64::MAX);
     db.select(
-        "SELECT id, type, seq, time_created, data FROM session_message \
-         WHERE session_id = ?1 AND seq > ?2 ORDER BY seq LIMIT ?3",
+        &format!(
+            "SELECT {ROW_COLUMNS} FROM session_message \
+             WHERE session_id = ?1 AND seq > ?2 ORDER BY seq LIMIT ?3"
+        ),
         rusqlite::params![session, after, limit],
-        |row| {
-            Ok(Row {
-                id: row.get(0)?,
-                kind: row.get(1)?,
-                seq: row.get(2)?,
-                created: row.get(3)?,
-                data: text_at(row, 4)?,
-            })
-        },
+        read_row,
     )
+}
+
+/// The columns [`read_row`] reads.
+pub(super) const ROW_COLUMNS: &str = "id, type, seq, time_created, time_updated, data";
+
+/// A `session_message` row selected with [`ROW_COLUMNS`].
+pub(super) fn read_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
+    Ok(Row {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        seq: row.get(2)?,
+        created: row.get(3)?,
+        updated: row.get(4)?,
+        data: text_at(row, 5)?,
+    })
 }
 
 /// Column `index` as text. OpenCode stores JSON as text, but a blob is read

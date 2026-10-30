@@ -14,7 +14,7 @@ use chrono::DateTime;
 
 use super::assemble::millis;
 use super::db::{Db, NEWEST_KNOWN_MIGRATION, wal_path};
-use super::load;
+use super::load::{self, WatchMode};
 use super::location::default_db_path;
 use super::subagent;
 use crate::config::Config;
@@ -44,6 +44,7 @@ pub struct OpenCodeHarness {
     aliases: BTreeMap<PathBuf, String>,
     resume_command: String,
     page_size: usize,
+    watch_mode: WatchMode,
     state: Mutex<Option<Arc<Index>>>,
     /// Whether the newer-schema warning has been logged (once per harness,
     /// however many connections it opens).
@@ -74,6 +75,7 @@ impl OpenCodeHarness {
             aliases,
             resume_command: DEFAULT_RESUME_COMMAND.to_owned(),
             page_size: load::PAGE_SIZE,
+            watch_mode: WatchMode::Notify,
             state: Mutex::new(None),
             warned: Arc::new(AtomicBool::new(false)),
         }
@@ -92,6 +94,16 @@ impl OpenCodeHarness {
     #[must_use]
     pub(crate) fn with_page_size(mut self, rows: usize) -> Self {
         self.page_size = rows.max(1);
+        self
+    }
+
+    /// Makes [`load`](Harness::load) poll the session every second instead of
+    /// watching the database with `notify`, as it does when watching cannot
+    /// be started. Meant for tests.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_polling(mut self) -> Self {
+        self.watch_mode = WatchMode::Poll;
         self
     }
 
@@ -200,6 +212,12 @@ impl Harness for OpenCodeHarness {
         vec![self.db_path.clone(), wal_path(&self.db_path)]
     }
 
+    /// Both are files, and the log comes and goes as OpenCode opens and
+    /// closes the database: the index watches their directory.
+    fn watch_files(&self) -> Vec<PathBuf> {
+        self.watch_paths()
+    }
+
     /// Builds the index first when there is none. A missing database gives no
     /// projects.
     fn projects(&self) -> Result<Vec<Project>> {
@@ -249,7 +267,8 @@ impl Harness for OpenCodeHarness {
     }
 
     /// Returns at once: a worker thread reads the session's rows in pages
-    /// and streams the turns. A session that cannot be found or read ends in
+    /// and streams the turns, then watches the database (module `watch`) and
+    /// sends what changes. A session that cannot be found or read ends in
     /// [`ModelUpdate::Loaded`] with the error logged, not in an `Err`.
     fn load(&self, session: &SessionId, tx: Sender<ModelUpdate>) -> Result<WatchHandle> {
         let stop = Arc::new(AtomicBool::new(false));
@@ -260,6 +279,7 @@ impl Harness for OpenCodeHarness {
             stop: Arc::clone(&stop),
             page_size: self.page_size,
             warned: Arc::clone(&self.warned),
+            mode: self.watch_mode,
         };
         let thread = std::thread::Builder::new()
             .name("opencode-load".to_owned())

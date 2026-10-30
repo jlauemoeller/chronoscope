@@ -42,6 +42,15 @@ pub trait Harness: Send + Sync {
     /// The index worker watches them to know when to [`refresh`](Self::refresh).
     fn watch_paths(&self) -> Vec<PathBuf>;
 
+    /// Those of [`watch_paths`](Self::watch_paths) that are individual files
+    /// (the default: none). The index worker watches such a file through its
+    /// directory, non-recursively, and reacts to events about the file's name
+    /// only, because the file may be created, replaced or removed (SQLite's
+    /// `-wal` file is), which would end a watch on the file itself.
+    fn watch_files(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+
     /// The projects, sorted by most recent activity, newest first.
     fn projects(&self) -> Result<Vec<Project>>;
 
