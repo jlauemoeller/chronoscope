@@ -5,8 +5,8 @@ use ratatui::text::{Line, Span};
 use serde_json::Value;
 
 use super::{
-    Block, Body, SectionCtx, ToolBodyRenderer, compact_json, limit, path_of, result_block,
-    text_block, truncate_lines,
+    Block, Body, SectionCtx, ToolBodyRenderer, compact_json, limit, muted_block, path_of,
+    result_block, text_block, unavailable_block,
 };
 use crate::markdown::char_wrap;
 use crate::model::{ToolCall, ToolStatus};
@@ -25,17 +25,25 @@ use crate::theme::Token;
 #[derive(Debug, Clone, Copy)]
 pub struct ReadBody;
 
-/// The `(lines a–b)` note for the input's `offset` / `limit`.
-fn range_note(input: &Value) -> Option<String> {
+/// The `(lines a–b)` note for the input's `offset` / `limit`. `last` is the
+/// last line number the result holds, when it is known: the range does not
+/// run past it. Nothing is said about a plain read from line 1.
+fn range_note(input: &Value, last: Option<usize>) -> Option<String> {
     let number = |key: &str| input.get(key).and_then(Value::as_u64).filter(|n| *n > 0);
-    let offset = number("offset");
-    let limit = number("limit");
-    match (offset, limit) {
-        (None, None) => None,
-        (Some(a), Some(n)) => Some(format!(" (lines {a}–{})", a + n - 1)),
-        (None, Some(n)) => Some(format!(" (lines 1–{n})")),
-        (Some(a), None) => Some(format!(" (from line {a})")),
+    let (offset, limit) = (number("offset"), number("limit"));
+    if limit.is_none() && offset.is_none_or(|a| a == 1) {
+        return None;
     }
+    let start = offset.unwrap_or(1);
+    let requested = limit.map(|n| start.saturating_add(n).saturating_sub(1));
+    let end = match (requested, last.and_then(|l| u64::try_from(l).ok())) {
+        (Some(r), Some(l)) => Some(r.min(l)),
+        (r, l) => r.or(l),
+    };
+    Some(match end {
+        Some(end) => format!(" (lines {start}–{end})"),
+        None => format!(" (from line {start})"),
+    })
 }
 
 /// `   12→text` or `12<TAB>text` as the number and the text.
@@ -53,7 +61,9 @@ fn parse_numbered(line: &str) -> Option<(usize, &str)> {
 /// The lines of `text` with their numbers.
 fn numbered(text: &str, offset: usize) -> Vec<(Option<usize>, &str)> {
     let lines: Vec<&str> = text.lines().collect();
-    if lines.first().and_then(|l| parse_numbered(l)).is_some() {
+    // The first non-blank line decides whether the output carries numbers.
+    let first = lines.iter().find(|l| !l.trim().is_empty());
+    if first.and_then(|l| parse_numbered(l)).is_some() {
         return lines
             .into_iter()
             .map(|line| match parse_numbered(line) {
@@ -65,7 +75,7 @@ fn numbered(text: &str, offset: usize) -> Vec<(Option<usize>, &str)> {
     lines
         .into_iter()
         .enumerate()
-        .map(|(i, line)| (Some(offset + i), line))
+        .map(|(i, line)| (Some(offset.saturating_add(i)), line))
         .collect()
 }
 
@@ -112,28 +122,43 @@ fn gutter_rows(
 impl ToolBodyRenderer for ReadBody {
     fn body(&self, call: &ToolCall, ctx: &SectionCtx<'_>) -> Body {
         let command = ctx.theme.style(Token::Command);
-        let mut path = match path_of(&call.input) {
+        let path = match path_of(&call.input) {
             Some(path) => path.to_owned(),
             None => compact_json(&call.input),
         };
-        path.push_str(&range_note(&call.input).unwrap_or_default());
-        let path_block = text_block("Path:", &path, command, ctx);
+        let path_block = |note: Option<String>| {
+            let path = format!("{path}{}", note.unwrap_or_default());
+            text_block("Path:", &path, command, ctx)
+        };
 
         // Only a finished, successful read has file content to number. A
-        // pending, failed, empty or unreadable result reads like any other.
-        let text = call
+        // pending or failed one reads like any other result.
+        let readable = call
             .result
             .as_ref()
-            .filter(|r| call.status == ToolStatus::Ok && !r.is_error)
-            .and_then(|r| r.output.text().ok())
-            .filter(|text| !text.trim().is_empty());
-        let Some(text) = text else {
+            .filter(|r| call.status == ToolStatus::Ok && !r.is_error);
+        let Some(result) = readable else {
             let (block, remaining) = result_block("Content:", call, ctx);
             return Body {
-                blocks: vec![path_block, block],
+                blocks: vec![path_block(range_note(&call.input, None)), block],
                 remaining,
                 hint: None,
             };
+        };
+        // The output is read once; its error or emptiness is shown as such.
+        let text = match result.output.text() {
+            Ok(text) if !text.trim().is_empty() => text,
+            other => {
+                let (block, remaining) = match other {
+                    Ok(_) => (muted_block("Content:", "(no output)", ctx), None),
+                    Err(err) => (unavailable_block("Content:", call, &err, ctx), None),
+                };
+                return Body {
+                    blocks: vec![path_block(range_note(&call.input, None)), block],
+                    remaining,
+                    hint: None,
+                };
+            }
         };
         let offset = call
             .input
@@ -142,12 +167,19 @@ impl ToolBodyRenderer for ReadBody {
             .filter(|n| *n > 0)
             .and_then(|n| usize::try_from(n).ok())
             .unwrap_or(1);
-        let (shown, cut) = truncate_lines(&text, limit(ctx));
-        let lines = numbered(shown, offset);
-        let rows = gutter_rows(&lines, ctx, ctx.muted(), ctx.theme.style(Token::Output));
+        let all = numbered(&text, offset);
+        let last = all.iter().rev().find_map(|(n, _)| *n);
+        let max = limit(ctx);
+        let cut = all.len().saturating_sub(max);
+        let rows = gutter_rows(
+            &all[..all.len().min(max)],
+            ctx,
+            ctx.muted(),
+            ctx.theme.style(Token::Output),
+        );
         Body {
             blocks: vec![
-                path_block,
+                path_block(range_note(&call.input, last)),
                 Block {
                     label: "Content:",
                     lines: rows,
@@ -219,7 +251,7 @@ mod tests {
             Some("alpha\nbeta\ngamma"),
         );
         let rows = section(&call, &theme, 60);
-        assert_eq!(rows[4], "     /a.txt (from line 98)");
+        assert_eq!(rows[4], "     /a.txt (lines 98–100)");
         assert_eq!(
             &rows[8..],
             ["      98  alpha", "      99  beta", "     100  gamma"]
@@ -331,5 +363,86 @@ mod tests {
         let body = ReadBody.body(&call, &ctx);
         assert_eq!(body.blocks[1].lines.len(), 4);
         assert_eq!(body.remaining, Some(6));
+    }
+
+    #[test]
+    fn huge_offsets_and_limits_do_not_overflow() {
+        let theme = theme();
+        let both = call(
+            ToolKind::Read,
+            json!({"file_path": "/a", "offset": u64::MAX, "limit": u64::MAX}),
+            Some("x\ny"),
+        );
+        let rows = section(&both, &theme, 60);
+        assert!(rows[4].starts_with("     /a (lines "), "{rows:?}");
+        let only_offset = call(
+            ToolKind::Read,
+            json!({"file_path": "/a", "offset": u64::MAX}),
+            Some("x\ny"),
+        );
+        assert_eq!(section(&only_offset, &theme, 60).len(), 10);
+    }
+
+    #[test]
+    fn the_range_does_not_run_past_the_lines_returned() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Read,
+            json!({"file_path": "/a", "limit": 2000}),
+            Some("     1→a\n     2→b\n     3→c"),
+        );
+        assert_eq!(section(&call, &theme, 60)[4], "     /a (lines 1–3)");
+    }
+
+    #[test]
+    fn a_read_from_line_one_without_a_limit_has_no_note() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Read,
+            json!({"file_path": "/a", "offset": 1}),
+            Some("x"),
+        );
+        assert_eq!(section(&call, &theme, 60)[4], "     /a");
+    }
+
+    #[test]
+    fn numbering_is_detected_past_a_leading_unnumbered_line() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Read,
+            json!({"file_path": "/a"}),
+            Some("\n     5→x\n     6→y"),
+        );
+        let rows = section(&call, &theme, 60);
+        assert_eq!(&rows[8..], ["", "     5  x", "     6  y"]);
+    }
+
+    #[test]
+    fn an_unreadable_output_is_read_once_and_reported() {
+        use crate::model::{ByteSource, LineFormat, OutputSource, ToolOutput, ToolResult};
+        let theme = theme();
+        let mut call = call(ToolKind::Read, json!({"file_path": "/a"}), Some("x"));
+        call.result = Some(ToolResult {
+            output: ToolOutput::lazy(
+                1,
+                9,
+                OutputSource {
+                    bytes: ByteSource::Memory(std::sync::Arc::from(&b"{}"[..])),
+                    range: 0..2,
+                    format: LineFormat::Claude,
+                    call_id: "c1".into(),
+                },
+            ),
+            is_error: false,
+        });
+        let before = crate::model::text_calls();
+        let body = body(&call, &theme, 60);
+        assert_eq!(crate::model::text_calls() - before, 1);
+        let line = &body.blocks[1].lines[0];
+        assert!(line.to_string().starts_with("(output unavailable:"));
+        assert_eq!(
+            line.spans[0].style.fg,
+            Some(color(&theme, Role::Destructive))
+        );
     }
 }

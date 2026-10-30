@@ -7,11 +7,14 @@ use similar::{ChangeTag, TextDiff};
 
 use super::{
     Block, Body, SectionCtx, ToolBodyRenderer, compact_json, limit, muted_block, path_of,
-    text_block,
+    text_block, with_status_result,
 };
 use crate::markdown::char_wrap;
 use crate::model::ToolCall;
 use crate::theme::Token;
+
+/// How long one diff may take before it settles for a correct but larger one.
+const DIFF_DEADLINE: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Context lines around a change.
 const CONTEXT: usize = 3;
@@ -19,7 +22,9 @@ const CONTEXT: usize = 3;
 /// `Path:` with the path, then `Diff:` with a unified diff (3 context lines)
 /// of `old_string` to `new_string`; a MultiEdit lists its edits in turn. `@@`
 /// hunk headers are in `muted_foreground`, `+` lines in `diff_added`, `-`
-/// lines in `diff_removed` and context lines in `output`.
+/// lines in `diff_removed` and context lines in `output`. A failed or pending
+/// call also shows its `Result:` (error text in `error_output`, or
+/// `(pending)`).
 #[derive(Debug, Clone, Copy)]
 pub struct EditBody;
 
@@ -53,7 +58,9 @@ fn edits(input: &Value) -> Vec<(&str, &str)> {
 fn diff_rows(edits: &[(&str, &str)]) -> Vec<(Kind, String)> {
     let mut rows = Vec::new();
     for (old, new) in edits {
-        let diff = TextDiff::from_lines(*old, *new);
+        let diff = TextDiff::configure()
+            .timeout(DIFF_DEADLINE)
+            .diff_lines(*old, *new);
         for hunk in diff.unified_diff().context_radius(CONTEXT).iter_hunks() {
             rows.push((Kind::Header, hunk.header().to_string()));
             for change in hunk.iter_changes() {
@@ -79,10 +86,11 @@ impl ToolBodyRenderer for EditBody {
         let path_block = text_block("Path:", &path, ctx.theme.style(Token::Command), ctx);
         let rows = diff_rows(&edits(&call.input));
         if rows.is_empty() {
-            return Body {
+            let body = Body {
                 blocks: vec![path_block, muted_block("Diff:", "(no changes)", ctx)],
                 ..Body::default()
             };
+            return with_status_result(body, call, ctx);
         }
         let max = limit(ctx);
         let cut = rows.len().saturating_sub(max);
@@ -102,7 +110,7 @@ impl ToolBodyRenderer for EditBody {
             }
             lines.extend(wrapped);
         }
-        Body {
+        let body = Body {
             blocks: vec![
                 path_block,
                 Block {
@@ -112,7 +120,8 @@ impl ToolBodyRenderer for EditBody {
             ],
             remaining: (cut > 0).then_some(cut),
             hint: None,
-        }
+        };
+        with_status_result(body, call, ctx)
     }
 }
 
@@ -121,7 +130,7 @@ mod tests {
     use serde_json::json;
 
     use super::super::testing::*;
-    use super::super::{SectionRenderer, ToolCallSection, ToolKind};
+    use super::super::{SectionRenderer, ToolCallSection, ToolKind, ToolStatus};
     use super::*;
     use crate::theme::Role;
 
@@ -235,5 +244,45 @@ mod tests {
         assert_eq!(body.blocks[1].lines.len(), 5);
         // One header and 40 removed lines.
         assert_eq!(body.remaining, Some(41 - 5));
+    }
+
+    #[test]
+    fn a_failed_edit_shows_its_error_after_the_diff() {
+        let theme = theme();
+        let mut call = edit("a", "b");
+        call.status = ToolStatus::Error;
+        call.result.as_mut().unwrap().output =
+            crate::model::ToolOutput::inline("String to replace not found".into());
+        let rows = section(&call, &theme, 60);
+        assert_eq!(
+            &rows[8..],
+            [
+                "     @@ -1 +1 @@",
+                "     -a",
+                "     +b",
+                "",
+                "  Result:",
+                "",
+                "     String to replace not found",
+            ]
+        );
+        let ctx = SectionCtx::new(&theme, 60, false);
+        let lines = ToolCallSection(&call).lines(&ctx);
+        assert_eq!(
+            fg_of(&lines[14], "String"),
+            Some(color(&theme, Role::Destructive))
+        );
+    }
+
+    #[test]
+    fn a_pending_edit_shows_pending() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Edit,
+            json!({"file_path": "/a", "old_string": "a", "new_string": "b"}),
+            None,
+        );
+        let rows = section(&call, &theme, 60);
+        assert_eq!(rows.last().unwrap(), "     (pending)");
     }
 }

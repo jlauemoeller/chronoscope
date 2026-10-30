@@ -10,7 +10,7 @@ use ratatui::widgets::Widget;
 
 use super::emphasis::emphasize;
 use super::renderers::{DEFAULT_OPEN_KEY, Rendered, SectionCtx, render_section, text_width};
-use super::section::{FoldState, SectionId, derive_sections};
+use super::section::{FoldState, Section, SectionId, derive_sections};
 use super::title::TitleBar;
 use crate::model::Turn;
 use crate::theme::{Role, Theme, Token};
@@ -151,14 +151,7 @@ impl<'a> TurnBlock<'a> {
         let mut rows = vec![blank()];
         let mut spans = Vec::new();
         for section in derive_sections(self.turn, self.show_system) {
-            let ctx = SectionCtx {
-                theme: self.theme,
-                width: text_width,
-                folded: folds.is_folded(&section),
-                truncate: self.truncate,
-                expanded: folds.is_expanded(&section.id),
-                open_key: self.open_key,
-            };
+            let ctx = self.section_ctx(&section, text_width, folds);
             let Rendered { lines, more } = render_section(&section, &ctx);
             if lines.is_empty() {
                 continue;
@@ -176,12 +169,7 @@ impl<'a> TurnBlock<'a> {
             // The truncation row follows its section directly and is a
             // selection stop of its own.
             if let (Some(more), Some(id)) = (more, more_id) {
-                let selected = self.selected == Some(&id);
-                let line =
-                    emphasize(vec![more], selected, self.dim_unselected, self.theme).remove(0);
-                let start = rows.len() + 1;
-                rows.push(BlockRow { line, selected });
-                spans.push((id, start..rows.len() + 1));
+                self.push_more(more, id, &mut rows, &mut spans);
             }
         }
         if !spans.is_empty() {
@@ -191,6 +179,37 @@ impl<'a> TurnBlock<'a> {
             rows,
             sections: spans,
         }
+    }
+
+    fn section_ctx<'s>(
+        &'s self,
+        section: &Section<'_>,
+        width: u16,
+        folds: &FoldState,
+    ) -> SectionCtx<'s> {
+        SectionCtx {
+            theme: self.theme,
+            width,
+            folded: folds.is_folded(section),
+            truncate: self.truncate,
+            expanded: folds.is_expanded(&section.id),
+            open_key: self.open_key,
+        }
+    }
+
+    /// Adds the `… N more lines` row `id` below the section just pushed.
+    fn push_more(
+        &self,
+        line: Line<'static>,
+        id: SectionId,
+        rows: &mut Vec<BlockRow>,
+        spans: &mut Vec<(SectionId, Range<usize>)>,
+    ) {
+        let selected = self.selected == Some(&id);
+        let line = emphasize(vec![line], selected, self.dim_unselected, self.theme).remove(0);
+        let start = rows.len() + 1;
+        rows.push(BlockRow { line, selected });
+        spans.push((id, start..rows.len() + 1));
     }
 
     /// The number of rows the block takes at `width`.

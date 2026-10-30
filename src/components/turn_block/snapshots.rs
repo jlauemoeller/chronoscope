@@ -415,3 +415,24 @@ fn failed_shell_call_at_100_styled() {
     );
     insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &unfolded(&turn), 100)));
 }
+
+#[test]
+fn failed_edit_shows_its_error_below_the_diff_at_100_styled() {
+    let turn = assistant(
+        Some("high"),
+        vec![tool_of(
+            ToolKind::Edit,
+            "c1",
+            "Greet by name",
+            json!({
+                "file_path": "/home/jacob/projects/brio/src/main.rs",
+                "old_string": "println!(\"hello\");\n",
+                "new_string": "println!(\"hello {name}\");\n",
+            }),
+            Some(("String to replace not found in file.", true)),
+            ToolStatus::Error,
+        )],
+        None,
+    );
+    insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &unfolded(&turn), 100)));
+}

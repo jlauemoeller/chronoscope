@@ -25,8 +25,8 @@ fn pattern_line(input: &Value, filters: bool) -> String {
         line.push_str(path);
     }
     if filters {
-        for (key, name) in [("glob", "glob"), ("type", "type")] {
-            if let Some(value) = str_field(input, &[key]) {
+        for (keys, name) in [(&["glob", "include"][..], "glob"), (&["type"][..], "type")] {
+            if let Some(value) = str_field(input, keys) {
                 line.push_str(&format!(" ({name}: {value})"));
             }
         }
@@ -128,5 +128,16 @@ mod tests {
             fg_of(&lines[8], "Cargo"),
             Some(color(&theme, Role::Secondary))
         );
+    }
+
+    #[test]
+    fn opencode_include_is_shown_like_a_glob() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Grep,
+            json!({"pattern": "x", "path": "/p", "include": "*.ts"}),
+            Some("m"),
+        );
+        assert_eq!(section(&call, &theme, 60)[4], "     x in /p (glob: *.ts)");
     }
 }

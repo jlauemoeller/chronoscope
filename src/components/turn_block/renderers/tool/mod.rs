@@ -9,7 +9,7 @@
 //!
 //! Long output is cut at `truncate_output_lines` logical lines. The
 //! `… N more lines` row is returned apart from the section's lines
-//! ([`ToolRendered::more`]) because it is a selection stop of its own.
+//! ([`Rendered::more`]) because it is a selection stop of its own.
 //!
 //! Output text is materialised (`ToolOutput::text()`) only by an unfolded
 //! body; a folded call renders its description and nothing else.
@@ -31,8 +31,8 @@ use ratatui::text::{Line, Span};
 use serde_json::Value;
 
 use super::{
-    BODY_INDENT, SectionCtx, SectionRenderer, ellipsize, first_line, fold_marker, indent, label,
-    with_lead, word_wrap,
+    BODY_INDENT, Rendered, SectionCtx, SectionRenderer, ellipsize, first_line, fold_marker, indent,
+    label, with_lead, word_wrap,
 };
 use crate::markdown::char_wrap;
 use crate::model::{ToolCall, ToolKind, ToolStatus};
@@ -94,15 +94,6 @@ pub fn body_renderer(kind: &ToolKind) -> &'static dyn ToolBodyRenderer {
     }
 }
 
-/// The lines of a tool call section.
-#[derive(Debug, Clone, Default)]
-pub struct ToolRendered {
-    /// The section's own lines.
-    pub lines: Vec<Line<'static>>,
-    /// The `… N more lines` row, when the output is truncated.
-    pub more: Option<Line<'static>>,
-}
-
 /// A tool call.
 ///
 /// Folded: `▶ <description>` (plus the agent type for a subagent). Unfolded:
@@ -162,7 +153,7 @@ impl ToolCallSection<'_> {
     }
 
     /// The section's lines, with the truncation row apart.
-    pub fn render(&self, ctx: &SectionCtx<'_>) -> ToolRendered {
+    pub fn render(&self, ctx: &SectionCtx<'_>) -> Rendered {
         let style = ctx.theme.style(Token::ToolDescription);
         let mut lines = self.description(ctx, style);
         let mut has_more = false;
@@ -187,19 +178,20 @@ impl ToolCallSection<'_> {
                     lines_noun(remaining)
                 );
                 let row = Line::from(Span::styled(text, ctx.muted()));
+                let row = ellipsize(row, usize::from(ctx.body_width()), false);
                 lines.extend(indent_like_text(vec![row]));
             }
         }
         let mut lines = with_lead(lines, fold_marker(ctx.folded), style);
         let more = if has_more { lines.pop() } else { None };
-        ToolRendered { lines, more }
+        Rendered { lines, more }
     }
 }
 
 impl SectionRenderer for ToolCallSection<'_> {
     /// The section's lines with the truncation row, if any, at the end.
     fn lines(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {
-        let ToolRendered { mut lines, more } = self.render(ctx);
+        let Rendered { mut lines, more } = self.render(ctx);
         lines.extend(more);
         lines
     }
@@ -319,11 +311,7 @@ pub(super) fn result_block(
     };
     let text = match result.output.text() {
         Ok(text) => text,
-        Err(err) => {
-            log::warn!("tool output of {} unavailable: {err}", call.id);
-            let message = format!("(output unavailable: {err})");
-            return (text_block(label, &message, error, ctx), None);
-        }
+        Err(err) => return (unavailable_block(label, call, &err, ctx), None),
     };
     if text.trim().is_empty() {
         return (muted_block(label, "(no output)", ctx), None);
@@ -331,6 +319,33 @@ pub(super) fn result_block(
     let (shown, cut) = truncate_lines(&text, limit(ctx));
     let block = text_block(label, shown, style, ctx);
     (block, (cut > 0).then_some(cut))
+}
+
+/// The block for an output that could not be materialised. Logged on every
+/// layout of the section; the section is laid out only while unfolded.
+pub(super) fn unavailable_block(
+    label: &'static str,
+    call: &ToolCall,
+    err: &crate::model::ToolOutputError,
+    ctx: &SectionCtx<'_>,
+) -> Block {
+    log::warn!("tool output of {} unavailable: {err}", call.id);
+    let message = format!("(output unavailable: {err})");
+    text_block(label, &message, ctx.theme.style(Token::ErrorOutput), ctx)
+}
+
+/// `body` for a call that takes no `Result:` when it succeeded (Write, Edit):
+/// a failed or pending call gets one after all, so that its error or
+/// `(pending)` shows. The result is shown in full.
+pub(super) fn with_status_result(mut body: Body, call: &ToolCall, ctx: &SectionCtx<'_>) -> Body {
+    if matches!(call.status, ToolStatus::Error | ToolStatus::Pending) {
+        let full = SectionCtx {
+            expanded: true,
+            ..*ctx
+        };
+        body.blocks.push(result_block("Result:", call, &full).0);
+    }
+    body
 }
 
 /// The usual body: `blocks` followed by the result block under `label`.

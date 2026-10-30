@@ -4,14 +4,16 @@ use ratatui::text::Line;
 
 use super::{
     Block, Body, SectionCtx, ToolBodyRenderer, compact_json, limit, muted_block, path_of,
-    text_block, truncate_lines,
+    text_block, truncate_lines, with_status_result,
 };
 use crate::markdown::{highlight_code, wrap_styled_lines};
 use crate::model::ToolCall;
 use crate::theme::Token;
 
 /// `Path:` with the path, then `Content:` with the file content highlighted by
-/// the path's extension (`syntax.*` tokens) and char-wrapped.
+/// the path's extension (`syntax.*` tokens) and char-wrapped. A failed or
+/// pending call also shows its `Result:` (error text in `error_output`, or
+/// `(pending)`).
 #[derive(Debug, Clone, Copy)]
 pub struct WriteBody;
 
@@ -22,10 +24,11 @@ impl ToolBodyRenderer for WriteBody {
         let path_block = text_block("Path:", &shown_path, ctx.theme.style(Token::Command), ctx);
         let content = call.input.get("content").and_then(|c| c.as_str());
         let Some(content) = content.filter(|c| !c.is_empty()) else {
-            return Body {
+            let body = Body {
                 blocks: vec![path_block, muted_block("Content:", "(no content)", ctx)],
                 ..Body::default()
             };
+            return with_status_result(body, call, ctx);
         };
         let extension = path
             .and_then(|p| std::path::Path::new(p).extension())
@@ -37,7 +40,7 @@ impl ToolBodyRenderer for WriteBody {
         if lines.is_empty() {
             lines.push(Line::default());
         }
-        Body {
+        let body = Body {
             blocks: vec![
                 path_block,
                 Block {
@@ -47,7 +50,8 @@ impl ToolBodyRenderer for WriteBody {
             ],
             remaining: (cut > 0).then_some(cut),
             hint: None,
-        }
+        };
+        with_status_result(body, call, ctx)
     }
 }
 
@@ -56,7 +60,7 @@ mod tests {
     use serde_json::json;
 
     use super::super::testing::*;
-    use super::super::{SectionRenderer, ToolCallSection, ToolKind};
+    use super::super::{SectionRenderer, ToolCallSection, ToolKind, ToolStatus};
     use super::*;
     use crate::theme::Role;
 
@@ -162,5 +166,45 @@ mod tests {
         let call = call(ToolKind::Write, json!({"file_path": "/a"}), None);
         let body = body(&call, &theme, 60);
         assert_eq!(body.blocks[1].lines[0].to_string(), "(no content)");
+    }
+
+    #[test]
+    fn a_failed_write_shows_its_error_and_a_pending_one_shows_pending() {
+        let theme = theme();
+        let mut failed = call(
+            ToolKind::Write,
+            json!({"file_path": "/a.txt", "content": "hello"}),
+            Some("Permission denied"),
+        );
+        failed.status = ToolStatus::Error;
+        let body = body(&failed, &theme, 60);
+        assert_eq!(body.blocks.len(), 3);
+        assert_eq!(body.blocks[2].label, "Result:");
+        let line = &body.blocks[2].lines[0];
+        assert_eq!(line.to_string(), "Permission denied");
+        assert_eq!(
+            line.spans[0].style.fg,
+            Some(color(&theme, Role::Destructive))
+        );
+
+        let pending = call(
+            ToolKind::Write,
+            json!({"file_path": "/a.txt", "content": "hello"}),
+            None,
+        );
+        let body = self::body(&pending, &theme, 60);
+        let line = &body.blocks[2].lines[0];
+        assert_eq!(line.to_string(), "(pending)");
+        assert_eq!(
+            line.spans[0].style.fg,
+            Some(color(&theme, Role::MutedForeground))
+        );
+        // A successful write has no Result: block.
+        let ok = call(
+            ToolKind::Write,
+            json!({"file_path": "/a.txt", "content": "hello"}),
+            Some("created"),
+        );
+        assert_eq!(self::body(&ok, &theme, 60).blocks.len(), 2);
     }
 }

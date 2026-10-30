@@ -26,11 +26,7 @@ pub use stats::{StatsSection, format_duration, format_stats, format_tokens};
 pub use system::SystemSection;
 pub use text::{AssistantTextSection, ModelChangeSection};
 pub use thinking::ThinkingSection;
-pub use tool::{
-    EditBody, GlobBody, GrepBody, OtherBody, ReadBody, ShellBody, SubagentBody, ToolBodyRenderer,
-    ToolCallSection, ToolRendered, WebFetchBody, WebSearchBody, WriteBody, body_renderer,
-    group_thousands,
-};
+pub use tool::{Block, Body, ToolBodyRenderer, ToolCallSection};
 pub use user::UserPromptSection;
 
 /// The width the block leaves for the text: 4 cells on the left and 4 on the
@@ -119,8 +115,7 @@ pub fn render_section(section: &Section<'_>, ctx: &SectionCtx<'_>) -> Rendered {
         SectionContent::Text(text) => AssistantTextSection(text).lines(ctx),
         SectionContent::Thinking(text) => ThinkingSection(text).lines(ctx),
         SectionContent::Tool(call) => {
-            let ToolRendered { lines, more } = ToolCallSection(call).render(ctx);
-            return Rendered { lines, more };
+            return ToolCallSection(call).render(ctx);
         }
         SectionContent::ModelChange(model) => ModelChangeSection(model).lines(ctx),
         SectionContent::Stats(stats) => StatsSection(stats).lines(ctx),

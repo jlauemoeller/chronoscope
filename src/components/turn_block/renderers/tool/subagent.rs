@@ -4,7 +4,10 @@
 use ratatui::text::{Line, Span};
 use serde_json::Value;
 
-use super::{Block, Body, PENDING, SectionCtx, ToolBodyRenderer, muted_block, str_field};
+use super::{
+    Block, Body, PENDING, SectionCtx, ToolBodyRenderer, ellipsize, limit, muted_block, str_field,
+    truncate_lines,
+};
 use crate::markdown::render_markdown;
 use crate::model::{ToolCall, ToolStatus};
 use crate::theme::Token;
@@ -13,7 +16,9 @@ use crate::theme::Token;
 /// markdown (or `(pending)`), and a last row `<key> to open transcript`,
 /// where `<key>` is the label of the `open_subagent` key.
 ///
-/// The result is not truncated: markdown does not cut at a line.
+/// The result is cut at `truncate_output_lines` source lines before the
+/// markdown is laid out. The `… N more lines` row is the last row of the
+/// section, so it comes after the hint.
 #[derive(Debug, Clone, Copy)]
 pub struct SubagentBody;
 
@@ -51,17 +56,21 @@ impl ToolBodyRenderer for SubagentBody {
             .result
             .as_ref()
             .filter(|_| call.status != ToolStatus::Pending);
+        let mut remaining = None;
         blocks.push(match result {
             None => muted_block("Result:", PENDING, ctx),
             Some(result) => match result.output.text() {
                 Ok(text) if text.trim().is_empty() => muted_block("Result:", "(no output)", ctx),
                 Ok(text) => {
+                    // Cut by logical source lines, before the markdown is laid out.
+                    let (shown, cut) = truncate_lines(&text, limit(ctx));
+                    remaining = (cut > 0).then_some(cut);
                     let token = if call.status == ToolStatus::Error {
                         Token::ErrorOutput
                     } else {
                         Token::Output
                     };
-                    markdown_block("Result:", &text, ctx.theme.style(token), ctx)
+                    markdown_block("Result:", shown, ctx.theme.style(token), ctx)
                 }
                 Err(err) => {
                     log::warn!("subagent result of {} unavailable: {err}", call.id);
@@ -75,9 +84,10 @@ impl ToolBodyRenderer for SubagentBody {
             format!("{} to open transcript", ctx.open_key),
             ctx.muted(),
         ));
+        let hint = ellipsize(hint, usize::from(ctx.width), false);
         Body {
             blocks,
-            remaining: None,
+            remaining,
             hint: Some(hint),
         }
     }
@@ -186,5 +196,42 @@ mod tests {
         let rows = texts(&ToolCallSection(&call).lines(&ctx));
         assert_eq!(rows[8], "     (pending)");
         assert_eq!(rows.last().unwrap(), "  Ctrl-o to open transcript");
+    }
+
+    #[test]
+    fn a_long_result_is_cut_and_expanding_shows_all_of_it() {
+        let theme = theme();
+        let text: String = (1..=10).map(|n| format!("r{n}\n\n")).collect();
+        let call = subagent(Some(&text));
+        let ctx = SectionCtx {
+            truncate: 4,
+            ..SectionCtx::new(&theme, 60, false)
+        };
+        let body = SubagentBody.body(&call, &ctx);
+        // 4 source lines: r1, blank, r2, blank.
+        assert_eq!(body.blocks[1].lines.len(), 3);
+        assert_eq!(body.blocks[1].lines[0].to_string(), "r1");
+        assert_eq!(body.remaining, Some(16));
+        let expanded = SectionCtx {
+            expanded: true,
+            ..ctx
+        };
+        let body = SubagentBody.body(&call, &expanded);
+        assert_eq!(body.remaining, None);
+        assert!(body.blocks[1].lines.iter().any(|l| l.to_string() == "r10"));
+    }
+
+    #[test]
+    fn the_more_row_is_the_last_row_after_the_hint() {
+        let theme = theme();
+        let call = subagent(Some("a\nb\nc"));
+        let ctx = SectionCtx {
+            truncate: 1,
+            ..SectionCtx::new(&theme, 60, false)
+        };
+        let section = ToolCallSection(&call).render(&ctx);
+        let last = section.lines.last().unwrap().to_string();
+        assert_eq!(last, "  a to open transcript");
+        assert_eq!(section.more.unwrap().to_string().trim(), "… 2 more lines");
     }
 }

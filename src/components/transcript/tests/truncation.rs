@@ -282,3 +282,41 @@ fn the_transcript_passes_the_open_subagent_key_to_subagent_sections() {
         Some(AttrValue::String("Ctrl-o".into()))
     );
 }
+
+#[test]
+fn a_long_subagent_result_is_truncated_with_a_stop_that_expands_it() {
+    let text = numbered_lines(30).replace('\n', "\n\n");
+    let turn = arc(with_id(
+        blocks::assistant(
+            None,
+            vec![blocks::tool_of(
+                crate::model::ToolKind::Subagent,
+                "c1",
+                "Explore",
+                json!({"subagent_type": "Explore", "prompt": "Look around"}),
+                Some((&text, false)),
+                ToolStatus::Ok,
+            )],
+            None,
+        ),
+        "a1",
+    ));
+    let mut t = transcript_of(vec![turn], 80, 24);
+    t.attr(TRUNCATE_OUTPUT_LINES_ATTR, AttrValue::Length(10));
+    t.set_folded(&tool_id(), false);
+    let ids: Vec<SectionId> = t
+        .content
+        .section_rows(t.turn(0).unwrap(), 80)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(ids, [tool_id(), more_id()]);
+    let rows = block_text(&t);
+    assert!(rows.iter().any(|r| r.contains("to open transcript")));
+    assert!(rows.iter().any(|r| r.contains("… 49 more lines")));
+    move_to(&mut t, &more_id());
+    t.perform(Cmd::Submit);
+    let rows = block_text(&t);
+    assert!(rows.iter().any(|r| r.contains("line 30")));
+    assert!(rows.iter().all(|r| !r.contains("more lines")));
+}
