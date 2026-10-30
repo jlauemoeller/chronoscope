@@ -20,7 +20,7 @@
 | 016-markdown-renderer | Complete |
 | 017-turn-block-sections | Complete |
 | 018-transcript-viewport | Complete |
-| 019-tool-body-renderers | In progress |
+| 019-tool-body-renderers | Complete |
 | 020-transcript-navigation | Planned |
 | 021-browser-screen | Planned |
 | 022-claude-live-watch | Planned |
