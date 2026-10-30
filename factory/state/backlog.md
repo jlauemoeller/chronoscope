@@ -16,7 +16,7 @@
 | 012-help-line-toast | Complete |
 | 013-selector-panes | Complete |
 | 014-selector-selection-rules | Complete |
-| 015-selector-search | Planned |
+| 015-selector-search | In progress |
 | 016-markdown-renderer | Planned |
 | 017-turn-block-sections | Planned |
 | 018-transcript-viewport | Planned |
