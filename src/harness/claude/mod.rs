@@ -8,6 +8,7 @@ mod resume;
 mod scan;
 mod subagent;
 pub mod tools;
+mod watch;
 mod wire;
 
 pub use assemble::Assembler;

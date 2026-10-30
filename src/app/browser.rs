@@ -289,6 +289,9 @@ impl App {
                 self.refresh_session_empty();
             }
             ModelUpdate::Updated(_) | ModelUpdate::Reset => self.forward_to_transcript(update),
+            // The `● live` marker (SPEC §7.2) will read it; a later task stores
+            // `last_modified`/`idle` and draws the marker (with its snapshots).
+            ModelUpdate::Activity { .. } => {}
         }
     }
 
