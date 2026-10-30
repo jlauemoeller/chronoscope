@@ -19,6 +19,7 @@ impl Transcript {
             &content.theme,
             content.truncate_output_lines,
             &content.open_subagent_key,
+            self.viewport.map(|_| self.cache.width()),
         )
     }
 

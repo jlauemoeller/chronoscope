@@ -287,17 +287,18 @@ fn the_system_clipboard_with_a_display_and_no_tmux_writes_nothing_to_the_termina
 
 #[test]
 fn y_copies_the_selected_section_as_displayed() {
-    let mut rig = rig();
+    let mut rig = rig_with(theme("default"), 80, 24);
     rig.open_loaded();
     let (copies, _) = rig.fake_clipboard();
     rig.press(Key::Char('y'));
     rig.pump_until(|app| app.toast_text().is_some());
     let copied = copies.all();
     assert_eq!(copied.len(), 1);
-    // The first section of the fixture session is its folded prompt.
+    // The first section of the fixture session is its folded prompt: the
+    // two rows the screen shows (see the 80x24 snapshot), as one line.
     assert_eq!(
         copied[0],
-        crate::components::turn_block::fixtures::LONG_PROMPT
+        "I have a Logitech BRIO web camera attached to this machine via USB. It works fine - both camera and microphone - but I don't have a way to…"
     );
     assert_eq!(rig.toast().as_deref(), Some("Copied 1 line"));
 }

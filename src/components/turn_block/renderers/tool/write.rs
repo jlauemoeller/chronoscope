@@ -37,8 +37,12 @@ impl ToolBodyRenderer for WriteBody {
         // Whether the content is cut at the configured limit, expanded or not.
         let content_cut = truncate_lines(content, ctx.truncate).1 > 0;
         let (shown, cut) = truncate_lines(content, limit(ctx));
-        let highlighted = highlight_code(shown, extension, ctx.theme);
-        let mut lines: Vec<Line<'static>> = wrap_styled_lines(&highlighted, ctx.body_width());
+        let mut lines: Vec<Line<'static>> = if ctx.verbatim {
+            super::super::verbatim_lines(shown, ctx.theme.style(Token::Output))
+        } else {
+            let highlighted = highlight_code(shown, extension, ctx.theme);
+            wrap_styled_lines(&highlighted, ctx.body_width())
+        };
         if lines.is_empty() {
             lines.push(Line::default());
         }

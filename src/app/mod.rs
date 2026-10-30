@@ -10,7 +10,7 @@
 //! calls [`Application::view`] for it.
 
 pub mod browser;
-pub mod copy;
+mod copy;
 pub mod hints;
 pub mod index_port;
 pub mod layout;

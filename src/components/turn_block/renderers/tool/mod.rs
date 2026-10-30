@@ -32,7 +32,7 @@ use serde_json::Value;
 
 use super::{
     BODY_INDENT, Rendered, SectionCtx, SectionRenderer, ellipsize, first_line, fold_marker, indent,
-    label, with_lead, word_wrap,
+    label, verbatim_lines, with_lead, word_wrap,
 };
 use crate::markdown::char_wrap;
 use crate::model::{ToolCall, ToolKind, ToolStatus};
@@ -316,7 +316,11 @@ pub(super) fn text_block(
     style: Style,
     ctx: &SectionCtx<'_>,
 ) -> Block {
-    let mut lines = char_wrap(text, ctx.body_width(), style);
+    let mut lines = if ctx.verbatim {
+        verbatim_lines(text, style)
+    } else {
+        char_wrap(text, ctx.body_width(), style)
+    };
     if lines.is_empty() {
         lines.push(Line::default());
     }

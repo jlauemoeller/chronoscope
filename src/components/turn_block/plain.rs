@@ -15,14 +15,14 @@
 
 use ratatui::text::Line;
 
-use super::renderers::{SectionCtx, SystemSection, ToolCallSection, render_section};
+use super::renderers::{SectionCtx, SystemSection, ToolCallSection, render_section, text_width};
 use super::section::{FoldState, Section, SectionContent, SectionId, derive_sections};
 use crate::model::Turn;
 use crate::theme::Theme;
 
 /// The width sections are rendered at for plain text: wide enough that
 /// nothing wraps.
-pub const PLAIN_WIDTH: u16 = u16::MAX;
+const PLAIN_WIDTH: u16 = u16::MAX;
 
 /// A horizontal rule fills the width it is rendered at; in plain text it is
 /// this many cells.
@@ -32,6 +32,13 @@ const RULE_CELLS: usize = 80;
 /// folded, everything shown when it is not (a truncated output keeps its
 /// `… N more lines` row). The truncation row's id stands for its tool call.
 /// `None` when the turn has no such section.
+///
+/// `block_width` is the width the turn's block is laid out at on screen, when
+/// known. A folded summary is cut to the text width of that block (a folded
+/// prompt keeps the two rows the screen shows, the second ending in `…`, with
+/// rows that are soft-wrapped parts of one line joined by a space); without
+/// it, summaries are cut at the logical lines. A folded tool call is always
+/// its whole description. Unfolded sections are never cut at the width.
 pub fn displayed_text(
     turn: &Turn,
     id: &SectionId,
@@ -39,24 +46,47 @@ pub fn displayed_text(
     theme: &Theme,
     truncate: usize,
     open_key: &str,
+    block_width: Option<u16>,
 ) -> Option<String> {
     let section = find(turn, id)?;
+    let folded = folds.is_folded(&section);
     let ctx = SectionCtx {
         theme,
         width: PLAIN_WIDTH,
-        folded: folds.is_folded(&section),
+        folded,
         truncate,
         expanded: folds.is_expanded(&section.id),
         open_key,
+        verbatim: false,
     };
-    Some(plain_lines(&section, &ctx, true).join("\n"))
+    let Some(block_width) = block_width.filter(|_| folded) else {
+        return Some(plain_lines(&section, &ctx, true).join("\n"));
+    };
+    let narrow = SectionCtx {
+        width: text_width(block_width),
+        ..ctx
+    };
+    let lines = match section.content {
+        SectionContent::Prompt(_) => {
+            let rows = plain_lines(&section, &narrow, true);
+            let whole = SectionCtx {
+                folded: false,
+                ..ctx
+            };
+            soft_joined(rows, &plain_lines(&section, &whole, true))
+        }
+        SectionContent::Tool(_) => plain_lines(&section, &ctx, true),
+        _ => plain_lines(&section, &narrow, true),
+    };
+    Some(lines.join("\n"))
 }
 
 /// The section `id` of `turn` in full, whatever its fold state and
 /// truncation: for a tool call the description, the full input or command and
 /// the full result (read from the transcript when it is not held in memory),
 /// with the labels of the unfolded body; for the other sections, their
-/// unfolded text. `None` when the turn has no such section.
+/// unfolded text. Tool text is exactly as recorded: one row per line, with
+/// tabs and long lines intact. `None` when the turn has no such section.
 pub fn full_text(turn: &Turn, id: &SectionId, theme: &Theme, open_key: &str) -> Option<String> {
     let section = find(turn, id)?;
     let ctx = SectionCtx {
@@ -66,8 +96,53 @@ pub fn full_text(turn: &Turn, id: &SectionId, theme: &Theme, open_key: &str) -> 
         truncate: usize::MAX,
         expanded: true,
         open_key,
+        verbatim: true,
     };
     Some(plain_lines(&section, &ctx, false).join("\n"))
+}
+
+/// The rows of a folded summary with the ones that continue the line before
+/// them joined to it by a space. `logical` is the whole text as lines that
+/// are not wrapped: a row continues the line before it when its text is what
+/// follows the text that row ended at. A row that cannot be matched (a quote
+/// bar, say) stays a line of its own.
+fn soft_joined(rows: Vec<String>, logical: &[String]) -> Vec<String> {
+    let logical: Vec<&str> = logical
+        .iter()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+    let mut out: Vec<String> = Vec::new();
+    // The logical line the last row came from and how much of it was shown.
+    let mut at: Option<(usize, usize)> = None;
+    for row in rows {
+        let key = row.trim();
+        // The last row of a cut summary ends in `…`, which is not text.
+        let keys = [key, key.strip_suffix('…').unwrap_or(key)];
+        let found = |line: usize, from: usize| -> Option<usize> {
+            let rest = &logical.get(line)?[from..];
+            let skipped = rest.len() - rest.trim_start().len();
+            keys.iter()
+                .find(|k| !k.is_empty() && rest.trim_start().starts_with(**k))
+                .map(|k| from + skipped + k.len())
+        };
+        let next = match at {
+            Some((line, from)) => found(line, from)
+                .map(|end| (line, end))
+                .filter(|_| !out.is_empty()),
+            None => None,
+        };
+        if let (Some(next), Some(last)) = (next, out.last_mut()) {
+            last.push(' ');
+            last.push_str(row.trim_start());
+            at = Some(next);
+        } else {
+            let line = at.map_or(0, |(line, _)| line + 1);
+            at = found(line, 0).map(|end| (line, end));
+            out.push(row);
+        }
+    }
+    out
 }
 
 /// The section `id` stands for, in `turn`.
@@ -134,7 +209,11 @@ mod tests {
     const KEY: &str = "a";
 
     fn shown(turn: &Turn, id: &SectionId, folds: &FoldState, truncate: usize) -> String {
-        displayed_text(turn, id, folds, &theme(), truncate, KEY).unwrap()
+        displayed_text(turn, id, folds, &theme(), truncate, KEY, None).unwrap()
+    }
+
+    fn shown_at(turn: &Turn, id: &SectionId, width: u16) -> String {
+        displayed_text(turn, id, &FoldState::new(), &theme(), 20, KEY, Some(width)).unwrap()
     }
 
     fn full(turn: &Turn, id: &SectionId) -> String {
@@ -237,7 +316,7 @@ mod tests {
         let turn = shell_turn("ls", "a");
         let other = item_id(&turn, "nope");
         assert_eq!(
-            displayed_text(&turn, &other, &FoldState::new(), &theme(), 20, KEY),
+            displayed_text(&turn, &other, &FoldState::new(), &theme(), 20, KEY, None),
             None
         );
         assert_eq!(full_text(&turn, &other, &theme(), KEY), None);
@@ -484,6 +563,185 @@ mod tests {
         assert_eq!(
             full_text(&turn, &id, &other, KEY),
             full_text(&turn, &id, &theme(), KEY)
+        );
+    }
+
+    // -- folded summaries at the width of the block
+
+    /// The prompt of the 80x24 screen: block width 80, text width 72.
+    const ROW_1: &str = "I have a Logitech BRIO web camera attached to this machine via USB. It";
+    const ROW_2: &str = "works fine - both camera and microphone - but I don't have a way to…";
+
+    #[test]
+    fn a_folded_one_paragraph_prompt_is_what_the_fold_shows_as_one_line() {
+        let turn = user(LONG_PROMPT, vec![]);
+        let id = key_id(&turn, SectionKey::Prompt);
+        let text = shown_at(&turn, &id, 80);
+        assert_eq!(text, format!("{ROW_1} {ROW_2}"));
+        assert!(text.ends_with('…') && !text.contains('\n'));
+        // Unbounded, it is all of the paragraph.
+        assert_eq!(shown(&turn, &id, &FoldState::new(), 20), LONG_PROMPT);
+    }
+
+    #[test]
+    fn a_wider_block_shows_more_of_a_folded_prompt() {
+        let turn = user(LONG_PROMPT, vec![]);
+        let id = key_id(&turn, SectionKey::Prompt);
+        let narrow = shown_at(&turn, &id, 60);
+        let wide = shown_at(&turn, &id, 120);
+        assert!(narrow.len() < wide.len());
+        assert!(LONG_PROMPT.starts_with(narrow.trim_end_matches('…')));
+        assert!(LONG_PROMPT.starts_with(wide.trim_end_matches('…')));
+    }
+
+    #[test]
+    fn a_folded_prompt_of_several_paragraphs_keeps_its_two_rows() {
+        let turn = user(
+            "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.",
+            vec![],
+        );
+        let id = key_id(&turn, SectionKey::Prompt);
+        assert_eq!(
+            shown_at(&turn, &id, 80),
+            "First paragraph.\nSecond paragraph.…"
+        );
+    }
+
+    #[test]
+    fn a_folded_prompt_whose_first_paragraph_wraps_shows_only_what_the_fold_shows() {
+        let turn = user(
+            &format!("{LONG_PROMPT}\n\nA second paragraph that is never shown."),
+            vec![],
+        );
+        let id = key_id(&turn, SectionKey::Prompt);
+        assert_eq!(shown_at(&turn, &id, 80), format!("{ROW_1} {ROW_2}"));
+    }
+
+    #[test]
+    fn a_wrapped_first_paragraph_and_a_second_one_are_two_lines() {
+        let turn = user(
+            &format!(
+                "{} {}\n\nSecond paragraph.\n\nThird.",
+                "word ".repeat(10).trim_end(),
+                "more".repeat(5)
+            ),
+            vec![],
+        );
+        let id = key_id(&turn, SectionKey::Prompt);
+        // At 80 columns the first paragraph fits one row.
+        assert_eq!(
+            shown_at(&turn, &id, 80),
+            format!(
+                "{} {}\nSecond paragraph.…",
+                "word ".repeat(10).trim_end(),
+                "more".repeat(5)
+            )
+        );
+    }
+
+    #[test]
+    fn a_short_folded_prompt_has_no_ellipsis_at_any_width() {
+        let turn = user("Short one.", vec![]);
+        let id = key_id(&turn, SectionKey::Prompt);
+        assert_eq!(shown_at(&turn, &id, 80), "Short one.");
+    }
+
+    #[test]
+    fn a_folded_thinking_header_is_cut_like_the_screen() {
+        let turn = assistant(
+            None,
+            vec![thinking("th1", Thinking::Text(LONG_PROMPT.into()))],
+            None,
+        );
+        let id = item_id(&turn, "th1");
+        let text = shown_at(&turn, &id, 60);
+        assert!(text.starts_with("Thinking: I have a Logitech"), "{text}");
+        assert!(text.ends_with('…') && text.chars().count() == 52, "{text}");
+    }
+
+    #[test]
+    fn a_folded_tool_call_stays_its_whole_description_at_any_width() {
+        let turn = full_assistant();
+        let id = item_id(&turn, "c1");
+        assert_eq!(
+            shown_at(&turn, &id, 20),
+            "Find the BRIO on USB and check available tools"
+        );
+    }
+
+    #[test]
+    fn soft_joined_matches_rows_to_the_unwrapped_lines() {
+        let logical = ["alpha beta gamma delta".to_owned(), "second".to_owned()];
+        let rows = |rows: &[&str]| rows.iter().map(|r| (*r).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            soft_joined(rows(&["alpha beta", "gamma…"]), &logical),
+            ["alpha beta gamma…"]
+        );
+        assert_eq!(
+            soft_joined(rows(&["alpha beta gamma delta", "second"]), &logical),
+            ["alpha beta gamma delta", "second"]
+        );
+        assert_eq!(
+            soft_joined(rows(&["│ alpha", "│ beta"]), &logical),
+            ["│ alpha", "│ beta"],
+            "rows that cannot be matched stay apart"
+        );
+    }
+
+    // -- the full copy is verbatim
+
+    #[test]
+    fn full_content_keeps_tabs_and_control_free_lines_exactly() {
+        let result = "a\tb\n\tindented\n  two spaces  ";
+        let turn = shell_turn("printf 'x\\ty'\tdone", result);
+        let id = item_id(&turn, "c1");
+        assert_eq!(
+            full(&turn, &id),
+            format!("Print the log\n\nCommand:\n\nprintf 'x\\ty'\tdone\n\nResult:\n\n{result}")
+        );
+    }
+
+    #[test]
+    fn full_content_does_not_break_a_very_long_line() {
+        let long = "x".repeat(70_000);
+        let turn = shell_turn(&format!("echo {long}"), &format!("{long}\nend"));
+        let id = item_id(&turn, "c1");
+        let text = full(&turn, &id);
+        assert_eq!(
+            text,
+            format!("Print the log\n\nCommand:\n\necho {long}\n\nResult:\n\n{long}\nend")
+        );
+        assert_eq!(text.lines().count(), 10);
+    }
+
+    #[test]
+    fn the_displayed_copy_still_expands_tabs() {
+        let turn = shell_turn("ls", "a\tb");
+        let id = item_id(&turn, "c1");
+        assert!(shown(&turn, &id, &unfolded(&turn, "c1"), 20).ends_with("a    b"));
+    }
+
+    #[test]
+    fn full_content_of_a_write_keeps_the_file_as_written() {
+        let content = "package main\n\nfunc main() {\n\tprintln(\"hi\")\n}\n";
+        let turn = assistant(
+            None,
+            vec![tool_of(
+                ToolKind::Write,
+                "c1",
+                "Write main.go",
+                json!({"file_path": "/a/main.go", "content": content}),
+                Some(("created", false)),
+                ToolStatus::Ok,
+            )],
+            None,
+        );
+        assert_eq!(
+            full(&turn, &item_id(&turn, "c1")),
+            format!(
+                "Write main.go\n\nPath:\n\n/a/main.go\n\nContent:\n\n{}",
+                content.trim_end()
+            )
         );
     }
 }

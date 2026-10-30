@@ -106,7 +106,11 @@ impl ToolBodyRenderer for EditBody {
         };
         let mut lines: Vec<Line<'static>> = Vec::new();
         for (kind, text) in rows.iter().take(max) {
-            let mut wrapped = char_wrap(text, ctx.body_width(), style(*kind));
+            let mut wrapped = if ctx.verbatim {
+                super::super::verbatim_lines(text, style(*kind))
+            } else {
+                char_wrap(text, ctx.body_width(), style(*kind))
+            };
             if wrapped.is_empty() {
                 wrapped.push(Line::default());
             }

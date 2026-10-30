@@ -149,3 +149,18 @@ fn the_copy_text_follows_a_remapped_key() {
     assert_eq!(ch(&mut t, 'y'), None, "y is unbound now");
     assert_eq!(copied(ch(&mut t, 'c')), t.displayed_text().unwrap());
 }
+
+#[test]
+fn y_on_a_folded_prompt_copies_the_rows_shown_at_the_transcripts_width() {
+    let mut t = session_transcript(80, 24);
+    assert_eq!(
+        copied(ch(&mut t, 'y')),
+        "I have a Logitech BRIO web camera attached to this machine via USB. It works fine - both camera and microphone - but I don't have a way to…"
+    );
+    // A narrower block shows less of it.
+    t.set_viewport(ratatui::layout::Size::new(50, 24));
+    let narrow = copied(ch(&mut t, 'y'));
+    assert!(narrow.ends_with('…') && narrow.len() < 120, "{narrow}");
+    // `Y` is all of it either way.
+    assert_eq!(copied(ch(&mut t, 'Y')), blocks::LONG_PROMPT);
+}

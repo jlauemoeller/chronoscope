@@ -57,11 +57,15 @@ impl SystemSection<'_> {
                 out.push(String::new());
             }
             out.push(entry.kind.clone());
-            out.extend(
-                char_wrap(&entry.text, ctx.body_width(), ctx.muted())
-                    .iter()
-                    .map(ToString::to_string),
-            );
+            if ctx.verbatim {
+                out.extend(entry.text.lines().map(str::to_owned));
+            } else {
+                out.extend(
+                    char_wrap(&entry.text, ctx.body_width(), ctx.muted())
+                        .iter()
+                        .map(ToString::to_string),
+                );
+            }
         }
         out
     }

@@ -23,10 +23,16 @@ impl App {
     /// lines`, or `Copy failed: <reason>` when neither the system clipboard
     /// nor OSC52 took it.
     ///
-    /// The OSC52 sequence is written between frames: the terminal has
-    /// finished the last one when `update` runs.
+    /// The OSC52 sequence is written (and flushed) here, in `update`, rather
+    /// than in the draw step: the terminal has finished the last frame when
+    /// `update` runs, so it lands between frames all the same. It is not
+    /// size-limited; see `doc/clipboard.md`.
     pub(super) fn copy_text(&mut self, text: &str) {
         let outcome = self.clipboard.copy(text);
+        if let Err(reason) = &outcome.system {
+            // The toast is cut to its width; the log has the whole reason.
+            log::warn!("the system clipboard failed: {reason}");
+        }
         let osc52 = match (outcome.osc52, self.osc52_out.as_mut()) {
             (Some(sequence), Some(out)) => Some(
                 out.write_all(sequence.as_bytes())
@@ -37,15 +43,18 @@ impl App {
         };
         let message = match (outcome.system, osc52) {
             (Ok(()), _) | (Err(_), Some(Ok(()))) => copied_text(text),
-            (Err(reason), None) | (Err(_), Some(Err(reason))) => format!("Copy failed: {reason}"),
+            (Err(reason), None) | (Err(_), Some(Err(reason))) => {
+                log::warn!("copy failed: {reason}");
+                format!("Copy failed: {reason}")
+            }
         };
         self.toast_quiet(message);
     }
 }
 
-/// `Copied 42 lines`, or `Copied 1 line`.
+/// `Copied 42 lines`, or `Copied 1 line` (`Copied 0 lines` for no text).
 fn copied_text(text: &str) -> String {
-    let lines = text.lines().count().max(1);
+    let lines = text.lines().count();
     let noun = if lines == 1 { "line" } else { "lines" };
     format!("Copied {lines} {noun}")
 }
