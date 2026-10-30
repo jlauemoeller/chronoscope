@@ -1,0 +1,16 @@
+# injected.jsonl, 80x12, keys: + ] ]  (round-1 must-fix 1, now fixed: the selected prompt is on screen)
+# The prompt is revealed minimally, so it lands on the bottom content row; the rest of the User block and the
+# following Assistant block are below the viewport (nit 1).
+=== after [] ]] @ 80x12  offset=54 selected=Some("SectionId { turn: TurnId(\"00000000-0000-4000-8000-000000000102\"), key: Prompt }")
+│      /clear                                                                  │
+│      All clear                                                               │
+│                                                                              │
+│   informational                                                              │
+│      Compacted while idle                                                    │
+│                                                                              │
+│   away_summary                                                               │
+│      You were fixing the build; it passes.                                   │
+│                                                                              │
+▒ ▼ Now run the tests.                                                         │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
