@@ -858,11 +858,11 @@ fn a_remap_applies_to_every_action_it_names() {
 }
 
 #[test]
-fn keys_of_other_contexts_and_actions_of_other_tasks_do_nothing() {
+fn keys_of_other_contexts_do_nothing() {
     let mut t = session_transcript(80, 24);
     let before = text_rows(&draw(&mut t, 80, 24));
-    // `/` search, `y` copy, `q` quit are not for the transcript to act on.
-    for c in ['/', 'y', 'q', 'Z'] {
+    // `q` quit and `Z` are not for the transcript to act on.
+    for c in ['q', 'Z'] {
         ch(&mut t, c);
     }
     press(&mut t, Key::Esc);

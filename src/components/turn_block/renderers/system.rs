@@ -43,6 +43,30 @@ impl SystemSection<'_> {
     }
 }
 
+impl SystemSection<'_> {
+    /// The section as plain text rows: the header, then (unfolded) each
+    /// entry's kind and text, without the fold marker and the column indent.
+    pub fn plain_lines(&self, ctx: &SectionCtx<'_>) -> Vec<String> {
+        let header = self.header(ctx.muted());
+        if ctx.folded {
+            return vec![ellipsize(header, usize::from(ctx.width), false).to_string()];
+        }
+        let mut out = vec![header.to_string()];
+        for (i, entry) in self.0.iter().enumerate() {
+            if i > 0 {
+                out.push(String::new());
+            }
+            out.push(entry.kind.clone());
+            out.extend(
+                char_wrap(&entry.text, ctx.body_width(), ctx.muted())
+                    .iter()
+                    .map(ToString::to_string),
+            );
+        }
+        out
+    }
+}
+
 impl SectionRenderer for SystemSection<'_> {
     fn lines(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {
         let style = ctx.muted();

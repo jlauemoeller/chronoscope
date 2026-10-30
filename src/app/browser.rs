@@ -157,7 +157,7 @@ impl App {
             self.session_sink.clone(),
         ) else {
             log::error!("cannot open {id}: no {harness} harness or session channel");
-            self.toast_error("Cannot open the session");
+            self.toast_quiet("Cannot open the session");
             return;
         };
         let generation = self.browser.generation + 1;
@@ -168,7 +168,7 @@ impl App {
             Ok(watch) => watch,
             Err(err) => {
                 log::warn!("could not load {id}: {err}");
-                self.toast_error(format!("Could not open the session: {err}"));
+                self.toast_quiet(format!("Could not open the session: {err}"));
                 return;
             }
         };
@@ -189,7 +189,8 @@ impl App {
         self.request_redraw(RedrawRequest::Dirty);
     }
 
-    fn toast_error(&mut self, text: impl Into<String>) {
+    /// Shows a toast; when that fails the failure is only logged.
+    pub(super) fn toast_quiet(&mut self, text: impl Into<String>) {
         if let Err(err) = self.show_toast(text) {
             log::warn!("could not show a toast: {err}");
         }

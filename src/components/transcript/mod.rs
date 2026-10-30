@@ -67,6 +67,7 @@
 
 mod cache;
 mod content;
+mod copy;
 mod folding;
 mod follow;
 mod keys;
@@ -579,8 +580,10 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     /// [`Msg::SearchPosition`] when a key moved among the matches or cleared
     /// the search, [`Msg::NewSections`] when it changed the count of new
     /// sections (`G` resuming following), else [`Msg::TranscriptChanged`]
-    /// when that changed what is shown, so that the App redraws. Actions of
-    /// other tasks (copy, ...) do nothing yet.
+    /// when that changed what is shown, so that the App redraws. The copy
+    /// keys answer [`Msg::CopyText`] with the text of the selected section
+    /// (as displayed, or in full); with nothing selected they do nothing.
+    /// Actions of other tasks (save, ...) do nothing yet.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let Event::Keyboard(key) = ev else {
             return None;
@@ -588,8 +591,11 @@ impl AppComponent<Msg, UserEvent> for Transcript {
         let Resolved::Action(action) = self.resolver.feed(&self.keymap, key) else {
             return None;
         };
-        if action == Action::Search {
-            return Some(Msg::OpenSearch);
+        match action {
+            Action::Search => return Some(Msg::OpenSearch),
+            Action::Copy => return self.displayed_text().map(Msg::CopyText),
+            Action::CopyFull => return self.full_text().map(Msg::CopyText),
+            _ => {}
         }
         let cmd = keys::cmd_for(action)?;
         let new_before = self.new_sections;

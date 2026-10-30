@@ -155,13 +155,21 @@ impl ToolCallSection<'_> {
         vec![line]
     }
 
+    /// The description rows, and the body when the section is unfolded. The
+    /// styled rendering and the plain text are both made from these.
+    fn parts(&self, ctx: &SectionCtx<'_>) -> (Vec<Line<'static>>, Option<Body>) {
+        let style = ctx.theme.style(Token::ToolDescription);
+        let description = self.description(ctx, style);
+        let body = (!ctx.folded).then(|| body_renderer(&self.0.tool).body(self.0, ctx));
+        (description, body)
+    }
+
     /// The section's lines, with the truncation row apart.
     pub fn render(&self, ctx: &SectionCtx<'_>) -> Rendered {
         let style = ctx.theme.style(Token::ToolDescription);
-        let mut lines = self.description(ctx, style);
+        let (mut lines, body) = self.parts(ctx);
         let mut has_more = false;
-        if !ctx.folded {
-            let body = body_renderer(&self.0.tool).body(self.0, ctx);
+        if let Some(body) = body {
             let label_style = ctx.theme.style(Token::Label);
             for block in body.blocks {
                 lines.push(Line::default());
@@ -175,12 +183,7 @@ impl ToolCallSection<'_> {
             }
             if let Some(remaining) = body.remaining {
                 has_more = true;
-                let text = format!(
-                    "… {} more {}",
-                    group_thousands(remaining),
-                    lines_noun(remaining)
-                );
-                let row = Line::from(Span::styled(text, ctx.muted()));
+                let row = Line::from(Span::styled(more_text(remaining), ctx.muted()));
                 let row = ellipsize(row, usize::from(ctx.body_width()), false);
                 lines.extend(indent_like_text(vec![row]));
             }
@@ -189,6 +192,41 @@ impl ToolCallSection<'_> {
         let more = if has_more { lines.pop() } else { None };
         Rendered { lines, more }
     }
+
+    /// The section as plain text rows: what [`render`](Self::render) shows,
+    /// without the fold marker and the column indents. Blank rows and labels
+    /// are kept, and so is the content's own indentation. The subagent's
+    /// "open transcript" hint is left out unless `with_hint`.
+    pub fn plain_lines(&self, ctx: &SectionCtx<'_>, with_hint: bool) -> Vec<String> {
+        let (description, body) = self.parts(ctx);
+        let mut out: Vec<String> = description.iter().map(ToString::to_string).collect();
+        let Some(body) = body else {
+            return out;
+        };
+        for block in body.blocks {
+            out.push(String::new());
+            out.push(block.label.to_owned());
+            out.push(String::new());
+            out.extend(block.lines.iter().map(ToString::to_string));
+        }
+        if let (true, Some(hint)) = (with_hint, body.hint) {
+            out.push(String::new());
+            out.push(hint.to_string());
+        }
+        if let Some(remaining) = body.remaining {
+            out.push(more_text(remaining));
+        }
+        out
+    }
+}
+
+/// The text of the truncation row.
+fn more_text(remaining: usize) -> String {
+    format!(
+        "… {} more {}",
+        group_thousands(remaining),
+        lines_noun(remaining)
+    )
 }
 
 impl SectionRenderer for ToolCallSection<'_> {

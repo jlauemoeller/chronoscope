@@ -10,6 +10,7 @@
 //! calls [`Application::view`] for it.
 
 pub mod browser;
+pub mod copy;
 pub mod hints;
 pub mod index_port;
 pub mod layout;
@@ -49,6 +50,7 @@ use tuirealm::component::AppComponent;
 use tuirealm::listener::EventListenerCfg;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
+use crate::clipboard::{Clipboard, NoClipboard};
 use crate::components::{EmptyState, GlobalEvents, TOAST_DURATION, TOO_SMALL, Toast};
 use crate::config::{Config, ConfigWarning};
 use crate::harness::Harness;
@@ -172,6 +174,9 @@ pub enum Msg {
     TranscriptSearchResults(SearchMatches),
     /// A key moved among the matches (`3/17`) or cleared the search (`None`).
     SearchPosition(Option<SearchPosition>),
+    /// The transcript asks for this text to be put on the clipboard: the
+    /// selected section as displayed (`y`) or in full (`Y`).
+    CopyText(String),
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -287,6 +292,11 @@ pub struct App {
     session_sink: Option<Sender<SessionEvent>>,
     /// The open session.
     browser: BrowserState,
+    /// Where copied text goes (SPEC §1.2).
+    clipboard: Box<dyn Clipboard>,
+    /// Where OSC52 sequences are written: the terminal. `None` when there is
+    /// no terminal to write to.
+    osc52_out: Option<Box<dyn std::io::Write>>,
 }
 
 impl App {
@@ -352,6 +362,8 @@ impl App {
             harnesses: HashMap::new(),
             session_sink: None,
             browser: BrowserState::default(),
+            clipboard: Box::new(NoClipboard),
+            osc52_out: None,
         };
         app.push_tabs();
         // The startup warnings are shown once, here, and never again.
@@ -565,6 +577,7 @@ impl App {
             } => self.start_transcript_search(query, corpus, generation),
             Msg::TranscriptSearchResults(matches) => self.transcript_matches_arrived(&matches),
             Msg::SearchPosition(position) => self.search_position_changed(position),
+            Msg::CopyText(text) => self.copy_text(&text),
             Msg::OpenSession(harness, session) => self.open_session(harness, &session),
             Msg::OpenSelector => self.open_selector(),
             Msg::CloseSelector => self.close_selector(),
