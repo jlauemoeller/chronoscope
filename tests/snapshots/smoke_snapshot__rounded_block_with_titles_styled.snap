@@ -1,0 +1,11 @@
+---
+source: tests/smoke_snapshot.rs
+expression: buffer_to_styled(&draw_block())
+---
+╭ left ─────────────── right ╮
+│                            │
+╰────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..1 Reset/Reset/NONE | 1..7 Green/Reset/NONE | 7..30 Reset/Reset/NONE
+1: 0..30 Reset/Reset/NONE
+2: 0..30 Reset/Reset/NONE
