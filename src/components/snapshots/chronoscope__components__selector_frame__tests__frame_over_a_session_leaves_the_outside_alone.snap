@@ -1,0 +1,21 @@
+---
+source: src/components/selector_frame.rs
+expression: buffer_to_styled(&buffer)
+---
+                              
+  ╭────────────────────────╮  
+  │                        │  
+  │                        │  
+  │                        │  
+  │                        │  
+  ╰────────────────────────╯  
+                              
+--- styles (fg/bg/modifiers) ---
+0: 0..30 Reset/Reset/NONE
+1: 0..2 Reset/Reset/NONE | 2..28 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE
+2: 0..2 Reset/Reset/NONE | 2..3 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 3..27 Reset/Rgb(18, 18, 18)/NONE | 27..28 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE
+3: 0..2 Reset/Reset/NONE | 2..3 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 3..27 Reset/Rgb(18, 18, 18)/NONE | 27..28 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE
+4: 0..2 Reset/Reset/NONE | 2..3 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 3..27 Reset/Rgb(18, 18, 18)/NONE | 27..28 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE
+5: 0..2 Reset/Reset/NONE | 2..3 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 3..27 Reset/Rgb(18, 18, 18)/NONE | 27..28 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE
+6: 0..2 Reset/Reset/NONE | 2..28 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 28..30 Reset/Reset/NONE
+7: 0..30 Reset/Reset/NONE

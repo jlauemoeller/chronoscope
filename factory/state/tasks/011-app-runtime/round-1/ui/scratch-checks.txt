@@ -1,0 +1,91 @@
+default 60x20: transparent=false bg=Rgb(10, 10, 10) surface=Rgb(18, 18, 18) ring=Rgb(207, 207, 207) violations=0
+  60x20 row1 starts at col Some(0), lines=20
+  59x20 row1 starts at col None, lines=20
+  60x19 row1 starts at col None, lines=19
+default 61x21: transparent=false bg=Rgb(10, 10, 10) surface=Rgb(18, 18, 18) ring=Rgb(207, 207, 207) violations=0
+  61x21 row1 starts at col Some(0), lines=21
+default 160x30: transparent=false bg=Rgb(10, 10, 10) surface=Rgb(18, 18, 18) ring=Rgb(207, 207, 207) violations=0
+  160x30 row1 starts at col Some(0), lines=30
+default 161x30: transparent=false bg=Rgb(10, 10, 10) surface=Rgb(18, 18, 18) ring=Rgb(207, 207, 207) violations=0
+  161x30 row1 starts at col Some(0), lines=30
+default 201x24: transparent=false bg=Rgb(10, 10, 10) surface=Rgb(18, 18, 18) ring=Rgb(207, 207, 207) violations=0
+  201x24 row1 starts at col Some(20), lines=24
+default 300x60: transparent=false bg=Rgb(10, 10, 10) surface=Rgb(18, 18, 18) ring=Rgb(207, 207, 207) violations=0
+  300x60 row1 starts at col Some(70), lines=60
+default tc=true 80x24: transparent=false bg=Rgb(10, 10, 10) surface=Rgb(18, 18, 18) ring=Rgb(207, 207, 207) violations=0
+default tc=true transparent 80x24: transparent=true bg=Rgb(10, 10, 10) surface=Rgb(18, 18, 18) ring=Rgb(207, 207, 207) violations=0
+default tc=false 80x24: transparent=false bg=Indexed(232) surface=Indexed(233) ring=Indexed(252) violations=0
+default tc=false transparent 80x24: transparent=true bg=Indexed(232) surface=Indexed(233) ring=Indexed(252) violations=0
+terminal tc=true 80x24: transparent=false bg=Reset surface=Black ring=White violations=0
+terminal tc=true transparent 80x24: transparent=true bg=Reset surface=Black ring=White violations=0
+terminal tc=false 80x24: transparent=false bg=Reset surface=Black ring=White violations=0
+terminal tc=false transparent 80x24: transparent=true bg=Reset surface=Black ring=White violations=0
+catppuccin tc=true 80x24: transparent=false bg=Rgb(17, 17, 27) surface=Rgb(21, 21, 33) ring=Rgb(125, 164, 228) violations=0
+catppuccin tc=true transparent 80x24: transparent=true bg=Rgb(17, 17, 27) surface=Rgb(21, 21, 33) ring=Rgb(125, 164, 228) violations=0
+catppuccin tc=false 80x24: transparent=false bg=Indexed(233) surface=Indexed(234) ring=Indexed(110) violations=0
+catppuccin tc=false transparent 80x24: transparent=true bg=Indexed(233) surface=Indexed(234) ring=Indexed(110) violations=0
+gruvbox tc=true 80x24: transparent=false bg=Rgb(40, 40, 40) surface=Rgb(50, 48, 47) ring=Rgb(229, 174, 46) violations=0
+gruvbox tc=true transparent 80x24: transparent=true bg=Rgb(40, 40, 40) surface=Rgb(50, 48, 47) ring=Rgb(229, 174, 46) violations=0
+gruvbox tc=false 80x24: transparent=false bg=Indexed(235) surface=Indexed(236) ring=Indexed(178) violations=0
+gruvbox tc=false transparent 80x24: transparent=true bg=Indexed(235) surface=Indexed(236) ring=Indexed(178) violations=0
+nord tc=true 80x24: transparent=false bg=Rgb(46, 52, 64) surface=Rgb(53, 59, 73) ring=Rgb(127, 178, 194) violations=0
+nord tc=true transparent 80x24: transparent=true bg=Rgb(46, 52, 64) surface=Rgb(53, 59, 73) ring=Rgb(127, 178, 194) violations=0
+nord tc=false 80x24: transparent=false bg=Indexed(237) surface=Indexed(237) ring=Indexed(109) violations=0
+nord tc=false transparent 80x24: transparent=true bg=Indexed(237) surface=Indexed(237) ring=Indexed(109) violations=0
+tokyo-night tc=true 80x24: transparent=false bg=Rgb(26, 27, 38) surface=Rgb(34, 37, 52) ring=Rgb(112, 149, 226) violations=0
+tokyo-night tc=true transparent 80x24: transparent=true bg=Rgb(26, 27, 38) surface=Rgb(34, 37, 52) ring=Rgb(112, 149, 226) violations=0
+tokyo-night tc=false 80x24: transparent=false bg=Indexed(234) surface=Indexed(235) ring=Indexed(68) violations=0
+tokyo-night tc=false transparent 80x24: transparent=true bg=Indexed(234) surface=Indexed(235) ring=Indexed(68) violations=0
+solarized tc=true 80x24: transparent=false bg=Rgb(0, 43, 54) surface=Rgb(2, 46, 58) ring=Rgb(34, 129, 194) violations=0
+solarized tc=true transparent 80x24: transparent=true bg=Rgb(0, 43, 54) surface=Rgb(2, 46, 58) ring=Rgb(34, 129, 194) violations=0
+solarized tc=false 80x24: transparent=false bg=Indexed(234) surface=Indexed(235) ring=Indexed(31) violations=0
+solarized tc=false transparent 80x24: transparent=true bg=Indexed(234) surface=Indexed(235) ring=Indexed(31) violations=0
+too small 59x24: text row Some(12) 'Terminal too small' left=Some(20)
+   all bg=background true, text fg muted true
+too small 80x19: text row Some(9) 'Terminal too small' left=Some(31)
+   all bg=background true, text fg muted true
+too small 18x3: text row Some(1) 'Terminal too small' left=Some(0)
+   all bg=background true, text fg muted true
+too small 17x5: text row Some(2) 'Terminal too smal' left=Some(0)
+   all bg=background true, text fg muted true
+too small 10x1: text row Some(0) 'Terminal t' left=Some(0)
+   all bg=background true, text fg muted true
+too small 1x1: text row Some(0) 'T' left=Some(0)
+   all bg=background true, text fg muted true
+too small 59x19: text row Some(9) 'Terminal too small' left=Some(20)
+   all bg=background true, text fg muted true
+too small 30x10: text row Some(5) 'Terminal too small' left=Some(6)
+   all bg=background true, text fg muted true
+transparent too small: any non-reset bg false
+resize seq -> 80x24: identical to fresh render: true
+resize seq -> 50x15: identical to fresh render: true
+resize seq -> 80x24: identical to fresh render: true
+resize seq -> 200x50: identical to fresh render: true
+resize seq -> 80x24: identical to fresh render: true
+resize seq -> 59x24: identical to fresh render: true
+frame Rect { x: 0, y: 0, width: 2, height: 2 }:
+╭╮   
+╰╯   
+     
+     
+     
+
+frame Rect { x: 0, y: 0, width: 1, height: 1 }:
+╭    
+     
+     
+     
+     
+
+frame Rect { x: 0, y: 0, width: 3, height: 3 }:
+╭─╮  
+│ │  
+╰─╯  
+     
+     
+
+long msg 20x3:
+                    
+a very long message 
+                    
+

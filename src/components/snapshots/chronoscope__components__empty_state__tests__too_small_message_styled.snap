@@ -1,0 +1,23 @@
+---
+source: src/components/empty_state.rs
+expression: "buffer_to_styled(&draw(builtin::default_theme(), 40, 9))"
+---
+                                        
+                                        
+                                        
+                                        
+           Terminal too small           
+                                        
+                                        
+                                        
+                                        
+--- styles (fg/bg/modifiers) ---
+0: 0..40 Reset/Rgb(10, 10, 10)/NONE
+1: 0..40 Reset/Rgb(10, 10, 10)/NONE
+2: 0..40 Reset/Rgb(10, 10, 10)/NONE
+3: 0..40 Reset/Rgb(10, 10, 10)/NONE
+4: 0..40 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE
+5: 0..40 Reset/Rgb(10, 10, 10)/NONE
+6: 0..40 Reset/Rgb(10, 10, 10)/NONE
+7: 0..40 Reset/Rgb(10, 10, 10)/NONE
+8: 0..40 Reset/Rgb(10, 10, 10)/NONE
