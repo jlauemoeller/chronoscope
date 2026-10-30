@@ -1,0 +1,22 @@
+===== empty @ 60x20 (screen Browser, focus Some(Transcript))
+╭─ Project BRIO ──── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                                                          │
+│ /home/user/projects/brio                                 │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                    Session file is empty                   
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+ / to search | ENTER to fold or unfold sections             
+

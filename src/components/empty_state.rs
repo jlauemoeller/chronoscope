@@ -16,6 +16,8 @@ use crate::theme::{Role, Theme};
 
 /// The message shown when the terminal is too small.
 pub const TOO_SMALL: &str = "Terminal too small";
+/// The message shown in the browser when the session has no turns.
+pub const EMPTY_SESSION: &str = "Session file is empty";
 /// The message shown in the Sessions pane when the harness has nothing to
 /// list.
 pub const NO_SESSIONS: &str = "No sessions for this harness";

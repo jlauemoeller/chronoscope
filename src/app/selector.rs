@@ -11,23 +11,86 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use tuirealm::application::{Application, ApplicationError};
 use tuirealm::props::{AttrValue, Attribute};
 
+use super::hints::selector_hints;
 use super::index_port::IndexUpdate;
-use super::layout::{Screen, selector_areas};
+use super::layout::{browser_areas, selector_areas};
 use super::redraw::RedrawRequest;
 use super::search::SearchState;
-use super::{App, Id};
+use super::{App, Id, Msg, UserEvent};
 use crate::components::{
-    ACTIVE_ATTR, ActiveSessions, CWD_ATTR, PROJECT_ROWS_ATTR, ProjectRow, ProjectRows,
-    SELECTED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SessionRow,
-    SessionRows, SessionStatsUpdate, TABS_ATTR, Tab, Tabs, VISIBLE_ROWS_ATTR, payload_value,
-    selected_value, visible_rows,
+    ACTIVE_ATTR, ActiveSessions, CWD_ATTR, HarnessTabs, HelpLine, PROJECT_ROWS_ATTR, ProjectList,
+    ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR,
+    SESSION_STATS_ATTR, SelectorFrame, SessionList, SessionRow, SessionRows, SessionStatsUpdate,
+    TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir, payload_value,
+    selected_value, viewport_value, visible_rows,
 };
+use crate::keymap::Keymap;
+use crate::theme::{Role, Theme};
+
 use crate::index::{IndexEvent, SessionMap};
 use crate::model::{
     HarnessId, Project, ProjectId, SessionId, SessionStats, SessionSummary, is_active,
 };
+
+/// The components of the selector overlay, in drawing order.
+pub(super) const SELECTOR_IDS: [Id; 6] = [
+    Id::SelectorFrame,
+    Id::HarnessTabs,
+    Id::ProjectList,
+    Id::SessionList,
+    Id::WorkingDir,
+    Id::HelpLine,
+];
+
+/// Mounts the components of the session selector. `base` says whether the
+/// selector is the base screen (it paints the whole screen) or an overlay
+/// over the browser. Focus is the caller's business.
+pub(super) fn mount_selector(
+    application: &mut Application<Id, Msg, UserEvent>,
+    keymap: &Keymap,
+    theme: &Theme,
+    base: bool,
+) -> Result<(), ApplicationError> {
+    application.mount(
+        Id::SelectorFrame,
+        Box::new(SelectorFrame::new(theme.clone()).base(base)),
+        Vec::new(),
+    )?;
+    application.mount(
+        Id::HarnessTabs,
+        Box::new(HarnessTabs::new(theme.clone())),
+        Vec::new(),
+    )?;
+    application.mount(
+        Id::ProjectList,
+        Box::new(ProjectList::new(keymap.clone(), theme.clone())),
+        Vec::new(),
+    )?;
+    application.mount(
+        Id::SessionList,
+        Box::new(SessionList::new(keymap.clone(), theme.clone())),
+        Vec::new(),
+    )?;
+    application.mount(
+        Id::WorkingDir,
+        Box::new(WorkingDir::new(String::new(), theme.clone())),
+        Vec::new(),
+    )?;
+    application.mount(
+        Id::HelpLine,
+        Box::new(HelpLine::new(
+            selector_hints(keymap),
+            Vec::new(),
+            theme.clone(),
+            Role::Surface,
+        )),
+        Vec::new(),
+    )?;
+    Ok(())
+}
 
 /// The two panes that take focus.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -174,6 +237,50 @@ impl SelectorState {
             project,
             matched: false,
         })
+    }
+
+    /// The summary of the session `id` of `harness`, from the last snapshot.
+    pub(super) fn find_session(
+        &self,
+        harness: HarnessId,
+        id: &SessionId,
+    ) -> Option<&SessionSummary> {
+        self.data
+            .get(&harness)?
+            .sessions
+            .values()
+            .flatten()
+            .find(|s| &s.id == id)
+    }
+
+    /// The project `id` of `harness`, from the last snapshot.
+    pub(super) fn find_project(&self, harness: HarnessId, id: &ProjectId) -> Option<&Project> {
+        self.data
+            .get(&harness)?
+            .projects
+            .iter()
+            .find(|p| &p.id == id)
+    }
+
+    /// Selects `session` of `harness` with Sessions focused, as the selector
+    /// is when it is opened over that session. The session is left
+    /// unselected if the last snapshot no longer lists it; the newest one is
+    /// selected then (Sessions has focus).
+    pub(super) fn show_session(&mut self, harness: HarnessId, session: &SessionSummary) {
+        self.preselecting = false;
+        self.search = None;
+        self.pane = Pane::Sessions;
+        self.current = Some(harness);
+        let project = self
+            .find_project(harness, &session.project)
+            .map(|p| p.id.clone())
+            .or_else(|| self.projects().first().map(|p| p.id.clone()));
+        self.project = project;
+        self.session = None;
+        if self.sessions().iter().any(|s| s.id == session.id) {
+            self.session = Some(session.id.clone());
+        }
+        self.select_newest_if_focused();
     }
 
     pub(super) fn current_data(&self) -> Option<&HarnessData> {
@@ -563,13 +670,19 @@ impl App {
     // -- pushing data into the components
 
     pub(super) fn set_attr(&mut self, id: Id, attr: Attribute, value: AttrValue) {
+        if !self.application.mounted(&id) {
+            // The selector is unmounted while a session is open (and the
+            // browser while the selector is the base screen); the state is
+            // kept and pushed when it is mounted again.
+            return;
+        }
         match self.application.attr(&id, attr, value) {
             Ok(()) => self.request_redraw(RedrawRequest::Dirty),
             Err(err) => log::warn!("could not update {id:?}: {err}"),
         }
     }
 
-    fn push_all(&mut self) {
+    pub(super) fn push_all(&mut self) {
         self.push_tabs();
         self.push_projects();
         self.push_sessions();
@@ -667,18 +780,29 @@ impl App {
         self.set_attr(Id::WorkingDir, CWD_ATTR, AttrValue::String(cwd));
     }
 
-    /// Tells both lists how many rows their pane shows at the current size.
+    /// Tells the lists how many rows their pane shows at the current size,
+    /// and the transcript how big its area is.
     pub(super) fn push_viewports(&mut self) {
         let area = ratatui::layout::Rect::new(0, 0, self.size.0, self.size.1);
-        if self.screen != Screen::Selector || super::layout::too_small(area) {
+        if super::layout::too_small(area) {
             return;
         }
-        let overlay = super::layout::layout(&self.layout_input(), area)
-            .area(Id::SelectorFrame)
-            .unwrap_or_default();
-        let rows = visible_rows(selector_areas(overlay).projects.height);
-        for id in [Id::ProjectList, Id::SessionList] {
-            self.set_attr(id, VISIBLE_ROWS_ATTR, AttrValue::Length(rows));
+        if self.screen.has_selector() {
+            let overlay = super::layout::layout(&self.layout_input(), area)
+                .area(Id::SelectorFrame)
+                .unwrap_or_default();
+            let rows = visible_rows(selector_areas(overlay).projects.height);
+            for id in [Id::ProjectList, Id::SessionList] {
+                self.set_attr(id, VISIBLE_ROWS_ATTR, AttrValue::Length(rows));
+            }
+        }
+        if self.screen.has_browser() {
+            let transcript = browser_areas(area).transcript;
+            self.set_attr(
+                Id::Transcript,
+                VIEWPORT_ATTR,
+                viewport_value(transcript.as_size()),
+            );
         }
     }
 }

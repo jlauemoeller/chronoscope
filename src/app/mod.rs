@@ -9,6 +9,7 @@
 //! components. [`App::view`] only asks [`layout`] where each component goes and
 //! calls [`Application::view`] for it.
 
+pub mod browser;
 pub mod hints;
 pub mod index_port;
 pub mod layout;
@@ -17,8 +18,11 @@ pub mod runtime;
 pub mod search;
 pub mod search_worker;
 pub mod selector;
+pub mod session_port;
 pub mod startup;
 
+#[cfg(test)]
+mod browser_tests;
 #[cfg(test)]
 mod fixtures;
 #[cfg(test)]
@@ -30,8 +34,10 @@ mod selector_tests;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
+use std::sync::Arc;
+use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
@@ -42,17 +48,16 @@ use tuirealm::component::AppComponent;
 use tuirealm::listener::EventListenerCfg;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
-use crate::components::{
-    EmptyState, GlobalEvents, HarnessTabs, HelpLine, ProjectList, SelectorFrame, SessionList,
-    TOAST_DURATION, TOO_SMALL, Toast, WorkingDir,
-};
+use crate::components::{EmptyState, GlobalEvents, TOAST_DURATION, TOO_SMALL, Toast};
 use crate::config::{Config, ConfigWarning};
+use crate::harness::Harness;
 use crate::index::{IndexEvent, IndexHandle};
 use crate::keymap::Keymap;
 use crate::model::{HarnessId, SessionId};
-use crate::theme::{Role, Theme, ThemeRegistry};
+use crate::theme::{Theme, ThemeRegistry};
 use crate::timestamp::{DisplayTz, TimestampFormatter};
-use hints::{selector_hints, startup_toast_text};
+use browser::BrowserState;
+use hints::startup_toast_text;
 pub use index_port::{IndexPort, IndexUpdate};
 use layout::{LayoutInput, Screen, layout};
 use redraw::RedrawRequest;
@@ -60,6 +65,7 @@ pub use search::{Hit, search_sessions};
 pub use search_worker::{SearchPort, SearchResult, SearchUpdate, SearchWorker};
 use selector::SelectorState;
 pub use selector::{Pane, SelectorMsg};
+pub use session_port::{SessionEvent, SessionPort, SessionUpdate, session_channel};
 pub use startup::AppInit;
 use unicode_width::UnicodeWidthStr;
 
@@ -80,8 +86,17 @@ pub enum Id {
     SessionList,
     /// The Working Directory box of the selector.
     WorkingDir,
-    /// Key hints and status items.
+    /// Key hints of the selector.
     HelpLine,
+    /// Project and session titles, working directory and parse warnings of
+    /// the browser.
+    BrowserHeader,
+    /// The open session's turns.
+    Transcript,
+    /// Key hints and status items of the browser.
+    BrowserHelpLine,
+    /// "Session file is empty", in place of the transcript.
+    EmptySession,
     /// The search, path and `y/n` prompt, drawn in place of the help line.
     Prompt,
     /// The notification in the bottom-right corner.
@@ -105,12 +120,20 @@ pub enum Msg {
     SearchResults(SearchUpdate),
     /// Something happened in the session selector.
     Selector(SelectorMsg),
-    /// The user asked to open this session of this harness. The browser
-    /// handles it.
+    /// The user asked to open this session of this harness.
     OpenSession(HarnessId, SessionId),
+    /// The user asked for the session selector over the open session.
+    OpenSelector,
     /// `Esc` in the selector with a session open behind it: close the
-    /// selector. The browser handles it.
+    /// selector.
     CloseSelector,
+    /// The load of the open session reported something. `generation` is the
+    /// number of the load; updates of a load that has been replaced are
+    /// dropped.
+    Session {
+        generation: u64,
+        update: SessionUpdate,
+    },
     /// The text of the prompt changed.
     PromptChanged(String),
     /// Only the prompt's cursor moved: nothing but a redraw is needed.
@@ -135,6 +158,12 @@ pub enum UserEvent {
     Index(IndexUpdate),
     /// The search worker finished a search.
     Search(SearchUpdate),
+    /// The harness reported something about the session being loaded;
+    /// `generation` numbers the load.
+    Session {
+        generation: u64,
+        update: SessionUpdate,
+    },
 }
 
 /// How often the event listener sends `Event::Tick`.
@@ -151,10 +180,19 @@ const MAX_EVENTS_PER_TICK: usize = 64;
 pub fn production_listener(
     index: Option<Receiver<IndexEvent>>,
     search: Option<Receiver<SearchResult>>,
+    session: Option<Receiver<SessionEvent>>,
 ) -> EventListenerCfg<UserEvent> {
     let cfg = EventListenerCfg::default()
         .crossterm_input_listener(INPUT_POLL_INTERVAL, 10)
         .tick_interval(TICK_INTERVAL);
+    let cfg = match session {
+        Some(events) => cfg.add_port(
+            Box::new(SessionPort::new(events)),
+            session_port::SESSION_POLL_INTERVAL,
+            session_port::SESSION_MAX_PER_POLL,
+        ),
+        None => cfg,
+    };
     let cfg = match search {
         Some(results) => cfg.add_port(
             Box::new(SearchPort::new(results)),
@@ -202,6 +240,12 @@ pub struct App {
     /// Messages `update` made for itself or for the browser; `tick` hands
     /// them out with the components'.
     queued: Vec<Msg>,
+    /// The harnesses sessions can be loaded from.
+    harnesses: HashMap<HarnessId, Arc<dyn Harness>>,
+    /// Where the forwarding threads of session loads send their updates.
+    session_sink: Option<Sender<SessionEvent>>,
+    /// The open session.
+    browser: BrowserState,
 }
 
 impl App {
@@ -230,44 +274,10 @@ impl App {
             Box::new(GlobalEvents::new(keymap.clone())),
             GlobalEvents::subscriptions(&keymap),
         )?;
-        application.mount(
-            Id::SelectorFrame,
-            Box::new(SelectorFrame::new(theme.clone())),
-            Vec::new(),
-        )?;
-        application.mount(
-            Id::HarnessTabs,
-            Box::new(HarnessTabs::new(theme.clone())),
-            Vec::new(),
-        )?;
-        application.mount(
-            Id::ProjectList,
-            Box::new(ProjectList::new(keymap.clone(), theme.clone())),
-            Vec::new(),
-        )?;
-        application.mount(
-            Id::SessionList,
-            Box::new(SessionList::new(keymap.clone(), theme.clone())),
-            Vec::new(),
-        )?;
-        application.mount(
-            Id::WorkingDir,
-            Box::new(WorkingDir::new(String::new(), theme.clone())),
-            Vec::new(),
-        )?;
+        selector::mount_selector(&mut application, &keymap, &theme, true)?;
         application.mount(
             Id::EmptyState,
             Box::new(EmptyState::new(TOO_SMALL, theme.clone())),
-            Vec::new(),
-        )?;
-        application.mount(
-            Id::HelpLine,
-            Box::new(HelpLine::new(
-                selector_hints(&keymap),
-                Vec::new(),
-                theme.clone(),
-                Role::Surface,
-            )),
             Vec::new(),
         )?;
         // The selector starts on the Projects pane.
@@ -296,6 +306,9 @@ impl App {
             search_worker: None,
             search_seq: 0,
             queued: Vec::new(),
+            harnesses: HashMap::new(),
+            session_sink: None,
+            browser: BrowserState::default(),
         };
         app.push_tabs();
         // The startup warnings are shown once, here, and never again.
@@ -320,6 +333,7 @@ impl App {
     /// Stops the search worker, and the session index worker, and waits until
     /// it has saved its cache.
     pub fn shutdown(&mut self) {
+        self.browser.stop_watching();
         if let Some(mut worker) = self.search_worker.take() {
             worker.shutdown();
         }
@@ -482,8 +496,10 @@ impl App {
             Msg::PromptSubmit(_) => self.search_submit(),
             Msg::PromptCancel => self.search_cancel(),
             Msg::PromptNav(direction) => self.search_nav(direction),
-            // The browser (task 021) handles these.
-            Msg::OpenSession(..) | Msg::CloseSelector => {}
+            Msg::OpenSession(harness, session) => self.open_session(harness, &session),
+            Msg::OpenSelector => self.open_selector(),
+            Msg::CloseSelector => self.close_selector(),
+            Msg::Session { generation, update } => self.session_update(generation, &update),
         }
     }
 
@@ -526,6 +542,7 @@ impl App {
             screen: self.screen,
             toast_text_width: self.toast_text.as_deref().map(UnicodeWidthStr::width),
             prompt: self.application.mounted(&Id::Prompt),
+            session_empty: self.browser.session_empty(),
         }
     }
 

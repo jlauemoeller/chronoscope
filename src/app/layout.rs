@@ -6,7 +6,7 @@
 
 use ratatui::layout::Rect;
 
-use crate::components::{MAX_TOAST_WIDTH, TOAST_CHROME};
+use crate::components::{HEADER_HEIGHT, MAX_TOAST_WIDTH, TOAST_CHROME};
 
 use super::Id;
 
@@ -50,12 +50,33 @@ pub const MIN_HEIGHT: u16 = 20;
 /// The selector overlay is at most this wide.
 pub const MAX_OVERLAY_WIDTH: u16 = 160;
 
+/// The browser's help line is this many rows high: a blank separator row and
+/// the row with the text.
+pub const BROWSER_HELP_HEIGHT: u16 = 2;
+
 /// Which screen is shown.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Screen {
     /// The session selector (the startup screen).
     #[default]
     Selector,
+    /// The session browser.
+    Browser,
+    /// The session selector as an overlay over the session browser.
+    BrowserSelector,
+}
+
+impl Screen {
+    /// Whether the session browser is on screen (under the selector, if that
+    /// is open).
+    pub fn has_browser(self) -> bool {
+        matches!(self, Self::Browser | Self::BrowserSelector)
+    }
+
+    /// Whether the session selector is on screen.
+    pub fn has_selector(self) -> bool {
+        matches!(self, Self::Selector | Self::BrowserSelector)
+    }
 }
 
 /// What the layout depends on besides the size.
@@ -67,6 +88,9 @@ pub struct LayoutInput {
     pub toast_text_width: Option<usize>,
     /// Whether a prompt is active: it takes the help line's place.
     pub prompt: bool,
+    /// Whether the open session has no turns: the browser shows
+    /// [`Id::EmptySession`] in place of the transcript.
+    pub session_empty: bool,
 }
 
 /// The area of each visible component, in drawing order (overlays last).
@@ -111,29 +135,73 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
             areas: vec![(Id::EmptyState, area)],
         };
     }
-    let mut areas = match input.screen {
-        Screen::Selector => {
-            let overlay = selector_overlay(area);
-            let areas = selector_areas(overlay);
-            let bottom = if input.prompt {
-                Id::Prompt
-            } else {
-                Id::HelpLine
-            };
-            vec![
-                (Id::SelectorFrame, overlay),
-                (Id::HarnessTabs, areas.tabs),
-                (Id::ProjectList, areas.projects),
-                (Id::SessionList, areas.sessions),
-                (Id::WorkingDir, areas.working_dir),
-                (bottom, areas.help_line),
-            ]
-        }
-    };
+    let mut areas = Vec::new();
+    if input.screen.has_browser() {
+        let browser = browser_areas(area);
+        let body = if input.session_empty {
+            Id::EmptySession
+        } else {
+            Id::Transcript
+        };
+        areas.extend([
+            (Id::BrowserHeader, browser.header),
+            (body, browser.transcript),
+            (Id::BrowserHelpLine, browser.help_line),
+        ]);
+    }
+    if input.screen.has_selector() {
+        let overlay = selector_overlay(area);
+        let selector = selector_areas(overlay);
+        let bottom = if input.prompt {
+            Id::Prompt
+        } else {
+            Id::HelpLine
+        };
+        areas.extend([
+            (Id::SelectorFrame, overlay),
+            (Id::HarnessTabs, selector.tabs),
+            (Id::ProjectList, selector.projects),
+            (Id::SessionList, selector.sessions),
+            (Id::WorkingDir, selector.working_dir),
+            (bottom, selector.help_line),
+        ]);
+    }
     if let Some(text_width) = input.toast_text_width {
         areas.push((Id::Toast, toast_rect(area, text_width)));
     }
     ScreenLayout { areas }
+}
+
+/// The areas of the session browser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BrowserAreas {
+    /// The header: the first [`HEADER_HEIGHT`] rows, full width.
+    pub header: Rect,
+    /// The transcript: from the row under the header to the row above the
+    /// help line's blank separator row.
+    pub transcript: Rect,
+    /// The help line: the last two rows, full width. Its text is on the last
+    /// row; the row above it is blank.
+    pub help_line: Rect,
+}
+
+/// Places the browser's components in a screen of `area`, which is at least
+/// [`MIN_WIDTH`] x [`MIN_HEIGHT`]: the header on rows 0 to 4, the transcript
+/// on rows 5 to `height - 3` and the help line on the last two rows.
+pub fn browser_areas(area: Rect) -> BrowserAreas {
+    let header_height = HEADER_HEIGHT.min(area.height);
+    let help_height = BROWSER_HELP_HEIGHT.min(area.height - header_height);
+    let transcript_height = area.height - header_height - help_height;
+    BrowserAreas {
+        header: Rect::new(area.x, area.y, area.width, header_height),
+        transcript: Rect::new(
+            area.x,
+            area.y + header_height,
+            area.width,
+            transcript_height,
+        ),
+        help_line: Rect::new(area.x, area.bottom() - help_height, area.width, help_height),
+    }
 }
 
 /// The areas inside the selector overlay.
@@ -391,6 +459,128 @@ mod tests {
         let a = areas(60, 20);
         assert_eq!(a.projects.height, 4);
         assert_eq!(crate::components::visible_rows(a.projects.height), 1);
+    }
+
+    fn browser(width: u16, height: u16, empty: bool) -> ScreenLayout {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            session_empty: empty,
+            ..LayoutInput::default()
+        };
+        layout(&input, Rect::new(0, 0, width, height))
+    }
+
+    #[test]
+    fn the_browser_is_header_transcript_and_a_two_row_help_line() {
+        let l = browser(120, 40, false);
+        assert_eq!(l.area(Id::BrowserHeader), Some(Rect::new(0, 0, 120, 5)));
+        assert_eq!(l.area(Id::Transcript), Some(Rect::new(0, 5, 120, 33)));
+        assert_eq!(l.area(Id::BrowserHelpLine), Some(Rect::new(0, 38, 120, 2)));
+        assert_eq!(l.area(Id::EmptySession), None);
+        assert_eq!(l.area(Id::SelectorFrame), None);
+        let ids: Vec<Id> = l.areas().iter().map(|(id, _)| *id).collect();
+        assert_eq!(
+            ids,
+            [Id::BrowserHeader, Id::Transcript, Id::BrowserHelpLine]
+        );
+    }
+
+    #[test]
+    fn the_transcript_runs_from_row_5_to_row_height_minus_3() {
+        for (w, h) in [(60, 20), (80, 24), (120, 40), (200, 50)] {
+            let l = browser(w, h, false);
+            let t = l.area(Id::Transcript).unwrap();
+            assert_eq!((t.y, t.bottom()), (5, h - 2), "{w}x{h}: rows 5..=h-3");
+            let help = l.area(Id::BrowserHelpLine).unwrap();
+            assert_eq!(
+                (help.y, help.bottom(), help.width),
+                (h - 2, h, w),
+                "{w}x{h}"
+            );
+            let rows: u16 = [Id::BrowserHeader, Id::Transcript, Id::BrowserHelpLine]
+                .iter()
+                .map(|id| l.area(*id).unwrap().height)
+                .sum();
+            assert_eq!(rows, h, "every row belongs to a component");
+        }
+    }
+
+    #[test]
+    fn an_empty_session_puts_the_message_where_the_transcript_was() {
+        let l = browser(80, 24, true);
+        assert_eq!(l.area(Id::Transcript), None);
+        assert_eq!(l.area(Id::EmptySession), Some(Rect::new(0, 5, 80, 17)));
+    }
+
+    #[test]
+    fn the_browser_follows_the_area_origin() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(3, 2, 80, 24));
+        assert_eq!(l.area(Id::BrowserHeader), Some(Rect::new(3, 2, 80, 5)));
+        assert_eq!(l.area(Id::BrowserHelpLine), Some(Rect::new(3, 24, 80, 2)));
+    }
+
+    #[test]
+    fn a_too_small_terminal_replaces_the_browser_too() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 59, 24));
+        assert_eq!(l.areas(), &[(Id::EmptyState, Rect::new(0, 0, 59, 24))]);
+    }
+
+    #[test]
+    fn the_selector_over_the_browser_is_drawn_after_the_browser() {
+        let input = LayoutInput {
+            screen: Screen::BrowserSelector,
+            toast_text_width: Some(5),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 200, 50));
+        let ids: Vec<Id> = l.areas().iter().map(|(id, _)| *id).collect();
+        assert_eq!(
+            ids,
+            [
+                Id::BrowserHeader,
+                Id::Transcript,
+                Id::BrowserHelpLine,
+                Id::SelectorFrame,
+                Id::HarnessTabs,
+                Id::ProjectList,
+                Id::SessionList,
+                Id::WorkingDir,
+                Id::HelpLine,
+                Id::Toast
+            ]
+        );
+        // The overlay leaves the first and the last row, and the side columns.
+        assert_eq!(l.area(Id::SelectorFrame), Some(Rect::new(20, 1, 160, 48)));
+        assert_eq!(l.area(Id::BrowserHeader), Some(Rect::new(0, 0, 200, 5)));
+        assert_eq!(l.area(Id::BrowserHelpLine), Some(Rect::new(0, 48, 200, 2)));
+    }
+
+    #[test]
+    fn a_prompt_over_the_browser_takes_the_selectors_help_line_not_the_browsers() {
+        let input = LayoutInput {
+            screen: Screen::BrowserSelector,
+            prompt: true,
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 80, 24));
+        assert_eq!(l.area(Id::HelpLine), None);
+        assert!(l.area(Id::Prompt).is_some());
+        assert!(l.area(Id::BrowserHelpLine).is_some());
+    }
+
+    #[test]
+    fn screens_know_which_parts_they_show() {
+        assert!(Screen::Selector.has_selector() && !Screen::Selector.has_browser());
+        assert!(!Screen::Browser.has_selector() && Screen::Browser.has_browser());
+        assert!(Screen::BrowserSelector.has_selector() && Screen::BrowserSelector.has_browser());
     }
 
     fn with_toast(width: u16, height: u16, text_width: usize) -> ScreenLayout {

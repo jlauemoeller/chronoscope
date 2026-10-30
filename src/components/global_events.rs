@@ -12,6 +12,7 @@ use tuirealm::subscription::{EventClause, Sub, SubClause};
 
 use crate::app::index_port::index_event_kind;
 use crate::app::search_worker::search_event_kind;
+use crate::app::session_port::session_event_kind;
 use crate::app::{Id, Msg, UserEvent};
 use crate::keymap::{Action, Context, KeySpec, Keymap};
 
@@ -22,11 +23,11 @@ const CTRL_C: KeyEvent = KeyEvent {
 };
 
 /// Draws nothing. It is subscribed to the global keys, to resizes, to ticks
-/// and to the user events of the session index and the search worker, and
-/// turns them into messages.
+/// and to the user events of the session index, the search worker and the
+/// open session, and turns them into messages.
 ///
-/// The quit keys come from the keymap's `global` context; `Ctrl-c` always
-/// quits. The other global keys (help, theme selector, session selector) are
+/// The quit and `open_selector` keys come from the keymap's `global` context;
+/// `Ctrl-c` always quits. The other global keys (help, theme selector) are
 /// added with the components they open.
 #[derive(Debug, Clone)]
 pub struct GlobalEvents {
@@ -49,11 +50,16 @@ impl GlobalEvents {
     pub fn subscriptions(keymap: &Keymap) -> Vec<Sub<Id, UserEvent>> {
         let mut subs: Vec<Sub<Id, UserEvent>> = quit_key_events(keymap)
             .into_iter()
+            .chain(action_key_events(keymap, Action::OpenSelector))
             .map(|key| Sub::new(EventClause::Keyboard(key), key_clause()))
             .collect();
         subs.push(Sub::new(EventClause::WindowResize, always_clause()));
         subs.push(Sub::new(EventClause::Tick, always_clause()));
-        for kind in [index_event_kind(), search_event_kind()] {
+        for kind in [
+            index_event_kind(),
+            search_event_kind(),
+            session_event_kind(),
+        ] {
             subs.push(Sub::new(EventClause::Discriminant(kind), always_clause()));
         }
         subs
@@ -83,7 +89,20 @@ fn always_clause() -> SubClause<Id> {
 /// the `Shift` variant is included as well.
 pub fn quit_key_events(keymap: &Keymap) -> Vec<KeyEvent> {
     let mut events = vec![CTRL_C];
-    for seq in keymap.keys(Context::Global, Action::Quit) {
+    for event in action_key_events(keymap, Action::Quit) {
+        if !events.contains(&event) {
+            events.push(event);
+        }
+    }
+    events
+}
+
+/// The key events to subscribe to for the `global` action `action`: every
+/// single key bound to it (a chord cannot be subscribed to), with the `Shift`
+/// variant of plain character keys.
+pub fn action_key_events(keymap: &Keymap, action: Action) -> Vec<KeyEvent> {
+    let mut events = Vec::new();
+    for seq in keymap.keys(Context::Global, action) {
         if seq.is_chord() {
             continue;
         }
@@ -127,6 +146,10 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
             Event::Tick => Some(Msg::Tick),
             Event::User(UserEvent::Index(update)) => Some(Msg::Index(update.clone())),
             Event::User(UserEvent::Search(update)) => Some(Msg::SearchResults(update.clone())),
+            Event::User(UserEvent::Session { generation, update }) => Some(Msg::Session {
+                generation: *generation,
+                update: update.clone(),
+            }),
             _ => None,
         }
     }
@@ -139,6 +162,7 @@ impl GlobalEvents {
         }
         match self.keymap.resolve(Context::Global, key)? {
             Action::Quit => Some(Msg::Quit),
+            Action::OpenSelector => Some(Msg::OpenSelector),
             _ => None,
         }
     }
@@ -252,10 +276,56 @@ mod tests {
     }
 
     #[test]
-    fn subscriptions_include_resize_tick_index_and_search_events() {
+    fn subscriptions_include_the_keys_resize_tick_and_the_worker_events() {
         let subs = GlobalEvents::subscriptions(&Keymap::default());
         let keys = quit_key_events(&Keymap::default()).len();
-        assert_eq!(subs.len(), keys + 4);
+        let open = action_key_events(&Keymap::default(), Action::OpenSelector);
+        assert_eq!(open, [KeyEvent::new(Key::Char('o'), KeyModifiers::CONTROL)]);
+        // Resize, tick, and the index, search and session events.
+        assert_eq!(subs.len(), keys + open.len() + 5);
+    }
+
+    #[test]
+    fn ctrl_o_opens_the_selector() {
+        let mut component = GlobalEvents::new(Keymap::default());
+        assert_eq!(component.on(&ctrl('o')), Some(Msg::OpenSelector));
+        assert_eq!(component.on(&char_key('o')), None);
+    }
+
+    #[test]
+    fn a_remapped_open_selector_key_replaces_ctrl_o() {
+        let mut raw = RawKeys::new();
+        raw.entry("global".to_owned())
+            .or_default()
+            .insert("open_selector".to_owned(), vec!["ctrl-p".to_owned()]);
+        let (keymap, warnings) = Keymap::from_config(&raw);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut component = GlobalEvents::new(keymap.clone());
+        assert_eq!(component.on(&ctrl('p')), Some(Msg::OpenSelector));
+        assert_eq!(component.on(&ctrl('o')), None);
+        assert_eq!(
+            action_key_events(&keymap, Action::OpenSelector),
+            [KeyEvent::new(Key::Char('p'), KeyModifiers::CONTROL)]
+        );
+    }
+
+    #[test]
+    fn a_session_user_event_becomes_a_session_message() {
+        use crate::app::SessionUpdate;
+        use crate::model::ModelUpdate;
+        let update = SessionUpdate::new(4, ModelUpdate::Loaded);
+        let mut component = GlobalEvents::new(Keymap::default());
+        let msg = component.on(&Event::User(UserEvent::Session {
+            generation: 9,
+            update: update.clone(),
+        }));
+        assert_eq!(
+            msg,
+            Some(Msg::Session {
+                generation: 9,
+                update
+            })
+        );
     }
 
     #[test]
