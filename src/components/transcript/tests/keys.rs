@@ -861,7 +861,7 @@ fn a_remap_applies_to_every_action_it_names() {
 fn keys_of_other_contexts_do_nothing() {
     let mut t = session_transcript(80, 24);
     let before = text_rows(&draw(&mut t, 80, 24));
-    // `/` search (answered, not acted on here), `w` save (a later task),
+    // `/` search and `w` save (answered, not acted on here),
     // `q` quit and `Z` are not for the transcript to change the view with.
     for c in ['/', 'w', 'q', 'Z'] {
         ch(&mut t, c);

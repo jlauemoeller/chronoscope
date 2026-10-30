@@ -20,6 +20,7 @@ use super::redraw::RedrawRequest;
 use super::selector::{SELECTOR_IDS, mount_selector};
 use super::session_port::{SessionUpdate, forward_to};
 use super::{App, Id};
+use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
     BrowserHeader, EMPTY_SESSION, EmptyState, HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR,
     NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR, PARSE_WARNINGS_ATTR, STATUS_ATTR,
@@ -73,6 +74,9 @@ pub(super) struct BrowserState {
     live: bool,
     /// The search of the transcript.
     pub(super) search: super::transcript_search::BrowserSearch,
+    /// The save or export waiting for its path or for an overwrite to be
+    /// confirmed.
+    pub(super) write: Option<super::save::PendingWrite>,
 }
 
 impl BrowserState {
@@ -196,6 +200,25 @@ impl App {
         }
     }
 
+    /// The display name of the open session's project: the project's name,
+    /// else the last part of its id.
+    pub(super) fn open_project_name(&self) -> Option<String> {
+        let open = self.browser.open.as_ref()?;
+        let project = self
+            .selector
+            .find_project(open.harness, &open.summary.project);
+        Some(project.map_or_else(
+            || {
+                let id = open.summary.project.as_str();
+                id.rsplit('/')
+                    .find(|part| !part.is_empty())
+                    .unwrap_or(id)
+                    .to_owned()
+            },
+            |project| project.name.clone(),
+        ))
+    }
+
     /// Mounts the header, the transcript and the help line of the open
     /// session, and gives the transcript the focus.
     fn mount_browser(&mut self) -> Result<(), tuirealm::application::ApplicationError> {
@@ -205,16 +228,7 @@ impl App {
         let project = self
             .selector
             .find_project(open.harness, &open.summary.project);
-        let name = project.map_or_else(
-            || {
-                let id = open.summary.project.as_str();
-                id.rsplit('/')
-                    .find(|part| !part.is_empty())
-                    .unwrap_or(id)
-                    .to_owned()
-            },
-            |project| project.name.clone(),
-        );
+        let name = self.open_project_name().unwrap_or_default();
         let cwd = open
             .summary
             .cwd
@@ -222,9 +236,18 @@ impl App {
             .or_else(|| project.and_then(|p| p.cwd.as_ref()))
             .map(|cwd| cwd.display().to_string())
             .unwrap_or_default();
+        let meta = ExportMeta {
+            title: open.summary.title.clone(),
+            project: name.clone(),
+            session_id: open.summary.id.as_str().to_owned(),
+            cwd: cwd.clone(),
+            started: open.summary.started_at,
+            harness: open.harness.display_name().to_owned(),
+        };
         let header = BrowserHeader::new(name, open.summary.id.as_str(), cwd, self.theme.clone());
         let transcript = Transcript::new(self.theme.clone(), self.timestamps.clone())
             .keymap(self.keymap.clone())
+            .export_meta(meta)
             .dim_unselected(self.config.dim_unselected)
             .show_system(self.config.show_system)
             .loading(!self.browser.loaded);

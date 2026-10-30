@@ -106,7 +106,7 @@ pub struct ToolCallSection<'a>(pub &'a ToolCall);
 
 impl ToolCallSection<'_> {
     /// The description, or the tool's name when the description is blank.
-    fn description_text(&self) -> String {
+    pub fn description_text(&self) -> String {
         if !self.0.description.trim().is_empty() {
             return self.0.description.trim().to_owned();
         }
@@ -193,31 +193,75 @@ impl ToolCallSection<'_> {
         Rendered { lines, more }
     }
 
+    /// The section as plain text, in parts: the description rows, then (when
+    /// unfolded) each labelled block's rows without the column indent, the
+    /// subagent's "open transcript" hint and the `… N more lines` row.
+    pub fn plain_parts(&self, ctx: &SectionCtx<'_>) -> PlainTool {
+        let (description, body) = self.parts(ctx);
+        let description = description.iter().map(ToString::to_string).collect();
+        let Some(body) = body else {
+            return PlainTool {
+                description,
+                ..PlainTool::default()
+            };
+        };
+        PlainTool {
+            description,
+            blocks: body
+                .blocks
+                .into_iter()
+                .map(|block| PlainBlock {
+                    label: block.label,
+                    lines: block.lines.iter().map(ToString::to_string).collect(),
+                })
+                .collect(),
+            hint: body.hint.map(|hint| hint.to_string()),
+            more: body.remaining.map(more_text),
+        }
+    }
+
     /// The section as plain text rows: what [`render`](Self::render) shows,
     /// without the fold marker and the column indents. Blank rows and labels
     /// are kept, and so is the content's own indentation. The subagent's
     /// "open transcript" hint is left out unless `with_hint`.
     pub fn plain_lines(&self, ctx: &SectionCtx<'_>, with_hint: bool) -> Vec<String> {
-        let (description, body) = self.parts(ctx);
-        let mut out: Vec<String> = description.iter().map(ToString::to_string).collect();
-        let Some(body) = body else {
-            return out;
-        };
-        for block in body.blocks {
+        let parts = self.plain_parts(ctx);
+        let mut out = parts.description;
+        for block in parts.blocks {
             out.push(String::new());
             out.push(block.label.to_owned());
             out.push(String::new());
-            out.extend(block.lines.iter().map(ToString::to_string));
+            out.extend(block.lines);
         }
-        if let (true, Some(hint)) = (with_hint, body.hint) {
+        if let (true, Some(hint)) = (with_hint, parts.hint) {
             out.push(String::new());
-            out.push(hint.to_string());
+            out.push(hint);
         }
-        if let Some(remaining) = body.remaining {
-            out.push(more_text(remaining));
-        }
+        out.extend(parts.more);
         out
     }
+}
+
+/// A tool call as plain text, in parts (see [`ToolCallSection::plain_parts`]).
+#[derive(Debug, Clone, Default)]
+pub struct PlainTool {
+    /// The description rows.
+    pub description: Vec<String>,
+    /// The labelled blocks of an unfolded call.
+    pub blocks: Vec<PlainBlock>,
+    /// The subagent's "open transcript" hint.
+    pub hint: Option<String>,
+    /// The `… N more lines` row of a truncated output.
+    pub more: Option<String>,
+}
+
+/// A label and the rows below it.
+#[derive(Debug, Clone)]
+pub struct PlainBlock {
+    /// The label, including its colon.
+    pub label: &'static str,
+    /// The content rows.
+    pub lines: Vec<String>,
 }
 
 /// The text of the truncation row.

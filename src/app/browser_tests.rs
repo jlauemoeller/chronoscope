@@ -50,6 +50,8 @@ struct FakeHarness {
     stops: Mutex<Vec<Arc<AtomicBool>>>,
     senders: Mutex<Vec<Sender<ModelUpdate>>>,
     fail: AtomicBool,
+    /// What `watch_paths` answers: where the harness keeps its data.
+    watch: Mutex<Vec<PathBuf>>,
     /// For each load: whether every earlier load had been stopped when it
     /// started.
     earlier_stopped: Mutex<Vec<bool>>,
@@ -63,6 +65,7 @@ impl FakeHarness {
             stops: Mutex::default(),
             senders: Mutex::default(),
             fail: AtomicBool::new(false),
+            watch: Mutex::default(),
             earlier_stopped: Mutex::default(),
         })
     }
@@ -103,7 +106,7 @@ impl Harness for FakeHarness {
     }
 
     fn watch_paths(&self) -> Vec<PathBuf> {
-        Vec::new()
+        self.watch.lock().unwrap().clone()
     }
 
     fn projects(&self) -> HarnessResult<Vec<Project>> {
@@ -173,9 +176,14 @@ struct Rig {
 }
 
 fn brio() -> Project {
+    brio_named("BRIO")
+}
+
+/// The BRIO project under the display name `name`.
+fn brio_named(name: &str) -> Project {
     project_in(
         CLAUDE,
-        "BRIO",
+        name,
         "/home/user/projects/brio",
         at(2026, 10, 28, 9, 30, 0),
     )
@@ -193,7 +201,12 @@ fn agentmon() -> Project {
 /// The index: BRIO with two sessions (the newest first) and Agentmon with
 /// one. Nothing is active at [`now`].
 fn index() -> crate::index::IndexEvent {
-    let brio = brio();
+    index_named("BRIO")
+}
+
+/// Like [`index`], with the BRIO project under the display name `name`.
+fn index_named(name: &str) -> crate::index::IndexEvent {
+    let brio = brio_named(name);
     let agentmon = agentmon();
     let mut sessions = SessionMap::new();
     sessions.insert(
@@ -1258,4 +1271,5 @@ theme_snapshot!(loaded_browser_theme_solarized, "solarized");
 
 mod copy;
 mod live;
+mod save;
 mod search;

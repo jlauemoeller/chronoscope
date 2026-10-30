@@ -126,6 +126,35 @@ pub struct Section<'a> {
 }
 
 impl Section<'_> {
+    /// The word for the section in the name of a saved file: `user`,
+    /// `assistant` (also the `model → …` note), `thinking`, the tool's kind
+    /// (`shell`, `read`, `write`, `edit`, `grep`, `glob`, `webfetch`,
+    /// `websearch`, `subagent`, or `tool` for any other), `system`,
+    /// `compaction` or `stats`.
+    pub fn file_kind(&self) -> &'static str {
+        use crate::model::ToolKind;
+        match self.content {
+            SectionContent::Prompt(_) => "user",
+            SectionContent::Text(_) | SectionContent::ModelChange(_) => "assistant",
+            SectionContent::Thinking(_) => "thinking",
+            SectionContent::Tool(call) => match call.tool {
+                ToolKind::Shell => "shell",
+                ToolKind::Read => "read",
+                ToolKind::Write => "write",
+                ToolKind::Edit => "edit",
+                ToolKind::Grep => "grep",
+                ToolKind::Glob => "glob",
+                ToolKind::WebFetch => "webfetch",
+                ToolKind::WebSearch => "websearch",
+                ToolKind::Subagent => "subagent",
+                ToolKind::Other(_) => "tool",
+            },
+            SectionContent::Stats(_) => "stats",
+            SectionContent::Compaction(_) => "compaction",
+            SectionContent::System(_) => "system",
+        }
+    }
+
     /// The kind of section.
     pub fn kind(&self) -> SectionKind {
         match self.content {

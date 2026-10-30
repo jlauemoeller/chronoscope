@@ -67,13 +67,13 @@
 
 mod cache;
 mod content;
-mod copy;
 mod folding;
 mod follow;
 mod keys;
 mod nav;
 mod paging;
 mod search;
+mod text;
 mod updates;
 mod window;
 
@@ -116,6 +116,7 @@ use self::window::Window;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::components::turn_block::SectionId;
+use crate::components::turn_block::export::ExportMeta;
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
 use crate::model::{ModelUpdate, Turn};
 use crate::theme::{Role, Theme};
@@ -185,6 +186,8 @@ pub struct Transcript {
     tail_from: usize,
     /// The search: what is waited for, the matches and what it unfolded.
     search: search::SearchState,
+    /// What the header of an export says about the session.
+    export_meta: Option<ExportMeta>,
     /// How many block layouts were run to measure or draw blocks (read by
     /// tests).
     #[cfg_attr(not(test), allow(dead_code))]
@@ -207,6 +210,7 @@ impl Transcript {
             new_sections: 0,
             tail_from: 0,
             search: search::SearchState::default(),
+            export_meta: None,
             layouts_run: 0,
         }
     }
@@ -216,6 +220,13 @@ impl Transcript {
     pub fn keymap(mut self, keymap: Keymap) -> Self {
         self.keymap = keymap;
         self.resolver.reset();
+        self
+    }
+
+    /// Sets what the header of an export says about the session.
+    #[must_use]
+    pub fn export_meta(mut self, meta: ExportMeta) -> Self {
+        self.export_meta = Some(meta);
         self
     }
 
@@ -557,6 +568,22 @@ impl Component for Transcript {
 }
 
 impl Transcript {
+    /// [`Msg::SaveSection`] for the selected section with `text`.
+    fn save_msg(&self, text: Option<String>) -> Option<Msg> {
+        Some(Msg::SaveSection {
+            text: text?,
+            kind: self.file_kind()?,
+        })
+    }
+
+    /// [`Msg::Export`] with the session as markdown.
+    fn export_msg(&self, full: bool) -> Msg {
+        Msg::Export {
+            full,
+            document: self.export_document(full),
+        }
+    }
+
     /// Runs a `Cmd` (`perform` then decides whether the view follows).
     fn run(&mut self, cmd: Cmd) -> CmdResult {
         match cmd {
@@ -583,7 +610,8 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     /// when that changed what is shown, so that the App redraws. The copy
     /// keys answer [`Msg::CopyText`] with the text of the selected section
     /// (as displayed, or in full); with nothing selected they do nothing.
-    /// Actions of other tasks (save, ...) do nothing yet.
+    /// The save keys answer [`Msg::SaveSection`] the same way, the export
+    /// keys [`Msg::Export`] with the whole document.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let Event::Keyboard(key) = ev else {
             return None;
@@ -595,6 +623,10 @@ impl AppComponent<Msg, UserEvent> for Transcript {
             Action::Search => return Some(Msg::OpenSearch),
             Action::Copy => return self.displayed_text().map(Msg::CopyText),
             Action::CopyFull => return self.full_text().map(Msg::CopyText),
+            Action::Save => return self.save_msg(self.displayed_text()),
+            Action::SaveFull => return self.save_msg(self.full_text()),
+            Action::Export => return Some(self.export_msg(false)),
+            Action::ExportFull => return Some(self.export_msg(true)),
             _ => {}
         }
         let cmd = keys::cmd_for(action)?;
