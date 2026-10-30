@@ -45,6 +45,9 @@ pub enum PromptMode {
 /// In [`PromptMode::YesNo`] `y` / `Y` is [`Msg::PromptSubmit`] with `"y"` and
 /// every other key but `Ctrl-c` is [`Msg::PromptCancel`].
 ///
+/// A `y/n` prompt made with [`Prompt::confirm`] draws its question in
+/// `help_text` with the subject (a path) in `foreground`.
+///
 /// The label is drawn in `help_key`, the text in `foreground`, and the cell
 /// under the cursor with the `cursor` colour as its background. Text longer
 /// than the row scrolls horizontally to keep the cursor visible. The row is
@@ -59,6 +62,15 @@ pub struct Prompt {
     fill: Role,
     inset: u16,
     focused: bool,
+    question: Option<Question>,
+}
+
+/// The parts of a question: `Overwrite `, `./notes.txt`, `? (y/n)`.
+#[derive(Debug, Clone)]
+struct Question {
+    before: String,
+    subject: String,
+    after: String,
 }
 
 impl Prompt {
@@ -77,7 +89,22 @@ impl Prompt {
             fill: Role::Surface,
             inset: 0,
             focused: false,
+            question: None,
         }
+    }
+
+    /// A `y/n` prompt that asks `before` + `subject` + `after` (`Overwrite `,
+    /// the path, `? (y/n)`). The question is drawn in `help_text` and the
+    /// subject in `foreground`; a subject too long for the row is cut at its
+    /// start with `…` so that the end of the question stays visible.
+    pub fn confirm(before: &str, subject: &str, after: &str, theme: Theme) -> Self {
+        let mut prompt = Self::new(before, "", PromptMode::YesNo, theme);
+        prompt.question = Some(Question {
+            before: before.to_owned(),
+            subject: subject.to_owned(),
+            after: after.to_owned(),
+        });
+        prompt
     }
 
     /// Paints the row with `fill` instead of `surface` before drawing (the
@@ -146,6 +173,22 @@ impl Prompt {
         }
     }
 
+    /// Draws the question of a [`Prompt::confirm`] on `row`.
+    fn draw_question(&self, frame: &mut Frame, row: Rect, question: &Question) {
+        use unicode_width::UnicodeWidthStr;
+        let text_style = self.theme.style(Token::HelpText);
+        let subject_style = Style::new().fg(self.theme.role(Role::Foreground));
+        let fixed = question.before.width() + question.after.width();
+        let room = usize::from(row.width).saturating_sub(fixed);
+        let subject = tail_fitting(&question.subject, room);
+        let line = Line::from(vec![
+            Span::styled(question.before.clone(), text_style),
+            Span::styled(subject, subject_style),
+            Span::styled(question.after.clone(), text_style),
+        ]);
+        frame.render_widget(Paragraph::new(line), row);
+    }
+
     /// The part of the text that is visible in `width` columns, and the
     /// column of the cursor in it.
     ///
@@ -182,6 +225,30 @@ impl Prompt {
     }
 }
 
+/// `text` cut at its start, with `…` in front, to fit `width` columns; the
+/// text itself when it fits.
+fn tail_fitting(text: &str, width: usize) -> String {
+    use unicode_width::UnicodeWidthStr;
+    if text.width() <= width {
+        return text.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let mut kept: Vec<char> = Vec::new();
+    let mut used = 1;
+    for c in text.chars().rev() {
+        let w = c.width().unwrap_or(0);
+        if used + w > width {
+            break;
+        }
+        used += w;
+        kept.push(c);
+    }
+    kept.push('…');
+    kept.into_iter().rev().collect()
+}
+
 /// Whether a key with `modifiers` types its character: plain, shifted, or
 /// with `AltGr`, which Windows reports as `Ctrl` + `Alt` (the `@`, `{` or
 /// `\` of many layouts). `Ctrl` or `Alt` alone do not type.
@@ -199,6 +266,10 @@ impl Component for Prompt {
         self.paint_fill(frame, area);
         let inset = self.inset.min(area.width / 2);
         let row = Rect::new(area.x + inset, area.bottom() - 1, area.width - 2 * inset, 1);
+        if let Some(question) = &self.question {
+            self.draw_question(frame, row, question);
+            return;
+        }
         let label_width = u16::try_from(unicode_width::UnicodeWidthStr::width(self.label.as_str()))
             .unwrap_or(u16::MAX)
             .min(row.width);
@@ -657,6 +728,56 @@ mod tests {
         let mut p = prompt(WIDE);
         p.on(&key(Key::Left));
         insta::assert_snapshot!(buffer_to_styled(&draw(&mut p, 30)));
+    }
+
+    // -- confirm
+
+    fn confirm(subject: &str) -> Prompt {
+        Prompt::confirm("Overwrite ", subject, "? (y/n)", builtin::default_theme())
+    }
+
+    #[test]
+    fn a_confirm_prompt_asks_its_question_in_help_text_with_the_subject_in_foreground() {
+        let theme = builtin::default_theme();
+        let buffer = draw(&mut confirm("./notes.txt"), 40);
+        assert_eq!(
+            buffer_to_text(&buffer),
+            "Overwrite ./notes.txt? (y/n)            \n"
+        );
+        let fg = |x| buffer[(x, 0)].fg;
+        let help_text = theme.style(Token::HelpText).fg.unwrap();
+        let foreground = theme.role(Role::Foreground);
+        assert_ne!(help_text, foreground, "the colours must tell them apart");
+        assert!((0..10).all(|x| fg(x) == help_text), "Overwrite ");
+        assert!((10..21).all(|x| fg(x) == foreground), "the path");
+        assert!((21..28).all(|x| fg(x) == help_text), "? (y/n)");
+        // No cursor: nothing is typed.
+        assert!((0..40).all(|x| buffer[(x, 0)].bg != theme.role(Role::Cursor)));
+    }
+
+    #[test]
+    fn a_confirm_prompt_answers_like_a_yes_no_prompt() {
+        let mut p = confirm("./notes.txt");
+        assert_eq!(p.on(&ch('y')), Some(Msg::PromptSubmit("y".to_owned())));
+        assert_eq!(p.on(&ch('n')), Some(Msg::PromptCancel));
+        assert_eq!(p.on(&key(Key::Esc)), Some(Msg::PromptCancel));
+        assert_eq!(p.on(&key(Key::Enter)), Some(Msg::PromptCancel));
+    }
+
+    #[test]
+    fn a_subject_too_long_for_the_row_is_cut_at_its_start() {
+        let text = buffer_to_text(&draw(&mut confirm("/very/long/directory/notes.txt"), 30));
+        assert_eq!(text, "Overwrite …ry/notes.txt? (y/n)\n");
+    }
+
+    #[test]
+    fn tail_fitting_keeps_the_end() {
+        assert_eq!(tail_fitting("abcdef", 6), "abcdef");
+        assert_eq!(tail_fitting("abcdef", 4), "…def");
+        assert_eq!(tail_fitting("abcdef", 1), "…");
+        assert_eq!(tail_fitting("abcdef", 0), "");
+        assert_eq!(tail_fitting("日本語", 5), "…本語");
+        assert_eq!(tail_fitting("日本語", 4), "…語");
     }
 
     #[test]

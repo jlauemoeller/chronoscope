@@ -1,0 +1,69 @@
+---
+source: src/components/turn_block/export/tests.rs
+expression: text
+---
+# Investigate the camera profiles
+
+- Project: brio
+- Session: 85a86657-11a7-4318-a21a-0f4476babd5c
+- Working directory: /home/user/projects/brio
+- Started: 2026-10-21 08:35:15Z
+- Harness: Claude
+
+## User — 2026-10-21 08:35:15Z
+
+> I have a Logitech BRIO web camera attached to this machine via USB. It works fine - both camera and microphone - but I don't have a way to access settings that would have been available on say a mac or windows, since there are no proprietary drivers: we just get the vanilla USB profiles. Can you help me investigate what additional profiles the camera has and how to access them? The ideal solution would be to be able to write an app that allowed me to change the settings, if possible.
+
+## Assistant (claude-opus-5.5 @ high) — 2026-10-21 08:35:18Z
+
+I'll start by looking at what the camera exposes over USB:
+
+- Check `lsusb -v` for the UVC descriptors
+- Look at `v4l2-ctl --list-ctrls`
+
+Then I'll compare the results.
+
+> Thinking: The user wants the UVC extension units. Start with lsusb.
+
+> Find the BRIO on USB and check available tools
+
+**Dump full USB descriptors for the BRIO**
+
+**Command:**
+
+```sh
+sudo -n true 2>&1 && echo SUDO_OK; lsusb -v -d 046d:085e > /tmp/claude-1000/-home-jacob-Development-projects-brio/scratchpad/lsusb.txt 2>&1; wc -l /tmp/claude-1000/-home-jacob-Development-projects-brio/scratchpad/lsusb.txt
+```
+
+**Result:**
+
+```
+sudo: a password is required
+1799
+```
+
+_… 1 more line_
+
+_model → claude-sonnet-5.5_
+
+_5m 02s · 112 messages · 45.2k tokens_
+
+## User — 2026-10-21 08:35:15Z
+
+Short follow-up.
+
+With a second paragraph.
+
+Third.
+
+## Assistant (claude-opus-5.5) — 2026-10-21 08:35:18Z
+
+> Read the <dump> & friends
+
+> Show a markdown file
+
+## Compaction — 2026-10-21 09:00:00Z
+
+The user is investigating a camera.
+
+- UVC dumped

@@ -12,6 +12,7 @@
 //! into a virtualised view.
 
 mod emphasis;
+pub mod export;
 pub mod plain;
 pub mod renderers;
 mod section;

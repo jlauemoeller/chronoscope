@@ -80,13 +80,26 @@ impl TimestampFormatter {
         self.render(time, &self.short_format)
     }
 
+    /// Renders `time` with `format` (a strftime string; not validated, so
+    /// pass a fixed one) in the display timezone: UTC when `utc` is set,
+    /// else the display timezone. Unlike [`format`](Self::format) it adds no
+    /// `Z`, so it is fit for file names (`%Y%m%d-%H%M`).
+    pub fn format_with(&self, time: DateTime<Utc>, format: &str) -> String {
+        self.render_as(time, format, false)
+    }
+
     fn render(&self, time: DateTime<Utc>, format: &str) -> String {
+        self.render_as(time, format, true)
+    }
+
+    fn render_as(&self, time: DateTime<Utc>, format: &str, z: bool) -> String {
         let items = StrftimeItems::new(format);
         let mut out = String::new();
         // The format was validated by `is_valid_format`, so writing cannot
         // fail; if it somehow does, whatever was rendered so far is shown.
         let _ = if self.utc {
-            write!(out, "{}Z", time.format_with_items(items))
+            let suffix = if z { "Z" } else { "" };
+            write!(out, "{}{suffix}", time.format_with_items(items))
         } else {
             match self.tz {
                 DisplayTz::Local => write!(
@@ -207,6 +220,14 @@ mod tests {
     fn format_with_utc_adds_z_suffix() {
         let f = TimestampFormatter::new(DEFAULT_TIMESTAMP_FORMAT, true, plus_two());
         assert_eq!(f.format(instant()), "2026-10-21 06:35:15Z");
+    }
+
+    #[test]
+    fn format_with_uses_the_display_timezone_and_adds_no_z() {
+        let local = TimestampFormatter::new(DEFAULT_TIMESTAMP_FORMAT, false, plus_two());
+        assert_eq!(local.format_with(instant(), "%Y%m%d-%H%M"), "20261021-0835");
+        let utc = TimestampFormatter::new(DEFAULT_TIMESTAMP_FORMAT, true, plus_two());
+        assert_eq!(utc.format_with(instant(), "%Y%m%d-%H%M"), "20261021-0635");
     }
 
     #[test]

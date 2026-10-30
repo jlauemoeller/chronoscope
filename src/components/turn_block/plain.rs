@@ -22,7 +22,7 @@ use crate::theme::Theme;
 
 /// The width sections are rendered at for plain text: wide enough that
 /// nothing wraps.
-const PLAIN_WIDTH: u16 = u16::MAX;
+pub(super) const PLAIN_WIDTH: u16 = u16::MAX;
 
 /// A horizontal rule fills the width it is rendered at; in plain text it is
 /// this many cells.
@@ -80,6 +80,13 @@ pub fn displayed_text(
         _ => plain_lines(&section, &narrow, true),
     };
     Some(lines.join("\n"))
+}
+
+/// The word for the section `id` of `turn` in the name of a saved file (see
+/// [`Section::file_kind`]). The truncation row stands for its tool call.
+/// `None` when the turn has no such section.
+pub fn file_kind(turn: &Turn, id: &SectionId) -> Option<&'static str> {
+    Some(find(turn, id)?.file_kind())
 }
 
 /// The section `id` of `turn` in full, whatever its fold state and
@@ -169,7 +176,7 @@ fn quote_prefix(line: &str) -> &str {
 }
 
 /// The section `id` stands for, in `turn`.
-fn find<'a>(turn: &'a Turn, id: &SectionId) -> Option<Section<'a>> {
+pub(super) fn find<'a>(turn: &'a Turn, id: &SectionId) -> Option<Section<'a>> {
     let id = id.more_parent().unwrap_or_else(|| id.clone());
     derive_sections(turn, true)
         .into_iter()
@@ -269,6 +276,73 @@ mod tests {
             .map(|i| format!("line {i}"))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn the_file_kind_of_every_kind_of_section() {
+        let kind = |turn: &Turn, id: &SectionId| file_kind(turn, id).unwrap();
+        let user_turn = user("hi", vec![injected("i1", &[("file", "x")])]);
+        assert_eq!(
+            kind(&user_turn, &key_id(&user_turn, SectionKey::Prompt)),
+            "user"
+        );
+        assert_eq!(kind(&user_turn, &item_id(&user_turn, "i1")), "system");
+        let compacted = compaction("s");
+        assert_eq!(
+            kind(&compacted, &key_id(&compacted, SectionKey::Summary)),
+            "compaction"
+        );
+        let kinds = [
+            (ToolKind::Shell, "shell"),
+            (ToolKind::Read, "read"),
+            (ToolKind::Write, "write"),
+            (ToolKind::Edit, "edit"),
+            (ToolKind::Grep, "grep"),
+            (ToolKind::Glob, "glob"),
+            (ToolKind::WebFetch, "webfetch"),
+            (ToolKind::WebSearch, "websearch"),
+            (ToolKind::Subagent, "subagent"),
+            (ToolKind::Other("mcp__x".into()), "tool"),
+        ];
+        for (tool, expected) in kinds {
+            let turn = assistant(
+                None,
+                vec![tool_of(
+                    tool,
+                    "c1",
+                    "d",
+                    json!({}),
+                    None,
+                    ToolStatus::Pending,
+                )],
+                None,
+            );
+            assert_eq!(kind(&turn, &item_id(&turn, "c1")), expected);
+        }
+        let turn = assistant(
+            None,
+            vec![
+                text("t1", "hello"),
+                thinking("th1", Thinking::Text("hmm".into())),
+                Item::ModelChange {
+                    id: ItemId::from("m1"),
+                    model: "x".to_owned(),
+                },
+            ],
+            Some(stats()),
+        );
+        assert_eq!(kind(&turn, &item_id(&turn, "t1")), "assistant");
+        assert_eq!(kind(&turn, &item_id(&turn, "th1")), "thinking");
+        assert_eq!(kind(&turn, &item_id(&turn, "m1")), "assistant");
+        assert_eq!(kind(&turn, &key_id(&turn, SectionKey::Footer)), "stats");
+        assert_eq!(file_kind(&turn, &item_id(&turn, "nope")), None);
+    }
+
+    #[test]
+    fn the_truncation_row_has_the_kind_of_its_tool_call() {
+        let turn = shell_turn("cat log", &numbered(10));
+        let more = item_id(&turn, "c1").more_row().unwrap();
+        assert_eq!(file_kind(&turn, &more), Some("shell"));
     }
 
     #[test]

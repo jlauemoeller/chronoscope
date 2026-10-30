@@ -16,6 +16,7 @@ pub mod index_port;
 pub mod layout;
 pub mod redraw;
 pub mod runtime;
+pub mod save;
 pub mod search;
 pub mod search_worker;
 pub mod selector;
@@ -177,6 +178,14 @@ pub enum Msg {
     /// The transcript asks for this text to be put on the clipboard: the
     /// selected section as displayed (`y`) or in full (`Y`).
     CopyText(String),
+    /// The transcript asks for the selected section's text to be saved to a
+    /// file (`w`, or `W` for its full content). `kind` is the word for the
+    /// section in the default file name (`shell`, `user`, ...).
+    SaveSection { text: String, kind: &'static str },
+    /// The transcript asks for the session to be exported to a markdown file
+    /// (`e` as currently folded, `E` in full, as `full` says). `document` is
+    /// the markdown.
+    Export { full: bool, document: String },
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -297,6 +306,11 @@ pub struct App {
     /// Where OSC52 sequences are written: the terminal. `None` when there is
     /// no terminal to write to.
     osc52_out: Option<Box<dyn std::io::Write>>,
+    /// The directory relative paths of saves and exports are under: the one
+    /// the application started in.
+    save_dir: PathBuf,
+    /// What `~` stands for in those paths.
+    home_dir: Option<PathBuf>,
 }
 
 impl App {
@@ -349,7 +363,7 @@ impl App {
             size: (0, 0),
             quit: false,
             redraw: RedrawRequest::Dirty,
-            selector: SelectorState::new(harnesses, working_dir),
+            selector: SelectorState::new(harnesses, working_dir.clone()),
             timestamps,
             clock: Box::new(Utc::now),
             index: None,
@@ -364,6 +378,8 @@ impl App {
             browser: BrowserState::default(),
             clipboard: Box::new(NoClipboard),
             osc52_out: None,
+            save_dir: working_dir,
+            home_dir: crate::paths::Paths::detect().map(|paths| paths.home_dir),
         };
         app.push_tabs();
         // The startup warnings are shown once, here, and never again.
@@ -549,6 +565,14 @@ impl App {
             Msg::Index(update) => self.index_update(&update),
             Msg::SearchResults(update) => self.search_result_arrived(&update),
             Msg::Selector(msg) => self.selector_msg(msg),
+            Msg::PromptChanged(_) if self.browser.write.is_some() => {
+                self.request_redraw(RedrawRequest::Dirty);
+            }
+            Msg::PromptSubmit(answer) if self.browser.write.is_some() => {
+                self.write_prompt_submit(&answer);
+            }
+            Msg::PromptCancel if self.browser.write.is_some() => self.write_prompt_cancel(),
+            Msg::PromptNav(_) if self.browser.write.is_some() => {}
             Msg::PromptChanged(_) if self.browser.search.prompt_open => {
                 self.transcript_prompt_changed();
             }
@@ -578,6 +602,8 @@ impl App {
             Msg::TranscriptSearchResults(matches) => self.transcript_matches_arrived(&matches),
             Msg::SearchPosition(position) => self.search_position_changed(position),
             Msg::CopyText(text) => self.copy_text(&text),
+            Msg::SaveSection { text, kind } => self.save_section(text, kind),
+            Msg::Export { full: _, document } => self.export_session(document),
             Msg::OpenSession(harness, session) => self.open_session(harness, &session),
             Msg::OpenSelector => self.open_selector(),
             Msg::CloseSelector => self.close_selector(),

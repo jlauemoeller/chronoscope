@@ -26,7 +26,7 @@ pub use stats::{StatsSection, format_duration, format_stats, format_tokens};
 pub use system::SystemSection;
 pub use text::{AssistantTextSection, ModelChangeSection};
 pub use thinking::ThinkingSection;
-pub use tool::{Block, Body, ToolBodyRenderer, ToolCallSection};
+pub use tool::{Block, Body, PENDING, PlainBlock, PlainTool, ToolBodyRenderer, ToolCallSection};
 pub use user::UserPromptSection;
 
 /// The width the block leaves for the text: 4 cells on the left and 4 on the
