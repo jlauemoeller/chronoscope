@@ -1,0 +1,25 @@
+---
+source: src/components/session_list.rs
+expression: "buffer_to_styled(&draw_sized(&mut l, 60))"
+---
+╭─ Sessions matching "brio" ───────────────────────────────╮
+│                                                          │
+│  > 2026-10-30 11:40Z    Agentmon › Brio importer         │
+│    2026-10-30 11:40Z    BRIO › Plan the sprint           │
+│    2026-10-30 11:40Z    Calira › Bring up the pipeline   │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Rgb(207, 207, 207)/Reset/NONE | 2..28 Rgb(250, 250, 250)/Reset/NONE | 28..60 Rgb(207, 207, 207)/Reset/NONE
+1: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+2: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Rgb(229, 229, 229)/Reset/NONE | 4..57 Rgb(250, 250, 250)/Reset/REVERSED | 57..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+3: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..5 Reset/Reset/NONE | 5..48 Rgb(161, 161, 161)/Reset/NONE | 48..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+4: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..5 Reset/Reset/NONE | 5..56 Rgb(161, 161, 161)/Reset/NONE | 56..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+5: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+6: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+7: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+8: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+9: 0..60 Rgb(207, 207, 207)/Reset/NONE

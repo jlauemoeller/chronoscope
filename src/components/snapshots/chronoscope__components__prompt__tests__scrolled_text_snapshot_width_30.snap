@@ -1,0 +1,7 @@
+---
+source: src/components/prompt.rs
+expression: "buffer_to_styled(&draw(&mut p, 30))"
+---
+/ fox jumps over the lazy dog 
+--- styles (fg/bg/modifiers) ---
+0: 0..1 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 1..29 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 29..30 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE

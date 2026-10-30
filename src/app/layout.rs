@@ -65,6 +65,8 @@ pub struct LayoutInput {
     pub screen: Screen,
     /// The display width of the toast text, if a toast is shown.
     pub toast_text_width: Option<usize>,
+    /// Whether a prompt is active: it takes the help line's place.
+    pub prompt: bool,
 }
 
 /// The area of each visible component, in drawing order (overlays last).
@@ -98,7 +100,8 @@ pub fn too_small(area: Rect) -> bool {
 /// and centred, with one empty row above and below. Inside it come the tabs,
 /// the two panes, the Working Directory box (see [`selector_areas`]) and
 /// [`Id::HelpLine`]: one row, two rows above the bottom border, from column 5
-/// to width - 6.
+/// to width - 6. An active prompt ([`LayoutInput::prompt`]) is [`Id::Prompt`]
+/// in the same place instead of the help line.
 ///
 /// The toast, when `input` has one, comes last (on top) in the bottom-right
 /// corner of the screen, except on the too-small screen.
@@ -112,13 +115,18 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
         Screen::Selector => {
             let overlay = selector_overlay(area);
             let areas = selector_areas(overlay);
+            let bottom = if input.prompt {
+                Id::Prompt
+            } else {
+                Id::HelpLine
+            };
             vec![
                 (Id::SelectorFrame, overlay),
                 (Id::HarnessTabs, areas.tabs),
                 (Id::ProjectList, areas.projects),
                 (Id::SessionList, areas.sessions),
                 (Id::WorkingDir, areas.working_dir),
-                (Id::HelpLine, areas.help_line),
+                (bottom, areas.help_line),
             ]
         }
     };
@@ -391,6 +399,20 @@ mod tests {
             ..LayoutInput::default()
         };
         layout(&input, Rect::new(0, 0, width, height))
+    }
+
+    #[test]
+    fn an_active_prompt_takes_the_help_lines_place_and_the_toast_stays_last() {
+        let input = LayoutInput {
+            prompt: true,
+            toast_text_width: Some(10),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 80, 24));
+        assert_eq!(l.area(Id::HelpLine), None);
+        assert_eq!(l.area(Id::Prompt), at(80, 24).area(Id::HelpLine));
+        assert_eq!(l.areas().last().map(|(id, _)| *id), Some(Id::Toast));
+        assert_eq!(at(80, 24).area(Id::Prompt), None);
     }
 
     #[test]

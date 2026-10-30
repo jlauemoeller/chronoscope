@@ -8,7 +8,7 @@ use tuirealm::terminal::TerminalAdapter;
 
 use super::redraw::RedrawLimiter;
 use super::startup::AppInit;
-use super::{App, Msg, production_listener};
+use super::{App, Msg, SearchWorker, production_listener};
 use crate::config::Config;
 use crate::harness::build_harnesses_with_home;
 use crate::index::{IndexHandle, SessionIndex};
@@ -84,7 +84,10 @@ pub fn run_app() -> anyhow::Result<()> {
         log::warn!("could not read the working directory: {err}");
         PathBuf::new()
     });
-    let mut app = App::new(init, production_listener(events), working_dir)?;
+    let (search_worker, search_results) = SearchWorker::start();
+    let listener = production_listener(events, Some(search_results));
+    let mut app = App::new(init, listener, working_dir)?;
+    app.set_search_worker(search_worker);
     if let Some(index) = index {
         app.set_index(index);
     }

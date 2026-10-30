@@ -141,6 +141,7 @@ impl AppComponent<Msg, UserEvent> for ProjectList {
                 Some(Msg::Selector(SelectorMsg::Focus(Pane::Sessions)))
             }
             PaneKey::FocusProjects => None,
+            PaneKey::Search => Some(Msg::Selector(SelectorMsg::Search)),
             PaneKey::Cancel => Some(self.pane.cancel()),
             PaneKey::Harness(harness) => Some(Msg::Selector(SelectorMsg::SwitchHarness(harness))),
         }
