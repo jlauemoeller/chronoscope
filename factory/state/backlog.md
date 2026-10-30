@@ -9,7 +9,7 @@
 | 005-keymap-bindings | Complete |
 | 006-claude-turn-assembly | Complete |
 | 007-claude-injected-content | Complete |
-| 008-claude-session-discovery | In progress |
+| 008-claude-session-discovery | Complete |
 | 009-claude-session-loading | Planned |
 | 010-session-index-worker | Planned |
 | 011-app-runtime | Planned |
