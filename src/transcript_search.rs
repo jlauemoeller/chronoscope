@@ -66,11 +66,6 @@ impl SearchQuery {
         &self.text
     }
 
-    /// Whether case matters: the query has an upper-case character.
-    pub fn is_case_sensitive(&self) -> bool {
-        self.case_sensitive
-    }
-
     /// The end of the match that starts at byte `start` of `haystack`, which
     /// must be a character boundary.
     fn match_at(&self, haystack: &str, start: usize) -> Option<usize> {
@@ -111,13 +106,6 @@ impl SearchQuery {
             }
         }
         found
-    }
-
-    /// Whether `haystack` holds an occurrence.
-    pub fn is_match(&self, haystack: &str) -> bool {
-        haystack
-            .char_indices()
-            .any(|(start, _)| self.match_at(haystack, start).is_some())
     }
 }
 

@@ -11,6 +11,7 @@ use crate::components::turn_block::SectionKey;
 use crate::components::turn_block::fixtures as blocks;
 use crate::model::{ByteSource, ItemId, LineFormat, OutputSource, ToolOutput, ToolStatus};
 use crate::transcript_search::{SearchMatches, SearchPosition, SearchRequest};
+use ratatui::layout::Size;
 use serde_json::json;
 use tuirealm::event::Key;
 
@@ -76,11 +77,13 @@ fn folded(t: &Transcript, id: &SectionId) -> bool {
 /// row, runs of cells joined.
 fn highlighted(t: &mut Transcript) -> Vec<String> {
     let bg = blocks::theme().role(crate::theme::Role::Primary);
-    let buf = draw(t, WIDTH, HEIGHT);
+    let size = t.viewport.unwrap();
+    let (width, height) = (size.width, size.height);
+    let buf = draw(t, width, height);
     let mut found = Vec::new();
-    for y in 0..HEIGHT {
+    for y in 0..height {
         let mut run = String::new();
-        for x in 0..WIDTH {
+        for x in 0..width {
             let cell = &buf[(x, y)];
             if cell.bg == bg && cell.symbol() != " " {
                 run.push_str(cell.symbol());
@@ -96,7 +99,8 @@ fn highlighted(t: &mut Transcript) -> Vec<String> {
 }
 
 fn rows(t: &mut Transcript) -> String {
-    text_rows(&draw(t, WIDTH, HEIGHT)).join("\n")
+    let size = t.viewport.unwrap();
+    text_rows(&draw(t, size.width, size.height)).join("\n")
 }
 
 // ---- The exchange with the App ----
@@ -737,4 +741,222 @@ fn a_hit_in_a_wide_character_row_is_highlighted_by_columns() {
 
 fn total_height(t: &mut Transcript) -> usize {
     t.measured(|cache, m| cache.total(m))
+}
+
+// ---- Finding the row of a match ----
+
+/// The tool call `c1` of turn `a1` printing `lines` (one per line), in a
+/// transcript the size of an 80x24 screen's viewport.
+fn log_of(lines: &[String]) -> Transcript {
+    let text = lines.join("\n");
+    let turn = arc(with_id(
+        blocks::assistant(
+            None,
+            vec![blocks::tool(
+                "c1",
+                "Print the log",
+                json!({"command": "cat build.log"}),
+                Some((&text, false)),
+                ToolStatus::Ok,
+            )],
+            None,
+        ),
+        "a1",
+    ));
+    transcript_of(vec![turn], 80, 17)
+}
+
+fn filler(count: usize, hit_at: usize, hit: &str) -> Vec<String> {
+    (1..=count)
+        .map(|n| {
+            if n == hit_at {
+                hit.to_owned()
+            } else {
+                format!("line {n}")
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn a_query_that_a_label_also_contains_finds_the_real_match_beyond_the_limit() {
+    for (query, hit) in [
+        ("result", "the final result here"),
+        ("command", "the last command here"),
+    ] {
+        let mut t = log_of(&filler(500, 350, hit));
+        assert_eq!(search(&mut t, query).as_deref(), Some("1/1"), "{query}");
+        assert!(t.content.folds.is_expanded(&tool()), "{query}: expanded");
+        let screen = rows(&mut t);
+        assert!(
+            screen.contains(hit),
+            "{query}: the hit is on screen\n{screen}"
+        );
+        let marked = highlighted(&mut t);
+        assert!(
+            marked.contains(&query.to_owned()),
+            "{query}: {marked:?}\n{screen}"
+        );
+        // The row of the hit is the highlighted one.
+        let hit_row = screen.lines().find(|r| r.contains(hit)).unwrap();
+        assert!(hit_row.contains(query));
+    }
+}
+
+#[test]
+fn a_label_is_not_taken_for_a_match_within_the_limit_either() {
+    let mut t = log_of(&filler(150, 120, "the final result here"));
+    assert_eq!(search(&mut t, "result").as_deref(), Some("1/1"));
+    assert!(!t.content.folds.is_expanded(&tool()));
+    assert!(rows(&mut t).contains("the final result here"));
+}
+
+fn markdown_turn(text: &str, width: u16) -> Transcript {
+    let turn = arc(with_id(
+        blocks::assistant(None, vec![blocks::text("x1", text)], None),
+        "a1",
+    ));
+    transcript_of(vec![turn], width, 17)
+}
+
+#[test]
+fn a_hit_that_is_not_drawn_does_not_shift_the_ones_after_it() {
+    let mut text = String::from("See [the docs](https://usb.example.com/x).\n\n");
+    text.extend((1..=30).map(|n| format!("- filler {n}\n")));
+    text.push_str("- first usb here\n- second usb there\n");
+    let mut t = markdown_turn(&text, 80);
+    assert_eq!(search(&mut t, "usb").as_deref(), Some("1/3"));
+    ch(&mut t, 'n');
+    assert_eq!(shown(&t).as_deref(), Some("2/3"));
+    let screen = rows(&mut t);
+    assert!(screen.contains("first usb here"), "{screen}");
+    assert!(highlighted(&mut t).contains(&"usb".to_owned()));
+    ch(&mut t, 'n');
+    assert_eq!(shown(&t).as_deref(), Some("3/3"));
+    let screen = rows(&mut t);
+    assert!(screen.contains("second usb there"), "{screen}");
+    assert!(highlighted(&mut t).contains(&"usb".to_owned()));
+}
+
+#[test]
+fn a_hit_that_wraps_across_rows_does_not_shift_the_ones_after_it() {
+    // Narrow, so that a line breaks between the two words of the query for
+    // some of the items.
+    let mut text = String::new();
+    text.extend((1..=30).map(|n| format!("- filler {n}\n")));
+    for n in 1..=6 {
+        let pad = "p".repeat(n * 2);
+        text.push_str(&format!("- item{n} {pad} alpha beta tail\n"));
+    }
+    let mut t = markdown_turn(&text, 36);
+    assert_eq!(search(&mut t, "alpha beta").as_deref(), Some("1/6"));
+    let mut seen = Vec::new();
+    for n in 1..=6 {
+        let screen = rows(&mut t);
+        assert!(screen.contains(&format!("item{n}")), "match {n}\n{screen}");
+        seen.push(n);
+        ch(&mut t, 'n');
+    }
+    assert_eq!(seen.len(), 6);
+    assert_eq!(shown(&t).as_deref(), Some("1/6"));
+}
+
+#[test]
+fn the_same_line_twice_finds_each_occurrence() {
+    let mut lines = filler(60, 10, "needle");
+    lines[40] = "needle".to_owned();
+    let mut t = log_of(&lines);
+    search(&mut t, "needle");
+    ch(&mut t, 'n');
+    assert_eq!(shown(&t).as_deref(), Some("2/2"));
+    // The second `needle` is line 41; the first is line 10.
+    let screen = rows(&mut t);
+    assert!(
+        screen.contains("line 40") || screen.contains("line 42"),
+        "{screen}"
+    );
+}
+
+// ---- Folding takes the search's expansion with it ----
+
+fn expanded_by_search(keys: &[char]) -> Transcript {
+    let mut t = long_log(500, 350);
+    t.set_viewport(Size::new(WIDTH, HEIGHT));
+    search(&mut t, "needle");
+    assert!(t.content.folds.is_expanded(&tool()));
+    for &key in keys {
+        ch(&mut t, key);
+    }
+    t
+}
+
+fn assert_truncated_again(mut t: Transcript, what: &str) {
+    assert!(unfolded(&t, &tool()), "{what}: unfolded again");
+    assert!(
+        !t.content.folds.is_expanded(&tool()),
+        "{what}: not expanded"
+    );
+    let screen = rows(&mut t);
+    assert!(!screen.contains("the needle line"), "{what}\n{screen}");
+    let mut seen = String::new();
+    for _ in 0..40 {
+        seen = rows(&mut t);
+        if seen.contains("more lines") {
+            break;
+        }
+        ch(&mut t, 'j');
+    }
+    assert!(seen.contains("more lines"), "{what}: the truncation row");
+}
+
+#[test]
+fn folding_the_section_drops_the_expansion_the_search_made() {
+    assert_truncated_again(expanded_by_search(&['h', 'l']), "h then l");
+}
+
+#[test]
+fn fold_all_drops_the_expansion_the_search_made() {
+    assert_truncated_again(expanded_by_search(&['-', 'l']), "- then l");
+}
+
+#[test]
+fn enter_on_a_section_the_search_only_expanded_folds_it_and_the_expansion_goes() {
+    let mut t = long_log(500, 350);
+    t.set_folded(&tool(), false);
+    search(&mut t, "needle");
+    assert!(t.content.folds.is_expanded(&tool()));
+    press(&mut t, Key::Enter);
+    assert!(folded(&t, &tool()));
+    press(&mut t, Key::Enter);
+    assert_truncated_again(t, "Enter, Enter");
+}
+
+#[test]
+fn unfold_all_keeps_what_the_search_opened() {
+    let mut t = expanded_by_search(&['+']);
+    ch(&mut t, 'g');
+    assert!(unfolded(&t, &tool()));
+}
+
+// ---- Matches in sections that are not there ----
+
+#[test]
+fn a_thousand_matches_in_a_hidden_section_do_not_stop_the_stepping() {
+    let noise = "x ".repeat(1500);
+    let system = blocks::user(
+        "a prompt",
+        vec![blocks::injected("i1", &[("file", noise.as_str())])],
+    );
+    let turns = vec![
+        arc(with_id(system, "u1")),
+        arc(reply("a1", "one more x at the end")),
+    ];
+    let mut t = transcript_of(turns, WIDTH, HEIGHT);
+    assert_eq!(
+        search(&mut t, "x").as_deref().map(|p| p.ends_with("/1501")),
+        Some(true)
+    );
+    ch(&mut t, 's');
+    ch(&mut t, 'n');
+    assert_eq!(t.selected(), Some(&item_section("a1", "t1")));
 }

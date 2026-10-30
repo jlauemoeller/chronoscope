@@ -537,8 +537,7 @@ impl App {
             Msg::Index(update) => self.index_update(&update),
             Msg::SearchResults(update) => self.search_result_arrived(&update),
             Msg::Selector(msg) => self.selector_msg(msg),
-            Msg::PromptChanged(text) if self.browser.search.prompt_open => {
-                let _ = text;
+            Msg::PromptChanged(_) if self.browser.search.prompt_open => {
                 self.transcript_prompt_changed();
             }
             Msg::PromptChanged(text) => self.search_changed(text),

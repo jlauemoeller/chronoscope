@@ -106,7 +106,7 @@ impl Transcript {
     /// Folds or unfolds every foldable section of the session, system
     /// sections included even while hidden.
     pub(super) fn set_all_folded(&mut self, folded: bool) -> CmdResult {
-        self.forget_temp_unfold();
+        self.forget_temp_unfold(folded);
         let before = self.offset;
         let mut changed = Vec::new();
         let mut blocks = Vec::new();

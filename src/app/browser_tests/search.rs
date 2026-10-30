@@ -4,8 +4,8 @@
 use tuirealm::state::{State, StateValue};
 
 use super::*;
+use crate::components::TURN_COUNT_ATTR;
 use crate::components::transcript::fixtures::search_session;
-use crate::components::{SHOW_SYSTEM_ATTR, TURN_COUNT_ATTR};
 use crate::transcript_search::{SearchMatches, SearchPosition};
 
 fn search_turns() -> Vec<Arc<Turn>> {
@@ -119,6 +119,10 @@ fn slash_opens_the_prompt_in_place_of_the_help_line_and_gives_it_the_focus() {
 #[test]
 fn printable_keys_go_into_the_prompt_and_trigger_no_action() {
     let mut rig = searching_rig();
+    // A search is on, so that `n` would move to the second match if it got
+    // through.
+    rig.search("usb");
+    assert_eq!(position(&rig.app), Some("1/5".to_owned()));
     let before = rows_of(&screen_buffer(&mut rig, 120, 40));
     rig.open_prompt();
     rig.type_text("nqt");
@@ -127,15 +131,10 @@ fn printable_keys_go_into_the_prompt_and_trigger_no_action() {
     assert_eq!(prompt_text(&rig.app), "nqt");
     assert!(!rig.app.should_quit(), "q did not quit");
     assert_eq!(rig.focus(), Some(Id::Prompt));
-    assert_eq!(position(&rig.app), None, "n started nothing");
-    let flag = rig
-        .app
-        .application()
-        .query(&Id::Transcript, SHOW_SYSTEM_ATTR)
-        .unwrap()
-        .unwrap()
-        .into_attr();
-    assert_eq!(flag, AttrValue::Flag(true), "t did not toggle anything");
+    assert_eq!(position(&rig.app), Some("1/5".to_owned()), "n did not step");
+    // `t` would have opened the theme selector (a global key).
+    assert_eq!(rig.app.screen(), Screen::Browser);
+    assert!(!rig.app.application().mounted(&Id::SelectorFrame));
     // Not a fold, not a selection: the transcript is as it was.
     let after = rows_of(&screen_buffer(&mut rig, 120, 40));
     assert_eq!(before[..38], after[..38]);
@@ -635,6 +634,28 @@ fn after_n_into_the_folded_tool_call_it_is_unfolded_and_highlighted_120x40_text(
     let text = buffer_to_text(&buffer);
     assert!(text.lines().nth(39).unwrap().ends_with("2/5 "), "{text}");
     insta::assert_snapshot!(text);
+}
+
+#[test]
+fn after_n_into_the_folded_tool_call_it_is_unfolded_and_highlighted_120x40_styled() {
+    let mut rig = searched(120, 40);
+    rig.press_and_settle(Key::Char('n'));
+    let buffer = screen_buffer(&mut rig, 120, 40);
+    let highlight = theme("default").style(crate::theme::Token::SearchMatch);
+    let row = rows_of(&buffer)
+        .into_iter()
+        .position(|row| row.contains("comes from the usb driver"))
+        .unwrap() as u16;
+    let marked: Vec<u16> = (0..120)
+        .filter(|&x| buffer[(x, row)].bg == highlight.bg.unwrap())
+        .collect();
+    assert_eq!(marked.len(), 3);
+    assert!(
+        marked
+            .iter()
+            .all(|&x| buffer[(x, row)].fg == highlight.fg.unwrap())
+    );
+    insta::assert_snapshot!(buffer_to_styled(&buffer));
 }
 
 #[test]

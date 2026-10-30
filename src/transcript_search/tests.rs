@@ -31,13 +31,11 @@ fn a_lower_case_query_matches_any_case() {
         found("foo", "foo Foo FOO fOo"),
         ["foo", "Foo", "FOO", "fOo"]
     );
-    assert!(!query("foo").is_case_sensitive());
 }
 
 #[test]
 fn a_query_with_an_upper_case_letter_matches_that_case_only() {
     assert_eq!(found("Foo", "foo Foo FOO fOo"), ["Foo"]);
-    assert!(query("Foo").is_case_sensitive());
     assert_eq!(found("fOO", "foo Foo FOO fOo"), Vec::<String>::new());
 }
 
@@ -80,8 +78,7 @@ fn ranges_are_boundaries_of_the_original_text_whatever_the_folding_does() {
 #[test]
 fn a_query_longer_than_the_text_matches_nothing() {
     assert!(query("abcdef").find_all("abc").is_empty());
-    assert!(!query("abcdef").is_match("abc"));
-    assert!(query("b").is_match("abc"));
+    assert_eq!(query("b").find_all("abc").len(), 1);
 }
 
 // -- what is searched
