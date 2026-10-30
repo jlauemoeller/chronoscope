@@ -18,7 +18,7 @@
 | 014-selector-selection-rules | Complete |
 | 015-selector-search | Complete |
 | 016-markdown-renderer | Complete |
-| 017-turn-block-sections | Planned |
+| 017-turn-block-sections | In progress |
 | 018-transcript-viewport | Planned |
 | 019-tool-body-renderers | Planned |
 | 020-transcript-navigation | Planned |
