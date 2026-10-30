@@ -209,6 +209,32 @@ fn t_in_the_startup_selector_opens_it_and_esc_returns_the_focus_to_the_pane() {
     rig.close_themes();
     assert_eq!(rig.focus(), Some(Id::ProjectList));
     assert_eq!(rig.app.screen(), Screen::Selector);
+    assert!(!rig.app.should_quit(), "Esc closed the overlay only");
+}
+
+#[test]
+fn enter_and_esc_do_not_reach_the_selector_behind_the_overlay() {
+    let mut rig = rig();
+    rig.open_themes();
+    rig.press(Key::Enter);
+    let seen = rig.pump_until(|app| !app.application().mounted(&Id::ThemeSelector));
+    assert!(
+        !seen
+            .iter()
+            .any(|m| matches!(m, Msg::OpenSession(..) | Msg::Quit)),
+        "{seen:?}"
+    );
+    assert_eq!(rig.app.screen(), Screen::Selector);
+    assert!(!rig.app.should_quit());
+    assert_eq!(rig.focus(), Some(Id::ProjectList));
+    // Esc, in the same batch as a move.
+    rig.open_themes();
+    rig.press(Key::Char('j'));
+    rig.press(Key::Esc);
+    let seen = rig.pump_until(|app| !app.application().mounted(&Id::ThemeSelector));
+    assert!(!seen.contains(&Msg::Quit), "{seen:?}");
+    assert!(!rig.app.should_quit());
+    assert_eq!(rig.app.theme_id(), "default");
 }
 
 #[test]
@@ -880,6 +906,7 @@ fn sixteen_themes() -> ThemeRegistry {
 #[test]
 fn sixteen_themes_at_60x20_scroll_with_the_cursor_near_the_end() {
     let mut rig = rig_with_registry(sixteen_themes(), 60, 20);
+    rig.open_loaded();
     rig.open_themes();
     let ids: Vec<&str> = [
         "terminal",
