@@ -154,7 +154,9 @@ impl ClaudeHarness {
     /// [`projects`](Harness::projects) and [`sessions`](Harness::sessions)
     /// only build when there is no index yet, so call this to pick up changes
     /// on disk. The state lock is held for the whole build, so other callers
-    /// wait for it; do not call this on the UI thread.
+    /// wait for it; do not call this on the UI thread. The first `projects()` or
+    /// `sessions()` call also builds the index under the same lock, so the
+    /// same caveat applies to it.
     pub fn refresh(&self) -> Result<()> {
         let mut state = self.lock();
         self.build(&mut state)?;
@@ -422,17 +424,13 @@ fn summarize(file: &FileMeta, scan: &FileScan) -> SessionSummary {
     let mtime = DateTime::<Utc>::from(file.mtime);
     let last_activity = scan.last_timestamp.map_or(mtime, |t| t.max(mtime));
     let (project, cwd, title, started_at) = match &scan.cwd {
-        Some(cwd) => {
-            // Normalised, so `/a/b` and `/a/b/` are one project, as they are
-            // for alias matching.
-            let cwd: PathBuf = Path::new(cwd).components().collect();
-            (
-                ProjectId::from(cwd.to_string_lossy().as_ref()),
-                Some(cwd),
-                session_title(scan),
-                scan.started_at.unwrap_or(mtime),
-            )
-        }
+        Some(raw) => (
+            project_id(raw),
+            // Component-normalised, as alias matching compares components.
+            Some(Path::new(raw).components().collect::<PathBuf>()),
+            session_title(scan),
+            scan.started_at.unwrap_or(mtime),
+        ),
         None => (
             ProjectId::from(file.dir_name.as_str()),
             None,
@@ -450,6 +448,20 @@ fn summarize(file: &FileMeta, scan: &FileScan) -> SessionSummary {
         started_at,
         last_activity,
         path: file.path.clone(),
+    }
+}
+
+/// The project id for a cwd as Claude wrote it: the raw string with trailing
+/// `/` and `\` removed, so `/a/b/` and `/a/b` are one project. No other
+/// separator is touched, so the id is the same on every OS. A root (`/`,
+/// `C:\`) is kept as it is.
+fn project_id(cwd: &str) -> ProjectId {
+    let trimmed = cwd.trim_end_matches(['/', '\\']);
+    let is_drive = matches!(trimmed.as_bytes(), [letter, b':'] if letter.is_ascii_alphabetic());
+    if trimmed.is_empty() || is_drive {
+        ProjectId::from(cwd)
+    } else {
+        ProjectId::from(trimmed)
     }
 }
 
@@ -488,4 +500,24 @@ fn display_name(id: &ProjectId, cwd: Option<&Path>, aliases: &BTreeMap<PathBuf, 
     }
     cwd.file_name()
         .map_or_else(|| id.to_string(), |n| n.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_ids_trim_trailing_separators_only() {
+        for (cwd, id) in [
+            ("C:\\Users\\u\\p\\", "C:\\Users\\u\\p"),
+            ("/a/b/", "/a/b"),
+            ("/a/b", "/a/b"),
+            ("/a/b//", "/a/b"),
+            ("/", "/"),
+            ("C:\\", "C:\\"),
+            ("/a\\b/c", "/a\\b/c"),
+        ] {
+            assert_eq!(project_id(cwd).as_str(), id, "{cwd}");
+        }
+    }
 }
