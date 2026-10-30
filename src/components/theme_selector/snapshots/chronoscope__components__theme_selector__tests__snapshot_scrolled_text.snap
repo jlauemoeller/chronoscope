@@ -1,0 +1,14 @@
+---
+source: src/components/theme_selector/mod.rs
+expression: buffer_to_text(&buffer)
+---
+╭─ Themes ──────────────────────────────╮
+│                                       │
+│    Theme 5                            │
+│    Theme 6                            │
+│    Theme 7                            │
+│    Theme 8                            │
+│  > Theme 9                            │
+│                                       │
+│ ENTER to select | ESC to cancel       │
+╰───────────────────────────────────────╯

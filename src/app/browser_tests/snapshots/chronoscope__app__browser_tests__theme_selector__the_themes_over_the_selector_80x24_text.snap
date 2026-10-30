@@ -1,0 +1,27 @@
+---
+source: src/app/browser_tests/theme_selector.rs
+expression: text
+---
+                                                                                
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│    [1] Claude                                                                │
+│    ━━━━━━━━━━                                                                │
+│                                                                              │
+│   ╭─ Projects ───╭─ Themes ──────────────────────────────╮───────────────╮   │
+│   │              │                                       │               │   │
+│   │  > BRIO      │  > Default                            │he pan and t…  │   │
+│   │    Agentmon  │    Terminal                           │tigate the c…  │   │
+│   │              │    Catppuccin                         │               │   │
+│   │              │    Gruvbox                            │               │   │
+│   │              │    Nord                               │               │   │
+│   ╰──────────────│    Tokyo Night                        │───────────────╯   │
+│   ╭─ Working Dire│    Solarized                          │───────────────╮   │
+│   │              │                                       │               │   │
+│   │  /home/user/p│ ENTER to select | ESC to cancel       │               │   │
+│   │              ╰───────────────────────────────────────╯               │   │
+│   ╰──────────────────────────────────────────────────────────────────────╯   │
+│                                                                              │
+│    / to search sessions | ENTER to open                                      │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯

@@ -4,6 +4,10 @@
 //! and unknown keys, invalid values and malformed TOML each produce a
 //! [`ConfigWarning`] while the affected settings fall back to their defaults.
 
+mod edit;
+
+pub use edit::{SaveThemeError, save_theme};
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};

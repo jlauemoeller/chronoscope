@@ -1,0 +1,18 @@
+---
+source: src/components/theme_selector/mod.rs
+expression: buffer_to_text(&draw(&mut s))
+---
+                                                                                
+                                                                                
+          ╭─ Themes ──────────────────────────────╮                             
+          │                                       │                             
+          │    Default                            │                             
+          │  > Terminal                           │                             
+          │    Catppuccin                         │                             
+          │    Gruvbox                            │                             
+          │    Nord                               │                             
+          │    Tokyo Night                        │                             
+          │    Solarized                          │                             
+          │                                       │                             
+          │ ENTER to select | ESC to cancel       │                             
+          ╰───────────────────────────────────────╯

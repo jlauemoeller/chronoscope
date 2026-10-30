@@ -1,0 +1,23 @@
+---
+source: src/components/theme_selector/mod.rs
+expression: buffer_to_text(&draw_at_60x20(&mut s))
+---
+                                                            
+         ╭─ Themes ──────────────────────────────╮          
+         │                                       │          
+         │    Nord                               │          
+         │    Tokyo Night                        │          
+         │    Solarized                          │          
+         │    User 01                            │          
+         │    User 02                            │          
+         │    User 03                            │          
+         │    User 04                            │          
+         │    User 05                            │          
+         │    User 06                            │          
+         │    User 07                            │          
+         │    User 08                            │          
+         │  > User 09                            │          
+         │    zz-broken (invalid)                │          
+         │                                       │          
+         │ ENTER to select | ESC to cancel       │          
+         ╰───────────────────────────────────────╯

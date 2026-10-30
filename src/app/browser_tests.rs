@@ -1298,3 +1298,4 @@ mod opencode;
 mod save;
 mod search;
 mod subagent;
+mod theme_selector;

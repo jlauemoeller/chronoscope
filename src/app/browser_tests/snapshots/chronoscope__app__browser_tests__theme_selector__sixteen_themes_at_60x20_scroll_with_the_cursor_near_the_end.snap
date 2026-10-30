@@ -1,0 +1,24 @@
+---
+source: src/app/browser_tests/theme_selector.rs
+expression: text
+---
+╭─ Project BRIO ──── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│        ╭─ Themes ──────────────────────────────╮         │
+│ /home/u│                                       │         │
+│        │    Catppuccin                         │         │
+╰────────│    Gruvbox                            │─────────╯
+╭─ User ─│    Nord                               │:35:15Z ─╮
+│        │    Tokyo Night                        │         │
+▒ ▶ I hav│    Solarized                          │this     │
+▒   machi│    User 01                            │nd…      │
+│        │    User 02                            │         │
+╰────────│    User 03                            │─────────╯
+╭─ Assist│    User 04                            │:35:18Z ─╮
+│        │    User 05                            │         │
+│   I'll │    User 06                            │es       │
+│   over │    User 07                            │         │
+│        │  > User 08                            │         │
+│   • Che│                                       │         │
+│   • Loo│ ENTER to select | ESC to cancel       │         │
+         ╰───────────────────────────────────────╯          
+ / to search | ENTER to fold or unfold sections

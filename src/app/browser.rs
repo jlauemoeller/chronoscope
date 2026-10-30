@@ -197,6 +197,11 @@ pub(super) fn transcript_id(depth: usize) -> Id {
 impl App {
     // -- read access, for tests
 
+    /// The id of the active theme.
+    pub fn theme_id(&self) -> &str {
+        &self.theme_id
+    }
+
     /// The screen that is shown.
     pub fn screen(&self) -> Screen {
         self.screen
@@ -317,6 +322,7 @@ impl App {
         self.unmount_selector();
         self.unmount_browser();
         self.drop_help();
+        self.drop_theme_selector();
         self.focus_stack.clear();
         self.set_screen(Screen::Browser);
         if let Err(err) = self.mount_browser() {

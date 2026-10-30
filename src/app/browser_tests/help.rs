@@ -18,7 +18,7 @@ impl Rig {
         self.app.application().mounted(&Id::HelpOverlay)
     }
 
-    fn ctrl(&self, c: char) {
+    pub(super) fn ctrl(&self, c: char) {
         self.key(Key::Char(c), KeyModifiers::CONTROL);
     }
 }

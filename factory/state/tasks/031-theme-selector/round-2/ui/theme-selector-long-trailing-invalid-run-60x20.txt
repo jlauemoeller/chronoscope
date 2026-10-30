@@ -1,0 +1,21 @@
+===== 15 trailing invalid, cursor at last valid (60x20) overlay Rect { x: 9, y: 1, width: 41, height: 18 }
+                                                            
+         ╭─ Themes ──────────────────────────────╮          
+         │                                       │          
+         │  > User 09                            │          
+         │    zz-bad-01 (invalid)                │          
+         │    zz-bad-02 (invalid)                │          
+         │    zz-bad-03 (invalid)                │          
+         │    zz-bad-04 (invalid)                │          
+         │    zz-bad-05 (invalid)                │          
+         │    zz-bad-06 (invalid)                │          
+         │    zz-bad-07 (invalid)                │          
+         │    zz-bad-08 (invalid)                │          
+         │    zz-bad-09 (invalid)                │          
+         │    zz-bad-10 (invalid)                │          
+         │    zz-bad-11 (invalid)                │          
+         │    zz-bad-12 (invalid)                │          
+         │                                       │          
+         │ ENTER to select | ESC to cancel       │          
+         ╰───────────────────────────────────────╯          
+                                                            

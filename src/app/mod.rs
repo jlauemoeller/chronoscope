@@ -23,6 +23,7 @@ pub mod search_worker;
 pub mod selector;
 pub mod session_port;
 pub mod startup;
+pub mod theme_selector;
 pub mod transcript_search;
 
 #[cfg(test)]
@@ -59,7 +60,7 @@ use crate::harness::Harness;
 use crate::index::{IndexEvent, IndexHandle};
 use crate::keymap::Keymap;
 use crate::model::{HarnessId, SessionId, ToolCallId};
-use crate::theme::{Theme, ThemeRegistry};
+use crate::theme::{TerminalEnv, Theme, ThemeRegistry};
 use crate::timestamp::{DisplayTz, TimestampFormatter};
 use crate::transcript_search::{SearchCorpus, SearchMatches, SearchPosition};
 use browser::BrowserState;
@@ -114,6 +115,8 @@ pub enum Id {
     Prompt,
     /// The keybindings overlay.
     HelpOverlay,
+    /// The theme list with live preview.
+    ThemeSelector,
     /// The notification in the bottom-right corner.
     Toast,
 }
@@ -129,6 +132,17 @@ pub enum Msg {
     CloseHelp,
     /// A key scrolled the help overlay: nothing but a redraw is needed.
     HelpScrolled,
+    /// The theme key: open the theme selector.
+    OpenThemeSelector,
+    /// The cursor of the theme selector moved to the theme with this id:
+    /// show it as a preview.
+    PreviewTheme(String),
+    /// `Enter` in the theme selector on the theme with this id: keep it,
+    /// save it to the config and close the selector.
+    SelectTheme(String),
+    /// `Esc` in the theme selector: restore the theme that was active when
+    /// it opened and close it.
+    CancelTheme,
     /// The terminal now has this many columns and rows.
     Resized(u16, u16),
     /// A tick of the event loop.
@@ -328,6 +342,16 @@ pub struct App {
     osc52_out: Option<Box<dyn std::io::Write>>,
     /// The size the help overlay wants (borders included) while it is open.
     help_size: Option<ratatui::layout::Size>,
+    /// The theme selector: what it wants and what to restore on `Esc`, while
+    /// it is open.
+    theme_selector: Option<theme_selector::ThemeSelection>,
+    /// The id of the active theme.
+    theme_id: String,
+    /// The terminal the theme is adapted to, as at startup.
+    theme_env: TerminalEnv,
+    /// The config file the chosen theme is saved to; none when the home
+    /// directory is unknown.
+    config_path: Option<PathBuf>,
     /// The directory relative paths of saves and exports are under: the one
     /// the application started in.
     save_dir: PathBuf,
@@ -354,6 +378,9 @@ impl App {
             keymap,
             warnings,
             harnesses,
+            theme_id,
+            env,
+            config_path,
         } = init;
         let mut application = Application::init(listener);
         application.mount(
@@ -401,6 +428,10 @@ impl App {
             clipboard: Box::new(NoClipboard),
             osc52_out: None,
             help_size: None,
+            theme_selector: None,
+            theme_id,
+            theme_env: env,
+            config_path,
             save_dir: working_dir,
             home_dir: crate::paths::Paths::detect().map(|paths| paths.home_dir),
         };
@@ -585,6 +616,10 @@ impl App {
             Msg::OpenHelp(context) => self.open_help(context),
             Msg::CloseHelp => self.close_help(),
             Msg::HelpScrolled => self.request_redraw(RedrawRequest::Dirty),
+            Msg::OpenThemeSelector => self.open_theme_selector(),
+            Msg::PreviewTheme(id) => self.preview_theme(&id),
+            Msg::SelectTheme(id) => self.select_theme(&id),
+            Msg::CancelTheme => self.cancel_theme(),
             Msg::Resized(width, height) => self.resized(width, height),
             Msg::Tick => self.tick_elapsed(),
             Msg::ToastExpired(id) => self.toast_expired(id),
@@ -680,6 +715,7 @@ impl App {
             prompt: self.application.mounted(&Id::Prompt),
             session_empty: self.browser.session_empty(),
             help: self.help_size,
+            theme_selector: self.theme_selector.as_ref().map(|s| s.size),
         }
     }
 

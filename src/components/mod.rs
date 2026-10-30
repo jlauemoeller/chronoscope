@@ -13,6 +13,7 @@ mod project_list;
 mod prompt;
 mod selector_frame;
 mod session_list;
+mod theme_selector;
 mod toast;
 pub mod transcript;
 pub mod turn_block;
@@ -45,6 +46,7 @@ pub use session_list::{
     ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR,
     SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_duration, format_stats,
 };
+pub use theme_selector::{ThemeItem, ThemeRows, ThemeSelector, theme_items};
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 pub use transcript::{
     DIM_UNSELECTED_ATTR, FOLLOWING_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR,

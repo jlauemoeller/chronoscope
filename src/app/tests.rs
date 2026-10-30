@@ -35,6 +35,9 @@ fn init_with(theme: Theme) -> AppInit {
     AppInit {
         config: Config::default(),
         registry: ThemeRegistry::builtin(),
+        theme_id: super::selector_tests::id_of(&theme),
+        env: env(),
+        config_path: None,
         theme,
         keymap: Keymap::default(),
         harnesses: vec![HarnessId::Claude],

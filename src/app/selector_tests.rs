@@ -63,6 +63,25 @@ fn distinct_theme() -> Theme {
     theme
 }
 
+/// The id of the built-in theme that has `theme`'s name (`default` for any
+/// other).
+pub(super) fn id_of(theme: &Theme) -> String {
+    let registry = ThemeRegistry::builtin();
+    let entry = registry
+        .entries()
+        .iter()
+        .find(|e| e.theme().is_some_and(|t| t.name() == theme.name()));
+    entry.map_or("default", |e| e.id()).to_owned()
+}
+
+/// A truecolor terminal, as `theme` resolves for.
+pub(super) fn truecolor() -> TerminalEnv {
+    TerminalEnv {
+        colorterm: Some("truecolor".to_owned()),
+        no_color: false,
+    }
+}
+
 pub(super) fn init(harnesses: &[HarnessId], theme: Theme) -> AppInit {
     let config = Config {
         utc: true,
@@ -71,6 +90,9 @@ pub(super) fn init(harnesses: &[HarnessId], theme: Theme) -> AppInit {
     AppInit {
         config,
         registry: ThemeRegistry::builtin(),
+        theme_id: id_of(&theme),
+        env: truecolor(),
+        config_path: None,
         theme,
         keymap: Keymap::default(),
         harnesses: harnesses.to_vec(),

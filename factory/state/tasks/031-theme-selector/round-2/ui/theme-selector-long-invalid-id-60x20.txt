@@ -1,0 +1,21 @@
+===== long invalid id (60x20) overlay Rect { x: 2, y: 3, width: 56, height: 14 }
+                                                            
+                                                            
+                                                            
+  ╭─ Themes ─────────────────────────────────────────────╮  
+  │                                                      │  
+  │    Default                                           │  
+  │    Terminal                                          │  
+  │    Catppuccin                                        │  
+  │    Gruvbox                                           │  
+  │    Nord                                              │  
+  │    Tokyo Night                                       │  
+  │    Solarized                                         │  
+  │  > Aurora                                            │  
+  │    catppuccin-mocha-custom-high-contrast-v2-test (i… │  
+  │                                                      │  
+  │ ENTER to select | ESC to cancel                      │  
+  ╰──────────────────────────────────────────────────────╯  
+                                                            
+                                                            
+                                                            
