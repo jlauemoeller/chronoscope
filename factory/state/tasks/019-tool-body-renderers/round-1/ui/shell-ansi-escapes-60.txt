@@ -1,0 +1,15 @@
+# Shell result containing ANSI SGR escapes and C0 controls, TurnBlock width 60. No control characters reach buffer cells (safe); the escape remnants "[31m" are visible.
+control-char cells: []
+╭─ Assistant ── claude-opus-5.5 @… ─ 2026-10-21 08:35:18Z ─╮
+│                                                          │
+│ ▼ ansi                                                   │
+│                                                          │
+│   Command:                                               │
+│                                                          │
+│      printf '[31mX'                                      │
+│                                                          │
+│   Result:                                                │
+│                                                          │
+│      [31mred[0m ansi bell bs  crcsi                      │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
