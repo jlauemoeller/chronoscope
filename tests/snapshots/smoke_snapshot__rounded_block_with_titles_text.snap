@@ -1,0 +1,7 @@
+---
+source: tests/smoke_snapshot.rs
+expression: buffer_to_text(&draw_block())
+---
+╭ left ─────────────── right ╮
+│                            │
+╰────────────────────────────╯
