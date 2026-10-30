@@ -289,6 +289,8 @@ impl App {
                 self.refresh_session_empty();
             }
             ModelUpdate::Updated(_) | ModelUpdate::Reset => self.forward_to_transcript(update),
+            // The `● live` marker reads it; not shown yet.
+            ModelUpdate::Activity { .. } => {}
         }
     }
 

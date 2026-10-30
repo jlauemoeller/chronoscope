@@ -10,7 +10,7 @@ mod output;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -485,12 +485,20 @@ pub enum ModelUpdate {
     /// the transcript consumes it; the App is to forward it to the
     /// transcript like [`Appended`](Self::Appended).
     Reset,
+    /// When the session's data last changed, for the browser's `● live`
+    /// marker (SPEC §7.2). Sent after the initial load and after every
+    /// processed change. `idle` is the harness's own idleness flag
+    /// (OpenCode's `time_idle`); `None` when the harness has none.
+    Activity {
+        last_modified: SystemTime,
+        idle: Option<bool>,
+    },
 }
 
 impl ModelUpdate {
     /// Applies the update to `turns`. Updated turns whose id is not present
-    /// are ignored. `Reset` clears the turns. `Progress`, `Loaded` and
-    /// `ParseWarnings` do not touch the turns.
+    /// are ignored. `Reset` clears the turns. `Progress`, `Loaded`,
+    /// `ParseWarnings` and `Activity` do not touch the turns.
     pub fn apply(&self, turns: &mut Vec<Arc<Turn>>) {
         match self {
             ModelUpdate::Appended(new) => turns.extend(new.iter().cloned()),
@@ -502,7 +510,10 @@ impl ModelUpdate {
                 }
             }
             ModelUpdate::Reset => turns.clear(),
-            ModelUpdate::Progress(_) | ModelUpdate::Loaded | ModelUpdate::ParseWarnings(_) => {}
+            ModelUpdate::Progress(_)
+            | ModelUpdate::Loaded
+            | ModelUpdate::ParseWarnings(_)
+            | ModelUpdate::Activity { .. } => {}
         }
     }
 }

@@ -21,7 +21,10 @@ impl Transcript {
             ModelUpdate::Appended(turns) => self.change_turns(turns, |c, t| c.append(t)),
             ModelUpdate::Updated(turns) => self.change_turns(turns, |c, t| c.update(t)),
             ModelUpdate::Reset => self.reset(),
-            ModelUpdate::Progress(_) | ModelUpdate::Loaded | ModelUpdate::ParseWarnings(_) => {}
+            ModelUpdate::Progress(_)
+            | ModelUpdate::Loaded
+            | ModelUpdate::ParseWarnings(_)
+            | ModelUpdate::Activity { .. } => {}
         }
     }
 

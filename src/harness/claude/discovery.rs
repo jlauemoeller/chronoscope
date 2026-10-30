@@ -20,7 +20,7 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 
 use super::assemble::Assembler;
-use super::load::{self, LoadHook, Tuning};
+use super::load::{self, LoadHook, Tuning, WatchMode};
 use super::resume::{self, DEFAULT_RESUME_COMMAND};
 use super::scan::{FileScan, scan_reader};
 use super::subagent::{self, SubagentInfo};
@@ -102,6 +102,8 @@ pub struct ClaudeHarness {
     resume_command: String,
     tuning: Tuning,
     on_batch: Option<LoadHook>,
+    watch_mode: WatchMode,
+    poll_every: Duration,
 }
 
 impl ClaudeHarness {
@@ -131,6 +133,8 @@ impl ClaudeHarness {
             resume_command: DEFAULT_RESUME_COMMAND.to_owned(),
             tuning: Tuning::default(),
             on_batch: None,
+            watch_mode: WatchMode::Notify,
+            poll_every: Duration::from_secs(1),
         }
     }
 
@@ -152,6 +156,16 @@ impl ClaudeHarness {
             first_bytes,
             batch_bytes: bytes,
         };
+        self
+    }
+
+    /// Makes [`load`](Harness::load) poll the file's size and modification
+    /// time instead of watching it with `notify`, as it does when watching
+    /// cannot be started. Meant for tests.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_polling(mut self) -> Self {
+        self.watch_mode = WatchMode::Poll;
         self
     }
 
@@ -428,7 +442,8 @@ impl Harness for ClaudeHarness {
     }
 
     /// Returns at once: the worker thread finds the transcript, opens it and
-    /// parses it. A session that cannot be found or read ends in
+    /// parses it, then keeps watching it (SPEC §7.1) until the handle is
+    /// dropped. A session that cannot be found or read ends in
     /// [`ModelUpdate::Loaded`] with the error logged, not in an `Err`.
     fn load(&self, session: &SessionId, tx: Sender<ModelUpdate>) -> Result<WatchHandle> {
         let stop = Arc::new(AtomicBool::new(false));
@@ -439,6 +454,8 @@ impl Harness for ClaudeHarness {
             stop: Arc::clone(&stop),
             tuning: self.tuning,
             hook: self.on_batch.clone(),
+            mode: self.watch_mode,
+            poll_every: self.poll_every,
         };
         let thread = std::thread::Builder::new()
             .name("claude-load".to_owned())

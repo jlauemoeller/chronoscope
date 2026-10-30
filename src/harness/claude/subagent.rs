@@ -81,7 +81,7 @@ pub(super) fn resolve(data_dir: &Path, id: &SessionId) -> Option<PathBuf> {
 
 /// The directory that holds the subagent transcripts of `session`, whose
 /// transcript is `path`. For a subagent this is the directory it is in.
-fn subagents_dir(path: &Path, session: &SessionId) -> Option<PathBuf> {
+pub(super) fn subagents_dir(path: &Path, session: &SessionId) -> Option<PathBuf> {
     match classify(session.as_str())? {
         IdKind::Main => Some(path.with_extension("").join("subagents")),
         IdKind::Subagent { .. } => path.parent().map(Path::to_path_buf),

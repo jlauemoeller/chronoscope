@@ -64,8 +64,12 @@ pub trait Harness: Send + Sync {
     /// The worker streams the parse over `tx` as [`ModelUpdate`]s: batches of
     /// turns (the first one early), a [`Progress`](ModelUpdate::Progress)
     /// after each, then [`ParseWarnings`](ModelUpdate::ParseWarnings) and
-    /// [`Loaded`](ModelUpdate::Loaded). Dropping the returned handle stops
-    /// the worker; so does the receiver hanging up.
+    /// [`Loaded`](ModelUpdate::Loaded) and an
+    /// [`Activity`](ModelUpdate::Activity). The worker then keeps the session
+    /// live: appended data arrives as `Appended` and `Updated` batches, each
+    /// followed by an `Activity`, and a session that was truncated or
+    /// replaced is sent again after a `Reset`. Dropping the returned handle
+    /// stops the worker; so does the receiver hanging up.
     fn load(&self, session: &SessionId, tx: Sender<ModelUpdate>) -> Result<WatchHandle>;
 
     /// The transcript of the subagent started by tool call `call` of
