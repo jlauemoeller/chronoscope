@@ -935,7 +935,8 @@ fn a_key_that_changes_nothing_answers_nothing() {
     assert_eq!(ch(&mut t, 'h'), None, "already folded");
     assert_eq!(ch(&mut t, '-'), None, "everything is folded");
     assert_eq!(ch(&mut t, 'z'), None, "unbound");
-    assert_eq!(ch(&mut t, '/'), None, "search is another task's");
+    assert_eq!(ch(&mut t, 'n'), None, "no search to step through");
+    assert_eq!(ch(&mut t, 'N'), None, "no search to step through");
     assert_eq!(ctrl(&mut t, 'u'), None, "at the top");
     assert_eq!(t.on(&Event::<UserEvent>::Tick), None);
 }

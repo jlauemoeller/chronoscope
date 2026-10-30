@@ -20,6 +20,7 @@ pub mod search_worker;
 pub mod selector;
 pub mod session_port;
 pub mod startup;
+pub mod transcript_search;
 
 #[cfg(test)]
 mod browser_tests;
@@ -56,6 +57,7 @@ use crate::keymap::Keymap;
 use crate::model::{HarnessId, SessionId};
 use crate::theme::{Theme, ThemeRegistry};
 use crate::timestamp::{DisplayTz, TimestampFormatter};
+use crate::transcript_search::{SearchCorpus, SearchMatches, SearchPosition};
 use browser::BrowserState;
 use hints::startup_toast_text;
 pub use index_port::{IndexPort, IndexUpdate};
@@ -67,6 +69,9 @@ use selector::SelectorState;
 pub use selector::{Pane, SelectorMsg};
 pub use session_port::{SessionEvent, SessionPort, SessionUpdate, session_channel};
 pub use startup::AppInit;
+pub use transcript_search::{
+    TranscriptSearchPort, TranscriptSearchWorker, transcript_search_event_kind,
+};
 use unicode_width::UnicodeWidthStr;
 
 /// One variant per mountable component (SPEC §1.3).
@@ -153,6 +158,20 @@ pub enum Msg {
     PromptCancel,
     /// `↑` or `↓` in the prompt, for its owner to use.
     PromptNav(Direction),
+    /// `/` in the transcript: open the search prompt in the help line.
+    OpenSearch,
+    /// The transcript asks for this search to be run on a snapshot of its
+    /// turns. `generation` numbers the search; answers to any other are
+    /// dropped.
+    StartTranscriptSearch {
+        query: String,
+        corpus: SearchCorpus,
+        generation: u64,
+    },
+    /// The worker answered a search of the transcript.
+    TranscriptSearchResults(SearchMatches),
+    /// A key moved among the matches (`3/17`) or cleared the search (`None`).
+    SearchPosition(Option<SearchPosition>),
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -163,6 +182,8 @@ pub enum UserEvent {
     Index(IndexUpdate),
     /// The search worker finished a search.
     Search(SearchUpdate),
+    /// The transcript search worker finished a search.
+    TranscriptSearch(SearchMatches),
     /// The harness reported something about the session being loaded;
     /// `generation` numbers the load.
     Session {
@@ -185,6 +206,7 @@ const MAX_EVENTS_PER_TICK: usize = 64;
 pub fn production_listener(
     index: Option<Receiver<IndexEvent>>,
     search: Option<Receiver<SearchResult>>,
+    transcript_search: Option<Receiver<SearchMatches>>,
     session: Option<Receiver<SessionEvent>>,
 ) -> EventListenerCfg<UserEvent> {
     let cfg = EventListenerCfg::default()
@@ -203,6 +225,14 @@ pub fn production_listener(
             Box::new(SearchPort::new(results)),
             search_worker::SEARCH_POLL_INTERVAL,
             search_worker::SEARCH_MAX_PER_POLL,
+        ),
+        None => cfg,
+    };
+    let cfg = match transcript_search {
+        Some(results) => cfg.add_port(
+            Box::new(TranscriptSearchPort::new(results)),
+            transcript_search::TRANSCRIPT_SEARCH_POLL_INTERVAL,
+            transcript_search::TRANSCRIPT_SEARCH_MAX_PER_POLL,
         ),
         None => cfg,
     };
@@ -242,6 +272,12 @@ pub struct App {
     search_worker: Option<SearchWorker>,
     /// Numbers the search requests.
     search_seq: u64,
+    /// The thread that searches the transcript; without one the search runs
+    /// on the UI thread (tests).
+    transcript_worker: Option<TranscriptSearchWorker>,
+    /// Numbers the transcript searches. Never reset, so an answer cannot be
+    /// taken for one to a search of another session.
+    transcript_seq: u64,
     /// Messages `update` made for itself or for the browser; `tick` hands
     /// them out with the components'.
     queued: Vec<Msg>,
@@ -310,6 +346,8 @@ impl App {
             focus_stack: Vec::new(),
             search_worker: None,
             search_seq: 0,
+            transcript_worker: None,
+            transcript_seq: 0,
             queued: Vec::new(),
             harnesses: HashMap::new(),
             session_sink: None,
@@ -340,6 +378,9 @@ impl App {
     pub fn shutdown(&mut self) {
         self.browser.stop_watching();
         if let Some(mut worker) = self.search_worker.take() {
+            worker.shutdown();
+        }
+        if let Some(mut worker) = self.transcript_worker.take() {
             worker.shutdown();
         }
         if let Some(index) = self.index.take() {
@@ -496,6 +537,10 @@ impl App {
             Msg::Index(update) => self.index_update(&update),
             Msg::SearchResults(update) => self.search_result_arrived(&update),
             Msg::Selector(msg) => self.selector_msg(msg),
+            Msg::PromptChanged(text) if self.browser.search.prompt_open => {
+                let _ = text;
+                self.transcript_prompt_changed();
+            }
             Msg::PromptChanged(text) => self.search_changed(text),
             Msg::PromptMoved | Msg::TranscriptChanged => self.request_redraw(RedrawRequest::Dirty),
             Msg::NewSections(count) => {
@@ -503,9 +548,24 @@ impl App {
                 self.request_redraw(RedrawRequest::Dirty);
                 self.set_new_sections(count);
             }
+            Msg::PromptSubmit(text) if self.browser.search.prompt_open => {
+                self.transcript_prompt_submit(text);
+            }
             Msg::PromptSubmit(_) => self.search_submit(),
+            Msg::PromptCancel if self.browser.search.prompt_open => {
+                self.transcript_prompt_cancel();
+            }
             Msg::PromptCancel => self.search_cancel(),
+            Msg::PromptNav(_) if self.browser.search.prompt_open => {}
             Msg::PromptNav(direction) => self.search_nav(direction),
+            Msg::OpenSearch => self.open_transcript_search(),
+            Msg::StartTranscriptSearch {
+                query,
+                corpus,
+                generation,
+            } => self.start_transcript_search(query, corpus, generation),
+            Msg::TranscriptSearchResults(matches) => self.transcript_matches_arrived(&matches),
+            Msg::SearchPosition(position) => self.search_position_changed(position),
             Msg::OpenSession(harness, session) => self.open_session(harness, &session),
             Msg::OpenSelector => self.open_selector(),
             Msg::CloseSelector => self.close_selector(),

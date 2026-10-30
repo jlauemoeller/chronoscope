@@ -229,16 +229,35 @@ fn index() -> crate::index::IndexEvent {
 }
 
 fn rig_with(theme: Theme, width: u16, height: u16) -> Rig {
+    build_rig(theme, width, height, false)
+}
+
+/// Like [`rig_with`]; with `transcript_worker` the app searches its
+/// transcript on a worker thread whose port the listener reads, as the
+/// running application does.
+fn build_rig(theme: Theme, width: u16, height: u16, transcript_worker: bool) -> Rig {
     let (sink, events) = session_channel();
     let (keys, key_events) = channel();
-    let listener = EventListenerCfg::default()
+    let mut listener = EventListenerCfg::default()
         .add_port(
             Box::new(SessionPort::new(events)),
             Duration::from_millis(2),
             SESSION_MAX_PER_POLL,
         )
         .add_port(Box::new(KeyPort(key_events)), Duration::from_millis(2), 4);
+    let worker = transcript_worker.then(|| {
+        let (worker, results) = super::TranscriptSearchWorker::start();
+        listener = std::mem::take(&mut listener).add_port(
+            Box::new(super::TranscriptSearchPort::new(results)),
+            Duration::from_millis(2),
+            4,
+        );
+        worker
+    });
     let mut app = App::new(init(&[CLAUDE], theme), listener, PathBuf::from("/nowhere")).unwrap();
+    if let Some(worker) = worker {
+        app.set_transcript_search_worker(worker);
+    }
     let clock = Arc::new(Mutex::new(now()));
     let shown = Arc::clone(&clock);
     app.set_clock(move || *shown.lock().unwrap());
@@ -1238,3 +1257,5 @@ theme_snapshot!(loaded_browser_theme_tokyo_night, "tokyo-night");
 theme_snapshot!(loaded_browser_theme_solarized, "solarized");
 
 mod live;
+
+mod search;

@@ -19,6 +19,7 @@ pub mod terminal;
 pub mod test_support;
 pub mod theme;
 pub mod timestamp;
+pub mod transcript_search;
 
 /// Command-line interface. Only `--help` and `--version` exist for now.
 #[derive(Debug, Parser)]

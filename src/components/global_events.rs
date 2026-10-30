@@ -13,6 +13,7 @@ use tuirealm::subscription::{EventClause, Sub, SubClause};
 use crate::app::index_port::index_event_kind;
 use crate::app::search_worker::search_event_kind;
 use crate::app::session_port::session_event_kind;
+use crate::app::transcript_search::transcript_search_event_kind;
 use crate::app::{Id, Msg, UserEvent};
 use crate::keymap::{Action, Context, KeySpec, Keymap};
 
@@ -58,6 +59,7 @@ impl GlobalEvents {
         for kind in [
             index_event_kind(),
             search_event_kind(),
+            transcript_search_event_kind(),
             session_event_kind(),
         ] {
             subs.push(Sub::new(EventClause::Discriminant(kind), always_clause()));
@@ -146,6 +148,9 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
             Event::Tick => Some(Msg::Tick),
             Event::User(UserEvent::Index(update)) => Some(Msg::Index(update.clone())),
             Event::User(UserEvent::Search(update)) => Some(Msg::SearchResults(update.clone())),
+            Event::User(UserEvent::TranscriptSearch(matches)) => {
+                Some(Msg::TranscriptSearchResults(matches.clone()))
+            }
             Event::User(UserEvent::Session { generation, update }) => Some(Msg::Session {
                 generation: *generation,
                 update: update.clone(),
@@ -281,8 +286,9 @@ mod tests {
         let keys = quit_key_events(&Keymap::default()).len();
         let open = action_key_events(&Keymap::default(), Action::OpenSelector);
         assert_eq!(open, [KeyEvent::new(Key::Char('o'), KeyModifiers::CONTROL)]);
-        // Resize, tick, and the index, search and session events.
-        assert_eq!(subs.len(), keys + open.len() + 5);
+        // Resize, tick, and the index, session search, transcript search
+        // and session events.
+        assert_eq!(subs.len(), keys + open.len() + 6);
     }
 
     #[test]

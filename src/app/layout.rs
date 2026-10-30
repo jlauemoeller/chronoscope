@@ -125,7 +125,8 @@ pub fn too_small(area: Rect) -> bool {
 /// the two panes, the Working Directory box (see [`selector_areas`]) and
 /// [`Id::HelpLine`]: one row, two rows above the bottom border, from column 5
 /// to width - 6. An active prompt ([`LayoutInput::prompt`]) is [`Id::Prompt`]
-/// in the same place instead of the help line.
+/// in the same place instead of the help line; over the browser alone it
+/// takes the browser's help line.
 ///
 /// The toast, when `input` has one, comes last (on top) in the bottom-right
 /// corner of the screen, except on the too-small screen.
@@ -143,10 +144,17 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
         } else {
             Id::Transcript
         };
+        // A prompt takes the browser's help line only when no selector is
+        // over it: then it takes the selector's.
+        let help = if input.prompt && !input.screen.has_selector() {
+            Id::Prompt
+        } else {
+            Id::BrowserHelpLine
+        };
         areas.extend([
             (Id::BrowserHeader, browser.header),
             (body, browser.transcript),
-            (Id::BrowserHelpLine, browser.help_line),
+            (help, browser.help_line),
         ]);
     }
     if input.screen.has_selector() {
@@ -574,6 +582,27 @@ mod tests {
         assert_eq!(l.area(Id::HelpLine), None);
         assert!(l.area(Id::Prompt).is_some());
         assert!(l.area(Id::BrowserHelpLine).is_some());
+    }
+
+    #[test]
+    fn a_prompt_over_the_browser_alone_takes_the_browsers_help_line() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            prompt: true,
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 80, 24));
+        assert_eq!(l.area(Id::BrowserHelpLine), None);
+        assert_eq!(l.area(Id::HelpLine), None);
+        let without = layout(
+            &LayoutInput {
+                prompt: false,
+                ..input
+            },
+            Rect::new(0, 0, 80, 24),
+        );
+        assert_eq!(l.area(Id::Prompt), without.area(Id::BrowserHelpLine));
+        assert_eq!(l.area(Id::Prompt), Some(Rect::new(0, 22, 80, 2)));
     }
 
     #[test]

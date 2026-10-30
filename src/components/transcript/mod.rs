@@ -12,7 +12,10 @@
 //! Data flows in through [`attr`](Component::attr): [`THEME_ATTR`],
 //! [`DIM_UNSELECTED_ATTR`], [`SHOW_SYSTEM_ATTR`], [`TRUNCATE_OUTPUT_LINES_ATTR`],
 //! [`OPEN_SUBAGENT_KEY_ATTR`], [`TIMESTAMP_FORMATTER_ATTR`], [`MODEL_UPDATE_ATTR`] (an `Arc<ModelUpdate>`
-//! payload, see [`model_update_value`]) and [`VIEWPORT_ATTR`].
+//! payload, see [`model_update_value`]) and [`VIEWPORT_ATTR`]. The search
+//! has its own attributes ([`SEARCH_QUERY_ATTR`], [`SEARCH_REQUEST_ATTR`],
+//! [`SEARCH_RESULTS_ATTR`], [`SEARCH_POSITION_ATTR`]); see the `search`
+//! module.
 //!
 //! # The pre-render step
 //!
@@ -57,7 +60,10 @@
 //!   lines` row of a truncated tool call, expands its output;
 //!   `Custom(`[`FOLD`]`/`[`UNFOLD`]`/`[`FOLD_ALL`]`/`[`UNFOLD_ALL`]`)` fold
 //!   and unfold;
-//! - `Custom(`[`TOGGLE_SYSTEM`]`)` shows or hides system sections.
+//! - `Custom(`[`TOGGLE_SYSTEM`]`)` shows or hides system sections;
+//! - `Custom(`[`SEARCH_NEXT`]`/`[`SEARCH_PREV`]`)` go to the next/previous
+//!   match, wrapping, and `Custom(`[`CLEAR_SEARCH`]`)` clears the search.
+//!   `/` is not a `Cmd`: the key answers [`Msg::OpenSearch`].
 
 mod cache;
 mod content;
@@ -66,6 +72,7 @@ mod follow;
 mod keys;
 mod nav;
 mod paging;
+mod search;
 mod updates;
 mod window;
 
@@ -96,6 +103,11 @@ pub use keys::{
     FOLD, FOLD_ALL, HALF_PAGE_DOWN, HALF_PAGE_UP, NEXT_TURN, PAGE_DOWN, PAGE_UP, PREV_TURN,
     TOGGLE_SYSTEM, UNFOLD, UNFOLD_ALL,
 };
+pub use search::{
+    CLEAR_SEARCH, SEARCH_NEXT, SEARCH_POSITION_ATTR, SEARCH_PREV, SEARCH_QUERY_ATTR,
+    SEARCH_REQUEST_ATTR, SEARCH_RESULTS_ATTR, SearchStart, search_results_value,
+    search_start_value,
+};
 
 use self::content::{Content, Measurer};
 use self::folding::FoldOp;
@@ -103,10 +115,11 @@ use self::window::Window;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::components::turn_block::SectionId;
-use crate::keymap::{Context, KeyResolver, Keymap, Resolved};
+use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
 use crate::model::{ModelUpdate, Turn};
 use crate::theme::{Role, Theme};
 use crate::timestamp::TimestampFormatter;
+use crate::transcript_search::SearchMatches;
 
 /// Whether unselected sections are drawn in `muted_foreground` (a flag).
 pub const DIM_UNSELECTED_ATTR: Attribute = Attribute::Custom("dim_unselected");
@@ -169,6 +182,8 @@ pub struct Transcript {
     /// The first turn whose growth counts as new content while the user is
     /// away from the end.
     tail_from: usize,
+    /// The search: what is waited for, the matches and what it unfolded.
+    search: search::SearchState,
     /// How many block layouts were run to measure or draw blocks (read by
     /// tests).
     #[cfg_attr(not(test), allow(dead_code))]
@@ -190,6 +205,7 @@ impl Transcript {
             loading: false,
             new_sections: 0,
             tail_from: 0,
+            search: search::SearchState::default(),
             layouts_run: 0,
         }
     }
@@ -471,6 +487,10 @@ impl Component for Transcript {
             AttrValue::Flag(self.following)
         } else if attr == VIEWPORT_ATTR {
             payload_value(self.viewport?)
+        } else if attr == SEARCH_REQUEST_ATTR {
+            payload_value(self.search_request()?)
+        } else if attr == SEARCH_POSITION_ATTR {
+            payload_value(self.search_position())
         } else {
             return None;
         };
@@ -506,6 +526,14 @@ impl Component for Transcript {
             if let Some(update) = payload_from_value::<Arc<ModelUpdate>>(&value) {
                 self.apply_update(&update);
             }
+        } else if attr == SEARCH_QUERY_ATTR {
+            if let Some(start) = payload_from_value::<SearchStart>(&value) {
+                self.begin_search(start);
+            }
+        } else if attr == SEARCH_RESULTS_ATTR {
+            if let Some(results) = payload_from_value::<SearchMatches>(&value) {
+                self.apply_search_results(&results);
+            }
         } else if attr == VIEWPORT_ATTR
             && let Some(size) = payload_from_value::<Size>(&value)
         {
@@ -520,6 +548,8 @@ impl Component for Transcript {
 
     fn perform(&mut self, cmd: Cmd) -> CmdResult {
         let result = self.run(cmd);
+        // Whatever moved the selection: a search's unfolding ends with it.
+        self.settle_temp_unfold();
         self.update_following();
         result
     }
@@ -545,29 +575,38 @@ impl Transcript {
 
 impl AppComponent<Msg, UserEvent> for Transcript {
     /// Resolves the key in the `browser` context and performs the `Cmd` of
-    /// its action. Returns [`Msg::NewSections`] when it changed the count of
-    /// new sections (`G` resuming following), else [`Msg::TranscriptChanged`]
-    /// when that changed what
-    /// is shown, so that the App redraws. Actions of other tasks (search,
-    /// copy, ...) do nothing yet.
+    /// its action. Returns [`Msg::OpenSearch`] for the search key,
+    /// [`Msg::SearchPosition`] when a key moved among the matches or cleared
+    /// the search, [`Msg::NewSections`] when it changed the count of new
+    /// sections (`G` resuming following), else [`Msg::TranscriptChanged`]
+    /// when that changed what is shown, so that the App redraws. Actions of
+    /// other tasks (copy, ...) do nothing yet.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let Event::Keyboard(key) = ev else {
             return None;
         };
-        if let Resolved::Action(action) = self.resolver.feed(&self.keymap, key)
-            && let Some(cmd) = keys::cmd_for(action)
-        {
-            let new_before = self.new_sections;
-            let result = self.perform(cmd);
-            // The count changed (`G` resumed following): the App shows it.
-            if self.new_sections != new_before {
-                return Some(Msg::NewSections(self.new_sections));
-            }
-            return match result {
-                CmdResult::NoChange | CmdResult::Invalid(_) => None,
-                _ => Some(Msg::TranscriptChanged),
-            };
+        let Resolved::Action(action) = self.resolver.feed(&self.keymap, key) else {
+            return None;
+        };
+        if action == Action::Search {
+            return Some(Msg::OpenSearch);
         }
-        None
+        let cmd = keys::cmd_for(action)?;
+        let new_before = self.new_sections;
+        let result = self.perform(cmd);
+        let changed = !matches!(result, CmdResult::NoChange | CmdResult::Invalid(_));
+        if changed
+            && matches!(
+                action,
+                Action::SearchNext | Action::SearchPrev | Action::ClearSearch
+            )
+        {
+            return Some(Msg::SearchPosition(self.search_position()));
+        }
+        // The count changed (`G` resumed following): the App shows it.
+        if self.new_sections != new_before {
+            return Some(Msg::NewSections(self.new_sections));
+        }
+        changed.then_some(Msg::TranscriptChanged)
     }
 }

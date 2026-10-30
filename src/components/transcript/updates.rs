@@ -30,6 +30,7 @@ impl Transcript {
 
     fn reset(&mut self) {
         self.content.reset();
+        self.forget_search();
         self.cache.clear();
         self.offset = 0;
         self.start_loading();

@@ -71,6 +71,8 @@ pub(super) struct BrowserState {
     activity: Option<(SystemTime, Option<bool>)>,
     /// Whether the header shows `● live`.
     live: bool,
+    /// The search of the transcript.
+    pub(super) search: super::transcript_search::BrowserSearch,
 }
 
 impl BrowserState {
@@ -305,9 +307,15 @@ impl App {
                 self.sync_new_sections();
                 self.refresh_session_empty();
             }
-            ModelUpdate::Updated(_) | ModelUpdate::Reset => {
+            ModelUpdate::Updated(_) => {
                 self.forward_to_transcript(update);
                 self.sync_new_sections();
+            }
+            ModelUpdate::Reset => {
+                self.forward_to_transcript(update);
+                self.sync_new_sections();
+                // The matches were of the turns that are gone.
+                self.search_reloaded();
             }
             ModelUpdate::Activity {
                 last_modified,
@@ -381,14 +389,17 @@ impl App {
     }
 
     /// Shows the status items in the help line: the progress of the load,
-    /// then `↓ N new`. A search position (SPEC §4.2) goes after them.
-    fn refresh_status(&mut self) {
+    /// then `↓ N new`, then the search position (`3/17`, SPEC §4.2).
+    pub(super) fn refresh_status(&mut self) {
         let mut items = Vec::new();
         if let Some(percent) = self.browser.loading {
             items.push(format!("Loading… {percent}%"));
         }
         if self.browser.new_sections > 0 {
             items.push(format!("↓ {} new", self.browser.new_sections));
+        }
+        if let Some(position) = self.browser.search.position {
+            items.push(position.to_string());
         }
         self.set_attr(Id::BrowserHelpLine, STATUS_ATTR, status_value(items));
     }

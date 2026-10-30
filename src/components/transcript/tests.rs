@@ -17,6 +17,7 @@ mod cache_lookup;
 mod follow;
 pub(super) mod keys;
 mod property;
+mod search;
 mod truncation;
 
 pub(super) fn section_id(turn: &str, key: SectionKey) -> SectionId {
