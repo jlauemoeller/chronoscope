@@ -1,0 +1,21 @@
+# Scratch render: HelpOverlay component, browser context, copy remapped to c / ctrl-y / f5 / shift-tab / "z z", 60x20
+............................................................
+..╭─ Keybindings ────────────────────────────────────────╮..
+..│                                                      │..
+..│  Navigation                                          │..
+..│                                                      │..
+..│    Up / k                                 Previous se│..
+..│    Down / j                               Next sectio│..
+..│    [                                      Previous tu│..
+..│    ]                                      Next turn  │..
+..│    Ctrl-u                                 Scroll half│..
+..│    Ctrl-d                                 Scroll half│..
+..│    PgUp                                   Scroll a pa│..
+..│    PgDn                                   Scroll a pa│..
+..│    g / Home                               Jump to sta│..
+..│    G / End                                Jump to end│..
+..│                                                      │..
+..│  Sections                                            │..
+..│                                                      │..
+..╰───────────────────────────────────────────── ↓ more ─╯..
+............................................................
