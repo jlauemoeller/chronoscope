@@ -23,7 +23,7 @@
 | 019-tool-body-renderers | Complete |
 | 020-transcript-navigation | Complete |
 | 021-browser-screen | Complete |
-| 022-claude-live-watch | In progress |
+| 022-claude-live-watch | Complete |
 | 023-browser-live-updates | Planned |
 | 024-transcript-search | Planned |
 | 025-copy-to-clipboard | Planned |
