@@ -74,6 +74,7 @@ pub struct Assembler {
     source: ByteSource,
     cwd: Option<PathBuf>,
     last_ts: Option<DateTime<Utc>>,
+    first_ts: Option<DateTime<Utc>>,
     turns: Vec<Arc<Turn>>,
     cur: Option<Builder>,
     calls: HashMap<String, CallRef>,
@@ -112,6 +113,7 @@ impl Assembler {
             source,
             cwd: None,
             last_ts: None,
+            first_ts: None,
             turns: Vec::new(),
             cur: None,
             calls: HashMap::new(),
@@ -166,6 +168,16 @@ impl Assembler {
     /// unparsed) and logged so the allowlist can be extended.
     pub fn unknown_attachment_kinds(&self) -> &BTreeMap<String, usize> {
         &self.unknown_kinds
+    }
+
+    /// The timestamp of the first entry the assembler read that has one.
+    pub fn first_timestamp(&self) -> Option<DateTime<Utc>> {
+        self.first_ts
+    }
+
+    /// The timestamp of the last entry the assembler read that has one.
+    pub fn last_timestamp(&self) -> Option<DateTime<Utc>> {
+        self.last_ts
     }
 
     /// The session cwd, if known.
@@ -429,6 +441,7 @@ impl Assembler {
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|t| t.with_timezone(&Utc));
         if let Some(ts) = parsed {
+            self.first_ts.get_or_insert(ts);
             self.last_ts = Some(ts);
         }
         parsed.or(self.last_ts).unwrap_or(DateTime::UNIX_EPOCH)

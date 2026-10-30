@@ -92,6 +92,7 @@ fn an_unusable_resume_template_is_logged_as_a_warning() {
         started_at: DateTime::UNIX_EPOCH,
         last_activity: DateTime::UNIX_EPOCH,
         path: PathBuf::from("/x.jsonl"),
+        idle: None,
     };
     let warns = || {
         log_text()

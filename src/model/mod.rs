@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 pub use output::{ByteSource, LineFormat, OutputSource, ToolOutput, ToolOutputError, ToolResult};
 
@@ -168,6 +169,45 @@ pub struct SessionSummary {
     pub last_activity: DateTime<Utc>,
     /// The transcript file.
     pub path: PathBuf,
+    /// Whether the harness records the session as idle (OpenCode
+    /// `time_idle`): `Some(false)` while it runs, `None` when the harness
+    /// does not record it (Claude).
+    pub idle: Option<bool>,
+}
+
+/// A session counts as active when its last activity is at most this old.
+pub const ACTIVE_WINDOW: chrono::Duration = chrono::Duration::seconds(60);
+
+/// Whether `session` is active at `now` (SPEC §7.2): the harness says it is
+/// not idle, or it had activity within the last [`ACTIVE_WINDOW`]. The
+/// selector's `●` marker and the browser's `● live` header share this rule.
+pub fn is_active(session: &SessionSummary, now: DateTime<Utc>) -> bool {
+    session.idle == Some(false) || now.signed_duration_since(session.last_activity) <= ACTIVE_WINDOW
+}
+
+/// What the session list shows to the right of a row (SPEC §4.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionStats {
+    /// The number of User turns.
+    pub turns: usize,
+    /// The last entry's timestamp minus the first entry's.
+    #[serde(with = "duration_millis")]
+    pub duration: Duration,
+}
+
+/// Serialises a [`Duration`] as whole milliseconds.
+mod duration_millis {
+    use std::time::Duration;
+
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(duration: &Duration, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u64(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Duration, D::Error> {
+        Ok(Duration::from_millis(u64::deserialize(d)?))
+    }
 }
 
 /// A reference to a child session (e.g. a subagent run).
@@ -444,5 +484,70 @@ impl ModelUpdate {
             }
             ModelUpdate::Progress(_) | ModelUpdate::Loaded | ModelUpdate::ParseWarnings(_) => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::TimeDelta;
+
+    use super::*;
+
+    fn session(last_activity: DateTime<Utc>, idle: Option<bool>) -> SessionSummary {
+        SessionSummary {
+            id: SessionId::from("s"),
+            harness: HarnessId::Claude,
+            project: ProjectId::from("/p"),
+            cwd: None,
+            title: "t".to_owned(),
+            first_prompt: None,
+            started_at: last_activity,
+            last_activity,
+            path: PathBuf::from("/s.jsonl"),
+            idle,
+        }
+    }
+
+    fn now() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-03-01T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn not_idle_is_active_however_old_the_activity() {
+        let old = now() - TimeDelta::days(3);
+        assert!(is_active(&session(old, Some(false)), now()));
+    }
+
+    #[test]
+    fn activity_30_seconds_ago_is_active() {
+        let recent = now() - TimeDelta::seconds(30);
+        assert!(is_active(&session(recent, None), now()));
+    }
+
+    #[test]
+    fn activity_90_seconds_ago_without_idle_is_not_active() {
+        let older = now() - TimeDelta::seconds(90);
+        assert!(!is_active(&session(older, None), now()));
+    }
+
+    #[test]
+    fn idle_true_with_old_activity_is_not_active() {
+        let older = now() - TimeDelta::seconds(90);
+        assert!(!is_active(&session(older, Some(true)), now()));
+    }
+
+    #[test]
+    fn the_window_is_sixty_seconds() {
+        let at = |secs| session(now() - TimeDelta::seconds(secs), None);
+        assert!(is_active(&at(60), now()));
+        assert!(!is_active(&at(61), now()));
+    }
+
+    #[test]
+    fn activity_in_the_future_is_active() {
+        let ahead = now() + TimeDelta::seconds(5);
+        assert!(is_active(&session(ahead, None), now()));
     }
 }

@@ -2,32 +2,58 @@
 
 pub mod claude;
 
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
+use crate::config::Config;
 use crate::model::{
-    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionSummary, ToolCallId,
+    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary, ToolCallId,
 };
 
 /// Result type of harness operations.
 pub use anyhow::Result;
 
 /// A coding-agent harness whose sessions can be browsed (SPEC §1.1).
-pub trait Harness {
+///
+/// Harnesses are shared with the index worker threads, hence `Send + Sync`.
+pub trait Harness: Send + Sync {
     /// Which harness this is.
     fn id(&self) -> HarnessId;
 
     /// Whether the harness's data store was found.
     fn available(&self) -> bool;
 
+    /// Re-reads the harness's store so that [`projects`](Self::projects) and
+    /// [`sessions`](Self::sessions) reflect what is on disk now. Only changed
+    /// data is re-read. May take a while on a big store: call it from a
+    /// worker thread.
+    fn refresh(&self) -> Result<()>;
+
+    /// The paths whose changes (watched recursively) can alter the project
+    /// and session lists: the data directory, or the database's directory.
+    /// The index worker watches them to know when to [`refresh`](Self::refresh).
+    fn watch_paths(&self) -> Vec<PathBuf>;
+
     /// The projects, sorted by most recent activity, newest first.
     fn projects(&self) -> Result<Vec<Project>>;
 
     /// The sessions of `project`, sorted by start time, newest first.
     fn sessions(&self, project: &ProjectId) -> Result<Vec<SessionSummary>>;
+
+    /// Computes the list stats of `session` (SPEC §4.1) with a full parse.
+    /// Reads the whole transcript, so it is for worker threads.
+    fn stats(&self, session: &SessionSummary) -> Result<SessionStats>;
+
+    /// A string identifying the state of `session`'s data that
+    /// [`stats`](Self::stats) depends on: it changes whenever the data does
+    /// (Claude: path, size and mtime; OpenCode: db, session id and
+    /// `time_updated`). It keys the stats cache (SPEC §9.2), so equal keys
+    /// must mean equal stats. Cheap: it may stat a file but never parses.
+    fn stats_key(&self, session: &SessionSummary) -> String;
 
     /// Starts loading `session` on a worker thread and returns at once.
     ///
@@ -80,4 +106,27 @@ impl Drop for WatchHandle {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+/// Constructs the enabled harnesses from `config` (SPEC §6.6), in tab order.
+///
+/// A harness with `enabled = false` is not constructed, so its tab is hidden
+/// (its number stays reserved). One whose data store is missing is kept: its
+/// [`available`](Harness::available) is false and the selector shows it
+/// muted. Only Claude exists so far.
+///
+/// The home directory (for default data directories) is detected from the
+/// environment; see [`build_harnesses_with_home`] to give it explicitly.
+pub fn build_harnesses(config: &Config) -> Vec<Arc<dyn Harness>> {
+    let home = crate::paths::Paths::detect().map_or_else(PathBuf::new, |p| p.home_dir);
+    build_harnesses_with_home(config, &home)
+}
+
+/// [`build_harnesses`] with an explicit home directory.
+pub fn build_harnesses_with_home(config: &Config, home: &Path) -> Vec<Arc<dyn Harness>> {
+    let mut harnesses: Vec<Arc<dyn Harness>> = Vec::new();
+    if config.harness.claude.enabled {
+        harnesses.push(Arc::new(claude::ClaudeHarness::new(config, home)));
+    }
+    harnesses
 }

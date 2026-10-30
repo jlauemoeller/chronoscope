@@ -14,11 +14,12 @@ use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 
+use super::assemble::Assembler;
 use super::load::{self, LoadHook, Tuning};
 use super::resume::{self, DEFAULT_RESUME_COMMAND};
 use super::scan::{FileScan, scan_reader};
@@ -26,7 +27,8 @@ use super::subagent::{self, SubagentInfo};
 use crate::config::Config;
 use crate::harness::{Harness, Result, WatchHandle};
 use crate::model::{
-    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionSummary, ToolCallId,
+    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary,
+    ToolCallId, Turn,
 };
 
 /// Title of a session with neither an `ai-title` nor a prompt.
@@ -94,6 +96,7 @@ pub struct ClaudeHarness {
     aliases: BTreeMap<PathBuf, String>,
     max_workers: Option<usize>,
     scans: AtomicUsize,
+    stat_parses: AtomicUsize,
     state: Mutex<State>,
     on_scan: Option<ScanHook>,
     resume_command: String,
@@ -122,6 +125,7 @@ impl ClaudeHarness {
             aliases,
             max_workers: None,
             scans: AtomicUsize::new(0),
+            stat_parses: AtomicUsize::new(0),
             state: Mutex::new(State::default()),
             on_scan: None,
             resume_command: DEFAULT_RESUME_COMMAND.to_owned(),
@@ -192,6 +196,12 @@ impl ClaudeHarness {
     /// including one that failed.
     pub fn scan_count(&self) -> usize {
         self.scans.load(Ordering::Relaxed)
+    }
+
+    /// How many sessions [`stats`](Harness::stats) has parsed since
+    /// construction. Every parse counts, including one that failed.
+    pub fn stats_parse_count(&self) -> usize {
+        self.stat_parses.load(Ordering::Relaxed)
     }
 
     /// What the last build did.
@@ -348,6 +358,53 @@ impl Harness for ClaudeHarness {
 
     fn available(&self) -> bool {
         self.data_dir.is_dir()
+    }
+
+    /// Rescans new and changed transcripts; see [`ClaudeHarness::refresh`].
+    fn refresh(&self) -> Result<()> {
+        ClaudeHarness::refresh(self)
+    }
+
+    /// The data directory.
+    fn watch_paths(&self) -> Vec<PathBuf> {
+        vec![self.data_dir.clone()]
+    }
+
+    /// Parses the whole transcript with the [`Assembler`]: `turns` is the
+    /// number of User turns, `duration` the last entry timestamp minus the
+    /// first (zero when there are fewer than two). Does not take the index
+    /// lock, so it can run while a [`refresh`](Harness::refresh) does.
+    fn stats(&self, session: &SessionSummary) -> Result<SessionStats> {
+        self.stat_parses.fetch_add(1, Ordering::Relaxed);
+        let asm = Assembler::from_file(&session.path)
+            .with_context(|| format!("reading {}", session.path.display()))?;
+        let turns = asm
+            .turns()
+            .iter()
+            .filter(|t| matches!(***t, Turn::User(_)))
+            .count();
+        let duration = match (asm.first_timestamp(), asm.last_timestamp()) {
+            (Some(first), Some(last)) => (last - first).to_std().unwrap_or_default(),
+            _ => Duration::ZERO,
+        };
+        Ok(SessionStats { turns, duration })
+    }
+
+    /// `claude:<path>:<size>:<mtime in ns since the epoch>`; a file that
+    /// cannot be stat'ed gives size and mtime `missing`.
+    fn stats_key(&self, session: &SessionSummary) -> String {
+        let path = session.path.display();
+        match fs::metadata(&session.path) {
+            Ok(meta) => {
+                let nanos = meta
+                    .modified()
+                    .ok()
+                    .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_nanos());
+                format!("claude:{path}:{}:{nanos}", meta.len())
+            }
+            Err(_) => format!("claude:{path}:missing"),
+        }
     }
 
     /// Builds the index first when there is none. A missing data directory
@@ -530,6 +587,7 @@ fn summarize(file: &FileMeta, scan: &FileScan) -> SessionSummary {
         started_at,
         last_activity,
         path: file.path.clone(),
+        idle: None,
     }
 }
 
