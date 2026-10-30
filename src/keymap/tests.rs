@@ -96,6 +96,8 @@ const EXPECTED: &[Row] = &[
     (Overlay, "up", Up, &["up", "k"], "Overlays", "Move up"),
     (Overlay, "down", Down, &["down", "j"], "Overlays", "Move down"),
     (Overlay, "select", Select, &["enter"], "Overlays", "Select"),
+    (Overlay, "page_up", PageUp, &["pgup"], "Overlays", "Scroll a page up"),
+    (Overlay, "page_down", PageDown, &["pgdn"], "Overlays", "Scroll a page down"),
     (Overlay, "close", Close, &["esc"], "Overlays", "Close"),
 ];
 

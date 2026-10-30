@@ -1,0 +1,64 @@
+---
+source: src/app/browser_tests/help.rs
+expression: text
+---
+╭─ Project BRIO ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                                                                                                                                                                                                      │
+│ /home/user/projects/brio                                                                                                                                                                             │
+│                                                                                                                                                                                                      │
+╰───────────────────────────────────────────────────────────────╭─ Keybindings ────────────────────────────────────────────────────────╮───────────────────────────────────────────────────────────────╯
+╭─ User ────────────────────────────────────────────────────────│                                                                      │──────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                               │  Navigation                                                          │                                                               │
+▒ ▶ I have a Logitech BRIO web camera attached to this machine v│                                                                      │way to access settings that would have been available on say   │
+▒   a mac or windows, since there are no proprietary drivers: we│    Up / k                            Previous section                │itional profiles the camera has and how to access them? The…   │
+│                                                               │    Down / j                          Next section                    │                                                               │
+╰───────────────────────────────────────────────────────────────│    [                                 Previous turn                   │───────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 @ high ─────────────────────────│    ]                                 Next turn                       │──────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                               │    Ctrl-u                            Scroll half a page up           │                                                               │
+│   I'll start by looking at what the camera exposes over USB:  │    Ctrl-d                            Scroll half a page down         │                                                               │
+│                                                               │    PgUp                              Scroll a page up                │                                                               │
+│   • Check lsusb -v for the UVC descriptors                    │    PgDn                              Scroll a page down              │                                                               │
+│   • Look at v4l2-ctl --list-ctrls                             │    g / Home                          Jump to start                   │                                                               │
+│                                                               │    G / End                           Jump to end and follow          │                                                               │
+│   Then I'll compare the results.                              │                                                                      │                                                               │
+│                                                               │  Sections                                                            │                                                               │
+│ ▶ Thinking: The user wants the UVC extension units. Start with│                                                                      │                                                               │
+│                                                               │    ENTER / SPACE                     Fold or unfold current section  │                                                               │
+│ ▶ Find the BRIO on USB and check available tools              │    Left / h                          Fold current section            │                                                               │
+│                                                               │    Right / l                         Unfold current section          │                                                               │
+│ ▶ Dump full USB descriptors for the BRIO                      │    -                                 Fold all sections               │                                                               │
+│                                                               │    + / =                             Unfold all sections             │                                                               │
+│   model → claude-sonnet-5.5                                   │    s                                 Show or hide system content     │                                                               │
+│                                                               │    y                                 Copy section as displayed       │                                                               │
+│   5m 02s · 112 messages · 45.2k tokens                        │    Y                                 Copy full section               │                                                               │
+│                                                               │    w / Ctrl-s                        Save section as displayed       │                                                               │
+╰───────────────────────────────────────────────────────────────│    W                                 Save full section               │───────────────────────────────────────────────────────────────╯
+╭─ User ────────────────────────────────────────────────────────│                                                                      │──────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                               │  Search                                                              │                                                               │
+│ ▶ Dump the full descriptors and look for extension units.     │                                                                      │                                                               │
+│                                                               │    /                                 Search transcript               │                                                               │
+╰───────────────────────────────────────────────────────────────│    n                                 Next match                      │───────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 @ high ─────────────────────────│    N                                 Previous match                  │──────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                               │    ESC                               Clear search                    │                                                               │
+│   Reading the dump now.                                       │                                                                      │                                                               │
+│                                                               │  Sessions                                                            │                                                               │
+│ ▶ Thinking: Look for the Logitech XU GUIDs.                   │                                                                      │                                                               │
+│                                                               │    a                                 Open subagent transcript        │                                                               │
+│ ▶ Read the UVC descriptor dump                                │    Backspace                         Back to parent session          │                                                               │
+│                                                               │    R                                 Resume in harness               │                                                               │
+│   5m 02s · 112 messages · 45.2k tokens                        │    Ctrl-o                            Open another session            │                                                               │
+│                                                               │                                                                      │                                                               │
+╰───────────────────────────────────────────────────────────────│  Application                                                         │───────────────────────────────────────────────────────────────╯
+╭─ Compaction ──────────────────────────────────────────────────│                                                                      │──────────────────────────────────────── 2026-10-21 09:00:00Z ─╮
+│                                                               │    e / Ctrl-e                        Export session as folded        │                                                               │
+│ ▶ ── context compacted ──                                     │    E                                 Export full session             │                                                               │
+│                                                               │    t                                 Choose theme                    │                                                               │
+╰───────────────────────────────────────────────────────────────│    ?                                 Show keybindings                │───────────────────────────────────────────────────────────────╯
+╭─ User ────────────────────────────────────────────────────────│    q / Ctrl-q / Ctrl-w / Ctrl-c      Quit                            │──────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                               │                                                                      │                                                               │
+│ ▶ file: /home/jacob/notes.md                                  │  Hold Shift to select text with the mouse                            │                                                               │
+│                                                               ╰──────────────────────────────────────────────────────────────────────╯                                                               │
+│ ▶ Continue with the extension units.                                                                                                                                                                 │
+│                                                                                                                                                                                                      │
+                                                                                                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

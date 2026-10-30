@@ -11,6 +11,7 @@
 
 pub mod browser;
 mod copy;
+pub mod help;
 pub mod hints;
 pub mod index_port;
 pub mod layout;
@@ -52,7 +53,7 @@ use tuirealm::listener::EventListenerCfg;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
 use crate::clipboard::{Clipboard, NoClipboard};
-use crate::components::{EmptyState, GlobalEvents, TOAST_DURATION, TOO_SMALL, Toast};
+use crate::components::{EmptyState, GlobalEvents, HelpContext, TOAST_DURATION, TOO_SMALL, Toast};
 use crate::config::{Config, ConfigWarning};
 use crate::harness::Harness;
 use crate::index::{IndexEvent, IndexHandle};
@@ -111,6 +112,8 @@ pub enum Id {
     EmptySession,
     /// The search, path and `y/n` prompt, drawn in place of the help line.
     Prompt,
+    /// The keybindings overlay.
+    HelpOverlay,
     /// The notification in the bottom-right corner.
     Toast,
 }
@@ -120,6 +123,12 @@ pub enum Id {
 pub enum Msg {
     /// Leave the application.
     Quit,
+    /// The help key: open the keybindings overlay for this screen.
+    OpenHelp(HelpContext),
+    /// `Esc` or the help key in the overlay: close it and return the focus.
+    CloseHelp,
+    /// A key scrolled the help overlay: nothing but a redraw is needed.
+    HelpScrolled,
     /// The terminal now has this many columns and rows.
     Resized(u16, u16),
     /// A tick of the event loop.
@@ -317,6 +326,8 @@ pub struct App {
     /// Where OSC52 sequences are written: the terminal. `None` when there is
     /// no terminal to write to.
     osc52_out: Option<Box<dyn std::io::Write>>,
+    /// The size the help overlay wants (borders included) while it is open.
+    help_size: Option<ratatui::layout::Size>,
     /// The directory relative paths of saves and exports are under: the one
     /// the application started in.
     save_dir: PathBuf,
@@ -389,6 +400,7 @@ impl App {
             browser: BrowserState::default(),
             clipboard: Box::new(NoClipboard),
             osc52_out: None,
+            help_size: None,
             save_dir: working_dir,
             home_dir: crate::paths::Paths::detect().map(|paths| paths.home_dir),
         };
@@ -570,6 +582,9 @@ impl App {
     pub fn update(&mut self, msg: Msg) {
         match msg {
             Msg::Quit => self.quit(),
+            Msg::OpenHelp(context) => self.open_help(context),
+            Msg::CloseHelp => self.close_help(),
+            Msg::HelpScrolled => self.request_redraw(RedrawRequest::Dirty),
             Msg::Resized(width, height) => self.resized(width, height),
             Msg::Tick => self.tick_elapsed(),
             Msg::ToastExpired(id) => self.toast_expired(id),
@@ -664,6 +679,7 @@ impl App {
             toast_text_width: self.toast_text.as_deref().map(UnicodeWidthStr::width),
             prompt: self.application.mounted(&Id::Prompt),
             session_empty: self.browser.session_empty(),
+            help: self.help_size,
         }
     }
 

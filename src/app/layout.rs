@@ -4,7 +4,7 @@
 //! `App::view` draws from it, and the mouse subscriptions will be built from
 //! it, so both always agree on where a component is.
 
-use ratatui::layout::Rect;
+use ratatui::layout::{Rect, Size};
 
 use crate::components::{HEADER_HEIGHT, MAX_TOAST_WIDTH, TOAST_CHROME};
 
@@ -91,6 +91,8 @@ pub struct LayoutInput {
     /// Whether the open session has no turns: the browser shows
     /// [`Id::EmptySession`] in place of the transcript.
     pub session_empty: bool,
+    /// The size the help overlay wants, borders included, while it is open.
+    pub help: Option<Size>,
 }
 
 /// The area of each visible component, in drawing order (overlays last).
@@ -128,8 +130,10 @@ pub fn too_small(area: Rect) -> bool {
 /// in the same place instead of the help line; over the browser alone it
 /// takes the browser's help line.
 ///
-/// The toast, when `input` has one, comes last (on top) in the bottom-right
-/// corner of the screen, except on the too-small screen.
+/// The help overlay, when `input` has one, comes after the screen (see
+/// [`help_overlay_rect`]). The toast, when `input` has one, comes last (on
+/// top) in the bottom-right corner of the screen, except on the too-small
+/// screen.
 pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
     if too_small(area) {
         return ScreenLayout {
@@ -173,6 +177,9 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
             (Id::WorkingDir, selector.working_dir),
             (bottom, selector.help_line),
         ]);
+    }
+    if let Some(wanted) = input.help {
+        areas.push((Id::HelpOverlay, help_overlay_rect(area, wanted)));
     }
     if let Some(text_width) = input.toast_text_width {
         areas.push((Id::Toast, toast_rect(area, text_width)));
@@ -271,6 +278,20 @@ fn selector_help_line(overlay: Rect) -> Rect {
         y: overlay.y + overlay.height - HELP_LINE_ROWS_FROM_BOTTOM,
         width: overlay.width.saturating_sub(2 * HELP_LINE_INSET),
         height: 1,
+    }
+}
+
+/// The help overlay: `wanted` (its widest entry and its content, with the
+/// border) but at most the screen less two columns either side and one row
+/// above and below, and centred.
+pub fn help_overlay_rect(area: Rect, wanted: Size) -> Rect {
+    let width = wanted.width.min(area.width.saturating_sub(4));
+    let height = wanted.height.min(area.height.saturating_sub(2));
+    Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
     }
 }
 
@@ -603,6 +624,62 @@ mod tests {
         );
         assert_eq!(l.area(Id::Prompt), without.area(Id::BrowserHelpLine));
         assert_eq!(l.area(Id::Prompt), Some(Rect::new(0, 22, 80, 2)));
+    }
+
+    #[test]
+    fn the_help_overlay_is_centred_and_drawn_after_the_screen_and_before_the_toast() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            help: Some(Size::new(72, 52)),
+            toast_text_width: Some(10),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 200, 60));
+        assert_eq!(l.area(Id::HelpOverlay), Some(Rect::new(64, 4, 72, 52)));
+        let ids: Vec<Id> = l.areas().iter().map(|(id, _)| *id).collect();
+        let help = ids.iter().position(|i| *i == Id::HelpOverlay).unwrap();
+        assert_eq!(ids.len(), help + 2);
+        assert_eq!(ids[help + 1], Id::Toast);
+        assert!(ids[..help].contains(&Id::Transcript));
+    }
+
+    #[test]
+    fn the_help_overlay_is_over_the_selector_too() {
+        let input = LayoutInput {
+            screen: Screen::Selector,
+            help: Some(Size::new(72, 24)),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 120, 40));
+        assert_eq!(l.areas().last().unwrap().0, Id::HelpOverlay);
+        assert!(l.area(Id::SelectorFrame).is_some());
+    }
+
+    #[test]
+    fn the_help_overlay_leaves_two_columns_and_a_row_either_side() {
+        let wanted = Size::new(72, 52);
+        assert_eq!(
+            help_overlay_rect(Rect::new(0, 0, 80, 24), wanted),
+            Rect::new(4, 1, 72, 22)
+        );
+        assert_eq!(
+            help_overlay_rect(Rect::new(0, 0, 70, 24), wanted),
+            Rect::new(2, 1, 66, 22)
+        );
+        assert_eq!(
+            help_overlay_rect(Rect::new(0, 0, 120, 40), Size::new(72, 24)),
+            Rect::new(24, 8, 72, 24)
+        );
+    }
+
+    #[test]
+    fn a_too_small_screen_shows_no_help_overlay() {
+        let input = LayoutInput {
+            help: Some(Size::new(72, 52)),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 50, 15));
+        assert_eq!(l.area(Id::HelpOverlay), None);
     }
 
     #[test]

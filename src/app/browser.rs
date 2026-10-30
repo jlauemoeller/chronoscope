@@ -316,8 +316,9 @@ impl App {
         };
         self.unmount_selector();
         self.unmount_browser();
+        self.drop_help();
         self.focus_stack.clear();
-        self.screen = Screen::Browser;
+        self.set_screen(Screen::Browser);
         if let Err(err) = self.mount_browser() {
             log::error!("could not mount the browser: {err}");
         }
@@ -840,7 +841,7 @@ impl App {
             return;
         }
         self.selector.show_session(open.harness, &open.summary);
-        self.screen = Screen::BrowserSelector;
+        self.set_screen(Screen::BrowserSelector);
         self.push_all();
         self.push_viewports();
         self.set_session_open(true);
@@ -860,7 +861,7 @@ impl App {
             return;
         }
         self.unmount_selector();
-        self.screen = Screen::Browser;
+        self.set_screen(Screen::Browser);
         // The first entry is who had the focus before the selector; a prompt
         // that was open added more.
         let back = self

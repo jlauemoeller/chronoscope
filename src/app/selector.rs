@@ -181,6 +181,11 @@ impl SelectorState {
         }
     }
 
+    /// The harnesses the application registered.
+    pub(super) fn registered(&self) -> &[HarnessId] {
+        &self.registered
+    }
+
     /// Whether every registered harness has sent a snapshot.
     fn all_reported(&self) -> bool {
         self.registered.iter().all(|h| self.data.contains_key(h))
@@ -783,6 +788,7 @@ impl App {
     /// Tells the lists how many rows their pane shows at the current size,
     /// and the transcript how big its area is.
     pub(super) fn push_viewports(&mut self) {
+        self.push_help_interior();
         let area = ratatui::layout::Rect::new(0, 0, self.size.0, self.size.1);
         if super::layout::too_small(area) {
             return;
