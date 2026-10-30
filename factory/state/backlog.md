@@ -14,7 +14,7 @@
 | 010-session-index-worker | Complete |
 | 011-app-runtime | Complete |
 | 012-help-line-toast | Complete |
-| 013-selector-panes | Planned |
+| 013-selector-panes | In progress |
 | 014-selector-selection-rules | Planned |
 | 015-selector-search | Planned |
 | 016-markdown-renderer | Planned |
