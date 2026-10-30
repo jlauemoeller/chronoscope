@@ -60,6 +60,7 @@ impl Transcript {
             truncate: content.truncate_output_lines,
             open_key: &content.open_subagent_key,
             show_system: content.show_system,
+            block_width: self.viewport.map(|_| self.cache.width()),
         };
         export_markdown(self.export_meta.as_ref(), &content.turns, &settings, full)
     }

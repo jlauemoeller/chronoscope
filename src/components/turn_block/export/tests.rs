@@ -111,6 +111,7 @@ fn export(turns: &[Arc<Turn>], folds: &FoldState, show_system: bool, full: bool)
         truncate: 2,
         open_key: "a",
         show_system,
+        block_width: Some(80),
     };
     export_markdown(Some(&meta()), turns, &settings, full)
 }
@@ -210,11 +211,9 @@ fn the_full_export_has_a_details_block_per_tool_call_with_fenced_input_and_outpu
     assert!(text.contains(
         "<details><summary>Read the &lt;dump&gt; &amp; friends</summary>\n\n```json\n{\n  \"file_path\": \"/tmp/lsusb.txt\",\n  \"limit\": 120\n}\n```"
     ), "{text}");
+    // The output of the failing call follows its input directly.
     assert!(
-        text.contains(&format!(
-            "_The tool reported an error._\n\n```\n{}\n",
-            row(1)
-        )),
+        text.contains(&format!("\n}}\n```\n\n```\n{}\n", row(1))),
         "{text}"
     );
 }
@@ -294,6 +293,7 @@ fn without_metadata_the_document_starts_at_the_first_turn() {
         truncate: 20,
         open_key: "a",
         show_system: true,
+        block_width: None,
     };
     let text = export_markdown(None, &session()[4..], &settings, false);
     assert_eq!(

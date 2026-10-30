@@ -535,6 +535,31 @@ fn writing_into_the_data_of_a_harness_is_refused() {
 }
 
 #[test]
+fn the_claude_data_directory_is_refused() {
+    // The real Claude harness, with a home directory of its own: its data
+    // directory is `<home>/.claude/projects`.
+    let (mut rig, dir) = save_rig(120, 40);
+    let home = dir.path().join("home");
+    let data = crate::harness::claude::default_data_dir(&home);
+    std::fs::create_dir_all(data.join("-home-user-brio")).unwrap();
+    let claude =
+        crate::harness::claude::ClaudeHarness::new(&crate::config::Config::default(), &home);
+    rig.app
+        .set_harnesses([std::sync::Arc::new(claude) as std::sync::Arc<dyn Harness>]);
+    refused(&mut rig, "~/.claude/projects/out.txt");
+    refused(&mut rig, "~/.claude/projects/-home-user-brio/session.jsonl");
+    assert!(!data.join("out.txt").exists());
+    assert!(!data.join("-home-user-brio/session.jsonl").exists());
+    // The rest of `.claude` is not harness data.
+    rig.ask(Key::Char('w'), KeyModifiers::NONE);
+    rig.submit("~/.claude/notes.txt");
+    assert_eq!(
+        rig.shown_toast().as_deref(),
+        Some("Saved to ~/.claude/notes.txt")
+    );
+}
+
+#[test]
 fn an_export_into_harness_data_is_refused_too() {
     let (mut rig, dir) = save_rig(120, 40);
     let data = protected(&rig, &dir);

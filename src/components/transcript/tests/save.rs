@@ -173,3 +173,20 @@ fn saving_and_exporting_do_not_change_the_selection_or_the_view() {
     assert_eq!(t.selected().cloned(), selected);
     assert_eq!(t.offset(), offset);
 }
+
+#[test]
+fn the_folded_export_has_the_same_summary_as_y_copies() {
+    let mut t = session_transcript(80, 24);
+    let copied = match ch(&mut t, 'y') {
+        Some(Msg::CopyText(text)) => text,
+        other => panic!("{other:?}"),
+    };
+    // The folded first prompt: two rows of the screen, ending in `…`.
+    assert!(copied.ends_with('…'), "{copied}");
+    let (_, document) = exported(ch(&mut t, 'e'));
+    assert!(document.contains(&format!("\n> {copied}\n")), "{document}");
+    assert!(!document.contains(blocks::LONG_PROMPT));
+    // The full export has all of it.
+    let (_, full) = exported(t.on(&key(Key::Char('E'), KeyModifiers::SHIFT)));
+    assert!(full.contains(blocks::LONG_PROMPT));
+}

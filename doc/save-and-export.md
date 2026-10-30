@@ -43,13 +43,14 @@ content, `e` / `Ctrl-e` export the session as markdown as currently folded, and
 
 Prompts and assistant text are written as their markdown source, thinking as a
 block quote. In the folded export (`e`) a folded section is its summary as a
-block quote (`> Find the BRIO on USB`), an unfolded tool call is its
+block quote (`> Find the BRIO on USB`; a folded prompt is the rows the screen
+shows, as `y` copies them), an unfolded tool call is its
 description in bold with each label (`Command:`, `Result:`) in bold above a
 fenced code block with what is displayed (a truncated output ends in its
 `_… N more lines_` row), and hidden system content is left out. In the full
 export (`E`) nothing is folded, truncated or hidden, and every tool call is
 
-```
+````
 <details><summary>description</summary>
 
 ```sh (or json)
@@ -61,7 +62,7 @@ output
 ```
 
 </details>
-```
+````
 
 Fences are one backtick longer than the longest run of backticks in their
 content (at least three). A tool output that cannot be read back from the

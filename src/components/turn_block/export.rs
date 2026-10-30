@@ -66,6 +66,11 @@ pub struct ExportSettings<'a> {
     /// Whether system sections are shown; the folded export leaves them out
     /// when they are not.
     pub show_system: bool,
+    /// The width the transcript lays its blocks out at, when known. A folded
+    /// summary is cut to what the block shows at that width (a folded prompt
+    /// is the two rows of the screen, the second ending in `…`), as the
+    /// copy of the section does; without it, at the logical lines.
+    pub block_width: Option<u16>,
 }
 
 /// The session as markdown, as currently folded (`full` false) or in full.
@@ -132,7 +137,7 @@ fn section_markdown(
             settings.theme,
             settings.truncate,
             settings.open_key,
-            None,
+            settings.block_width,
         )
         .map(|text| quote(&text))
     };
@@ -273,9 +278,6 @@ fn details(call: &ToolCall) -> String {
     match &call.result {
         None => blocks.push(fenced("", PENDING)),
         Some(result) => {
-            if result.is_error {
-                blocks.push("_The tool reported an error._".to_owned());
-            }
             let output = match result.output.text() {
                 Ok(text) => text.into_owned(),
                 Err(err) => {
