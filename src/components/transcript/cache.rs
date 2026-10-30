@@ -70,12 +70,14 @@ impl LayoutCache {
     }
 
     /// Whether there are no blocks.
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.heights.is_empty()
     }
 
     /// How many block heights have been computed since the cache was made.
     /// A test uses it to see which operations recompute what.
+    #[cfg(test)]
     pub fn computed(&self) -> usize {
         self.computed
     }

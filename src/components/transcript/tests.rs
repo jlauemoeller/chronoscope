@@ -210,6 +210,7 @@ fn updated_replaces_a_turn_in_place_keeping_selection_and_folds() {
     }
     t.apply_update(&ModelUpdate::Updated(vec![arc(changed)]));
     assert_eq!(t.turn_count(), 8);
+    assert_eq!(t.turn(1).unwrap().id(), &TurnId::from("t2"), "in place");
     assert_eq!(t.selected(), Some(&tool));
     assert_eq!(t.is_folded(&tool), Some(false));
     assert_eq!(t.is_folded(&thinking), Some(false));
@@ -763,4 +764,155 @@ fn the_selection_uses_the_ids_of_derived_sections() {
         .map(|s| s.id)
         .collect();
     assert!(ids.contains(&item_section("t2", "c1")));
+}
+
+// ---- Selection stays visible ----
+
+/// Whether the rows of the selected section lie inside the viewport.
+fn selection_in_view(t: &Transcript) -> bool {
+    let window = t.window.as_ref().unwrap();
+    let selected = t.selected().unwrap();
+    window.blocks.iter().any(|placed| {
+        placed
+            .layout
+            .section_rows()
+            .iter()
+            .filter(|(id, _)| id == selected)
+            .any(|(_, rows)| {
+                placed.top + rows.start >= window.offset
+                    && placed.top + rows.end <= window.offset + usize::from(window.size.height)
+            })
+    })
+}
+
+fn has_marker(t: &mut Transcript, width: u16, height: u16) -> bool {
+    text_rows(&draw(t, width, height))
+        .iter()
+        .any(|row| row.starts_with('▒'))
+}
+
+#[test]
+fn a_tall_selection_scrolled_out_of_view_is_revealed_by_move_not_paged() {
+    let tall = tall_text();
+    for (step, from) in [(down(), 0), (up(), 10_000)] {
+        let turns = vec![
+            arc(reply("a", "Before.")),
+            arc(reply("b", "Before.")),
+            arc(reply("c", "Before.")),
+            arc(with_id(blocks::user(&tall, vec![]), "u")),
+            arc(reply("d", "After.")),
+            arc(reply("e", "After.")),
+            arc(reply("f", "After.")),
+            arc(reply("g", "After.")),
+        ];
+        let mut t = transcript_of(turns, 60, 10);
+        let tall_id = section_id("u", SectionKey::Prompt);
+        t.set_folded(&tall_id, false);
+        assert!(t.select(&tall_id));
+        t.scroll_to(from);
+        assert!(!selection_in_view(&t), "scrolled away (from {from})");
+        t.perform(step);
+        assert_ne!(
+            t.selected(),
+            Some(&tall_id),
+            "the move selects the neighbour"
+        );
+        assert!(selection_in_view(&t), "and scrolls it into view");
+        assert!(has_marker(&mut t, 60, 10));
+    }
+}
+
+#[test]
+fn a_selection_removed_by_hiding_system_sections_is_scrolled_into_view() {
+    let mut t = session_transcript(80, 10);
+    assert!(t.select(&item_section("t6", "i1")));
+    t.scroll_to(0);
+    assert!(!selection_in_view(&t));
+    let before = t.selected().cloned();
+    t.attr(SHOW_SYSTEM_ATTR, AttrValue::Flag(false));
+    assert_ne!(t.selected().cloned(), before);
+    assert!(selection_in_view(&t));
+    assert!(has_marker(&mut t, 80, 10));
+}
+
+#[test]
+fn a_selection_removed_by_an_update_is_scrolled_into_view() {
+    let mut t = session_transcript(80, 12);
+    assert!(t.select(&item_section("t4", "c1")));
+    // The new version drops the selected tool call and puts a tall text
+    // before the stats footer, which the selection moves to: far below.
+    let mut changed = (*t.turn(3).unwrap().clone()).clone();
+    if let Turn::Assistant(a) = &mut changed {
+        a.items = vec![blocks::text("big", &tall_text())];
+    }
+    t.apply_update(&ModelUpdate::Updated(vec![arc(changed)]));
+    let footer = section_id("t4", SectionKey::Footer);
+    assert_eq!(t.selected(), Some(&footer));
+    assert!(selection_in_view(&t));
+    assert!(has_marker(&mut t, 80, 12));
+}
+
+#[test]
+fn an_update_above_the_viewport_does_not_move_what_is_on_screen() {
+    let mut t = session_transcript(80, 12);
+    t.scroll_to(40);
+    let before = text_rows(&draw(&mut t, 80, 12));
+    let mut changed = (*t.turn(0).unwrap().clone()).clone();
+    if let Turn::User(u) = &mut changed {
+        u.text = "A much shorter prompt.".to_owned();
+    }
+    t.apply_update(&ModelUpdate::Updated(vec![arc(changed)]));
+    assert_eq!(text_rows(&draw(&mut t, 80, 12)), before);
+}
+
+// ---- Scrolling reuses layouts ----
+
+#[test]
+fn scrolling_lays_out_only_the_newly_exposed_blocks() {
+    let mut t = session_transcript(80, 24);
+    let visible = t.visible_blocks();
+    let run = t.layouts_run();
+    t.perform(scroll_down());
+    assert_eq!(t.visible_blocks(), visible);
+    assert_eq!(t.layouts_run(), run, "no block was laid out again");
+    // Scrolling until a block enters the window lays out just that block.
+    let mut exposed = 0;
+    while t.visible_blocks() == visible {
+        t.perform(scroll_down());
+    }
+    exposed += t.visible_blocks().end - visible.end;
+    assert_eq!(t.layouts_run(), run + exposed);
+    let full = all_rows(&t, 80);
+    let off = t.offset();
+    assert_eq!(text_rows(&draw(&mut t, 80, 24)), full[off..off + 24]);
+}
+
+// ---- Clipping keeps styles ----
+
+#[test]
+fn a_clipped_block_keeps_its_styles() {
+    use ratatui::buffer::Buffer;
+    use ratatui::widgets::Widget;
+    let theme = builtin::default_theme().with_transparent_background(true);
+    let turn = arc(with_id(blocks::user(&tall_text(), vec![]), "u"));
+    let mut t = Transcript::new(theme, blocks::formatter())
+        .with_turns(vec![turn])
+        .viewport(Size::new(60, 8));
+    t.set_folded(&section_id("u", SectionKey::Prompt), false);
+    t.scroll_to(3);
+    let screen = draw(&mut t, 60, 8);
+    let block = t.content.block(0);
+    let full = render(60, block.height(60) as u16, |frame| {
+        (&block).render(frame.area(), frame.buffer_mut());
+    });
+    let mut slice = Buffer::empty(Rect::new(0, 0, 60, 8));
+    for y in 0..8 {
+        for x in 0..60 {
+            slice[(x, y)] = full[(x, y + 3)].clone();
+        }
+    }
+    assert_eq!(
+        crate::test_support::buffer_to_styled(&screen),
+        crate::test_support::buffer_to_styled(&slice)
+    );
 }

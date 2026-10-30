@@ -3,6 +3,7 @@
 use std::ops::Range;
 
 use tuirealm::command::CmdResult;
+use tuirealm::component::Component;
 
 use super::Transcript;
 use crate::components::turn_block::{SectionId, derive_sections};
@@ -64,7 +65,7 @@ impl Transcript {
         if self.offset == before {
             CmdResult::Visual
         } else {
-            CmdResult::Changed(tuirealm::component::Component::state(self))
+            CmdResult::Changed(Component::state(self))
         }
     }
 
@@ -88,11 +89,11 @@ impl Transcript {
         }
         let before = self.offset;
         self.offset = offset;
-        self.refresh();
+        self.refresh_scrolled();
         if self.offset == before {
             CmdResult::NoChange
         } else {
-            self.outcome(before)
+            CmdResult::Changed(Component::state(self))
         }
     }
 
@@ -168,9 +169,15 @@ impl Transcript {
     pub(super) fn move_selection(&mut self, step: Step) -> CmdResult {
         let before = self.offset;
         let Some(cur) = self.cursor() else {
+            let had = self.content.selected.is_some();
             self.ensure_selection();
             self.refresh();
-            return CmdResult::NoChange;
+            let made = !had && self.content.selected.is_some();
+            return if made {
+                CmdResult::Visual
+            } else {
+                CmdResult::NoChange
+            };
         };
         let height = self.viewport.map(|v| usize::from(v.height));
         if let Some(offset) = height.and_then(|h| self.page_through(&cur, step, h)) {
@@ -194,14 +201,17 @@ impl Transcript {
     }
 
     /// The offset one page further through a selected section that is taller
-    /// than the viewport and extends past its edge in the direction of
-    /// `step`; `None` when the selection should move instead.
+    /// than the viewport, is on screen and extends past its edge in the
+    /// direction of `step`; `None` when the selection should move instead.
     fn page_through(&mut self, cur: &Cursor, step: Step, height: usize) -> Option<usize> {
         let section = self.section_rows_abs(cur);
-        if section.len() <= height {
+        let offset = self.offset;
+        // Only a section the user is looking at is paged through. One that
+        // scrolled out of view is revealed by the move instead.
+        let in_view = section.start < offset + height && section.end > offset;
+        if section.len() <= height || !in_view {
             return None;
         }
-        let offset = self.offset;
         match step {
             Step::Next if section.end > offset + height => {
                 Some((offset + height).min(section.end - height))
@@ -219,17 +229,25 @@ impl Transcript {
         let Some(&block) = self.content.index.get(&id.turn) else {
             return false;
         };
-        let Some(cur) = self.cursor_in(block, |rows| rows.iter().position(|(i, _)| i == id)) else {
+        let found = self.cursor_in(block, |rows| rows.iter().position(|(i, _)| i == id));
+        if found.is_none() {
             return false;
-        };
-        self.content.selected = Some(id.clone());
-        if let Some(size) = self.viewport {
-            let height = usize::from(size.height);
-            let span = self.span(&cur, height);
-            self.offset = reveal(self.offset, height, &span, Reveal::Top);
         }
+        self.content.selected = Some(id.clone());
+        self.reveal_selection();
         self.refresh();
         true
+    }
+
+    /// Scrolls the selected section into view with the least scrolling. The
+    /// window is not rebuilt; the caller refreshes.
+    pub(super) fn reveal_selection(&mut self) {
+        let (Some(size), Some(cur)) = (self.viewport, self.cursor()) else {
+            return;
+        };
+        let height = usize::from(size.height);
+        let span = self.span(&cur, height);
+        self.offset = reveal(self.offset, height, &span, Reveal::Top);
     }
 
     /// Folds or unfolds a section, measuring only its block again. Sections

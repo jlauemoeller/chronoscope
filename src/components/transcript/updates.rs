@@ -3,8 +3,9 @@
 use std::sync::Arc;
 
 use super::Transcript;
+use super::content::{Changes, Content};
 use crate::components::turn_block::SectionId;
-use crate::model::{ModelUpdate, Turn};
+use crate::model::{ModelUpdate, Turn, TurnId};
 
 /// The width used to find which sections exist before a viewport is known.
 /// Whether a section renders to any rows does not depend on the width.
@@ -34,17 +35,33 @@ impl Transcript {
     fn change_turns(
         &mut self,
         turns: &[Arc<Turn>],
-        change: impl FnOnce(&mut super::content::Content, &[Arc<Turn>]) -> super::content::Changes,
+        change: impl FnOnce(&mut Content, &[Arc<Turn>]) -> Changes,
     ) {
         let before = self.sections_if(|id| turns.iter().any(|t| t.id() == id));
+        let top_block = self.visible_blocks().start;
         let changes = change(&mut self.content, turns);
         (0..changes.appended).for_each(|_| self.cache.push());
-        changes
-            .replaced
-            .iter()
-            .for_each(|&i| self.cache.invalidate(i));
-        self.restore_selection(before);
+        self.invalidate_replaced(&changes.replaced, top_block);
+        // Only a batch that touched the selected turn can have removed its
+        // section; an untouched selection needs no layout to check.
+        if before.is_some() || self.content.selected.is_none() {
+            self.restore_selection(before);
+        }
         self.refresh();
+    }
+
+    /// Forgets the heights of the replaced blocks. A block above the top of
+    /// the viewport that changed height moves the offset by the difference,
+    /// so that what is on screen stays put.
+    fn invalidate_replaced(&mut self, replaced: &[usize], top_block: usize) {
+        for &index in replaced {
+            let old = self.cache.known_height(index);
+            self.cache.invalidate(index);
+            if let (true, Some(old)) = (index < top_block, old) {
+                let new = self.measured(|cache, m| cache.height(index, m));
+                self.offset = (self.offset + new).saturating_sub(old);
+            }
+        }
     }
 
     /// Shows or hides system sections. Only the blocks that hold injected
@@ -79,10 +96,7 @@ impl Transcript {
     /// The sections of the selected block as they are now, when the turn of
     /// the selected section satisfies `touched`: the state to restore the
     /// selection from after a change.
-    fn sections_if(
-        &self,
-        touched: impl Fn(&crate::model::TurnId) -> bool,
-    ) -> Option<Vec<SectionId>> {
+    fn sections_if(&self, touched: impl Fn(&TurnId) -> bool) -> Option<Vec<SectionId>> {
         let selected = self.content.selected.as_ref()?;
         let &at = self.content.index.get(&selected.turn)?;
         touched(&selected.turn).then(|| self.sections_of(at))
@@ -134,5 +148,7 @@ impl Transcript {
         self.content.selected = next
             .or_else(|| self.first_section_from(at + 1))
             .or_else(|| self.last_section());
+        // The selection moved by itself: show it, as any other selection.
+        self.reveal_selection();
     }
 }

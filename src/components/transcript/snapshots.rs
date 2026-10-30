@@ -71,6 +71,7 @@ fn after_a_resize_from_120_to_80_columns_text_is_wrapped_again_at_80x24_text() {
     // Unfold the selected prompt so that its wrapping shows.
     t.perform(Cmd::Submit);
     let wide = text_at(&mut t, 120, 24);
+    insta::assert_snapshot!("before_a_resize_at_120x24_text", wide);
     t.set_viewport(Size::new(80, 24));
     let narrow = text_at(&mut t, 80, 24);
     let marked = |text: &str| text.lines().filter(|row| row.starts_with('▒')).count();

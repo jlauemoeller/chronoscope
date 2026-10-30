@@ -1,6 +1,8 @@
 //! The viewport slice: which blocks overlap the visible rows, and drawing
 //! them clipped.
 
+use std::collections::HashMap;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Rect, Size};
 
@@ -75,6 +77,14 @@ impl Window {
             offset,
             blocks,
         }
+    }
+
+    /// The layouts of the window's blocks by index, to reuse in the next one.
+    pub fn into_layouts(self) -> HashMap<usize, BlockLayout> {
+        self.blocks
+            .into_iter()
+            .map(|placed| (placed.index, placed.layout))
+            .collect()
     }
 
     /// The indices of the blocks in the window.

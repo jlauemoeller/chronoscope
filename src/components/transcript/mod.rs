@@ -56,7 +56,7 @@ use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
-pub use cache::{LayoutCache, Located, Measure};
+pub(crate) use cache::LayoutCache;
 
 use self::content::{Content, Measurer};
 use self::window::Window;
@@ -101,7 +101,9 @@ pub struct Transcript {
     /// The blocks overlapping the viewport, laid out; `None` until a
     /// viewport is announced.
     window: Option<Window>,
-    /// How many block layouts were run to measure or draw blocks.
+    /// How many block layouts were run to measure or draw blocks (read by
+    /// tests).
+    #[cfg_attr(not(test), allow(dead_code))]
     layouts_run: usize,
 }
 
@@ -172,19 +174,21 @@ impl Transcript {
         self.content.truncate_output_lines
     }
 
-    /// The layout cache.
-    pub fn cache(&self) -> &LayoutCache {
+    /// The layout cache (tests read its counters).
+    #[cfg(test)]
+    pub(crate) fn cache(&self) -> &LayoutCache {
         &self.cache
     }
 
     /// How many block layouts were run to measure or draw blocks (not
     /// counting the ones navigation and selection need).
-    pub fn layouts_run(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn layouts_run(&self) -> usize {
         self.layouts_run
     }
 
     /// The indices of the blocks the prepared window draws.
-    pub fn visible_blocks(&self) -> std::ops::Range<usize> {
+    pub(crate) fn visible_blocks(&self) -> std::ops::Range<usize> {
         self.window.as_ref().map_or(0..0, Window::block_range)
     }
 
@@ -228,6 +232,19 @@ impl Transcript {
         result
     }
 
+    /// Like [`measured`](Self::measured), with `layouts` of blocks that the
+    /// measurer hands out instead of laying them out again.
+    fn measured_reusing<R>(
+        &mut self,
+        layouts: std::collections::HashMap<usize, crate::components::turn_block::BlockLayout>,
+        f: impl FnOnce(&mut LayoutCache, &mut Measurer<'_>) -> R,
+    ) -> R {
+        let mut measurer = Measurer::new(&self.content, self.cache.width()).reusing(layouts);
+        let result = f(&mut self.cache, &mut measurer);
+        self.layouts_run += measurer.calls;
+        result
+    }
+
     /// Brings the window up to date with the content, the offset and the
     /// viewport. Called after every change.
     fn refresh(&mut self) {
@@ -241,12 +258,32 @@ impl Transcript {
         self.window = Some(window);
     }
 
+    /// Like [`refresh`](Self::refresh) after a change of the offset alone:
+    /// the layouts of the blocks that stay in the window are reused, and only
+    /// the newly exposed blocks are laid out.
+    fn refresh_scrolled(&mut self) {
+        let Some(size) = self.viewport else {
+            return;
+        };
+        let reuse = self.window.take().map(Window::into_layouts);
+        let offset = self.offset;
+        let window = self.measured_reusing(reuse.unwrap_or_default(), |cache, m| {
+            Window::build_clamped(cache, m, size, offset)
+        });
+        self.offset = window.offset;
+        self.window = Some(window);
+    }
+
     /// The window for `size`: the prepared one, or one computed on a copy of
     /// the cache so that `view` leaves the transcript untouched.
     fn window_for(&self, size: Size) -> Cow<'_, Window> {
         match &self.window {
             Some(window) if window.size == size => Cow::Borrowed(window),
             _ => {
+                log::debug!(
+                    "transcript drawn into {size:?} without an announced viewport; \
+                     send VIEWPORT_ATTR when the area changes"
+                );
                 let mut cache = self.cache.clone();
                 cache.set_width(size.width);
                 let mut measurer = Measurer::new(&self.content, size.width);
@@ -283,12 +320,11 @@ impl Transcript {
         self.refresh();
     }
 
+    /// Stores the setting. No block renderer reads it yet, so heights do not
+    /// depend on it; when one does (task 019 truncates tool output), this
+    /// must invalidate every height.
     fn set_truncate_output_lines(&mut self, lines: usize) {
-        if self.content.truncate_output_lines != lines {
-            self.content.truncate_output_lines = lines;
-            self.cache.invalidate_all();
-            self.refresh();
-        }
+        self.content.truncate_output_lines = lines;
     }
 }
 

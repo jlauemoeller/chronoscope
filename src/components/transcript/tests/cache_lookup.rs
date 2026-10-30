@@ -30,7 +30,7 @@ fn locate_finds_the_block_containing_a_row() {
 }
 
 #[test]
-fn locate_is_a_binary_search_over_known_prefix_sums() {
+fn locate_with_known_heights_measures_nothing() {
     let heights: Vec<usize> = (0..10_000).map(|i| 2 + i % 5).collect();
     let mut cache = cache_of(&heights);
     let calls = Cell::new(0);
@@ -42,10 +42,8 @@ fn locate_is_a_binary_search_over_known_prefix_sums() {
     assert_eq!(calls.get(), 10_000);
     // With every height known, any lookup measures nothing and agrees with a
     // scan.
-    let mut start = 0;
     for (block, h) in heights.iter().enumerate().step_by(97) {
         let top: usize = heights[..block].iter().sum();
-        start = start.max(top);
         for row in [top, top + h - 1] {
             let found = cache.locate(row, &mut m);
             assert_eq!(found, Some(Located { block, top }));

@@ -465,7 +465,8 @@ pub struct ToolCall {
 /// A change to the model, emitted by an assembler.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModelUpdate {
-    /// New turns, added at the end.
+    /// New turns, added at the end. The transcript treats a turn whose id it
+    /// already holds as an update of that turn.
     Appended(Vec<Arc<Turn>>),
     /// Existing turns replaced in place (matched by [`TurnId`]).
     Updated(Vec<Arc<Turn>>),
@@ -479,7 +480,8 @@ pub enum ModelUpdate {
     /// and again whenever it changes.
     ParseWarnings(usize),
     /// Clears every turn: the session is being reloaded from scratch. Only
-    /// the transcript consumes it; the App forwards it like [`Appended`](Self::Appended).
+    /// the transcript consumes it; the App is to forward it to the
+    /// transcript like [`Appended`](Self::Appended).
     Reset,
 }
 

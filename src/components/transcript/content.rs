@@ -138,6 +138,8 @@ pub struct Measurer<'a> {
     /// The layout of the block measured last, so that drawing it right after
     /// does not lay it out a second time.
     last: Option<(usize, BlockLayout)>,
+    /// Layouts from the previous frame that are still valid.
+    reuse: HashMap<usize, BlockLayout>,
 }
 
 impl<'a> Measurer<'a> {
@@ -147,14 +149,25 @@ impl<'a> Measurer<'a> {
             width,
             calls: 0,
             last: None,
+            reuse: HashMap::new(),
         }
+    }
+
+    /// Hands out `layouts` (by block index) instead of laying those blocks out
+    /// again. The caller guarantees they are valid for the content and width.
+    pub fn reusing(mut self, layouts: HashMap<usize, BlockLayout>) -> Self {
+        self.reuse = layouts;
+        self
     }
 
     /// The layout of block `index`: the one measured last if that is it.
     pub fn layout(&mut self, index: usize) -> BlockLayout {
         match self.last.take() {
             Some((at, layout)) if at == index => layout,
-            _ => self.run(index),
+            _ => match self.reuse.remove(&index) {
+                Some(layout) => layout,
+                None => self.run(index),
+            },
         }
     }
 
@@ -166,7 +179,10 @@ impl<'a> Measurer<'a> {
 
 impl Measure for Measurer<'_> {
     fn measure(&mut self, index: usize) -> usize {
-        let layout = self.run(index);
+        let layout = match self.reuse.remove(&index) {
+            Some(layout) => layout,
+            None => self.run(index),
+        };
         let height = layout.height();
         self.last = Some((index, layout));
         height
