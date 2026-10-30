@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use ratatui::layout::Size;
-use tuirealm::command::{Cmd, CmdResult, Direction, Position};
+use tuirealm::command::{Cmd, CmdResult, Position};
 use tuirealm::component::{AppComponent, Component};
 use tuirealm::event::{Event, Key, KeyEvent, KeyModifiers};
 
@@ -172,6 +172,36 @@ fn three_presses_page_through_a_tall_section_and_the_fourth_selects_the_next_one
         item_section("r1", "t1"),
         "the fourth press moves on"
     );
+}
+
+#[test]
+fn three_presses_scroll_by_whole_pages_through_a_three_page_section() {
+    let thirty = arc(with_id(
+        blocks::assistant(None, vec![blocks::text("big", &tall_text_of(30))], None),
+        "a1",
+    ));
+    let mut t = transcript_of(
+        vec![
+            arc(prompt("p1", "Show me.")),
+            thirty,
+            arc(reply("r1", "Done.")),
+        ],
+        80,
+        10,
+    );
+    let tall = item_section("a1", "big");
+    assert_eq!(span_of(&mut t, &tall).len(), 30);
+    ch(&mut t, 'j');
+    assert_eq!(selected(&t), tall);
+    let start = span_of(&mut t, &tall).start;
+    assert_eq!(t.offset(), start, "the section's top is the top row");
+    ch(&mut t, 'j');
+    assert_eq!(t.offset(), start + 10, "a page");
+    ch(&mut t, 'j');
+    assert_eq!(t.offset(), start + 20, "another page");
+    assert_eq!(selected(&t), tall);
+    ch(&mut t, 'j');
+    assert_eq!(selected(&t), item_section("r1", "t1"));
 }
 
 #[test]
@@ -355,13 +385,55 @@ fn scrolling_moves_a_selection_that_left_the_viewport_to_the_topmost_fully_visib
 #[test]
 fn a_selection_that_stays_fully_visible_is_kept_while_scrolling() {
     let mut t = session_transcript(80, 24);
-    let id = selected(&t);
+    // A section in the lower half of the screen, still on screen after half
+    // a page.
+    let id = spans(&mut t)
+        .into_iter()
+        .find(|(_, r)| r.start >= 14 && r.end <= 23)
+        .map(|(id, _)| id)
+        .expect("a section in rows 14..23");
+    assert!(t.select(&id));
+    assert_eq!(t.offset(), 0);
+    ctrl(&mut t, 'd');
+    assert_eq!(t.offset(), 12, "the view scrolled");
     let rows = span_of(&mut t, &id);
-    assert!(rows.start >= 1, "the first section starts below the border");
-    // Scroll one row: the first section's rows are still all visible.
-    t.perform(Cmd::Scroll(Direction::Down));
-    t.perform(Cmd::Custom(HALF_PAGE_UP));
+    assert!(rows.start >= 12 && rows.end <= 36, "still fully visible");
     assert_eq!(selected(&t), id);
+}
+
+/// The topmost section that is fully inside the viewport.
+fn topmost_fully_visible(t: &mut Transcript, height: usize) -> SectionId {
+    let offset = t.offset();
+    spans(t)
+        .into_iter()
+        .find(|(_, r)| r.start >= offset && r.end <= offset + height)
+        .map(|(id, _)| id)
+        .expect("a fully visible section")
+}
+
+#[test]
+fn every_page_key_moves_the_selection_to_the_topmost_fully_visible_section() {
+    for (code, mods, from_end) in [
+        (Key::PageUp, KeyModifiers::NONE, true),
+        (Key::Char('u'), KeyModifiers::CONTROL, true),
+        (Key::PageDown, KeyModifiers::NONE, false),
+        (Key::Char('d'), KeyModifiers::CONTROL, false),
+    ] {
+        let mut t = session_transcript(80, 24);
+        if from_end {
+            // The last section is selected and the view is at the end.
+            press(&mut t, Key::Char('G'));
+        }
+        let (before, was) = (t.offset(), selected(&t));
+        t.on(&key(code, mods));
+        assert_ne!(t.offset(), before, "{code:?} scrolled");
+        let expected = topmost_fully_visible(&mut t, 24);
+        assert_ne!(
+            expected, was,
+            "{code:?}: the old selection left the viewport"
+        );
+        assert_eq!(selected(&t), expected, "{code:?}");
+    }
 }
 
 #[test]
@@ -733,8 +805,18 @@ fn moving_and_jumping_do_not_stop_on_hidden_system_sections() {
 fn remapped(toml: &str) -> Transcript {
     let (config, warnings) = Config::from_toml_str(toml, Path::new("/home/tester"));
     assert!(warnings.is_empty(), "{warnings:?}");
-    // Taking a key from another action warns; the remap still applies.
-    let (keymap, _) = Keymap::from_config(&config.keys);
+    let (keymap, warnings) = Keymap::from_config(&config.keys);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    session_transcript(80, 24).keymap(keymap)
+}
+
+/// Like [`remapped`], for a remap that takes a key from another action,
+/// which warns.
+fn remapped_with_warnings(toml: &str) -> Transcript {
+    let (config, warnings) = Config::from_toml_str(toml, Path::new("/home/tester"));
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let (keymap, warnings) = Keymap::from_config(&config.keys);
+    assert!(!warnings.is_empty());
     session_transcript(80, 24).keymap(keymap)
 }
 
@@ -761,10 +843,10 @@ fn shifted_letters_arrive_with_the_shift_modifier() {
 
 #[test]
 fn a_remap_applies_to_every_action_it_names() {
-    let mut t = remapped("[keys.browser]\nfold_all = \"x\"\ntoggle_system = \"w\"\n");
+    let mut t = remapped("[keys.browser]\nfold_all = \"x\"\ntoggle_system = \"Z\"\n");
     ch(&mut t, 'x');
     assert!(t.sections_of(5).contains(&item_section("t6", "i1")));
-    ch(&mut t, 'w');
+    ch(&mut t, 'Z');
     assert!(!t.sections_of(5).contains(&item_section("t6", "i1")));
     ch(&mut t, 's');
     assert!(
@@ -791,7 +873,7 @@ fn keys_of_other_contexts_and_actions_of_other_tasks_do_nothing() {
 
 #[test]
 fn a_chord_binding_waits_for_its_second_key() {
-    let mut t = remapped("[keys.browser]\nnext = \"g j\"\n");
+    let mut t = remapped_with_warnings("[keys.browser]\nnext = \"g j\"\n");
     let all = all_selectable(&t);
     ch(&mut t, 'g');
     assert_eq!(selected(&t), all[0]);

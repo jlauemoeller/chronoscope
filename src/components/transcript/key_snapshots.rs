@@ -28,9 +28,9 @@ fn after_j_three_times_the_selection_is_in_the_second_block_at_80x24_text() {
     insta::assert_snapshot!(text);
 }
 
-/// A prompt, then a text section of 60 rows (2.5 pages of 24), then a reply.
+/// A prompt, then a text section of 84 rows (3.5 pages of 24), then a reply.
 fn tall_section_session() -> Transcript {
-    let rows: String = (1..=60).map(|n| format!("- item {n}\n")).collect();
+    let rows: String = (1..=84).map(|n| format!("- item {n}\n")).collect();
     let tall = arc(with_id(
         blocks::assistant(None, vec![blocks::text("big", &rows)], None),
         "a1",
@@ -67,9 +67,12 @@ fn paging_through_a_tall_section_after_the_second_j_at_80x24_text() {
     ch(&mut t, 'j');
     ch(&mut t, 'j');
     assert_eq!(t.selected(), Some(&item_section("a1", "big")));
-    assert_eq!(t.offset(), top + 36, "the last page is only partly new");
+    assert_eq!(t.offset(), top + 48, "scrolled by a second page");
     let text = text_at(&mut t, 80, 24);
-    assert!(text.contains("item 60"), "{text}");
+    assert!(
+        text.contains("item 49") && text.contains("item 72"),
+        "{text}"
+    );
     insta::assert_snapshot!(text);
 }
 
