@@ -29,7 +29,7 @@
 | 025-copy-to-clipboard | Complete |
 | 026-save-and-export | Complete |
 | 027-subagent-transcripts | Complete |
-| 028-opencode-adapter | Planned |
+| 028-opencode-adapter | In progress |
 | 029-opencode-live-watch | Planned |
 | 030-help-overlay | Planned |
 | 031-theme-selector | Planned |
