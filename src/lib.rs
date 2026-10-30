@@ -6,6 +6,7 @@ use clap::Parser;
 
 pub mod config;
 pub mod harness;
+pub mod index;
 pub mod keymap;
 pub mod logging;
 pub mod model;

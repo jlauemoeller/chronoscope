@@ -734,6 +734,7 @@ fn summary(id: &str, cwd: Option<&str>) -> SessionSummary {
         started_at: t,
         last_activity: t,
         path: PathBuf::from("/x.jsonl"),
+        idle: None,
     }
 }
 
