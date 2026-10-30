@@ -1,0 +1,23 @@
+##### thinking md first line @ 80 (height 9)
+╭─ Assistant ── m ────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│ ▶ Thinking: **Investigating USB descriptors**                                │
+│                                                                              │
+│ ▶ Thinking: - first bullet                                                   │
+│                                                                              │
+│   3s · 1 message                                                             │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+##### thinking md unfolded @ 80 (height 12)
+╭─ Assistant ── m ────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│ ▼ Thinking                                                                   │
+│   Investigating USB descriptors                                              │
+│                                                                              │
+│   The user wants the UVC extension units.                                    │
+│                                                                              │
+│ ▶ Thinking: - first bullet                                                   │
+│                                                                              │
+│   3s · 1 message                                                             │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
