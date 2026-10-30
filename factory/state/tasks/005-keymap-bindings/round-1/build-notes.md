@@ -4,7 +4,7 @@ STATUS: DONE
 - `src/keymap/mod.rs` (new, `pub mod keymap` in `src/lib.rs`): `Context` (global/browser/selector/overlay), `Action` enum, `Binding`, `HelpEntry`, `Keymap` (`default()`, `from_config(&RawKeys) -> (Keymap, Vec<ConfigWarning>)`, `resolve`, `keys`, `label`, `labels`, `help_entries`, `bindings`), `KeyResolver` + `Resolved {Action, Pending, Unbound}` for chords. Warnings are returned and logged.
 - `src/keymap/key.rs` (new): key syntax parser (`KeySeq::parse`, `KeySpec`), event normalisation (SHIFT ignored on chars, BackTab == shift-tab, Char(' ') == space), labels, `KeyParseError` naming the string.
 - `src/keymap/defaults.rs` (new): the default table (keys, group, description) in help order.
-- `src/keymap/tests.rs` (new): 50 tests. UI: none, so no snapshots.
+- `src/keymap/tests.rs` (new): 46 tests. UI: none, so no snapshots.
 
 Decisions beyond the task text:
 - `Action` is one enum; `Search`, `Up`, `Down`, `Resume` are shared by several contexts, an action is identified by (context, action).
