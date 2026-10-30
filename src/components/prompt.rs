@@ -57,6 +57,7 @@ pub struct Prompt {
     mode: PromptMode,
     theme: Theme,
     fill: Role,
+    inset: u16,
     focused: bool,
 }
 
@@ -74,6 +75,7 @@ impl Prompt {
             mode,
             theme,
             fill: Role::Surface,
+            inset: 0,
             focused: false,
         }
     }
@@ -83,6 +85,14 @@ impl Prompt {
     #[must_use]
     pub fn with_fill(mut self, fill: Role) -> Self {
         self.fill = fill;
+        self
+    }
+
+    /// Keeps `columns` blank columns free on both sides of the row, like
+    /// the browser's help line.
+    #[must_use]
+    pub fn inset(mut self, columns: u16) -> Self {
+        self.inset = columns;
         self
     }
 
@@ -187,7 +197,8 @@ impl Component for Prompt {
             return;
         }
         self.paint_fill(frame, area);
-        let row = Rect::new(area.x, area.bottom() - 1, area.width, 1);
+        let inset = self.inset.min(area.width / 2);
+        let row = Rect::new(area.x + inset, area.bottom() - 1, area.width - 2 * inset, 1);
         let label_width = u16::try_from(unicode_width::UnicodeWidthStr::width(self.label.as_str()))
             .unwrap_or(u16::MAX)
             .min(row.width);
@@ -532,6 +543,28 @@ mod tests {
         assert_eq!(buffer[(3, 0)].bg, theme.role(Role::Cursor));
         assert_eq!(buffer[(3, 0)].symbol(), "c");
         assert_ne!(buffer[(4, 0)].bg, theme.role(Role::Cursor));
+    }
+
+    #[test]
+    fn an_inset_prompt_starts_that_many_columns_in_and_keeps_the_fill_across() {
+        let theme = builtin::default_theme();
+        let mut p = prompt("abc").inset(1).with_fill(Role::Background);
+        let buffer = draw(&mut p, 20);
+        assert_eq!(buffer_to_text(&buffer), " /abc               \n");
+        assert_eq!(buffer[(1, 0)].fg, theme.role(Role::Primary));
+        assert_eq!(buffer[(5, 0)].bg, theme.role(Role::Cursor));
+        assert_eq!(buffer[(0, 0)].bg, theme.role(Role::Background));
+        assert_eq!(buffer[(19, 0)].bg, theme.role(Role::Background));
+    }
+
+    #[test]
+    fn a_long_text_scrolls_inside_the_inset() {
+        let mut p = prompt(&"x".repeat(40)).inset(1);
+        let buffer = draw(&mut p, 12);
+        let text = buffer_to_text(&buffer);
+        assert!(text.starts_with(" /xxx"), "{text:?}");
+        assert!(text.trim_end().ends_with("xxx"), "{text:?}");
+        assert_eq!(text.trim_end_matches('\n').chars().count(), 12);
     }
 
     #[test]

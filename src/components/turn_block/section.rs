@@ -261,6 +261,11 @@ impl FoldState {
         self.expanded.insert(id);
     }
 
+    /// Marks the output of the tool call `id` as not expanded again.
+    pub fn clear_expanded(&mut self, id: &SectionId) {
+        self.expanded.remove(id);
+    }
+
     /// Folds or unfolds the section with the given id.
     pub fn set_folded(&mut self, id: SectionId, folded: bool) {
         self.overrides.insert(id, folded);

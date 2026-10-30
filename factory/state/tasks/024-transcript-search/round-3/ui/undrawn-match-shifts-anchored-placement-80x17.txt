@@ -1,0 +1,188 @@
+Undrawn match (link URL / fence info) shifts the anchored placement onto another match's row.
+Transcript viewport 80x17 (the 80x24 screen), default theme, rendered in the scratch crate.
+Cells drawn with search_match are bracketed [ ].
+The help-line position is given in each header; the screen is the transcript after the jump.
+
+---------------------------------------------------------------------------
+Case A: one assistant text section of 41 paragraphs:
+  filler 0..19,
+  "See [the docs](https://usb.org) for the usb port.",
+  more filler 0..19,
+  "the second usb hit",
+  tail filler 0..19.
+Query `usb`: three matches. 1/3 is in the URL (not drawn), 2/3 is "usb port"
+(drawn), and 3/3 is "the second usb hit".
+
+EXPECTED at 2/3: the row "See the docs for the [usb] port." is on screen.
+ACTUAL at 2/3: the jump lands on the 3/3 row, about 42 rows further down.
+"See the docs ..." is off screen.
+===== url-then-hit-mid-section 1/3 hit-visible=true Some(SectionId { turn: TurnId("a1"), key: Item(ItemId("x1")) }) offset=39
+▒   filler 16                                                                  │
+▒                                                                              │
+▒   filler 17                                                                  │
+▒                                                                              │
+▒   filler 18                                                                  │
+▒                                                                              │
+▒   filler 19                                                                  │
+▒                                                                              │
+▒   See the docs for the [usb] port.                                             │
+▒                                                                              │
+▒   more filler 0                                                              │
+▒                                                                              │
+▒   more filler 1                                                              │
+▒                                                                              │
+▒   more filler 2                                                              │
+▒                                                                              │
+▒   more filler 3                                                              │
+===== url-then-hit-mid-section 2/3 hit-visible=true Some(SectionId { turn: TurnId("a1"), key: Item(ItemId("x1")) }) offset=81
+▒   more filler 16                                                             │
+▒                                                                              │
+▒   more filler 17                                                             │
+▒                                                                              │
+▒   more filler 18                                                             │
+▒                                                                              │
+▒   more filler 19                                                             │
+▒                                                                              │
+▒   the second [usb] hit                                                         │
+▒                                                                              │
+▒   tail filler 0                                                              │
+▒                                                                              │
+▒   tail filler 1                                                              │
+▒                                                                              │
+▒   tail filler 2                                                              │
+▒                                                                              │
+▒   tail filler 3                                                              │
+
+---------------------------------------------------------------------------
+Case B: as A, but the hit paragraph is "Read [the spec](https://usb.org/spec) first.".
+1/2 is in the URL and is not drawn.
+EXPECTED at 1/2: the paragraph "Read the spec first." is on screen. That is
+where the link is drawn; the invariant would also allow the section top.
+ACTUAL at 1/2: the jump lands on the 2/2 row "the second usb hit", 42 rows
+away. The 1/2 and 2/2 screens are identical.
+===== url-mid-section 1/2 hit-visible=true Some(SectionId { turn: TurnId("a1"), key: Item(ItemId("x1")) }) offset=81
+▒   more filler 16                                                             │
+▒                                                                              │
+▒   more filler 17                                                             │
+▒                                                                              │
+▒   more filler 18                                                             │
+▒                                                                              │
+▒   more filler 19                                                             │
+▒                                                                              │
+▒   the second [usb] hit                                                         │
+▒                                                                              │
+▒   tail filler 0                                                              │
+▒                                                                              │
+▒   tail filler 1                                                              │
+▒                                                                              │
+▒   tail filler 2                                                              │
+▒                                                                              │
+▒   tail filler 3                                                              │
+===== url-mid-section 2/2 hit-visible=true Some(SectionId { turn: TurnId("a1"), key: Item(ItemId("x1")) }) offset=81
+▒   more filler 16                                                             │
+▒                                                                              │
+▒   more filler 17                                                             │
+▒                                                                              │
+▒   more filler 18                                                             │
+▒                                                                              │
+▒   more filler 19                                                             │
+▒                                                                              │
+▒   the second [usb] hit                                                         │
+▒                                                                              │
+▒   tail filler 0                                                              │
+▒                                                                              │
+▒   tail filler 1                                                              │
+▒                                                                              │
+▒   tail filler 2                                                              │
+▒                                                                              │
+▒   tail filler 3                                                              │
+
+---------------------------------------------------------------------------
+Case C: the paragraph
+  "Use `lsusb` from [usbutils](https://github.com/gregkh/usbutils) to list usb devices."
+sits mid-section, with "the last usb hit" 42 rows later. There are five matches:
+  1/5 lsusb
+  2/5 usbutils (link text)
+  3/5 usbutils in the URL (not drawn)
+  4/5 "usb devices"
+  5/5 the last hit
+EXPECTED at 4/5: the row "Use ls[usb] from [usb]utils to list [usb] devices."
+(offset 39, as for 1/5..3/5).
+ACTUAL at 4/5: offset 81, the "the last usb hit" row. The 4/5 match's own
+row is off screen.
+===== code-then-url-hit 4/5 hit-visible=true Some(SectionId { turn: TurnId("a1"), key: Item(ItemId("x1")) }) offset=81
+▒   more filler 16                                                             │
+▒                                                                              │
+▒   more filler 17                                                             │
+▒                                                                              │
+▒   more filler 18                                                             │
+▒                                                                              │
+▒   more filler 19                                                             │
+▒                                                                              │
+▒   the last [usb] hit                                                           │
+▒                                                                              │
+▒   tail filler 0                                                              │
+▒                                                                              │
+▒   tail filler 1                                                              │
+▒                                                                              │
+▒   tail filler 2                                                              │
+▒                                                                              │
+▒   tail filler 3                                                              │
+
+---------------------------------------------------------------------------
+Case D (round-2 `md` scene): this is a regression from round 2, where 1/4
+and 2/4 revealed the section top.
+The paragraphs are:
+  "See [the docs](https://usb.org/spec) and `code`."
+  "```usb\nplain block\n```"
+  filler
+  "the usb hit you want first"
+  filler
+  "the second usb hit"
+  filler
+The matches:
+  1/4 the URL (not drawn)
+  2/4 the fence info (not drawn)
+  3/4 the first drawn hit
+  4/4 the second drawn hit
+ACTUAL offsets for Enter, then n x3: 43, 85, 43, 85.
+  1/4 shows the 3/4 screen.
+  2/4 shows the 4/4 screen.
+So `n` visits the same two screens twice, and the first paragraph,
+where the link is drawn, is never shown.
+===== md matches=4 enter Some(SectionId { turn: TurnId("a1"), key: Item(ItemId("x1")) }) offset=43
+▒   filler 16                                                                  │
+▒                                                                              │
+▒   filler 17                                                                  │
+▒                                                                              │
+▒   filler 18                                                                  │
+▒                                                                              │
+▒   filler 19                                                                  │
+▒                                                                              │
+▒   the [usb] hit you want first                                                 │
+▒                                                                              │
+▒   more filler 0                                                              │
+▒                                                                              │
+▒   more filler 1                                                              │
+▒                                                                              │
+▒   more filler 2                                                              │
+▒                                                                              │
+▒   more filler 3                                                              │
+===== md n#0 Some(SectionId { turn: TurnId("a1"), key: Item(ItemId("x1")) }) offset=85
+▒   more filler 16                                                             │
+▒                                                                              │
+▒   more filler 17                                                             │
+▒                                                                              │
+▒   more filler 18                                                             │
+▒                                                                              │
+▒   more filler 19                                                             │
+▒                                                                              │
+▒   the second [usb] hit                                                         │
+▒                                                                              │
+▒   tail filler 0                                                              │
+▒                                                                              │
+▒   tail filler 1                                                              │
+▒                                                                              │
+▒   tail filler 2                                                              │
+▒                                                                              │
+▒   tail filler 3                                                              │

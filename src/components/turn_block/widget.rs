@@ -15,6 +15,8 @@ use super::title::TitleBar;
 use crate::model::Turn;
 use crate::theme::{Role, Theme, Token};
 use crate::timestamp::TimestampFormatter;
+use crate::transcript_search::SearchQuery;
+use unicode_width::UnicodeWidthStr;
 
 /// A row of the block between the top and the bottom border.
 #[derive(Debug, Clone)]
@@ -42,6 +44,14 @@ impl BlockLayout {
     pub fn section_rows(&self) -> &[(SectionId, Range<usize>)] {
         &self.sections
     }
+
+    /// The text of row `row` (counted from the top border, like
+    /// [`section_rows`](Self::section_rows)), from column 2 on. `None` for
+    /// the borders and rows that do not exist.
+    pub fn row_text(&self, row: usize) -> Option<String> {
+        let interior = row.checked_sub(1)?;
+        self.rows.get(interior).map(|row| row.line.to_string())
+    }
 }
 
 /// One turn drawn as a rounded block (SPEC §5.2).
@@ -67,6 +77,7 @@ pub struct TurnBlock<'a> {
     truncate: usize,
     open_key: &'a str,
     skip: usize,
+    search: Option<&'a SearchQuery>,
 }
 
 impl<'a> TurnBlock<'a> {
@@ -85,6 +96,7 @@ impl<'a> TurnBlock<'a> {
             truncate: crate::config::DEFAULT_TRUNCATE_OUTPUT_LINES,
             open_key: DEFAULT_OPEN_KEY,
             skip: 0,
+            search: None,
         }
     }
 
@@ -129,6 +141,15 @@ impl<'a> TurnBlock<'a> {
     #[must_use]
     pub fn open_subagent_key(mut self, label: &'a str) -> Self {
         self.open_key = label;
+        self
+    }
+
+    /// Highlights every occurrence of `query` in the rows it draws with the
+    /// `search_match` style. This is part of drawing only: it changes no
+    /// layout, so a layout made without it can be drawn with it.
+    #[must_use]
+    pub fn search(mut self, query: Option<&'a SearchQuery>) -> Self {
+        self.search = query;
         self
     }
 
@@ -250,7 +271,29 @@ impl<'a> TurnBlock<'a> {
         );
         // The content may use columns 2 to W - 4; the rest is padding.
         buf.set_line(area.x + 2, y, &row.line, area.width.saturating_sub(6));
+        self.highlight(row, area, y, buf);
         buf.set_string(area.x + area.width - 1, y, "│", self.border_style());
+    }
+
+    /// Draws the occurrences of the search query in the content of `row`
+    /// with the `search_match` style. A match is looked for in each row on
+    /// its own, so one that wraps onto the next row is not highlighted.
+    fn highlight(&self, row: &BlockRow, area: Rect, y: u16, buf: &mut Buffer) {
+        let Some(query) = self.search else {
+            return;
+        };
+        let text = row.line.to_string();
+        let style = self.theme.style(Token::SearchMatch);
+        let first = area.x + 2;
+        let columns = usize::from(area.width.saturating_sub(6));
+        for found in query.find_all(&text) {
+            let start = text[..found.start].width();
+            let end = start + text[found.clone()].width();
+            for column in start..end.min(columns) {
+                // `column` is below `columns`, which fits in a `u16`.
+                buf[(first + column as u16, y)].set_style(style);
+            }
+        }
     }
 
     /// Draws a layout made by [`layout`](Self::layout) for `area.width`,

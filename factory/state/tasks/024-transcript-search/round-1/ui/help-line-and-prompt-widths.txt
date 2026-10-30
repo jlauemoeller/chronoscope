@@ -1,0 +1,40 @@
+# HelpLine (inset 1, browser hints) and Prompt (label /, inset 1) at several widths. OK: status right-aligned, '↓ N new  i/n' order, hints drop out before the status.
+--- help 60 ["2/5"]
+                                                            
+ / to search | ENTER to fold or unfold sections         2/5 
+--- help 60 ["↓ 3 new", "12/170"]
+                                                            
+ / to search                                ↓ 3 new  12/170 
+--- help 60 ["0/0"]
+                                                            
+ / to search | ENTER to fold or unfold sections         0/0 
+--- help 80 ["2/5"]
+                                                                                
+ / to search | ENTER to fold or unfold sections | y to copy current         2/5 
+--- help 80 ["↓ 3 new", "12/170"]
+                                                                                
+ / to search | ENTER to fold or unfold sections                 ↓ 3 new  12/170 
+--- help 80 ["0/0"]
+                                                                                
+ / to search | ENTER to fold or unfold sections | y to copy current         0/0 
+--- help 120 ["2/5"]
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings                             2/5 
+--- help 120 ["↓ 3 new", "12/170"]
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings                 ↓ 3 new  12/170 
+--- help 120 ["0/0"]
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings                             0/0 
+--- prompt 60 "usb"
+                                                            
+ /usb                                                       
+--- styles (fg/bg/modifiers) ---
+0: 0..60 Reset/Rgb(10, 10, 10)/NONE
+1: 0..1 Reset/Rgb(10, 10, 10)/NONE | 1..2 Rgb(229, 229, 229)/Rgb(10, 10, 10)/NONE | 2..5 Rgb(250, 250, 250)/Rgb(10, 10, 10)/NONE | 5..6 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE | 6..60 Reset/Rgb(10, 10, 10)/NONE
+--- prompt 60 "a very long search query that will not fit into the help line at all"
+                                                            
+ /search query that will not fit into the help line at all  
+--- styles (fg/bg/modifiers) ---
+0: 0..60 Reset/Rgb(10, 10, 10)/NONE
+1: 0..1 Reset/Rgb(10, 10, 10)/NONE | 1..2 Rgb(229, 229, 229)/Rgb(10, 10, 10)/NONE | 2..58 Rgb(250, 250, 250)/Rgb(10, 10, 10)/NONE | 58..59 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE | 59..60 Reset/Rgb(10, 10, 10)/NONE

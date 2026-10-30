@@ -10,6 +10,7 @@ use crate::components::turn_block::{BlockLayout, FoldState, SectionId, TurnBlock
 use crate::model::{Item, Turn, TurnId};
 use crate::theme::Theme;
 use crate::timestamp::TimestampFormatter;
+use crate::transcript_search::SearchQuery;
 
 /// The turns, the presentation state tied to them and the display options.
 #[derive(Debug, Clone)]
@@ -26,6 +27,8 @@ pub struct Content {
     pub index: HashMap<TurnId, usize>,
     pub folds: FoldState,
     pub selected: Option<SectionId>,
+    /// The query whose occurrences are highlighted.
+    pub highlight: Option<SearchQuery>,
 }
 
 /// What a batch of turns did to the existing ones.
@@ -51,6 +54,7 @@ impl Content {
             index: HashMap::new(),
             folds: FoldState::new(),
             selected: None,
+            highlight: None,
         }
     }
 
@@ -67,6 +71,7 @@ impl Content {
             .dim_unselected(self.dim_unselected)
             .truncate_output_lines(self.truncate_output_lines)
             .open_subagent_key(&self.open_subagent_key)
+            .search(self.highlight.as_ref())
     }
 
     /// The selectable sections of `turn` with the rows each covers, counted
@@ -114,6 +119,7 @@ impl Content {
         self.index.clear();
         self.folds = FoldState::new();
         self.selected = None;
+        self.highlight = None;
     }
 
     /// The indices of the turns that hold injected items, whose sections

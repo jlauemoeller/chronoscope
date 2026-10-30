@@ -42,8 +42,10 @@ pub use session_list::{
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 pub use transcript::{
     DIM_UNSELECTED_ATTR, FOLLOWING_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR,
-    OPEN_SUBAGENT_KEY_ATTR, SHOW_SYSTEM_ATTR, TIMESTAMP_FORMATTER_ATTR, TRUNCATE_OUTPUT_LINES_ATTR,
-    TURN_COUNT_ATTR, Transcript, VIEWPORT_ATTR, model_update_value, viewport_value,
+    OPEN_SUBAGENT_KEY_ATTR, SEARCH_POSITION_ATTR, SEARCH_QUERY_ATTR, SEARCH_REQUEST_ATTR,
+    SEARCH_RESULTS_ATTR, SHOW_SYSTEM_ATTR, SearchStart, TIMESTAMP_FORMATTER_ATTR,
+    TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript, VIEWPORT_ATTR, model_update_value,
+    search_results_value, search_start_value, viewport_value,
 };
 pub use turn_block::{
     BlockLayout, FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, TitleBar,

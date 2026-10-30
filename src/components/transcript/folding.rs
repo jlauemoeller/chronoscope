@@ -74,6 +74,7 @@ impl Transcript {
         let id = cur.id().clone();
         if let Some(parent) = id.more_parent() {
             return if op == FoldOp::Toggle {
+                self.output_expanded_by_user(&parent);
                 self.expand_output(parent, cur.block)
             } else {
                 CmdResult::NoChange
@@ -82,6 +83,10 @@ impl Transcript {
         let Some(folded) = self.is_folded(&id) else {
             return CmdResult::NoChange;
         };
+        // A section the search unfolded: the user's command makes it theirs.
+        if self.fold_command_on_temp(&id, op) {
+            return CmdResult::Visual;
+        }
         let want = match op {
             FoldOp::Toggle => !folded,
             FoldOp::Fold => true,
@@ -101,6 +106,7 @@ impl Transcript {
     /// Folds or unfolds every foldable section of the session, system
     /// sections included even while hidden.
     pub(super) fn set_all_folded(&mut self, folded: bool) -> CmdResult {
+        self.forget_temp_unfold(folded);
         let before = self.offset;
         let mut changed = Vec::new();
         let mut blocks = Vec::new();

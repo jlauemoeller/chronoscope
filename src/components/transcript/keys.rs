@@ -6,6 +6,7 @@ use super::Transcript;
 use super::folding::FoldOp;
 use super::nav::Step;
 use super::paging::Amount;
+use super::search::{CLEAR_SEARCH, SEARCH_NEXT, SEARCH_PREV};
 use crate::keymap::Action;
 
 /// `Cmd::Custom` name: jump to the next turn block.
@@ -50,6 +51,9 @@ pub(super) fn cmd_for(action: Action) -> Option<Cmd> {
         Action::FoldAll => Cmd::Custom(FOLD_ALL),
         Action::UnfoldAll => Cmd::Custom(UNFOLD_ALL),
         Action::ToggleSystem => Cmd::Custom(TOGGLE_SYSTEM),
+        Action::SearchNext => Cmd::Custom(SEARCH_NEXT),
+        Action::SearchPrev => Cmd::Custom(SEARCH_PREV),
+        Action::ClearSearch => Cmd::Custom(CLEAR_SEARCH),
         _ => return None,
     })
 }
@@ -69,6 +73,9 @@ impl Transcript {
             FOLD_ALL => self.set_all_folded(true),
             UNFOLD_ALL => self.set_all_folded(false),
             TOGGLE_SYSTEM => self.toggle_system(),
+            SEARCH_NEXT => self.step_search(Step::Next),
+            SEARCH_PREV => self.step_search(Step::Previous),
+            CLEAR_SEARCH => self.clear_search(),
             _ => CmdResult::Invalid(Cmd::Custom(name)),
         }
     }

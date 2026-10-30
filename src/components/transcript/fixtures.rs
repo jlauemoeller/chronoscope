@@ -179,3 +179,30 @@ pub fn long_output_transcript(width: u16, height: u16) -> Transcript {
     );
     t
 }
+
+/// A session whose turns hold `usb` five times (smart case, so `USB` counts):
+/// once in the text of assistant turn `a1`, once in the result of its Shell
+/// call `c1` (folded by default), once in the prompt `u2` and twice in the
+/// text of `a2`. Nothing else holds it.
+pub fn search_session() -> Vec<Arc<Turn>> {
+    let call = blocks::tool(
+        "c1",
+        "List the devices",
+        json!({"command": "ls /dev/video*"}),
+        Some(("/dev/video0\n/dev/video1 comes from the usb driver", false)),
+        ToolStatus::Ok,
+    );
+    vec![
+        arc(prompt("u1", "Why is my camera not listed?")),
+        arc(with_id(
+            blocks::assistant(
+                Some("high"),
+                vec![blocks::text("x1", "It does show up over USB."), call],
+                None,
+            ),
+            "a1",
+        )),
+        arc(prompt("u2", "Is that a USB 3 device?")),
+        arc(reply("a2", "Yes, USB 3 over a usb-c cable.")),
+    ]
+}

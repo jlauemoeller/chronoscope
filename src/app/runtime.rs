@@ -8,7 +8,7 @@ use tuirealm::terminal::TerminalAdapter;
 
 use super::redraw::RedrawLimiter;
 use super::startup::AppInit;
-use super::{App, Msg, SearchWorker, production_listener, session_channel};
+use super::{App, Msg, SearchWorker, TranscriptSearchWorker, production_listener, session_channel};
 use crate::config::Config;
 use std::sync::Arc;
 
@@ -94,10 +94,17 @@ pub fn run_app() -> anyhow::Result<()> {
         PathBuf::new()
     });
     let (search_worker, search_results) = SearchWorker::start();
+    let (transcript_worker, transcript_results) = TranscriptSearchWorker::start();
     let (session_sink, session_events) = session_channel();
-    let listener = production_listener(events, Some(search_results), Some(session_events));
+    let listener = production_listener(
+        events,
+        Some(search_results),
+        Some(transcript_results),
+        Some(session_events),
+    );
     let mut app = App::new(init, listener, working_dir)?;
     app.set_search_worker(search_worker);
+    app.set_transcript_search_worker(transcript_worker);
     app.set_harnesses(harnesses);
     app.set_session_sink(session_sink);
     if let Some(index) = index {
