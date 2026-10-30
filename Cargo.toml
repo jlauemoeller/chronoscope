@@ -44,6 +44,7 @@ ctrlc = { version = "3.5.2", features = ["termination"] }
 insta = "1"
 criterion = "0.7"
 tempfile = "3"
+proptest = "1.11.0"
 
 [target.'cfg(unix)'.dev-dependencies]
 expectrl = "0.9"

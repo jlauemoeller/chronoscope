@@ -478,12 +478,15 @@ pub enum ModelUpdate {
     /// `N entries could not be parsed` note). Sent with [`Loaded`](Self::Loaded)
     /// and again whenever it changes.
     ParseWarnings(usize),
+    /// Clears every turn: the session is being reloaded from scratch. Only
+    /// the transcript consumes it; the App forwards it like [`Appended`](Self::Appended).
+    Reset,
 }
 
 impl ModelUpdate {
     /// Applies the update to `turns`. Updated turns whose id is not present
-    /// are ignored. `Progress`, `Loaded` and `ParseWarnings` do not touch the
-    /// turns.
+    /// are ignored. `Reset` clears the turns. `Progress`, `Loaded` and
+    /// `ParseWarnings` do not touch the turns.
     pub fn apply(&self, turns: &mut Vec<Arc<Turn>>) {
         match self {
             ModelUpdate::Appended(new) => turns.extend(new.iter().cloned()),
@@ -494,6 +497,7 @@ impl ModelUpdate {
                     }
                 }
             }
+            ModelUpdate::Reset => turns.clear(),
             ModelUpdate::Progress(_) | ModelUpdate::Loaded | ModelUpdate::ParseWarnings(_) => {}
         }
     }
@@ -567,5 +571,19 @@ mod tests {
     fn activity_in_the_future_is_active() {
         let ahead = now() + TimeDelta::seconds(5);
         assert!(is_active(&session(ahead, None), now()));
+    }
+
+    #[test]
+    fn reset_clears_the_turns() {
+        let turn = Arc::new(Turn::Compaction(CompactionTurn {
+            id: TurnId::from("c"),
+            timestamp: now(),
+            summary: "s".to_owned(),
+        }));
+        let mut turns = Vec::new();
+        ModelUpdate::Appended(vec![turn]).apply(&mut turns);
+        assert_eq!(turns.len(), 1);
+        ModelUpdate::Reset.apply(&mut turns);
+        assert!(turns.is_empty());
     }
 }
