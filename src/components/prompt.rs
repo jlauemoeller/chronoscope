@@ -78,7 +78,8 @@ impl Prompt {
         }
     }
 
-    /// Paints the row with `fill` instead of `surface` before drawing.
+    /// Paints the row with `fill` instead of `surface` before drawing (the
+    /// browser's prompt will sit on another background than the selector's).
     #[must_use]
     pub fn with_fill(mut self, fill: Role) -> Self {
         self.fill = fill;
@@ -128,15 +129,6 @@ impl Prompt {
         }
     }
 
-    /// Inserts pasted text (on one line) and reports the change.
-    fn paste(&mut self, text: &str) -> Option<Msg> {
-        let mut changed = false;
-        for c in text.chars().filter(|c| !c.is_control()) {
-            changed |= self.input.handle(InputRequest::InsertChar(c)).is_some();
-        }
-        changed.then(|| Msg::PromptChanged(self.text().to_owned()))
-    }
-
     fn paint_fill(&self, frame: &mut Frame, area: Rect) {
         if !self.theme.transparent_background() {
             let style = Style::new().bg(self.theme.role(self.fill));
@@ -145,16 +137,28 @@ impl Prompt {
     }
 
     /// The part of the text that is visible in `width` columns, and the
-    /// column of the cursor in it. The last column is kept for the cursor
-    /// when it is after the end of the text.
+    /// column of the cursor in it.
+    ///
+    /// The text scrolls, by whole characters, the least that shows the
+    /// whole cell under the cursor: the character there, which may be two
+    /// columns wide, or the blank cell after the end of the text.
     fn visible_text(&self, width: usize) -> (String, usize) {
-        let scroll = self.input.visual_scroll(width.saturating_sub(1));
+        let cursor_index = self.input.cursor();
+        let widths: Vec<usize> = self
+            .text()
+            .chars()
+            .map(|c| c.width().unwrap_or(0))
+            .collect();
+        let cursor_column: usize = widths.iter().take(cursor_index).sum();
+        let under = widths.get(cursor_index).copied().unwrap_or(1).max(1);
+        let wanted = (cursor_column + under)
+            .saturating_sub(width)
+            .min(cursor_column);
         let mut skipped = 0;
         let mut shown = 0;
         let mut text = String::new();
-        for c in self.text().chars() {
-            let w = c.width().unwrap_or(0);
-            if skipped < scroll {
+        for (c, w) in self.text().chars().zip(widths) {
+            if skipped < wanted {
                 skipped += w;
                 continue;
             }
@@ -164,13 +168,16 @@ impl Prompt {
             shown += w;
             text.push(c);
         }
-        (text, self.input.visual_cursor().saturating_sub(skipped))
+        (text, cursor_column.saturating_sub(skipped))
     }
 }
 
-/// Whether a key with `modifiers` types its character: plain or shifted.
+/// Whether a key with `modifiers` types its character: plain, shifted, or
+/// with `AltGr`, which Windows reports as `Ctrl` + `Alt` (the `@`, `{` or
+/// `\` of many layouts). `Ctrl` or `Alt` alone do not type.
 fn is_typed(modifiers: KeyModifiers) -> bool {
-    modifiers == KeyModifiers::NONE || modifiers == KeyModifiers::SHIFT
+    (modifiers - KeyModifiers::SHIFT).is_empty()
+        || modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::ALT)
 }
 
 impl Component for Prompt {
@@ -263,7 +270,6 @@ impl AppComponent<Msg, UserEvent> for Prompt {
                 PromptMode::Text => self.on_text_key(key),
                 PromptMode::YesNo => Some(Self::on_yes_no_key(key)),
             },
-            Event::Paste(text) if self.mode == PromptMode::Text => self.paste(text),
             _ => None,
         }
     }
@@ -383,10 +389,14 @@ mod tests {
     }
 
     #[test]
-    fn pasted_text_is_inserted_on_one_line() {
-        let mut p = prompt("a");
-        assert_eq!(p.on(&Event::Paste("b\nc".to_owned())), changed("abc"));
-        assert_eq!(p.on(&Event::Paste("\n".to_owned())), None);
+    fn altgr_characters_are_text() {
+        // Windows reports AltGr as Ctrl + Alt.
+        let mut p = prompt("");
+        let altgr = KeyModifiers::CONTROL | KeyModifiers::ALT;
+        let at = Event::Keyboard(KeyEvent::new(Key::Char('@'), altgr));
+        assert_eq!(p.on(&at), changed("@"));
+        let brace = Event::Keyboard(KeyEvent::new(Key::Char('{'), altgr | KeyModifiers::SHIFT));
+        assert_eq!(p.on(&brace), changed("@{"));
     }
 
     // -- the keys that keep their meaning
@@ -578,6 +588,41 @@ mod tests {
         for _ in 0..20 {
             p.on(&key(Key::Left));
         }
+        insta::assert_snapshot!(buffer_to_styled(&draw(&mut p, 30)));
+    }
+
+    const WIDE: &str = "日本語日本語日本語日本語日本語日本語日本語日本語";
+
+    #[test]
+    fn the_wide_character_under_the_cursor_is_drawn_with_the_cursor_background() {
+        let theme = builtin::default_theme();
+        let chars: Vec<char> = WIDE.chars().collect();
+        for lefts in 0..=chars.len() {
+            let mut p = prompt(WIDE);
+            for _ in 0..lefts {
+                p.on(&key(Key::Left));
+            }
+            let buffer = draw(&mut p, 30);
+            let cursor_cells: Vec<u16> = (0..30)
+                .filter(|&x| buffer[(x, 0)].bg == theme.role(Role::Cursor))
+                .collect();
+            // A wide glyph and its second cell are one cell for the buffer.
+            assert_eq!(cursor_cells.len(), 1, "{lefts} lefts: {cursor_cells:?}");
+            if lefts > 0 {
+                let glyph = chars[chars.len() - lefts].to_string();
+                assert_eq!(
+                    buffer[(cursor_cells[0], 0)].symbol(),
+                    glyph,
+                    "{lefts} lefts"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn wide_text_scrolls_snapshot_width_30() {
+        let mut p = prompt(WIDE);
+        p.on(&key(Key::Left));
         insta::assert_snapshot!(buffer_to_styled(&draw(&mut p, 30)));
     }
 

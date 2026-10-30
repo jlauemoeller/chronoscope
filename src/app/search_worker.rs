@@ -119,12 +119,13 @@ impl Eq for SearchUpdate {}
 /// A user event standing for the kind "search result", to subscribe to by
 /// discriminant (the value is never delivered).
 pub fn search_event_kind() -> UserEvent {
-    UserEvent::Search(SearchUpdate::new(SearchResult::of(SearchRequest {
+    UserEvent::Search(SearchUpdate::new(SearchResult {
         seq: 0,
         query: String::new(),
         projects: Arc::default(),
         sessions: Arc::default(),
-    })))
+        hits: Vec::new(),
+    }))
 }
 
 /// The thread that runs searches.

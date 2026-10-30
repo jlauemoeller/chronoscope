@@ -913,6 +913,82 @@ fn answers_after_cancel(app: &mut App) -> Vec<Msg> {
 }
 
 #[test]
+fn a_snapshot_while_a_keystroke_is_pending_still_selects_the_first_result() {
+    let mut app = app_with_worker();
+    open_search(&mut app);
+    app.update(Msg::PromptChanged("brio".to_owned()));
+    for msg in answers(&mut app) {
+        app.update(msg);
+    }
+    app.update(Msg::PromptNav(Direction::Down));
+    app.update(Msg::PromptNav(Direction::Down));
+    assert_eq!(session_rows(&app).selected, Some(2));
+    // A longer query whose results still contain the selected session, and
+    // a live snapshot before the worker answers it.
+    app.update(Msg::PromptChanged("brio ".to_owned()));
+    app.update(message(append_session()));
+    for msg in answers(&mut app) {
+        app.update(msg);
+    }
+    assert_eq!(session_rows(&app).search.as_deref(), Some("brio "));
+    assert_eq!(session_rows(&app).selected, Some(0));
+    app.shutdown();
+}
+
+#[test]
+fn a_snapshot_with_the_same_query_keeps_the_selection_with_a_worker() {
+    let mut app = app_with_worker();
+    open_search(&mut app);
+    app.update(Msg::PromptChanged("brio".to_owned()));
+    for msg in answers(&mut app) {
+        app.update(msg);
+    }
+    app.update(Msg::PromptNav(Direction::Down));
+    let keep = selected(&app).unwrap();
+    app.update(message(append_session()));
+    for msg in answers(&mut app) {
+        app.update(msg);
+    }
+    assert_eq!(selected(&app), Some(keep));
+    app.shutdown();
+}
+
+/// The search fixture with one more session, matching `brio`, in Calira.
+fn append_session() -> crate::index::IndexEvent {
+    let crate::index::IndexEvent::Snapshot {
+        harness,
+        available,
+        projects,
+        sessions,
+    } = search_snapshot(CLAUDE)
+    else {
+        unreachable!()
+    };
+    let mut sessions = (*sessions).clone();
+    let calira = &projects[2];
+    let at = fixtures::at(2026, 10, 30, 11, 30, 0);
+    sessions
+        .get_mut(&calira.id)
+        .unwrap()
+        .push(fixtures::session(calira, "c3", "Brio again", at, at));
+    fixtures::snapshot_event(harness, available, (*projects).clone(), sessions)
+}
+
+#[test]
+fn an_enter_waiting_for_an_answer_is_dropped_when_the_query_changes() {
+    let mut app = app_with_worker();
+    open_search(&mut app);
+    app.update(Msg::PromptChanged("brio".to_owned()));
+    app.update(Msg::PromptSubmit("brio".to_owned()));
+    app.update(Msg::PromptChanged("calira".to_owned()));
+    for msg in answers(&mut app) {
+        app.update(msg);
+    }
+    assert_eq!(app.take_queued(), []);
+    app.shutdown();
+}
+
+#[test]
 fn deleting_the_query_while_a_search_runs_drops_its_answer() {
     let mut app = app_with_worker();
     open_search(&mut app);
@@ -972,6 +1048,11 @@ fn query_brio_80x24_text() {
 #[test]
 fn query_with_no_results_80x24_text() {
     insta::assert_snapshot!(text(&mut searching("zzzz"), 80, 24));
+}
+
+#[test]
+fn query_with_no_results_80x24_styled() {
+    insta::assert_snapshot!(styled(&mut searching("zzzz"), 80, 24));
 }
 
 #[test]

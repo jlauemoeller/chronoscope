@@ -171,7 +171,9 @@ impl App {
         self.search_results().get(index).cloned()
     }
 
-    /// The row selected in the Sessions pane, asked of the list.
+    /// The row selected in the Sessions pane, asked of the list. While the
+    /// results are listed the list moves its own cursor (`SEARCH_NAV_ATTR`)
+    /// and reports no message, so this is how the app learns the selection.
     fn selected_row(&self) -> Option<usize> {
         let value = self
             .application
@@ -214,6 +216,8 @@ impl App {
             return;
         };
         search.query = text;
+        // An `Enter` waiting for an answer was for the old query.
+        search.submit_when_ready = false;
         if self.selector.search_shows_results() {
             self.push_search_results(false);
             return;
@@ -222,7 +226,6 @@ impl App {
         if let Some(search) = self.selector.search.as_mut() {
             search.hits.clear();
             search.pending = None;
-            search.submit_when_ready = false;
         }
         self.push_sessions();
     }
@@ -296,6 +299,10 @@ impl App {
             .is_some_and(|worker| worker.request(request.clone()));
         if sent {
             if let Some(search) = self.selector.search.as_mut() {
+                // A refresh (the data changed) never turns a request for a
+                // new query into one that keeps the old selection.
+                let keep_selection =
+                    keep_selection && search.pending.is_none_or(|pending| pending.keep_selection);
                 search.pending = Some(PendingSearch {
                     seq: request.seq,
                     keep_selection,

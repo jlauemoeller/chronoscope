@@ -173,7 +173,13 @@ impl SessionList {
 
     fn title(&self, pane_width: u16) -> String {
         let title = if let Some(query) = &self.search {
-            format!("Sessions matching \"{query}\"")
+            // The query is cut inside the quotes, so the title still reads
+            // as a quoted query.
+            let room = title_width(pane_width).saturating_sub("Sessions matching \"\"".width());
+            format!(
+                "Sessions matching \"{}\"",
+                truncate_with_ellipsis(query, room.max(1))
+            )
         } else if self.project.is_empty() {
             "Sessions".to_owned()
         } else {
@@ -207,11 +213,18 @@ impl SessionList {
     }
 }
 
-/// What a row shows after the dot: its title, after the project's name in
-/// search results.
-fn label(row: &SessionRow) -> String {
+/// The project's name is cut to about a third of the row's room, so the
+/// title stays visible after it.
+const MIN_PROJECT_WIDTH: usize = 8;
+
+/// What a row shows after the dot, in `room` cells: its title, after the
+/// project's name in search results.
+fn label(row: &SessionRow, room: usize) -> String {
     match &row.project {
-        Some(project) => format!("{project} › {}", row.title),
+        Some(project) => {
+            let project = truncate_with_ellipsis(project, (room / 3).max(MIN_PROJECT_WIDTH));
+            format!("{project} › {}", row.title)
+        }
         None => row.title.clone(),
     }
 }
@@ -240,7 +253,7 @@ fn row_parts(row: &SessionRow, width: usize) -> RowParts {
             (Part::Text, row.started.clone()),
             (Part::Text, GAP.to_owned()),
             dot,
-            (Part::Text, truncate_with_ellipsis(&label(row), room)),
+            (Part::Text, truncate_with_ellipsis(&label(row, room), room)),
         ],
         stats,
     }
@@ -619,6 +632,43 @@ mod tests {
         let parts = row_parts(&r, 21 + 14);
         assert_eq!(parts.left[3].1, "Agentmon › A …");
         assert_eq!(parts.left[3].1.width(), 14);
+    }
+
+    #[test]
+    fn a_long_project_name_is_cut_and_leaves_the_title_visible() {
+        let r = result(
+            "a",
+            "a-very-long-project-name-for-the-brio-integration",
+            "Plan the sprint",
+        );
+        let parts = row_parts(&r, 40);
+        let label = &parts.left[3].1;
+        assert!(label.contains("… › Plan"), "{label}");
+        assert!(label.width() <= 40 - 21);
+        // A short name is not touched.
+        let r = result("a", "BRIO", "Plan the sprint");
+        assert_eq!(row_parts(&r, 60).left[3].1, "BRIO › Plan the sprint");
+    }
+
+    #[test]
+    fn a_long_query_is_cut_inside_the_quotes() {
+        let mut l = results_list(three_results(), Some(0));
+        l.attr(
+            SESSION_ROWS_ATTR,
+            payload_value(SessionRows {
+                search: Some("the quick brown fox jumps over the lazy dog".to_owned()),
+                rows: Arc::new(three_results()),
+                ..SessionRows::default()
+            }),
+        );
+        let text = buffer_to_text(&draw_sized(&mut l, 40));
+        let first = text.lines().next().unwrap();
+        assert!(
+            first.starts_with("╭─ Sessions matching \"the quick"),
+            "{first}"
+        );
+        assert!(first.contains("…\" ─"), "{first}");
+        assert_eq!(first.chars().count(), 40);
     }
 
     #[test]
