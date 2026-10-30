@@ -11,7 +11,7 @@
 | 007-claude-injected-content | Complete |
 | 008-claude-session-discovery | Complete |
 | 009-claude-session-loading | Complete |
-| 010-session-index-worker | In progress |
+| 010-session-index-worker | Complete |
 | 011-app-runtime | Planned |
 | 012-help-line-toast | Planned |
 | 013-selector-panes | Planned |
