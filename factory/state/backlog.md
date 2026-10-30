@@ -10,7 +10,7 @@
 | 006-claude-turn-assembly | Complete |
 | 007-claude-injected-content | Complete |
 | 008-claude-session-discovery | Complete |
-| 009-claude-session-loading | In progress |
+| 009-claude-session-loading | Complete |
 | 010-session-index-worker | Planned |
 | 011-app-runtime | Planned |
 | 012-help-line-toast | Planned |
