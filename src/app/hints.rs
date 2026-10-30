@@ -25,6 +25,30 @@ pub fn selector_hints(keymap: &Keymap) -> Vec<Hint> {
     .collect()
 }
 
+/// The hints of the session browser, from the active keymap so remapped keys
+/// show up: search, fold, copy, help. Actions without a key are left out.
+///
+/// With the default keys they read `/ to search | ENTER to fold or unfold
+/// sections | y to copy current | ? for keybindings`.
+pub fn browser_hints(keymap: &Keymap) -> Vec<Hint> {
+    [
+        (Context::Browser, Action::Search, "to search"),
+        (
+            Context::Browser,
+            Action::FoldToggle,
+            "to fold or unfold sections",
+        ),
+        (Context::Browser, Action::Copy, "to copy current"),
+        (Context::Global, Action::Help, "for keybindings"),
+    ]
+    .into_iter()
+    .filter_map(|(context, action, text)| {
+        let key = keymap.label(context, action)?;
+        Some(Hint::new(key, text))
+    })
+    .collect()
+}
+
 /// The text of the toast that shows the startup `warnings`, or `None` when
 /// there are none.
 ///
@@ -97,6 +121,28 @@ mod tests {
         assert_eq!(hints[2].key, "Ctrl-n");
         let hints = selector_hints(&keymap_with("selector", "cancel", "x"));
         assert_eq!(hints[3], Hint::new("x", "to Cancel"));
+    }
+
+    #[test]
+    fn default_browser_hints_read_as_the_help_line_of_the_spec() {
+        assert_eq!(
+            rendered(&browser_hints(&Keymap::default())),
+            "/ to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings"
+        );
+    }
+
+    #[test]
+    fn remapped_browser_keys_show_in_the_hints() {
+        let hints = browser_hints(&keymap_with("browser", "search", "f"));
+        assert_eq!(hints[0], Hint::new("f", "to search"));
+        let hints = browser_hints(&keymap_with("browser", "copy", "c"));
+        assert_eq!(hints[2], Hint::new("c", "to copy current"));
+        let hints = browser_hints(&keymap_with("browser", "fold_toggle", "space"));
+        assert_eq!(hints[1].text, "to fold or unfold sections");
+        assert_ne!(hints[1].key, "ENTER");
+        let hints = browser_hints(&keymap_with("global", "help", "F1"));
+        assert_eq!(hints[3].text, "for keybindings");
+        assert_ne!(hints[3].key, "?");
     }
 
     #[test]

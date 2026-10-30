@@ -57,7 +57,7 @@ mod updates;
 mod window;
 
 #[cfg(test)]
-mod fixtures;
+pub(crate) mod fixtures;
 #[cfg(test)]
 mod key_snapshots;
 #[cfg(test)]
@@ -108,6 +108,8 @@ pub const OPEN_SUBAGENT_KEY_ATTR: Attribute = Attribute::Custom("open_subagent_k
 pub const TIMESTAMP_FORMATTER_ATTR: Attribute = Attribute::Custom("timestamp_formatter");
 /// A [`ModelUpdate`] to apply (an `Arc<ModelUpdate>` payload).
 pub const MODEL_UPDATE_ATTR: Attribute = Attribute::Custom("model_update");
+/// The number of turns the transcript holds (a length; query only).
+pub const TURN_COUNT_ATTR: Attribute = Attribute::Custom("turn_count");
 /// The [`Size`] of the area the transcript is drawn in (a payload).
 pub const VIEWPORT_ATTR: Attribute = Attribute::Custom("viewport");
 
@@ -419,6 +421,8 @@ impl Component for Transcript {
             AttrValue::String(self.content.open_subagent_key.clone())
         } else if attr == TIMESTAMP_FORMATTER_ATTR {
             payload_value(self.content.formatter.clone())
+        } else if attr == TURN_COUNT_ATTR {
+            AttrValue::Length(self.content.turns.len())
         } else if attr == VIEWPORT_ATTR {
             payload_value(self.viewport?)
         } else {

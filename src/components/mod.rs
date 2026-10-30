@@ -2,6 +2,7 @@
 //! built from plain data and the theme, and rendered into a `TestBackend`
 //! frame without an `Application`.
 
+mod browser_header;
 mod empty_state;
 mod global_events;
 mod harness_tabs;
@@ -20,10 +21,11 @@ use tuirealm::props::{AttrValue, Attribute, PropPayload};
 
 use crate::theme::Theme;
 
-pub use empty_state::{EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL};
+pub use browser_header::{BrowserHeader, HEADER_HEIGHT, PARSE_WARNINGS_ATTR, parse_warning_note};
+pub use empty_state::{EMPTY_SESSION, EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};
 pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
-pub use help_line::{HelpLine, Hint};
+pub use help_line::{HelpLine, Hint, STATUS_ATTR, status_value};
 pub use list_pane::{
     ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
     selected_value, visible_rows,
@@ -38,8 +40,8 @@ pub use session_list::{
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 pub use transcript::{
     DIM_UNSELECTED_ATTR, MODEL_UPDATE_ATTR, OPEN_SUBAGENT_KEY_ATTR, SHOW_SYSTEM_ATTR,
-    TIMESTAMP_FORMATTER_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, Transcript, VIEWPORT_ATTR,
-    model_update_value, viewport_value,
+    TIMESTAMP_FORMATTER_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript,
+    VIEWPORT_ATTR, model_update_value, viewport_value,
 };
 pub use turn_block::{
     BlockLayout, FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, TitleBar,

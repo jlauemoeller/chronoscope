@@ -8,9 +8,11 @@ use tuirealm::terminal::TerminalAdapter;
 
 use super::redraw::RedrawLimiter;
 use super::startup::AppInit;
-use super::{App, Msg, SearchWorker, production_listener};
+use super::{App, Msg, SearchWorker, production_listener, session_channel};
 use crate::config::Config;
-use crate::harness::build_harnesses_with_home;
+use std::sync::Arc;
+
+use crate::harness::{Harness, build_harnesses_with_home};
 use crate::index::{IndexHandle, SessionIndex};
 use crate::paths::Paths;
 use crate::terminal::{TerminalGuard, TerminalSetup, install_panic_hook, install_signal_handler};
@@ -48,12 +50,18 @@ pub fn run_loop<T: TerminalAdapter>(
     Ok(())
 }
 
-/// Starts the session index over the enabled harnesses, caching stats in the
-/// cache directory. `None` without a home directory (there is nowhere to
-/// cache, and the default data directories are unknown).
-fn start_index(config: &Config, paths: Option<&Paths>) -> Option<IndexHandle> {
+/// The enabled harnesses. None without a home directory (the default data
+/// directories are unknown).
+fn build_harnesses(config: &Config, paths: Option<&Paths>) -> Vec<Arc<dyn Harness>> {
+    paths.map_or_else(Vec::new, |paths| {
+        build_harnesses_with_home(config, &paths.home_dir)
+    })
+}
+
+/// Starts the session index over `harnesses`, caching stats in the cache
+/// directory. `None` without a home directory (there is nowhere to cache).
+fn start_index(harnesses: Vec<Arc<dyn Harness>>, paths: Option<&Paths>) -> Option<IndexHandle> {
     let paths = paths?;
-    let harnesses = build_harnesses_with_home(config, &paths.home_dir);
     Some(SessionIndex::start(harnesses, paths.cache_dir.clone()))
 }
 
@@ -78,16 +86,20 @@ pub fn run_app() -> anyhow::Result<()> {
     };
     install_panic_hook();
     let mut guard = TerminalGuard::enter(setup)?;
-    let mut index = start_index(&init.config, paths.as_ref());
+    let harnesses = build_harnesses(&init.config, paths.as_ref());
+    let mut index = start_index(harnesses.clone(), paths.as_ref());
     let events = index.as_mut().and_then(IndexHandle::take_events);
     let working_dir = std::env::current_dir().unwrap_or_else(|err| {
         log::warn!("could not read the working directory: {err}");
         PathBuf::new()
     });
     let (search_worker, search_results) = SearchWorker::start();
-    let listener = production_listener(events, Some(search_results));
+    let (session_sink, session_events) = session_channel();
+    let listener = production_listener(events, Some(search_results), Some(session_events));
     let mut app = App::new(init, listener, working_dir)?;
     app.set_search_worker(search_worker);
+    app.set_harnesses(harnesses);
+    app.set_session_sink(session_sink);
     if let Some(index) = index {
         app.set_index(index);
     }

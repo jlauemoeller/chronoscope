@@ -13,9 +13,18 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
-use super::{THEME_ATTR, theme_from_value, theme_value};
+use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme, Token};
+
+/// The attribute that replaces the status items (a `Vec<String>` payload, see
+/// [`status_value`]).
+pub const STATUS_ATTR: Attribute = Attribute::Custom("status");
+
+/// The attribute value that replaces the status items with `items`.
+pub fn status_value(items: Vec<String>) -> AttrValue {
+    payload_value(items)
+}
 
 /// What separates two hints.
 const HINT_SEPARATOR: &str = " | ";
@@ -56,13 +65,16 @@ impl Hint {
 /// dropped from the end; status items are never dropped for hints.
 ///
 /// Before drawing, the whole area is painted with the `fill` role, unless the
-/// theme is transparent.
+/// theme is transparent. With an [`inset`](Self::inset) the text starts that
+/// many columns inside the area and ends as many before its right edge, while
+/// the fill still covers the whole width.
 #[derive(Debug, Clone)]
 pub struct HelpLine {
     hints: Vec<Hint>,
     status: Vec<String>,
     theme: Theme,
     fill: Role,
+    inset: u16,
 }
 
 impl HelpLine {
@@ -73,7 +85,15 @@ impl HelpLine {
             status,
             theme,
             fill,
+            inset: 0,
         }
+    }
+
+    /// Keeps `columns` blank columns free on both sides of the text.
+    #[must_use]
+    pub fn inset(mut self, columns: u16) -> Self {
+        self.inset = columns;
+        self
     }
 
     /// The width of the status items with their separators.
@@ -143,21 +163,30 @@ impl Component for HelpLine {
             return;
         }
         self.paint_fill(frame, area);
-        let row = Rect::new(area.x, area.bottom() - 1, area.width, 1);
+        let inset = self.inset.min(area.width / 2);
+        let row = Rect::new(area.x + inset, area.bottom() - 1, area.width - 2 * inset, 1);
         let count = self.visible_hints(usize::from(row.width));
         frame.render_widget(Paragraph::new(self.hint_line(count)), row);
         self.draw_status(frame, row);
     }
 
     fn query<'a>(&'a self, attr: Attribute) -> Option<QueryResult<'a>> {
-        (attr == THEME_ATTR).then(|| QueryResult::Owned(theme_value(&self.theme)))
+        match attr {
+            THEME_ATTR => Some(QueryResult::Owned(theme_value(&self.theme))),
+            STATUS_ATTR => Some(QueryResult::Owned(status_value(self.status.clone()))),
+            _ => None,
+        }
     }
 
     fn attr(&mut self, attr: Attribute, value: AttrValue) {
-        if attr == THEME_ATTR
-            && let Some(theme) = theme_from_value(&value)
+        if attr == THEME_ATTR {
+            if let Some(theme) = theme_from_value(&value) {
+                self.theme = theme;
+            }
+        } else if attr == STATUS_ATTR
+            && let Some(items) = payload_from_value::<Vec<String>>(&value)
         {
-            self.theme = theme;
+            self.status = items;
         }
     }
 
@@ -348,6 +377,36 @@ mod tests {
         component.attr(THEME_ATTR, theme_value(&other));
         let queried = component.query(THEME_ATTR).unwrap().into_attr();
         assert_eq!(theme_from_value(&queried), Some(other));
+    }
+
+    #[test]
+    fn the_status_items_are_replaced_through_an_attribute() {
+        let mut component = line(&["3/17"]);
+        component.attr(STATUS_ATTR, status_value(vec!["Loading… 34%".to_owned()]));
+        let buffer = draw(component.clone(), 100);
+        assert!(row(&buffer, 1).ends_with("Loading… 34%"));
+        assert!(!row(&buffer, 1).contains("3/17"));
+        let queried = component.query(STATUS_ATTR).unwrap().into_attr();
+        assert_eq!(
+            payload_from_value::<Vec<String>>(&queried),
+            Some(vec!["Loading… 34%".to_owned()])
+        );
+        component.attr(STATUS_ATTR, status_value(Vec::new()));
+        assert!(!row(&draw(component, 100), 1).contains("Loading"));
+    }
+
+    #[test]
+    fn an_inset_keeps_the_text_inside_but_the_fill_covers_the_area() {
+        let theme = builtin::default_theme();
+        let mut component = line(&["3/17"]).inset(1);
+        let buffer = render(100, 2, |frame| component.view(frame, frame.area()));
+        let last = row(&buffer, 1);
+        assert!(last.starts_with(" / to search sessions"), "{last:?}");
+        assert!(last.ends_with("3/17 "), "{last:?}");
+        for x in [0, 99] {
+            assert_eq!(buffer[(x, 1)].bg, theme.role(Role::Surface), "column {x}");
+            assert_eq!(buffer[(x, 0)].bg, theme.role(Role::Surface), "column {x}");
+        }
     }
 
     #[test]
