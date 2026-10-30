@@ -75,3 +75,6 @@ hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
 - **Covers:** a boundary and its summary between two exchanges, and a
   `compact_file_reference` attachment and an `informational` system entry that
   follow the summary (and land in the next User turn).
+
+The real compaction samples that `compaction.jsonl` was modelled on came from
+Claude Code 2.1.304 to 2.1.311 sessions.

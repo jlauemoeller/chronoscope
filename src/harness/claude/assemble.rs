@@ -92,6 +92,9 @@ pub struct Assembler {
     unknown_kinds: BTreeMap<String, usize>,
     /// Unknown kinds already written to the log.
     logged_kinds: HashSet<String>,
+    /// Whether the last User turn already received entries flushed after its
+    /// prompt (they collapse with later consecutive entries).
+    user_flushed: bool,
     /// Index of a Compaction turn still waiting for its summary entry.
     compaction_pending: Option<usize>,
     /// The `version` last compared against the newest known one.
@@ -121,6 +124,7 @@ impl Assembler {
             held_key: None,
             unknown_kinds: BTreeMap::new(),
             logged_kinds: HashSet::new(),
+            user_flushed: false,
             compaction_pending: None,
             last_version: None,
             warned_version: false,
@@ -328,12 +332,15 @@ impl Assembler {
                 if is_injected_attachment(&attachment) {
                     if let Some(entry) = self.parse_entry(line) {
                         let ts = self.timestamp(&entry);
-                        self.on_attachment(&attachment, entry, ts, range);
+                        self.on_attachment(&attachment, &entry, ts, range);
                     }
-                } else if !is_known_noise_attachment(&attachment)
-                    && !attachment.starts_with("deferred_tools_")
-                {
-                    *self.unknown_kinds.entry(attachment).or_default() += 1;
+                } else if !is_known_noise_attachment(&attachment) {
+                    let label = if attachment.is_empty() {
+                        "<missing>".to_owned()
+                    } else {
+                        attachment
+                    };
+                    *self.unknown_kinds.entry(label).or_default() += 1;
                 }
             }
             k if is_noise_type(k) => {}
@@ -444,7 +451,7 @@ impl Assembler {
         });
     }
 
-    fn on_attachment(&mut self, kind: &str, entry: Entry, ts: DateTime<Utc>, range: &Range<u64>) {
+    fn on_attachment(&mut self, kind: &str, entry: &Entry, ts: DateTime<Utc>, range: &Range<u64>) {
         let Some(attachment) = &entry.attachment else {
             return;
         };
@@ -461,6 +468,7 @@ impl Assembler {
     /// Starts a User turn; held injected entries become its first item.
     fn start_user_turn(&mut self, id: TurnId, timestamp: DateTime<Utc>, text: String) {
         self.cur = None;
+        self.user_flushed = false;
         self.compaction_pending = None;
         let items = take_held(&mut self.held, &mut self.held_key)
             .into_iter()
@@ -487,8 +495,10 @@ impl Assembler {
             };
             if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[b.idx]) {
                 match (turn.items.last_mut(), item) {
-                    // Only turn stats or tool results lie between: the entries
-                    // are consecutive and collapse into the previous item.
+                    // Deliberately wider than "only noise between": a tool
+                    // result or turn footer between two injected runs makes
+                    // no item of its own, so the entries are still adjacent
+                    // on screen and collapse into the previous item.
                     (
                         Some(Item::Injected { entries, .. }),
                         Item::Injected { entries: more, .. },
@@ -506,7 +516,19 @@ impl Assembler {
             && let Some(item) = take_held(&mut self.held, &mut self.held_key)
             && let Turn::User(turn) = Arc::make_mut(&mut self.turns[last])
         {
-            turn.items.push(item);
+            match (turn.items.last_mut(), item) {
+                // An earlier flush after the prompt: same collapsing as in an
+                // Assistant turn, so a live batch boundary changes nothing.
+                // The item `start_user_turn` put first precedes the prompt
+                // and stays separate.
+                (Some(Item::Injected { entries, .. }), Item::Injected { entries: more, .. })
+                    if self.user_flushed =>
+                {
+                    entries.extend(more);
+                }
+                (_, item) => turn.items.push(item),
+            }
+            self.user_flushed = true;
             self.dirty.insert(last);
         }
     }
@@ -516,6 +538,12 @@ impl Assembler {
     /// logged once each.
     fn end_of_input(&mut self) {
         self.flush_current();
+        if !self.held.is_empty() {
+            log::debug!(
+                "{} injected entries have no turn to go into yet (none, or a compaction last)",
+                self.held.len()
+            );
+        }
         for (kind, count) in &self.unknown_kinds {
             if self.logged_kinds.insert(kind.clone()) {
                 log::info!("unknown attachment kind {kind:?} ({count}\u{d7})");

@@ -27,8 +27,6 @@ const INJECTED_ATTACHMENTS: &[&str] = &[
 /// extended.
 const NOISE_ATTACHMENTS: &[&str] = &[
     "total_tokens_reminder",
-    "deferred_tools_record",
-    "deferred_tools_delta",
     "skill_listing",
     "credential_org",
     "batching_reminder_sent",
@@ -78,7 +76,7 @@ pub(super) fn is_injected_attachment(kind: &str) -> bool {
 }
 
 pub(super) fn is_known_noise_attachment(kind: &str) -> bool {
-    NOISE_ATTACHMENTS.contains(&kind)
+    NOISE_ATTACHMENTS.contains(&kind) || kind.starts_with("deferred_tools_")
 }
 
 pub(super) fn is_noise_type(kind: &str) -> bool {

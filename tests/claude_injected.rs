@@ -426,6 +426,90 @@ fn flushing_held_entries_mid_stream_keeps_a_partial_line_for_later() {
     assert_eq!(replayed, asm.turns());
 }
 
+fn hook(uuid: &str, text: &str) -> String {
+    attachment(
+        uuid,
+        "2026-10-24T08:00:00.500Z",
+        &format!(r#"{{"type":"hook_system_message","content":"{text}"}}"#),
+    )
+}
+
+#[test]
+fn a_batch_flush_between_consecutive_entries_in_a_user_turn_still_collapses_them() {
+    let first = lines(&[prompt("u1", "hello"), hook("a1", "A")]);
+    let second = lines(&[hook("a2", "B"), reply("r1", "msg_1", "hi")]);
+    let whole = assemble(&format!("{first}{second}")).into_turns();
+    assert_eq!(item_names(&user(&whole[0]).items), ["injected"]);
+    assert_eq!(injected(&user(&whole[0]).items[0]).len(), 2);
+
+    let mut asm = Assembler::new(ByteSource::Memory(Arc::from(&b""[..])));
+    let mut replayed = Vec::new();
+    for batch in [&first, &second] {
+        for u in asm.push_chunk(batch.as_bytes()) {
+            u.apply(&mut replayed);
+        }
+        for u in asm.flush_held() {
+            u.apply(&mut replayed);
+        }
+    }
+    assert_eq!(asm.turns(), whole);
+    assert_eq!(replayed, whole);
+}
+
+#[test]
+fn a_footer_between_entries_in_a_user_turn_does_not_split_them() {
+    let text = lines(&[
+        prompt("u1", "hello"),
+        hook("a1", "A"),
+        r#"{"type":"system","subtype":"turn_duration","durationMs":5}"#.to_owned(),
+        hook("a2", "B"),
+        reply("r1", "msg_1", "hi"),
+    ]);
+    let turns = assemble(&text).into_turns();
+    assert_eq!(injected(&user(&turns[0]).items[0]).len(), 2);
+    assert_eq!(user(&turns[0]).items.len(), 1);
+}
+
+#[test]
+fn entries_before_and_after_a_prompt_stay_in_separate_items() {
+    let text = lines(&[
+        hook("a0", "before"),
+        prompt("u1", "hello"),
+        hook("a1", "after"),
+        reply("r1", "msg_1", "hi"),
+    ]);
+    let turns = assemble(&text).into_turns();
+    let items = &user(&turns[0]).items;
+    assert_eq!(item_names(items), ["injected", "injected"]);
+    assert_eq!(injected(&items[0])[0].text, "before");
+    assert_eq!(injected(&items[1])[0].text, "after");
+}
+
+#[test]
+fn entries_left_without_a_turn_are_logged_at_debug_level() {
+    capture_logs();
+    let text = lines(&[
+        prompt("u1", "go"),
+        r#"{"type":"system","subtype":"compact_boundary","uuid":"b1","timestamp":"2026-10-24T08:00:05.000Z"}"#.to_owned(),
+        hook("a1", "trailing"),
+    ]);
+    let turns = assemble(&text).into_turns();
+    assert_eq!(shape(&turns), ["user", "compaction"]);
+    assert!(
+        logged(Level::Debug)
+            .iter()
+            .any(|m| m.starts_with("1 injected entries have no turn"))
+    );
+}
+
+#[test]
+fn an_attachment_without_a_type_is_counted_under_a_readable_label() {
+    let text = lines(&[r#"{"type":"attachment","attachment":{}}"#.to_owned()]);
+    let asm = assemble(&text);
+    assert_eq!(asm.unparsed_count(), 0);
+    assert_eq!(asm.unknown_attachment_kinds()["<missing>"], 1);
+}
+
 #[test]
 fn a_following_prompt_takes_held_entries_even_across_batches() {
     let first = lines(&[
