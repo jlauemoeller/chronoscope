@@ -306,7 +306,8 @@ fn scroll_to_end(rig: &mut Rig) {
     for _ in 0..4 {
         rig.press(Key::PageDown);
     }
-    rig.settle();
+    // 50 rows in a 36 row interior: the last offset.
+    rig.pump_until(|app| offset(app) == 14);
 }
 
 #[test]
@@ -409,12 +410,18 @@ fn the_shift_note_is_drawn_only_when_the_mouse_is_on() {
 }
 
 #[test]
-fn the_overlay_is_drawn_above_the_toast() {
+fn a_toast_is_drawn_over_the_help_overlay() {
     let mut rig = rig();
+    rig.app.update(Msg::Resized(80, 24));
     rig.open_loaded();
     rig.open_help();
-    let text = screen_text(&mut rig, 120, 40);
-    assert!(text.contains("Keybindings"));
+    rig.app.show_toast("copied").unwrap();
+    let rows = rows_of(&screen_buffer(&mut rig, 80, 24));
+    assert!(rows[1].contains("Keybindings"));
+    // The overlay covers columns 4..76; the toast box (10 columns, ending in
+    // column 78) is over its right border and edge.
+    let toast: String = rows[21].chars().skip(69).take(10).collect();
+    assert_eq!(toast, "│ copied │", "{}", rows[21]);
 }
 
 #[test]
