@@ -1,0 +1,148 @@
+Edit section with a context line ("usb ctx") repeated in two far-apart hunks.
+Transcript viewport 80x17 (the 80x24 screen), default theme, query `usb`.
+Highlighted cells (search_match, bg primary) are marked with [ ].
+
+Input (ToolKind::Edit, 62 lines each):
+  old_string: line 0 "usb ctx", lines 1..=20 "old N", lines 21..=55 "c N", line 56 "old 56",
+              line 57 "usb ctx", lines 58..=61 "c N"
+  new_string: the same with "new N" in place of "old N"
+Diff drawn: hunk `@@ -1,24 +1,24 @@` starts with " usb ctx" (row 9 of the section),
+            hunk `@@ -54,7 +54,7 @@` holds " usb ctx" ~47 rows further down.
+Matches (section text order): 1/4 new_string line 0, 2/4 new_string line 57,
+                              3/4 old_string line 0, 4/4 old_string line 57.
+
+--- HEAD (round 4), after Enter: 1/4. Match 1/4 is the hunk-1 copy, but the view shows hunk 2.
+▒      +new 18                                                                 │
+▒      +new 19                                                                 │
+▒      +new 20                                                                 │
+▒       c 21                                                                   │
+▒       c 22                                                                   │
+▒       c 23                                                                   │
+▒      @@ -54,7 +54,7 @@                                                       │
+▒       c 53                                                                   │
+▒       c 54                                                                   │
+▒       c 55                                                                   │
+▒      -old 56                                                                 │
+▒      +new 56                                                                 │
+▒       [usb] ctx                                                                │
+▒       c 58                                                                   │
+▒       c 59                                                                   │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+--- Round 3 (5ca5d9b), same scene, after Enter: 1/4. The hunk-1 row is on screen and highlighted.
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                              │
+│ ▶ hi                                                                         │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 ──────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+▒ ▼ Edit a.rs                                                                  │
+▒                                                                              │
+▒   Path:                                                                      │
+▒                                                                              │
+▒      src/a.rs                                                                │
+▒                                                                              │
+▒   Diff:                                                                      │
+▒                                                                              │
+▒      @@ -1,24 +1,24 @@                                                       │
+▒       [usb] ctx                                                                │
+
+--- HEAD, whole section at 80x90 for reference (both copies drawn).
+ok   E2 tall pos=Some("1/4") 1/4 expect "x" on-screen=true highlight=true Some(SectionId { turn: TurnId("a1"), key: Item(ItemId("c1")) }) offset=0
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                              │
+│ ▶ hi                                                                         │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 ──────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+▒ ▼ Edit a.rs                                                                  │
+▒                                                                              │
+▒   Path:                                                                      │
+▒                                                                              │
+▒      src/a.rs                                                                │
+▒                                                                              │
+▒   Diff:                                                                      │
+▒                                                                              │
+▒      @@ -1,24 +1,24 @@                                                       │
+▒       [usb] ctx                                                                │
+▒      -old 1                                                                  │
+▒      -old 2                                                                  │
+▒      -old 3                                                                  │
+▒      -old 4                                                                  │
+▒      -old 5                                                                  │
+▒      -old 6                                                                  │
+▒      -old 7                                                                  │
+▒      -old 8                                                                  │
+▒      -old 9                                                                  │
+▒      -old 10                                                                 │
+▒      -old 11                                                                 │
+▒      -old 12                                                                 │
+▒      -old 13                                                                 │
+▒      -old 14                                                                 │
+▒      -old 15                                                                 │
+▒      -old 16                                                                 │
+▒      -old 17                                                                 │
+▒      -old 18                                                                 │
+▒      -old 19                                                                 │
+▒      -old 20                                                                 │
+▒      +new 1                                                                  │
+▒      +new 2                                                                  │
+▒      +new 3                                                                  │
+▒      +new 4                                                                  │
+▒      +new 5                                                                  │
+▒      +new 6                                                                  │
+▒      +new 7                                                                  │
+▒      +new 8                                                                  │
+▒      +new 9                                                                  │
+▒      +new 10                                                                 │
+▒      +new 11                                                                 │
+▒      +new 12                                                                 │
+▒      +new 13                                                                 │
+▒      +new 14                                                                 │
+▒      +new 15                                                                 │
+▒      +new 16                                                                 │
+▒      +new 17                                                                 │
+▒      +new 18                                                                 │
+▒      +new 19                                                                 │
+▒      +new 20                                                                 │
+▒       c 21                                                                   │
+▒       c 22                                                                   │
+▒       c 23                                                                   │
+▒      @@ -54,7 +54,7 @@                                                       │
+▒       c 53                                                                   │
+▒       c 54                                                                   │
+▒       c 55                                                                   │
+▒      -old 56                                                                 │
+▒      +new 56                                                                 │
+▒       [usb] ctx                                                                │
+▒       c 58                                                                   │
+▒       c 59                                                                   │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+
+--- Per position, HEAD vs round 3 vs HEAD with `nth.or(last)` in the Edit/Write branch of `place`:
+  1/4  HEAD: hunk 2 (offset 54)   round 3: hunk 1 (offset 0)   patched: hunk 1 (offset 0)
+  2/4  HEAD: hunk 2               round 3: hunk 2              patched: hunk 2
+  3/4  HEAD: hunk 2               round 3: hunk 2              patched: hunk 2  (surplus copy: accepted limit)
+  4/4  HEAD: hunk 2               round 3: hunk 2              patched: hunk 2
