@@ -1,0 +1,11 @@
+---
+source: src/components/help_line.rs
+expression: "buffer_to_styled(&draw(line(&[]), 100))"
+---
+                                                                                                    
+/ to search sessions | ENTER to open | TAB to switch between projects and sessions | ESC to Cancel  
+                                                                                                    
+--- styles (fg/bg/modifiers) ---
+0: 0..100 Reset/Reset/NONE
+1: 0..1 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 1..23 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 23..28 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 28..39 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 39..42 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 42..85 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 85..88 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 88..98 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 98..100 Reset/Rgb(18, 18, 18)/NONE
+2: 0..100 Reset/Reset/NONE

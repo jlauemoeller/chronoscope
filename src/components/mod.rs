@@ -4,7 +4,9 @@
 
 mod empty_state;
 mod global_events;
+mod help_line;
 mod selector_frame;
+mod toast;
 
 use tuirealm::props::{AttrValue, Attribute, PropPayload};
 
@@ -12,7 +14,9 @@ use crate::theme::Theme;
 
 pub use empty_state::{EmptyState, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};
+pub use help_line::{HelpLine, Hint};
 pub use selector_frame::SelectorFrame;
+pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 
 /// The attribute that carries the theme to a component.
 pub const THEME_ATTR: Attribute = Attribute::Custom("theme");
