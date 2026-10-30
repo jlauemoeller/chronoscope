@@ -1,0 +1,20 @@
+## query of 63 CJK chars, then Left x1 (prompt row = screen row 20)
+│    /本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日本     │
+20: 0..1 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 1..5 Reset/Rgb(18, 18, 18)/NONE | 5..6 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 6..74 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 74..75 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE | 75..79 Reset/Rgb(18, 18, 18)/NONE | 79..80 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE
+
+## query of 63 CJK chars, then Left x2 (prompt row = screen row 20)
+│    /日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日     │
+20: 0..1 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 1..5 Reset/Rgb(18, 18, 18)/NONE | 5..6 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 6..74 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 74..75 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE | 75..79 Reset/Rgb(18, 18, 18)/NONE | 79..80 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE
+
+## query of 63 CJK chars, then Left x5 (prompt row = screen row 20)
+│    /日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日     │
+20: 0..1 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 1..5 Reset/Rgb(18, 18, 18)/NONE | 5..6 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 6..74 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 74..75 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE | 75..79 Reset/Rgb(18, 18, 18)/NONE | 79..80 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE
+
+## query of 63 CJK chars, then Left x15 (prompt row = screen row 20)
+│    /語日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語     │
+20: 0..1 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 1..5 Reset/Rgb(18, 18, 18)/NONE | 5..6 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 6..74 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 74..75 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE | 75..79 Reset/Rgb(18, 18, 18)/NONE | 79..80 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE
+
+## query of 63 CJK chars, then Left x40 (prompt row = screen row 20)
+│    /日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日本語日     │
+20: 0..1 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 1..5 Reset/Rgb(18, 18, 18)/NONE | 5..6 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 6..52 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 52..54 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE | 54..74 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 74..79 Reset/Rgb(18, 18, 18)/NONE | 79..80 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE
+
