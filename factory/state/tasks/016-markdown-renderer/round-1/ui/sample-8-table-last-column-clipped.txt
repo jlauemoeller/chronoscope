@@ -1,0 +1,6 @@
+# Markdown widget, sample document @ 8 columns, table rows (buffer rows 72-75).
+# Three 1-cell columns + two ' │ ' separators need 9 cells; the third column (Status) is clipped off entirely.
+… │ … │ 
+──┼───┼─
+… │ … │ 
+… │ … │ 
