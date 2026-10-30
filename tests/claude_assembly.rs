@@ -246,18 +246,129 @@ fn blocks_in_one_line_are_indexed_from_the_api_block_index() {
     assert_eq!(item_ids(assistant(&turns[1])), ["m:2", "m:3"]);
 }
 
+/// One single-block `assistant` line without `apiBlockIndex` (older format).
+fn old_line(n: u32, msg: &str, block: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"a{n}","timestamp":"2026-01-01T00:00:{n:02}Z","message":{{"id":"{msg}","model":"x","content":[{block}]}}}}"#
+    )
+}
+
 #[test]
-fn without_api_block_index_the_position_in_the_line_is_the_index() {
-    let text = concat!(
-        r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","message":{"id":"m","model":"x","content":[{"type":"text","text":"He"}]}}"#,
-        "\n",
-        r#"{"type":"assistant","uuid":"a2","timestamp":"2026-01-01T00:00:02Z","message":{"id":"m","model":"x","content":[{"type":"text","text":"Hello"}]}}"#,
-        "\n",
-    );
-    let turns = assemble_str(text);
+fn without_api_block_index_a_grown_text_replaces_the_earlier_one() {
+    let text = [
+        old_line(1, "m", r#"{"type":"text","text":"He"}"#),
+        old_line(2, "m", r#"{"type":"text","text":"Hello"}"#),
+        old_line(3, "m", r#"{"type":"text","text":"Hello"}"#),
+    ]
+    .join("\n");
+    let turns = assemble_str(&text);
     let turn = assistant(&turns[0]);
     assert_eq!(turn.items.len(), 1);
     assert!(matches!(&turn.items[0], Item::Text { text, .. } if text == "Hello"));
+}
+
+fn older_format_message() -> String {
+    [
+        old_line(
+            1,
+            "m",
+            r#"{"type":"thinking","thinking":"","signature":"s1"}"#,
+        ),
+        old_line(2, "m", r#"{"type":"text","text":"first"}"#),
+        old_line(
+            3,
+            "m",
+            r#"{"type":"tool_use","id":"t1","name":"Bash","input":{}}"#,
+        ),
+        old_line(4, "m", r#"{"type":"text","text":"second"}"#),
+        old_line(
+            5,
+            "m",
+            r#"{"type":"thinking","thinking":"","signature":"s2"}"#,
+        ),
+        old_line(
+            6,
+            "m",
+            r#"{"type":"thinking","thinking":"","signature":"s2"}"#,
+        ),
+        old_line(7, "m", r#"{"type":"text","text":"second"}"#),
+    ]
+    .join("\n")
+        + "\n"
+}
+
+#[test]
+fn without_api_block_index_distinct_blocks_of_a_message_all_survive_in_order() {
+    let turns = assemble_str(&older_format_message());
+    let turn = assistant(&turns[0]);
+    assert_eq!(item_ids(turn), ["m:0", "m:1", "t1", "m:2", "m:3", "m:4"]);
+    assert!(matches!(
+        &turn.items[0],
+        Item::Thinking {
+            thinking: Thinking::Redacted,
+            ..
+        }
+    ));
+    assert!(matches!(&turn.items[1], Item::Text { text, .. } if text == "first"));
+    assert!(matches!(&turn.items[2], Item::ToolCall(_)));
+    // "second" is sent again after a redacted block, so it is a new block.
+    assert!(matches!(&turn.items[3], Item::Text { text, .. } if text == "second"));
+    // A redacted block re-sent with the same signature is replaced, not duplicated.
+    assert!(matches!(
+        &turn.items[4],
+        Item::Thinking {
+            thinking: Thinking::Redacted,
+            ..
+        }
+    ));
+    assert!(matches!(&turn.items[5], Item::Text { text, .. } if text == "second"));
+}
+
+#[test]
+fn without_api_block_index_a_readable_thinking_then_text_keeps_both() {
+    let text = [
+        old_line(
+            1,
+            "m",
+            r#"{"type":"thinking","thinking":"hmm","signature":"s"}"#,
+        ),
+        old_line(2, "m", r#"{"type":"text","text":"answer"}"#),
+    ]
+    .join("\n");
+    let turns = assemble_str(&text);
+    assert_eq!(item_ids(assistant(&turns[0])), ["m:0", "m:1"]);
+}
+
+#[test]
+fn older_format_assembles_identically_by_line_and_in_random_chunks() {
+    let text = older_format_message();
+    let bytes: Arc<[u8]> = Arc::from(text.as_bytes());
+    let whole = Assembler::from_memory(Arc::clone(&bytes)).into_turns();
+    assert_eq!(final_by_lines(&bytes), whole);
+    for seed in 1..=40u64 {
+        let mut rng = XorShift(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        let mut asm = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::clone(&bytes)));
+        let mut replayed = Vec::new();
+        let mut pos = 0;
+        while pos < bytes.len() {
+            let end = (pos + 1 + (rng.next() % 150) as usize).min(bytes.len());
+            for u in asm.push_chunk(&bytes[pos..end]) {
+                u.apply(&mut replayed);
+            }
+            pos = end;
+        }
+        for u in asm.finish() {
+            u.apply(&mut replayed);
+        }
+        assert_eq!(replayed, whole, "seed {seed}");
+        assert_eq!(asm.into_turns(), whole, "seed {seed}");
+    }
+}
+
+#[test]
+fn null_meta_flag_does_not_fail_the_line() {
+    let text = r#"{"type":"user","uuid":"u","isMeta":null,"origin":{"kind":"human"},"timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"hi"}}"#;
+    assert_eq!(assemble_str(text).len(), 1);
 }
 
 // ---------------------------------------------------------- tool results
@@ -346,10 +457,11 @@ fn derived_description_uses_cwd_from_the_entries() {
 
 #[test]
 fn server_tool_result_in_an_assistant_line_becomes_the_result() {
+    // The real `advisor_tool_result` content is an encrypted payload without text.
     let text = concat!(
         r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:00Z","apiBlockIndex":0,"message":{"id":"m","model":"x","content":[{"type":"server_tool_use","id":"srv1","name":"advisor","input":{}}]}}"#,
         "\n",
-        r#"{"type":"assistant","uuid":"a2","timestamp":"2026-01-01T00:00:04Z","apiBlockIndex":1,"message":{"id":"m","model":"x","content":[{"type":"advisor_tool_result","tool_use_id":"srv1","content":{"type":"advisor_result","text":"Use a map."}}]}}"#,
+        r#"{"type":"assistant","uuid":"a2","timestamp":"2026-01-01T00:00:04Z","apiBlockIndex":1,"message":{"id":"m","model":"x","content":[{"type":"advisor_tool_result","tool_use_id":"srv1","content":{"type":"advisor_redacted_result","encrypted_content":"AAAA"}}]}}"#,
         "\n",
     );
     let turns = assemble_str(text);
@@ -359,9 +471,40 @@ fn server_tool_result_in_an_assistant_line_becomes_the_result() {
     assert_eq!(c.tool, ToolKind::Other("advisor".into()));
     assert_eq!(c.status, ToolStatus::Ok);
     assert_eq!(c.duration, Some(Duration::from_secs(4)));
+    let output = &c.result.as_ref().unwrap().output;
+    assert_eq!(output.byte_len(), 0, "encrypted payload is not shown");
+    assert_eq!(output.text().unwrap(), "");
+}
+
+#[test]
+fn server_text_result_object_uses_its_text() {
+    let text = concat!(
+        r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:00Z","apiBlockIndex":0,"message":{"id":"m","model":"x","content":[{"type":"server_tool_use","id":"srv1","name":"advisor","input":{}}]}}"#,
+        "\n",
+        r#"{"type":"assistant","uuid":"a2","timestamp":"2026-01-01T00:00:04Z","apiBlockIndex":1,"message":{"id":"m","model":"x","content":[{"type":"advisor_tool_result","tool_use_id":"srv1","content":{"type":"advisor_result","text":"Use a map."}}]}}"#,
+        "\n",
+    );
+    let turns = assemble_str(text);
+    let c = call(assistant(&turns[0]), "srv1");
     assert_eq!(
         c.result.as_ref().unwrap().output.text().unwrap(),
         "Use a map."
+    );
+}
+
+#[test]
+fn web_search_results_render_as_title_and_url_lines() {
+    let text = concat!(
+        r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:00Z","apiBlockIndex":0,"message":{"id":"m","model":"x","content":[{"type":"server_tool_use","id":"srv1","name":"web_search","input":{"query":"q"}}]}}"#,
+        "\n",
+        r#"{"type":"assistant","uuid":"a2","timestamp":"2026-01-01T00:00:04Z","apiBlockIndex":1,"message":{"id":"m","model":"x","content":[{"type":"web_search_tool_result","tool_use_id":"srv1","content":[{"type":"web_search_result","title":"Ratatui","url":"https://ratatui.rs","encrypted_content":"zz"},{"type":"web_search_result","url":"https://example.com"}]}]}}"#,
+        "\n",
+    );
+    let turns = assemble_str(text);
+    let c = call(assistant(&turns[0]), "srv1");
+    assert_eq!(
+        c.result.as_ref().unwrap().output.text().unwrap(),
+        "Ratatui — https://ratatui.rs\nhttps://example.com"
     );
 }
 
@@ -441,6 +584,23 @@ fn synthetic_model_is_not_a_model_change() {
     .join("\n");
     let turns = assemble_str(&text);
     assert_eq!(item_ids(assistant(&turns[0])), ["m1:0", "m2:0", "m3:0"]);
+}
+
+#[test]
+fn turn_starting_with_a_synthetic_message_takes_the_first_real_model_without_a_note() {
+    let text = [
+        old_line(1, "m1", r#"{"type":"text","text":"local"}"#)
+            .replace(r#""model":"x""#, r#""model":"<synthetic>""#),
+        old_line(2, "m2", r#"{"type":"text","text":"real"}"#)
+            .replace(r#""model":"x""#, r#""model":"real-model""#),
+        old_line(3, "m3", r#"{"type":"text","text":"more"}"#)
+            .replace(r#""model":"x""#, r#""model":"other-model""#),
+    ]
+    .join("\n");
+    let turns = assemble_str(&text);
+    let turn = assistant(&turns[0]);
+    assert_eq!(turn.model, "real-model");
+    assert_eq!(item_ids(turn), ["m1:0", "m2:0", "model:m3", "m3:0"]);
 }
 
 #[test]

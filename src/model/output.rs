@@ -129,7 +129,7 @@ enum Repr {
 pub struct ToolOutput(Repr);
 
 /// Counts lines the way [`ToolOutput::line_count`] reports them.
-pub fn count_lines(text: &str) -> usize {
+pub(crate) fn count_lines(text: &str) -> usize {
     text.lines().count()
 }
 

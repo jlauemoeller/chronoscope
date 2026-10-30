@@ -36,6 +36,13 @@ struct Builder {
     messages: HashSet<String>,
     /// Latest input+output tokens per message id.
     usage: HashMap<String, u64>,
+    /// Without `apiBlockIndex`: the next block number per message id.
+    next_block: HashMap<String, usize>,
+    /// Without `apiBlockIndex`: the most recent block of each message.
+    last_block: HashMap<String, ItemId>,
+    /// Signatures of redacted thinking blocks (to tell re-sends from
+    /// distinct blocks when there is no `apiBlockIndex`).
+    signatures: HashMap<ItemId, String>,
 }
 
 impl Builder {
@@ -117,6 +124,10 @@ impl Assembler {
 
     /// Feeds one complete line (without its newline). `range` is the line's
     /// absolute byte range in the source.
+    ///
+    /// An assembler is fed either with `push_line` or with
+    /// [`push_chunk`](Self::push_chunk) / [`finish`](Self::finish), not both:
+    /// only the latter track byte offsets.
     pub fn push_line(&mut self, line: &[u8], range: Range<u64>) -> Vec<ModelUpdate> {
         let start_len = self.turns.len();
         self.process(line, &range);
@@ -129,13 +140,19 @@ impl Assembler {
     pub fn push_chunk(&mut self, chunk: &[u8]) -> Vec<ModelUpdate> {
         let start_len = self.turns.len();
         let mut buf = std::mem::take(&mut self.pending);
+        // Bytes already buffered contain no newline: search only the new ones.
+        let mut search_from = buf.len();
         buf.extend_from_slice(chunk);
         let mut consumed = 0;
-        while let Some(rel) = buf[consumed..].iter().position(|&b| b == b'\n') {
-            let line = &buf[consumed..consumed + rel];
+        while let Some(rel) = buf[search_from..].iter().position(|&b| b == b'\n') {
+            let end = search_from + rel;
             let start = self.pending_start + consumed as u64;
-            self.process(line, &(start..start + rel as u64));
-            consumed += rel + 1;
+            self.process(
+                &buf[consumed..end],
+                &(start..self.pending_start + end as u64),
+            );
+            consumed = end + 1;
+            search_from = consumed;
         }
         buf.drain(..consumed);
         self.pending_start += consumed as u64;
@@ -255,7 +272,7 @@ impl Assembler {
             }
             return;
         }
-        if entry.is_meta {
+        if entry.is_meta == Some(true) {
             return;
         }
         let has_text = match content {
@@ -317,9 +334,16 @@ impl Assembler {
                 Builder {
                     idx,
                     index: HashMap::new(),
-                    last_model: model.clone(),
+                    last_model: if is_real_model(&model) {
+                        model.clone()
+                    } else {
+                        String::new()
+                    },
                     messages: HashSet::new(),
                     usage: HashMap::new(),
+                    next_block: HashMap::new(),
+                    last_block: HashMap::new(),
+                    signatures: HashMap::new(),
                 }
             }
         };
@@ -332,8 +356,13 @@ impl Assembler {
                 changed = true;
             }
             if b.messages.insert(msg_id.clone()) {
-                let real = !model.is_empty() && model != SYNTHETIC_MODEL;
-                if real && model != b.last_model {
+                let real = is_real_model(&model);
+                if real && !is_real_model(&turn.model) {
+                    // The turn started with a placeholder message: the first
+                    // real model is the turn's model, not a change.
+                    turn.model.clone_from(&model);
+                    changed = true;
+                } else if real && model != b.last_model {
                     let item = Item::ModelChange {
                         id: ItemId::from(format!("model:{msg_id}")),
                         model: model.clone(),
@@ -350,33 +379,58 @@ impl Assembler {
                 Some(Content::Text(text)) => vec![Block {
                     kind: Some("text".to_owned()),
                     text: Some(text),
-                    thinking: None,
-                    id: None,
-                    name: None,
-                    input: None,
-                    tool_use_id: None,
-                    content: None,
-                    is_error: None,
+                    ..Block::default()
                 }],
                 _ => Vec::new(),
             };
-            let base = entry.api_block_index.unwrap_or(0);
+            let api_index = entry.api_block_index;
             for (i, block) in blocks.into_iter().enumerate() {
-                let index = base + i;
                 match block.kind.as_deref() {
                     Some("text") => {
                         let text = block.text.unwrap_or_default();
                         if !text.is_empty() {
-                            let id = ItemId::from(format!("{msg_id}:{index}"));
+                            let id = block_id(
+                                turn,
+                                &mut b,
+                                &msg_id,
+                                api_index,
+                                i,
+                                |old, _| matches!(old, Item::Text { text: o, .. } if text.starts_with(o.as_str())),
+                            );
+                            note_block(&mut b, &msg_id, api_index, &id);
                             upsert(turn, &mut b, Item::Text { id, text }, &mut changed);
                         }
                     }
                     Some("thinking") => {
+                        let signature = block.signature;
                         let thinking = match block.thinking.filter(|t| !t.is_empty()) {
                             Some(text) => Thinking::Text(text),
                             None => Thinking::Redacted,
                         };
-                        let id = ItemId::from(format!("{msg_id}:{index}"));
+                        let id =
+                            block_id(turn, &mut b, &msg_id, api_index, i, |old, old_sig| {
+                                match (old, &thinking) {
+                                    (
+                                        Item::Thinking {
+                                            thinking: Thinking::Text(o),
+                                            ..
+                                        },
+                                        Thinking::Text(n),
+                                    ) => n.starts_with(o.as_str()),
+                                    (
+                                        Item::Thinking {
+                                            thinking: Thinking::Redacted,
+                                            ..
+                                        },
+                                        Thinking::Redacted,
+                                    ) => old_sig.is_some() && old_sig == signature.as_deref(),
+                                    _ => false,
+                                }
+                            });
+                        if let Some(sig) = signature {
+                            b.signatures.insert(id.clone(), sig);
+                        }
+                        note_block(&mut b, &msg_id, api_index, &id);
                         upsert(turn, &mut b, Item::Thinking { id, thinking }, &mut changed);
                     }
                     Some("tool_use" | "server_tool_use") => {
@@ -394,6 +448,7 @@ impl Assembler {
                             status: ToolStatus::Pending,
                             duration: None,
                         };
+                        note_block(&mut b, &msg_id, api_index, &call.id);
                         let item = upsert(turn, &mut b, Item::ToolCall(call), &mut changed);
                         self.calls.entry(call_id).or_insert(CallRef {
                             turn: b.idx,
@@ -496,6 +551,49 @@ impl Assembler {
             c.duration = duration;
             self.dirty.insert(call.turn);
         }
+    }
+}
+
+fn is_real_model(model: &str) -> bool {
+    !model.is_empty() && model != SYNTHETIC_MODEL
+}
+
+/// The id for a text or thinking block.
+///
+/// With `apiBlockIndex` it is `<message.id>:<apiBlockIndex + position>`.
+/// Without it (older transcripts, one block per line) a per-message counter
+/// numbers the blocks, so distinct blocks never collide. The one exception is
+/// a re-send: when the message's most recent block is still the previous
+/// block and `is_resend(old_item, old_signature)` holds (same kind, text
+/// extended or identical, same signature), that block is replaced.
+fn block_id(
+    turn: &AssistantTurn,
+    b: &mut Builder,
+    msg_id: &str,
+    api_index: Option<usize>,
+    position: usize,
+    is_resend: impl Fn(&Item, Option<&str>) -> bool,
+) -> ItemId {
+    if let Some(base) = api_index {
+        return ItemId::from(format!("{msg_id}:{}", base + position));
+    }
+    if let Some(last) = b.last_block.get(msg_id)
+        && let Some(&pos) = b.index.get(last)
+        && is_resend(&turn.items[pos], b.signatures.get(last).map(String::as_str))
+    {
+        return last.clone();
+    }
+    let next = b.next_block.entry(msg_id.to_owned()).or_default();
+    let id = ItemId::from(format!("{msg_id}:{next}"));
+    *next += 1;
+    id
+}
+
+/// Records `id` as the message's most recent block (only needed without
+/// `apiBlockIndex`).
+fn note_block(b: &mut Builder, msg_id: &str, api_index: Option<usize>, id: &ItemId) {
+    if api_index.is_none() {
+        b.last_block.insert(msg_id.to_owned(), id.clone());
     }
 }
 

@@ -5,4 +5,4 @@ pub mod tools;
 mod wire;
 
 pub use assemble::Assembler;
-pub use wire::extract_result_text;
+pub(crate) use wire::extract_result_text;
