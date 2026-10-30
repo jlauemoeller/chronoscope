@@ -15,7 +15,7 @@
 | 011-app-runtime | Complete |
 | 012-help-line-toast | Complete |
 | 013-selector-panes | Complete |
-| 014-selector-selection-rules | In progress |
+| 014-selector-selection-rules | Complete |
 | 015-selector-search | Planned |
 | 016-markdown-renderer | Planned |
 | 017-turn-block-sections | Planned |
