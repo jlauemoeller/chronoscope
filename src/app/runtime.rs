@@ -8,6 +8,9 @@ use tuirealm::terminal::TerminalAdapter;
 use super::redraw::RedrawLimiter;
 use super::startup::AppInit;
 use super::{App, Msg, production_listener};
+use crate::config::Config;
+use crate::harness::build_harnesses_with_home;
+use crate::index::{IndexHandle, SessionIndex};
 use crate::paths::Paths;
 use crate::terminal::{TerminalGuard, TerminalSetup, install_panic_hook, install_signal_handler};
 use crate::theme::TerminalEnv;
@@ -44,6 +47,15 @@ pub fn run_loop<T: TerminalAdapter>(
     Ok(())
 }
 
+/// Starts the session index over the enabled harnesses, caching stats in the
+/// cache directory. `None` without a home directory (there is nowhere to
+/// cache, and the default data directories are unknown).
+fn start_index(config: &Config, paths: Option<&Paths>) -> Option<IndexHandle> {
+    let paths = paths?;
+    let harnesses = build_harnesses_with_home(config, &paths.home_dir);
+    Some(SessionIndex::start(harnesses, paths.cache_dir.clone()))
+}
+
 /// Starts the application: loads the configuration, sets up the terminal and
 /// runs the loop until the user quits. The terminal is restored on every way
 /// out.
@@ -65,8 +77,15 @@ pub fn run_app() -> anyhow::Result<()> {
     };
     install_panic_hook();
     let mut guard = TerminalGuard::enter(setup)?;
-    let mut app = App::new(init, production_listener())?;
+    let mut index = start_index(&init.config, paths.as_ref());
+    let events = index.as_mut().and_then(IndexHandle::take_events);
+    let mut app = App::new(init, production_listener(events))?;
+    if let Some(index) = index {
+        app.set_index(index);
+    }
     let result = run_loop(&mut app, guard.adapter_mut(), &shutdown);
+    // The index saves its cache before the process ends.
+    app.shutdown();
     // The event listener stops before the terminal is restored.
     drop(app);
     drop(guard);

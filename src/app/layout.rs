@@ -15,6 +15,27 @@ pub const HELP_LINE_INSET: u16 = 5;
 /// The help line is this many rows above the overlay's bottom border
 /// (help line, blank row, border).
 pub const HELP_LINE_ROWS_FROM_BOTTOM: u16 = 3;
+/// The harness tabs are on this row of the overlay (row 3 holds the underline).
+pub const TABS_ROW: u16 = 2;
+/// The harness tabs start in this column of the overlay.
+pub const TABS_COLUMN: u16 = 5;
+/// The panes and the Working Directory box start this many columns inside the
+/// overlay, and end this many before its right edge.
+pub const CONTENT_INSET: u16 = 4;
+/// The panes start on this row of the overlay.
+pub const PANES_ROW: u16 = 5;
+/// The overlay's rows that are not pane rows: the panes start on row 5 and
+/// below them come the Working Directory box (5 rows), a blank row, the help
+/// line, a blank row and the border.
+pub const PANES_HEIGHT_CHROME: u16 = 14;
+/// The Working Directory box is this many rows high.
+pub const WORKING_DIR_HEIGHT: u16 = 5;
+/// The Projects pane is at least this wide.
+pub const MIN_PROJECTS_WIDTH: u16 = 20;
+/// The Projects pane is at most this wide.
+pub const MAX_PROJECTS_WIDTH: u16 = 36;
+/// The columns between the Projects and the Sessions pane.
+pub const PANE_GAP: u16 = 1;
 /// The toast's right edge is this many columns from the screen's right edge.
 pub const TOAST_RIGHT_MARGIN: u16 = 1;
 /// The toast's bottom border is on this many rows above the screen's last row.
@@ -74,8 +95,10 @@ pub fn too_small(area: Rect) -> bool {
 /// When the screen is too small (under 60 columns or 20 rows) only
 /// [`Id::EmptyState`] is visible, filling the screen. Otherwise the selector
 /// overlay is [`Id::SelectorFrame`]: as wide as the screen up to 160 columns
-/// and centred, with one empty row above and below. Inside it, [`Id::HelpLine`]
-/// is one row, two rows above the bottom border, from column 5 to width - 6.
+/// and centred, with one empty row above and below. Inside it come the tabs,
+/// the two panes, the Working Directory box (see [`selector_areas`]) and
+/// [`Id::HelpLine`]: one row, two rows above the bottom border, from column 5
+/// to width - 6.
 ///
 /// The toast, when `input` has one, comes last (on top) in the bottom-right
 /// corner of the screen, except on the too-small screen.
@@ -88,9 +111,14 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
     let mut areas = match input.screen {
         Screen::Selector => {
             let overlay = selector_overlay(area);
+            let areas = selector_areas(overlay);
             vec![
                 (Id::SelectorFrame, overlay),
-                (Id::HelpLine, selector_help_line(overlay)),
+                (Id::HarnessTabs, areas.tabs),
+                (Id::ProjectList, areas.projects),
+                (Id::SessionList, areas.sessions),
+                (Id::WorkingDir, areas.working_dir),
+                (Id::HelpLine, areas.help_line),
             ]
         }
     };
@@ -98,6 +126,58 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
         areas.push((Id::Toast, toast_rect(area, text_width)));
     }
     ScreenLayout { areas }
+}
+
+/// The areas inside the selector overlay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectorAreas {
+    /// The tab labels and, below them, the underline: two rows.
+    pub tabs: Rect,
+    pub projects: Rect,
+    pub sessions: Rect,
+    pub working_dir: Rect,
+    pub help_line: Rect,
+}
+
+/// Places the components inside the selector `overlay` (SPEC §4.1).
+///
+/// The content area runs from column 4 to column `width - 5` of the overlay,
+/// so its width is `width - 8`. The panes start on row 5 and are
+/// `height - 14` rows high; the Projects pane is a third of the content
+/// width (at least 20, at most 36 columns), then one column of gap, then the
+/// Sessions pane. The Working Directory box follows directly, five rows
+/// high.
+pub fn selector_areas(overlay: Rect) -> SelectorAreas {
+    let content_x = overlay.x + CONTENT_INSET;
+    let content_width = overlay.width.saturating_sub(2 * CONTENT_INSET);
+    let projects_width = (content_width / 3)
+        .clamp(MIN_PROJECTS_WIDTH, MAX_PROJECTS_WIDTH)
+        .min(content_width);
+    let sessions_width = content_width.saturating_sub(projects_width + PANE_GAP);
+    let panes_y = overlay.y + PANES_ROW;
+    let panes_height = overlay.height.saturating_sub(PANES_HEIGHT_CHROME);
+    SelectorAreas {
+        tabs: Rect::new(
+            overlay.x + TABS_COLUMN,
+            overlay.y + TABS_ROW,
+            overlay.width.saturating_sub(2 * TABS_COLUMN),
+            2,
+        ),
+        projects: Rect::new(content_x, panes_y, projects_width, panes_height),
+        sessions: Rect::new(
+            content_x + projects_width + PANE_GAP,
+            panes_y,
+            sessions_width,
+            panes_height,
+        ),
+        working_dir: Rect::new(
+            content_x,
+            panes_y + panes_height,
+            content_width,
+            WORKING_DIR_HEIGHT,
+        ),
+        help_line: selector_help_line(overlay),
+    }
 }
 
 /// The help line inside the selector `overlay`.
@@ -217,6 +297,92 @@ mod tests {
     fn the_layout_follows_the_area_origin() {
         let l = layout(&LayoutInput::default(), Rect::new(3, 2, 80, 24));
         assert_eq!(l.area(Id::SelectorFrame), Some(Rect::new(3, 3, 80, 22)));
+    }
+
+    fn areas(width: u16, height: u16) -> SelectorAreas {
+        selector_areas(at(width, height).area(Id::SelectorFrame).unwrap())
+    }
+
+    #[test]
+    fn panes_at_120x40_are_36_and_75_columns_and_24_rows() {
+        // Overlay 120x38: content width 112.
+        let a = areas(120, 40);
+        assert_eq!(a.projects.width, 36);
+        assert_eq!(a.sessions.width, 75);
+        assert_eq!(a.projects.width + PANE_GAP + a.sessions.width, 112);
+        assert_eq!(a.projects.height, 24);
+        assert_eq!(a.sessions.height, 24);
+        assert_eq!(a.working_dir.width, 112);
+    }
+
+    #[test]
+    fn panes_at_80x24_are_24_and_47_columns() {
+        let a = areas(80, 24);
+        assert_eq!(a.projects.width, 24);
+        assert_eq!(a.sessions.width, 47);
+        assert_eq!(a.projects.height, 8);
+    }
+
+    #[test]
+    fn projects_width_is_a_third_clamped_to_20_and_36() {
+        // Content width is the terminal width - 8 (below 160 columns).
+        assert_eq!(areas(60, 24).projects.width, 20);
+        assert_eq!(areas(68, 24).projects.width, 20);
+        assert_eq!(areas(80, 24).projects.width, 24);
+        assert_eq!(areas(116, 24).projects.width, 36);
+        assert_eq!(areas(200, 50).projects.width, 36);
+        assert_eq!(areas(200, 50).sessions.width, 160 - 8 - 36 - 1);
+    }
+
+    #[test]
+    fn components_are_placed_at_the_planner_offsets() {
+        let overlay = at(120, 40).area(Id::SelectorFrame).unwrap();
+        let a = selector_areas(overlay);
+        assert_eq!(a.tabs, Rect::new(5, 3, 110, 2));
+        assert_eq!(a.projects, Rect::new(4, 6, 36, 24));
+        assert_eq!(a.sessions, Rect::new(41, 6, 75, 24));
+        assert_eq!(a.working_dir, Rect::new(4, 30, 112, 5));
+        assert_eq!(a.sessions.right(), overlay.right() - 4);
+    }
+
+    #[test]
+    fn the_working_directory_box_is_followed_by_a_blank_row_and_the_help_line() {
+        for (w, h) in [(60, 20), (80, 24), (120, 40), (200, 50)] {
+            let a = areas(w, h);
+            assert_eq!(a.working_dir.y, a.projects.bottom(), "{w}x{h}");
+            assert_eq!(a.working_dir.height, 5, "{w}x{h}");
+            assert_eq!(a.help_line.y, a.working_dir.bottom() + 1, "{w}x{h}");
+        }
+    }
+
+    #[test]
+    fn the_layout_follows_a_centred_overlay_for_the_panes() {
+        let a = areas(200, 50);
+        assert_eq!(a.projects.x, 20 + 4);
+        assert_eq!(a.tabs.x, 20 + 5);
+    }
+
+    #[test]
+    fn the_layout_lists_the_selector_components_in_drawing_order() {
+        let ids: Vec<Id> = at(80, 24).areas().iter().map(|(id, _)| *id).collect();
+        assert_eq!(
+            ids,
+            [
+                Id::SelectorFrame,
+                Id::HarnessTabs,
+                Id::ProjectList,
+                Id::SessionList,
+                Id::WorkingDir,
+                Id::HelpLine
+            ]
+        );
+    }
+
+    #[test]
+    fn the_smallest_terminal_has_a_pane_with_one_list_row() {
+        let a = areas(60, 20);
+        assert_eq!(a.projects.height, 4);
+        assert_eq!(crate::components::visible_rows(a.projects.height), 1);
     }
 
     fn with_toast(width: u16, height: u16, text_width: usize) -> ScreenLayout {
