@@ -10,8 +10,9 @@ use rusqlite::params;
 use serde_json::Value;
 
 use super::db::Db;
+use super::load::text_at;
 use crate::harness::Result;
-use crate::harness::claude::SubagentInfo;
+use crate::harness::shared::SubagentInfo;
 use crate::model::SessionId;
 
 /// A child session of a parent.
@@ -21,14 +22,14 @@ struct Child {
     created: i64,
 }
 
-/// The tool part `call` of `parent`, with the row's `time_created`.
+/// The tool part `call` of `parent`.
 fn find_part(db: &Db, parent: &str, call: &str) -> Result<Option<Value>> {
     let datas = db.select(
         "SELECT data FROM session_message \
          WHERE session_id = ?1 AND type = 'assistant' AND instr(data, ?2) > 0 \
          ORDER BY seq",
         params![parent, call],
-        |row| row.get::<_, String>(0),
+        |row| text_at(row, 0),
     )?;
     for data in datas {
         let Ok(data) = serde_json::from_str::<Value>(&data) else {
@@ -132,7 +133,7 @@ pub(super) fn info(db: &Db, id: &SessionId) -> Result<Option<SubagentInfo>> {
          WHERE session_id = ?1 AND type = 'assistant' AND instr(data, ?2) > 0 \
          ORDER BY seq",
         params![parent, id.as_str()],
-        |row| row.get::<_, String>(0),
+        |row| text_at(row, 0),
     )?;
     'rows: for data in datas {
         let Ok(data) = serde_json::from_str::<Value>(&data) else {

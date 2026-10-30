@@ -11,10 +11,9 @@ pub mod tools;
 mod watch;
 mod wire;
 
+pub use crate::harness::shared::{MAX_TITLE_CHARS, UNTITLED, truncate_title};
 pub use assemble::Assembler;
-pub use discovery::{
-    BuildStats, ClaudeHarness, MAX_TITLE_CHARS, UNTITLED, default_data_dir, truncate_title,
-};
+pub use discovery::{BuildStats, ClaudeHarness, default_data_dir};
 pub use inject::NEWEST_KNOWN_VERSION;
 pub use resume::DEFAULT_RESUME_COMMAND;
 pub use subagent::SubagentInfo;

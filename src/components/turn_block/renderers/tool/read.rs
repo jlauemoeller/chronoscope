@@ -48,7 +48,8 @@ fn range_note(input: &Value, last: Option<usize>) -> Option<String> {
     })
 }
 
-/// `   12→text` or `12<TAB>text` as the number and the text.
+/// `   12→text`, `12<TAB>text` or OpenCode's `12: text` (an empty line is
+/// `12:`) as the number and the text.
 fn parse_numbered(line: &str) -> Option<(usize, &str)> {
     let trimmed = line.trim_start_matches(' ');
     let digits = trimmed.find(|c: char| !c.is_ascii_digit())?;
@@ -56,13 +57,27 @@ fn parse_numbered(line: &str) -> Option<(usize, &str)> {
         return None;
     }
     let rest = &trimmed[digits..];
-    let text = rest.strip_prefix('→').or_else(|| rest.strip_prefix('\t'))?;
+    let text = rest
+        .strip_prefix('→')
+        .or_else(|| rest.strip_prefix('\t'))
+        .or_else(|| rest.strip_prefix(": "))
+        .or_else(|| (rest == ":").then_some(""))?;
     Some((trimmed[..digits].parse().ok()?, text))
 }
 
-/// The lines of `text` with their numbers.
+/// Whether `line` is the framing line OpenCode starts a read result with:
+/// `Read file <path>, lines 1-127` or `Read directory <path>, entries 1-3`.
+fn is_opencode_header(line: &str) -> bool {
+    line.starts_with("Read file ") || line.starts_with("Read directory ")
+}
+
+/// The lines of `text` with their numbers. OpenCode's leading
+/// `Read file ...` header line is not file content and is left out.
 fn numbered(text: &str, offset: usize) -> Vec<(Option<usize>, &str)> {
-    let lines: Vec<&str> = text.lines().collect();
+    let mut lines: Vec<&str> = text.lines().collect();
+    if lines.first().is_some_and(|l| is_opencode_header(l)) {
+        lines.remove(0);
+    }
     // The first non-blank line decides whether the output carries numbers.
     let first = lines.iter().find(|l| !l.trim().is_empty());
     if first.and_then(|l| parse_numbered(l)).is_some() {
@@ -234,6 +249,55 @@ mod tests {
         for row in &rows {
             assert_eq!(row.matches('→').count(), 0);
         }
+    }
+
+    #[test]
+    fn opencode_numbering_and_header_become_a_plain_gutter() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Read,
+            json!({"path": "/src/main.rs"}),
+            Some("Read file /src/main.rs, lines 1-3\n1: fn main() {\n2: \n3:     run();\n"),
+        );
+        let rows = section(&call, &theme, 60);
+        assert_eq!(
+            &rows[6..],
+            [
+                "  Content:",
+                "",
+                "     1  fn main() {",
+                "     2  ",
+                "     3      run();"
+            ]
+        );
+        let text = rows.join("\n");
+        assert!(!text.contains("Read file"), "{text}");
+        assert!(!text.contains("1:"), "{text}");
+    }
+
+    #[test]
+    fn opencode_numbering_keeps_the_numbers_of_a_later_range() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Read,
+            json!({"path": "/a", "offset": 40, "limit": 2}),
+            Some("Read file /a, lines 40-41\n40: x\n41: y"),
+        );
+        let rows = section(&call, &theme, 60);
+        assert_eq!(rows[4], "     /a (lines 40–41)");
+        assert_eq!(&rows[8..], ["     40  x", "     41  y"]);
+    }
+
+    #[test]
+    fn an_opencode_directory_listing_loses_its_header_line() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Read,
+            json!({"path": "/p"}),
+            Some("Read directory /p, entries 1-2\n.opencode/\nfactory.md"),
+        );
+        let rows = section(&call, &theme, 60);
+        assert_eq!(&rows[8..], ["     1  .opencode/", "     2  factory.md"]);
     }
 
     #[test]

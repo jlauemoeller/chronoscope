@@ -161,18 +161,22 @@ pub(super) fn fetch_page(db: &Db, session: &str, after: i64, limit: usize) -> Re
                 kind: row.get(1)?,
                 seq: row.get(2)?,
                 created: row.get(3)?,
-                data: match row.get_ref(4)? {
-                    ValueRef::Text(bytes) | ValueRef::Blob(bytes) => {
-                        String::from_utf8_lossy(bytes).into_owned()
-                    }
-                    ValueRef::Null => String::new(),
-                    other => match other {
-                        ValueRef::Integer(n) => n.to_string(),
-                        ValueRef::Real(f) => f.to_string(),
-                        _ => String::new(),
-                    },
-                },
+                data: text_at(row, 4)?,
             })
         },
     )
+}
+
+/// Column `index` as text. OpenCode stores JSON as text, but a blob is read
+/// too (lossily) so that one odd row does not fail a whole query; a number is
+/// written out and NULL is empty.
+pub(super) fn text_at(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<String> {
+    Ok(match row.get_ref(index)? {
+        ValueRef::Text(bytes) | ValueRef::Blob(bytes) => {
+            String::from_utf8_lossy(bytes).into_owned()
+        }
+        ValueRef::Integer(n) => n.to_string(),
+        ValueRef::Real(f) => f.to_string(),
+        ValueRef::Null => String::new(),
+    })
 }

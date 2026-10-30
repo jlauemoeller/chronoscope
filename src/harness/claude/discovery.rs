@@ -25,17 +25,12 @@ use super::resume::{self, DEFAULT_RESUME_COMMAND};
 use super::scan::{FileScan, scan_reader};
 use super::subagent::{self, SubagentInfo};
 use crate::config::Config;
+use crate::harness::shared::{UNTITLED, truncate_title};
 use crate::harness::{Harness, Result, WatchHandle};
 use crate::model::{
     HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary,
     ToolCallId, Turn,
 };
-
-/// Title of a session with neither an `ai-title` nor a prompt.
-pub const UNTITLED: &str = "(untitled)";
-
-/// The longest prompt-derived title, in characters, including the `…`.
-pub const MAX_TITLE_CHARS: usize = 80;
 
 /// The default data directory: `<home>/.claude/projects` on every platform.
 pub fn default_data_dir(home: &Path) -> PathBuf {
@@ -632,17 +627,6 @@ fn session_title(scan: &FileScan) -> String {
         .as_deref()
         .and_then(|p| p.lines().map(str::trim).find(|l| !l.is_empty()))
         .map_or_else(|| UNTITLED.to_owned(), truncate_title)
-}
-
-/// Keeps `line` as is when it has at most [`MAX_TITLE_CHARS`] characters,
-/// else its first `MAX_TITLE_CHARS - 1` characters followed by `…`.
-pub fn truncate_title(line: &str) -> String {
-    if line.chars().count() <= MAX_TITLE_CHARS {
-        return line.to_owned();
-    }
-    let mut title: String = line.chars().take(MAX_TITLE_CHARS - 1).collect();
-    title.push('…');
-    title
 }
 
 /// The alias configured for the project's cwd, else the cwd's basename, else

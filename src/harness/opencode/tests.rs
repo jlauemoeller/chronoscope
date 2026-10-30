@@ -135,6 +135,37 @@ fn a_full_load_leaves_the_database_file_and_its_directory_unchanged() {
     assert_eq!(db.files(), files, "no -wal, -shm or journal file appeared");
 }
 
+#[test]
+fn a_write_ahead_log_database_is_read_through_its_wal_and_the_main_file_is_unchanged() {
+    // OpenCode's real database is in WAL mode, with a writer connection open.
+    let db = TempDb::new();
+    let writer = rusqlite::Connection::open(&db.path).unwrap();
+    writer
+        .query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))
+        .unwrap();
+    // A change that only lives in the -wal file so far.
+    writer
+        .execute(
+            "UPDATE session_v2 SET title = 'Renamed in the wal' WHERE id = 'ses_main'",
+            [],
+        )
+        .unwrap();
+    let before = std::fs::read(&db.path).unwrap();
+    let files = db.files();
+    assert!(files.contains(&"opencode.db-wal".to_owned()), "{files:?}");
+
+    let h = harness(&db);
+    assert!(h.available());
+    assert_eq!(summary(&h, "ses_main").title, "Renamed in the wal");
+    for id in ["ses_main", "ses_child1", "ses_bad"] {
+        load_updates(&h, id);
+    }
+    drop(h);
+    assert_eq!(std::fs::read(&db.path).unwrap(), before);
+    assert_eq!(db.files(), files, "no side file appeared or went away");
+    drop(writer);
+}
+
 #[cfg(unix)]
 #[test]
 fn a_database_that_cannot_be_opened_read_only_is_read_as_immutable() {
@@ -154,7 +185,11 @@ fn a_database_that_cannot_be_opened_read_only_is_read_as_immutable() {
     perms.set_mode(0o755);
     std::fs::set_permissions(&dir, perms).unwrap();
     let opened = opened.unwrap();
-    if !can_write {
+    if can_write {
+        eprintln!(
+            "skipping the Immutable assertion: the directory stays writable (running as root?)"
+        );
+    } else {
         assert_eq!(opened.mode(), OpenMode::Immutable);
         let err = opened
             .select("DELETE FROM project", [], |_| Ok(()))
@@ -580,7 +615,7 @@ fn the_stats_footer_sums_duration_messages_tokens_and_cost() {
         "{:?}",
         stats.cost
     );
-    // Three rows: 09:05:01 .. 09:05:40 (the last row's completion).
+    // Two rows: 09:05:01 .. 09:05:40 (the last row's completion).
     let stats = assistant(&turns[3]).stats.clone().unwrap();
     assert_eq!(stats.duration, Duration::from_secs(39));
     assert_eq!(stats.message_count, 2);

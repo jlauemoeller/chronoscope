@@ -49,6 +49,9 @@ impl Db {
                 conn,
                 mode: OpenMode::ReadOnly,
             }),
+            Err(err) if !needs_immutable(&err) => {
+                Err(err).with_context(|| format!("opening {} read-only", path.display()))
+            }
             Err(err) => {
                 let uri = immutable_uri(path);
                 let flags = flags | OpenFlags::SQLITE_OPEN_URI;
@@ -113,6 +116,24 @@ impl Db {
     }
 }
 
+/// Whether a failed read-only open is one that `immutable=1` is meant for:
+/// the file (or its `-wal`/`-shm` files) cannot be opened or created
+/// (`SQLITE_CANTOPEN`), or SQLite finds nothing it may write
+/// (`SQLITE_READONLY`). Anything else (a busy database, an I/O error, a
+/// corrupt file, no database at all) is returned as it is: an immutable read
+/// ignores the write-ahead log and could show stale rows of a live database.
+fn needs_immutable(err: &anyhow::Error) -> bool {
+    err.chain()
+        .filter_map(|cause| cause.downcast_ref::<rusqlite::Error>())
+        .filter_map(rusqlite::Error::sqlite_error_code)
+        .any(|code| {
+            matches!(
+                code,
+                rusqlite::ErrorCode::CannotOpen | rusqlite::ErrorCode::ReadOnly
+            )
+        })
+}
+
 /// The one place a statement is prepared and run: it must start with
 /// `SELECT` and SQLite itself must report it as read-only.
 fn guarded_select<T, P: Params>(
@@ -156,7 +177,14 @@ fn starts_with_select(sql: &str) -> bool {
 /// `file:<path>?immutable=1`, with the characters that have a meaning in a
 /// URI percent-encoded (and a `/` before a Windows drive letter).
 pub(super) fn immutable_uri(path: &Path) -> String {
-    let text = path.to_string_lossy().replace('\\', "/");
+    // A relative path is made absolute first, or it would name the root.
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    uri_for(&absolute.to_string_lossy())
+}
+
+/// [`immutable_uri`] of an absolute path given as text.
+fn uri_for(text: &str) -> String {
+    let text = text.replace('\\', "/");
     let mut uri = String::from("file:");
     if !text.starts_with('/') {
         uri.push('/');
@@ -229,9 +257,37 @@ mod tests {
             "file:/home/u/a%20b/c%23d%3Fe%25f.db?immutable=1"
         );
         assert_eq!(
-            immutable_uri(Path::new("C:\\Users\\u\\x.db")),
+            uri_for("C:\\Users\\u\\x.db"),
             "file:/C:/Users/u/x.db?immutable=1"
         );
+    }
+
+    #[test]
+    fn a_relative_path_is_made_absolute() {
+        let uri = immutable_uri(Path::new("opencode.db"));
+        let cwd = std::env::current_dir().unwrap();
+        assert!(uri.starts_with("file:"), "{uri}");
+        assert!(uri.ends_with("/opencode.db?immutable=1"), "{uri}");
+        assert!(
+            uri.len() > "file:/opencode.db?immutable=1".len(),
+            "{uri} for {cwd:?}"
+        );
+    }
+
+    #[test]
+    fn only_open_failures_of_the_right_kind_fall_back_to_immutable() {
+        let coded = |code: i32| {
+            anyhow::Error::from(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(code),
+                None,
+            ))
+        };
+        assert!(needs_immutable(&coded(rusqlite::ffi::SQLITE_CANTOPEN)));
+        assert!(needs_immutable(&coded(rusqlite::ffi::SQLITE_READONLY)));
+        assert!(!needs_immutable(&coded(rusqlite::ffi::SQLITE_BUSY)));
+        assert!(!needs_immutable(&coded(rusqlite::ffi::SQLITE_IOERR)));
+        assert!(!needs_immutable(&coded(rusqlite::ffi::SQLITE_CORRUPT)));
+        assert!(!needs_immutable(&anyhow::anyhow!("something else")));
     }
 
     #[test]

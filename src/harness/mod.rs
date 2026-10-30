@@ -1,8 +1,10 @@
 //! Harness adapters: translate native session formats into the shared model.
 
 pub mod claude;
+mod describe;
 pub mod opencode;
 pub(crate) mod resume;
+pub mod shared;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

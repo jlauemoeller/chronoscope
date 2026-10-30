@@ -292,6 +292,28 @@ fn an_opencode_session_in_the_browser_with_a_shell_tool_unfolded_120x40_text() {
 }
 
 #[test]
+fn an_unfolded_opencode_read_shows_the_file_in_a_gutter_without_the_framing() {
+    let mut rig = two_tabs();
+    rig.open("ses_main");
+    rig.select_call("call-read-1");
+    rig.rig.press(Key::Enter);
+    rig.rig.settle();
+    let screen = screen_text(&mut rig.rig, 120, 60);
+    let content: Vec<&str> = screen
+        .lines()
+        .skip_while(|l| !l.contains("Content:"))
+        .skip(2)
+        .take(1)
+        .collect();
+    assert_eq!(content.len(), 1, "{screen}");
+    // `1  fn main() {}`: the number is in the gutter, not repeated as `1:`,
+    // and the `Read file ...` line of the result is not content.
+    assert!(content[0].contains(" 1  fn main() {}"), "{}", content[0]);
+    assert!(!screen.contains("Read file /home"), "{screen}");
+    assert!(!screen.contains("1: fn main"), "{screen}");
+}
+
+#[test]
 fn a_subagent_section_of_an_opencode_session_opens_the_child_transcript() {
     let mut rig = two_tabs();
     rig.open("ses_main");

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::harness::claude::tools::describe as describe_input;
+use crate::harness::describe::describe as describe_input;
 use crate::model::ToolKind;
 
 /// Maps an OpenCode tool name. Anything not listed is [`ToolKind::Other`]

@@ -18,7 +18,7 @@ use super::load;
 use super::location::default_db_path;
 use super::subagent;
 use crate::config::Config;
-use crate::harness::claude::{SubagentInfo, UNTITLED, truncate_title};
+use crate::harness::shared::{SubagentInfo, UNTITLED, truncate_title};
 use crate::harness::{Harness, Result, WatchHandle, resume};
 use crate::model::{
     HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary, ToolCallId,
@@ -88,9 +88,9 @@ impl OpenCodeHarness {
 
     /// Sets how many rows one query of [`load`](Harness::load) reads
     /// (default 500). Meant for tests.
-    #[doc(hidden)]
+    #[cfg(test)]
     #[must_use]
-    pub fn with_page_size(mut self, rows: usize) -> Self {
+    pub(crate) fn with_page_size(mut self, rows: usize) -> Self {
         self.page_size = rows.max(1);
         self
     }
@@ -305,7 +305,7 @@ struct SessionRow {
 }
 
 /// Reads the projects with at least one top-level session, and those
-/// sessions.
+/// sessions. A project without any is not listed, as with Claude.
 fn build_index(db: &Db, db_path: &Path, aliases: &BTreeMap<PathBuf, String>) -> Result<Index> {
     let project_rows = db.select("SELECT id, worktree, name FROM project", [], |row| {
         Ok(ProjectRow {
