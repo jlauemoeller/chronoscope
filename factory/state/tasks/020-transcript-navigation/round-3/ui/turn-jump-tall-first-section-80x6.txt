@@ -1,0 +1,87 @@
+# Scratch-crate render (not a repo fixture): session.jsonl with the first assistant text and the
+# second prompt replaced by 30-line texts. Keys: + ] j j ] j G [ [ [ [ at 80x6.
+# After each ]/[ into a block whose first section is taller than the viewport, row 0 is the block's top border.
+=== initial @ 80x6  offset=0 sel=01 Prompt
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:00:00Z ─╮
+│                                                                              │
+▒ ▶ Please look at the project and fix the failing test.                       │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5-5 @ high ───────────────── 2026-10-21 08:00:01Z ─╮
+=== after [+] @ 80x6  offset=0 sel=01 Prompt
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:00:00Z ─╮
+│                                                                              │
+▒ ▼ Please look at the project and fix the failing test.                       │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5-5 @ high ───────────────── 2026-10-21 08:00:01Z ─╮
+=== after []] @ 80x6  offset=5 sel=10 Item(ItemId(\"msg_A:1\"))
+╭─ Assistant ── claude-opus-5-5 @ high ───────────────── 2026-10-21 08:00:01Z ─╮
+│                                                                              │
+▒   Answer line 1. Answer line 2. Answer line 3. Answer line 4. Answer line    │
+▒   5. Answer line 6. Answer line 7. Answer line 8. Answer line 9. Answer      │
+▒   line 10. Answer line 11. Answer line 12. Answer line 13. Answer line 14.   │
+▒   Answer line 15. Answer line 16. Answer line 17. Answer line 18. Answer     │
+=== after [j] @ 80x6  offset=8 sel=10 Item(ItemId(\"msg_A:1\"))
+▒   5. Answer line 6. Answer line 7. Answer line 8. Answer line 9. Answer      │
+▒   line 10. Answer line 11. Answer line 12. Answer line 13. Answer line 14.   │
+▒   Answer line 15. Answer line 16. Answer line 17. Answer line 18. Answer     │
+▒   line 19. Answer line 20. Answer line 21. Answer line 22. Answer line 23.   │
+▒   Answer line 24. Answer line 25. Answer line 26. Answer line 27. Answer     │
+▒   line 28. Answer line 29. Answer line 30.                                   │
+=== after [j] @ 80x6  offset=15 sel=10 Item(ItemId(\"toolu_bash\"))
+▒ ▼ List the project files                                                     │
+▒                                                                              │
+▒   Command:                                                                   │
+▒                                                                              │
+▒      ls -la                                                                  │
+▒                                                                              │
+=== after []] @ 80x6  offset=309 sel=40 Prompt
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:01:00Z ─╮
+│                                                                              │
+▒ ▼ Line 1 of a long prompt. Line 2 of a long prompt. Line 3 of a long         │
+▒   prompt. Line 4 of a long prompt. Line 5 of a long prompt. Line 6 of a      │
+▒   long prompt. Line 7 of a long prompt. Line 8 of a long prompt. Line 9 of   │
+▒   a long prompt. Line 10 of a long prompt. Line 11 of a long prompt. Line    │
+=== after [j] @ 80x6  offset=315 sel=40 Prompt
+▒   12 of a long prompt. Line 13 of a long prompt. Line 14 of a long prompt.   │
+▒   Line 15 of a long prompt. Line 16 of a long prompt. Line 17 of a long      │
+▒   prompt. Line 18 of a long prompt. Line 19 of a long prompt. Line 20 of a   │
+▒   long prompt. Line 21 of a long prompt. Line 22 of a long prompt. Line 23   │
+▒   of a long prompt. Line 24 of a long prompt. Line 25 of a long prompt.      │
+▒   Line 26 of a long prompt. Line 27 of a long prompt. Line 28 of a long      │
+=== after [G] @ 80x6  offset=337 sel=51 Item(ItemId(\"msg_F:0\"))
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-sonnet-5-5 ────────────────────── 2026-10-21 08:02:01Z ─╮
+│                                                                              │
+▒   Yes.                                                                       │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+=== after [[] @ 80x6  offset=333 sel=50 Prompt
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:02:00Z ─╮
+│                                                                              │
+▒ ▼ One more thing: is it done?                                                │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-sonnet-5-5 ────────────────────── 2026-10-21 08:02:01Z ─╮
+=== after [[] @ 80x6  offset=324 sel=41 Item(ItemId(\"msg_D:0\"))
+╭─ Assistant ── claude-sonnet-5-5 @ medium ───────────── 2026-10-21 08:01:01Z ─╮
+│                                                                              │
+▒   Here is a summary.                                                         │
+│                                                                              │
+│   The notification arrived; nothing else to do.                              │
+│                                                                              │
+=== after [[] @ 80x6  offset=309 sel=40 Prompt
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:01:00Z ─╮
+│                                                                              │
+▒ ▼ Line 1 of a long prompt. Line 2 of a long prompt. Line 3 of a long         │
+▒   prompt. Line 4 of a long prompt. Line 5 of a long prompt. Line 6 of a      │
+▒   long prompt. Line 7 of a long prompt. Line 8 of a long prompt. Line 9 of   │
+▒   a long prompt. Line 10 of a long prompt. Line 11 of a long prompt. Line    │
+=== after [[] @ 80x6  offset=5 sel=10 Item(ItemId(\"msg_A:1\"))
+╭─ Assistant ── claude-opus-5-5 @ high ───────────────── 2026-10-21 08:00:01Z ─╮
+│                                                                              │
+▒   Answer line 1. Answer line 2. Answer line 3. Answer line 4. Answer line    │
+▒   5. Answer line 6. Answer line 7. Answer line 8. Answer line 9. Answer      │
+▒   line 10. Answer line 11. Answer line 12. Answer line 13. Answer line 14.   │
+▒   Answer line 15. Answer line 16. Answer line 17. Answer line 18. Answer     │

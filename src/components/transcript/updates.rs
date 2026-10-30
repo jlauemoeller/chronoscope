@@ -103,12 +103,12 @@ impl Transcript {
     }
 
     /// The first selectable section of the blocks from `start` on.
-    fn first_section_from(&self, start: usize) -> Option<SectionId> {
+    pub(super) fn first_section_from(&self, start: usize) -> Option<SectionId> {
         (start..self.content.turns.len()).find_map(|i| self.sections_of(i).into_iter().next())
     }
 
     /// The last selectable section of the transcript.
-    fn last_section(&self) -> Option<SectionId> {
+    pub(super) fn last_section(&self) -> Option<SectionId> {
         (0..self.content.turns.len())
             .rev()
             .find_map(|i| self.sections_of(i).pop())
