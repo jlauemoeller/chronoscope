@@ -8,7 +8,7 @@
 | 004-theme-registry | Complete |
 | 005-keymap-bindings | Complete |
 | 006-claude-turn-assembly | Complete |
-| 007-claude-injected-content | Planned |
+| 007-claude-injected-content | In progress |
 | 008-claude-session-discovery | Planned |
 | 009-claude-session-loading | Planned |
 | 010-session-index-worker | Planned |
