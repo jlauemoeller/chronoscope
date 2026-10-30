@@ -15,21 +15,15 @@ const QUOTE_BAR: &str = "│ ";
 const CODE_INDENT: usize = 2;
 const NEST_INDENT: usize = 2;
 
-/// Lays out `blocks` at `width` cells with one blank line between blocks, or
-/// none when `tight`.
-pub(super) fn layout(
-    blocks: &[Block],
-    width: usize,
-    styles: &Styles,
-    tight: bool,
-) -> Vec<Line<'static>> {
+/// Lays out `blocks` at `width` cells with one blank line between blocks.
+pub(super) fn layout(blocks: &[Block], width: usize, styles: &Styles) -> Vec<Line<'static>> {
     let mut out: Vec<Line<'static>> = Vec::new();
     for block in blocks {
         let lines = block_lines(block, width, styles);
         if lines.is_empty() {
             continue;
         }
-        if !out.is_empty() && !tight {
+        if !out.is_empty() {
             out.push(Line::default());
         }
         out.extend(lines);
@@ -63,6 +57,7 @@ fn paragraph_lines(inline: &Inline, width: usize) -> Vec<Line<'static>> {
 fn code_lines(lang: Option<&str>, text: &str, width: usize, styles: &Styles) -> Vec<Line<'static>> {
     let inner = width.saturating_sub(CODE_INDENT).max(1);
     let indent = " ".repeat(CODE_INDENT);
+    let base = styles.base;
     highlight_code(text, lang.unwrap_or(""), styles.theme)
         .into_iter()
         .flat_map(|line| wrap_spans(&line.spans, inner))
@@ -70,8 +65,11 @@ fn code_lines(lang: Option<&str>, text: &str, width: usize, styles: &Styles) -> 
             if spans.is_empty() {
                 Line::default()
             } else {
-                let mut line = vec![Span::raw(indent.clone())];
-                line.extend(spans);
+                let mut line = vec![Span::styled(indent.clone(), base)];
+                line.extend(spans.into_iter().map(|span| {
+                    let style = base.patch(span.style);
+                    span.style(style)
+                }));
                 Line::from(line)
             }
         })
@@ -104,12 +102,7 @@ fn prefix(
 fn quote_lines(children: &[Block], width: usize, styles: &Styles) -> Vec<Line<'static>> {
     let inner = width.saturating_sub(QUOTE_BAR.width()).max(1);
     let bar = Span::styled(QUOTE_BAR, styles.muted);
-    prefix(
-        layout(children, inner, styles, false),
-        bar.clone(),
-        bar,
-        true,
-    )
+    prefix(layout(children, inner, styles), bar.clone(), bar, true)
 }
 
 /// The marker of each item, padded to one width: `• ` or `1. `.
@@ -134,9 +127,9 @@ fn list_lines(list: &List, width: usize, styles: &Styles) -> Vec<Line<'static>> 
             out.push(Line::default());
         }
         let marker = Span::styled(marker, styles.base);
-        let mut lines = item_lines(item, marker, indent, width, list, styles);
+        let mut lines = item_lines(item, marker.clone(), indent, width, list, styles);
         if lines.is_empty() {
-            lines.push(Line::default());
+            lines.push(Line::from(marker));
         }
         out.extend(lines);
     }
@@ -161,7 +154,7 @@ fn item_lines(
         if lines.is_empty() {
             continue;
         }
-        let hang = Span::raw(" ".repeat(pad));
+        let hang = Span::styled(" ".repeat(pad), styles.base);
         let lead = if out.is_empty() {
             marker.clone()
         } else {

@@ -251,10 +251,7 @@ fn list_lines_have_a_marker_span_and_a_hang_indent_span() {
     let lines = render("1. alpha beta gamma\n2. two", 12);
     assert_eq!(text(&lines), ["1. alpha", "   beta", "   gamma", "2. two"]);
     assert_eq!(runs(&lines[0]), [run("1. ", base), run("alpha", base)]);
-    assert_eq!(
-        runs(&lines[1]),
-        [run("   ", Style::new()), run("beta", base)]
-    );
+    assert_eq!(runs(&lines[1]), [run("   ", base), run("beta", base)]);
     let bullets = render("- alpha beta\n  - inner text", 9);
     assert_eq!(
         text(&bullets),
@@ -262,7 +259,7 @@ fn list_lines_have_a_marker_span_and_a_hang_indent_span() {
     );
     assert_eq!(
         runs(&bullets[2]),
-        [run("  ", Style::new()), run("• ", base), run("inner", base)]
+        [run("  ", base), run("• ", base), run("inner", base)]
     );
 }
 
@@ -316,7 +313,7 @@ fn a_table_has_aligned_columns_and_a_header_rule() {
         runs(&lines[0]),
         [
             run("Name", bold),
-            run(" ", Style::new()),
+            run(" ", base),
             run(" │ ", muted(&theme)),
             run("Qty", bold),
         ]
@@ -398,7 +395,7 @@ fn fenced_code_is_indented_highlighted_and_not_word_wrapped() {
     assert_eq!(
         runs(&lines[2]),
         [
-            run("  ", Style::new()),
+            run("  ", base),
             run("fn", kw),
             run(" ", plain),
             run("main", func),
@@ -432,7 +429,7 @@ fn an_unknown_code_language_uses_the_plain_token() {
     assert_eq!(
         runs(&lines[0]),
         [
-            run("  ", Style::new()),
+            run("  ", base),
             run("fn x = \"a\" 1", theme.style(Token::SyntaxPlain))
         ]
     );
@@ -953,4 +950,78 @@ fn the_widget_base_style_sets_the_text_style() {
         .base(style)
         .render(Rect::new(0, 0, 6, 1), &mut buffer);
     assert_eq!(buffer[(0, 0)].fg, style.fg.unwrap());
+}
+
+// Review follow-ups.
+
+#[test]
+fn a_base_modifier_reaches_every_span_of_every_element() {
+    let theme = distinct_theme();
+    let base = theme.style(Token::Thinking).add_modifier(Modifier::DIM);
+    let src = "> quote\n\n| a | bb |\n|:-:|--:|\n| c | d |\n\n---\n\n- item\n  - nested\n\n```rust\nfn x() { 1 }\n```\n\n# head";
+    let lines = render_markdown(src, 30, base, &theme);
+    let mut spans = 0;
+    for span in lines.iter().flat_map(|l| &l.spans) {
+        spans += 1;
+        assert!(
+            span.style.add_modifier.contains(Modifier::DIM),
+            "lost the base modifier: {span:?}"
+        );
+    }
+    assert!(spans > 20);
+}
+
+#[test]
+fn tabs_in_prose_become_spaces_so_words_stay_apart() {
+    let lines = render("Text with tab\there and `a\tb`", 40);
+    assert_eq!(text(&lines), ["Text with tab    here and a    b"]);
+    let buffer = draw("Text with tab\there", 24, 1);
+    assert_eq!(buffer_to_text(&buffer), "Text with tab    here   \n");
+    let table = render("| a\tb | c |\n|---|---|\n| d | e |", 40);
+    assert_eq!(text(&table)[0], "a    b │ c");
+}
+
+#[test]
+fn an_empty_list_item_keeps_its_marker() {
+    assert_eq!(text(&render("- a\n-\n- c", 20)), ["• a", "• ", "• c"]);
+    assert_eq!(text(&render("1. \n2. b", 20)), ["1. ", "2. b"]);
+}
+
+#[test]
+fn the_widget_clips_to_the_buffer_instead_of_panicking() {
+    let theme = Theme::default();
+    let mut buffer = Buffer::empty(Rect::new(0, 0, 10, 2));
+    Markdown::new("one\n\ntwo\n\nthree", &theme).render(Rect::new(0, 0, 10, 5), &mut buffer);
+    assert_eq!(buffer_to_text(&buffer), "one       \n          \n");
+    Markdown::new("wide text here", &theme).render(Rect::new(6, 0, 20, 2), &mut buffer);
+    assert_eq!(buffer_to_text(&buffer), "one   wide\n      text\n");
+}
+
+#[test]
+fn char_wrap_with_zero_width_gives_no_lines_like_render_markdown() {
+    assert!(char_wrap("abc", 0, Style::new()).is_empty());
+    assert!(render("abc", 0).is_empty());
+}
+
+#[test]
+fn char_wrap_drops_control_characters() {
+    let lines = char_wrap("a\rb\u{1b}[0m\tc\r\nd", 20, Style::new());
+    assert_eq!(text(&lines), ["ab[0m    c", "d"]);
+}
+
+#[test]
+fn a_short_table_row_has_no_dangling_separator() {
+    let lines = render("| a | b |\n|---|---|\n| 1 |", 20);
+    assert_eq!(text(&lines), ["a │ b", "──┼──", "1"]);
+}
+
+#[test]
+fn code_block_with_distinct_syntax_colours_at_60_columns_styled() {
+    let theme = distinct_theme();
+    let height =
+        u16::try_from(render_markdown(CODE_ONLY, 60, base_of(&theme), &theme).len()).unwrap();
+    let buffer = render_frame(60, height, |frame| {
+        frame.render_widget(Markdown::new(CODE_ONLY, &theme), frame.area());
+    });
+    insta::assert_snapshot!(buffer_to_styled(&buffer));
 }

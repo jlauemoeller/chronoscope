@@ -5,6 +5,7 @@
 //! change needs no work and no colour is named in this module.
 
 use std::sync::OnceLock;
+#[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ratatui::style::Style;
@@ -14,11 +15,12 @@ use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet
 use crate::theme::{Theme, Token};
 
 static SYNTAXES: OnceLock<SyntaxSet> = OnceLock::new();
+#[cfg(test)]
 static LOADS: AtomicUsize = AtomicUsize::new(0);
 
 /// The scope prefixes and the token each one maps to. For a piece of text the
 /// innermost scope with a match wins.
-const RULES: [(&str, Token); 9] = [
+const RULES: [(&str, Token); 10] = [
     ("keyword", Token::SyntaxKeyword),
     ("storage", Token::SyntaxKeyword),
     ("entity.name.type", Token::SyntaxType),
@@ -28,12 +30,13 @@ const RULES: [(&str, Token); 9] = [
     ("string", Token::SyntaxString),
     ("constant.numeric", Token::SyntaxNumber),
     ("constant.language", Token::SyntaxNumber),
+    ("comment", Token::SyntaxComment),
 ];
-const COMMENT: &str = "comment";
 
 /// The syntax definitions, loaded on first use and shared afterwards.
 pub(super) fn syntax_set() -> &'static SyntaxSet {
     SYNTAXES.get_or_init(|| {
+        #[cfg(test)]
         LOADS.fetch_add(1, Ordering::SeqCst);
         SyntaxSet::load_defaults_newlines()
     })
@@ -51,7 +54,6 @@ fn rules() -> &'static [(Scope, Token)] {
     PARSED.get_or_init(|| {
         RULES
             .iter()
-            .chain(std::iter::once(&(COMMENT, Token::SyntaxComment)))
             .filter_map(|(name, token)| Scope::new(name).ok().map(|scope| (scope, *token)))
             .collect()
     })

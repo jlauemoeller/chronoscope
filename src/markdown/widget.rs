@@ -39,6 +39,7 @@ impl<'a> Markdown<'a> {
 
 impl Widget for Markdown<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let area = area.intersection(buf.area);
         let lines = render_markdown(self.source, area.width, self.base, self.theme);
         for (row, line) in lines.iter().take(usize::from(area.height)).enumerate() {
             let y = area.y + u16::try_from(row).unwrap_or(u16::MAX);

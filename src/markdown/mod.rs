@@ -40,7 +40,8 @@ pub(crate) struct Styles<'a> {
     pub base: Style,
     /// The `command` token, patched onto the surrounding style for inline code.
     pub command: Style,
-    /// `muted_foreground`, for quote bars, table separators and rules.
+    /// The base style with the `muted_foreground` colour, for quote bars,
+    /// table separators and rules.
     pub muted: Style,
 }
 
@@ -50,7 +51,7 @@ impl<'a> Styles<'a> {
             theme,
             base,
             command: theme.style(Token::Command),
-            muted: Style::new().fg(theme.role(Role::MutedForeground)),
+            muted: base.fg(theme.role(Role::MutedForeground)),
         }
     }
 
@@ -67,6 +68,12 @@ impl<'a> Styles<'a> {
 
 /// Renders markdown `src` into lines no wider than `width` cells.
 ///
+/// That holds down to a minimum width: a quote bar, a list marker or nesting
+/// and a code indent each need their own width plus one cell of text, and a
+/// table needs one cell per column plus its separators. Below that the lines
+/// are wider than `width` (a widget clips them). With a `width` of 0 there
+/// are no lines.
+///
 /// `base` is the section's text style (e.g. `foreground` for assistant text,
 /// `thinking` for thinking). The result is pure and deterministic: blocks are
 /// separated by one blank line and there is no trailing blank line.
@@ -76,5 +83,5 @@ pub fn render_markdown(src: &str, width: u16, base: Style, theme: &Theme) -> Vec
     }
     let styles = Styles::new(base, theme);
     let tree = blocks::parse(src, &styles);
-    layout::layout(&tree, usize::from(width), &styles, false)
+    layout::layout(&tree, usize::from(width), &styles)
 }

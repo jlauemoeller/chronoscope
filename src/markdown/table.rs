@@ -74,13 +74,19 @@ fn row_line(
     styles: &Styles,
 ) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = Vec::new();
-    for (col, width) in widths.iter().enumerate() {
+    // A short row ends at its last non-empty cell, with no dangling separator.
+    let cells = row
+        .iter()
+        .rposition(|cell| !cell.is_empty())
+        .map_or(0, |i| i + 1)
+        .min(widths.len());
+    for (col, width) in widths.iter().enumerate().take(cells) {
         if col > 0 {
             spans.push(Span::styled(SEPARATOR, styles.muted));
         }
         let align = aligns.get(col).copied().unwrap_or(Alignment::None);
-        let last = col + 1 == widths.len();
-        spans.extend(cell_spans(row.get(col), *width, align, last));
+        let last = col + 1 == cells;
+        spans.extend(cell_spans(row.get(col), *width, align, last, styles));
     }
     Line::from(spans)
 }
@@ -92,6 +98,7 @@ fn cell_spans(
     width: usize,
     align: Alignment,
     last: bool,
+    styles: &Styles,
 ) -> Vec<Span<'static>> {
     let (mut spans, used) = match cell {
         Some(cell) => truncate(&cell.0, width),
@@ -104,10 +111,10 @@ fn cell_spans(
         Alignment::Left | Alignment::None => (0, if last { 0 } else { pad }),
     };
     if left > 0 {
-        spans.insert(0, Span::raw(" ".repeat(left)));
+        spans.insert(0, Span::styled(" ".repeat(left), styles.base));
     }
     if right > 0 {
-        spans.push(Span::raw(" ".repeat(right)));
+        spans.push(Span::styled(" ".repeat(right), styles.base));
     }
     spans
 }

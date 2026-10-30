@@ -14,8 +14,14 @@ const TAB: &str = "    ";
 /// kept. Tabs become four spaces. A trailing newline does not add a line, and
 /// empty `text` gives no lines. Wide characters count 2 cells; one that does
 /// not fit in what is left of a line moves to the next. A grapheme is never
-/// split, and one wider than `width` gets a line to itself.
+/// split, and one wider than `width` gets a line to itself. Control
+/// characters (such as a lone `\r`, or the `ESC` of an ANSI sequence) are
+/// dropped; escape sequences are not interpreted, so strip them first if the
+/// text may hold any. A `width` of 0 gives no lines, as in `render_markdown`.
 pub fn char_wrap(text: &str, width: u16, style: Style) -> Vec<Line<'static>> {
+    if width == 0 {
+        return Vec::new();
+    }
     text.lines()
         .flat_map(|line| wrap_spans(&[Span::styled(line.to_string(), style)], usize::from(width)))
         .map(Line::from)
@@ -40,6 +46,9 @@ pub(super) fn wrap_spans(spans: &[Span<'static>], width: usize) -> Vec<Vec<Span<
     for span in spans {
         let text = span.content.replace('\t', TAB);
         for g in text.graphemes(true) {
+            if g.chars().all(char::is_control) {
+                continue;
+            }
             let w = g.width();
             if used + w > width && used > 0 {
                 lines.push(Vec::new());

@@ -24,6 +24,9 @@ impl Inline {
         if text.is_empty() {
             return;
         }
+        // A tab cannot be drawn: it would vanish and join its neighbours.
+        let text = text.replace('\t', "    ");
+        let text = text.as_str();
         match self.0.last_mut() {
             Some(last) if last.style == style => last.text.push_str(text),
             _ => self.0.push(Seg {
