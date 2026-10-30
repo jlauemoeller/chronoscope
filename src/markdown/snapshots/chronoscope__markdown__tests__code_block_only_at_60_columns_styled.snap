@@ -1,0 +1,17 @@
+---
+source: src/markdown/tests.rs
+expression: buffer_to_styled(&buffer)
+---
+  // Compute the answer.                                    
+  fn answer(input: &str) -> u32 {                           
+      let label = "the answer";                             
+      if input.is_empty() { return 42; }                    
+      label.len() as u32                                    
+  }                                                         
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Reset/Reset/NONE | 2..24 Rgb(161, 161, 161)/Reset/NONE | 24..60 Reset/Reset/NONE
+1: 0..2 Reset/Reset/NONE | 2..4 Rgb(139, 92, 246)/Reset/NONE | 4..5 Rgb(250, 250, 250)/Reset/NONE | 5..11 Rgb(229, 229, 229)/Reset/NONE | 11..19 Rgb(250, 250, 250)/Reset/NONE | 19..23 Rgb(139, 92, 246)/Reset/NONE | 23..28 Rgb(250, 250, 250)/Reset/NONE | 28..31 Rgb(139, 92, 246)/Reset/NONE | 31..33 Rgb(250, 250, 250)/Reset/NONE | 33..60 Reset/Reset/NONE
+2: 0..2 Reset/Reset/NONE | 2..6 Rgb(250, 250, 250)/Reset/NONE | 6..9 Rgb(139, 92, 246)/Reset/NONE | 9..16 Rgb(250, 250, 250)/Reset/NONE | 16..17 Rgb(139, 92, 246)/Reset/NONE | 17..18 Rgb(250, 250, 250)/Reset/NONE | 18..30 Rgb(250, 204, 21)/Reset/NONE | 30..31 Rgb(250, 250, 250)/Reset/NONE | 31..60 Reset/Reset/NONE
+3: 0..2 Reset/Reset/NONE | 2..6 Rgb(250, 250, 250)/Reset/NONE | 6..8 Rgb(139, 92, 246)/Reset/NONE | 8..15 Rgb(250, 250, 250)/Reset/NONE | 15..23 Rgb(229, 229, 229)/Reset/NONE | 23..28 Rgb(250, 250, 250)/Reset/NONE | 28..34 Rgb(139, 92, 246)/Reset/NONE | 34..35 Rgb(250, 250, 250)/Reset/NONE | 35..37 Rgb(250, 204, 21)/Reset/NONE | 37..40 Rgb(250, 250, 250)/Reset/NONE | 40..60 Reset/Reset/NONE
+4: 0..2 Reset/Reset/NONE | 2..12 Rgb(250, 250, 250)/Reset/NONE | 12..15 Rgb(229, 229, 229)/Reset/NONE | 15..18 Rgb(250, 250, 250)/Reset/NONE | 18..20 Rgb(139, 92, 246)/Reset/NONE | 20..21 Rgb(250, 250, 250)/Reset/NONE | 21..24 Rgb(139, 92, 246)/Reset/NONE | 24..60 Reset/Reset/NONE
+5: 0..2 Reset/Reset/NONE | 2..3 Rgb(250, 250, 250)/Reset/NONE | 3..60 Reset/Reset/NONE

@@ -1,0 +1,63 @@
+---
+source: src/markdown/tests.rs
+expression: buffer_to_styled(&buffer)
+---
+Release notes                                                                   
+                                                                                
+Highlights                                                                      
+                                                                                
+A paragraph with emphasis, strong text, inline_code and a link to the docs that 
+is long enough to wrap onto more lines.                                         
+                                                                                
+• First bullet                                                                  
+  • Nested bullet one                                                           
+  • Nested bullet two with enough words to wrap around                          
+• Second bullet                                                                 
+                                                                                
+1. Ordered one                                                                  
+2. Ordered two                                                                  
+                                                                                
+│ A quoted remark that is long enough to wrap when the terminal is narrow.      
+                                                                                
+Name     │ Description                          │ Status                        
+─────────┼──────────────────────────────────────┼────────────                   
+parser   │ Turns markdown into blocks           │ done                          
+renderer │ Lays the blocks out as wrapped lines │ in progress                   
+                                                                                
+  // Say hello.                                                                 
+  fn main() {                                                                   
+      let answer = 42;                                                          
+      println!("The answer is {answer}, printed from main with a long line");   
+  }                                                                             
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+--- styles (fg/bg/modifiers) ---
+0: 0..13 Rgb(250, 250, 250)/Reset/BOLD | UNDERLINED | 13..80 Reset/Reset/NONE
+1: 0..80 Reset/Reset/NONE
+2: 0..10 Rgb(250, 250, 250)/Reset/BOLD | 10..80 Reset/Reset/NONE
+3: 0..80 Reset/Reset/NONE
+4: 0..17 Rgb(250, 250, 250)/Reset/NONE | 17..25 Rgb(250, 250, 250)/Reset/ITALIC | 25..27 Rgb(250, 250, 250)/Reset/NONE | 27..38 Rgb(250, 250, 250)/Reset/BOLD | 38..58 Rgb(250, 250, 250)/Reset/NONE | 58..74 Rgb(250, 250, 250)/Reset/UNDERLINED | 74..79 Rgb(250, 250, 250)/Reset/NONE | 79..80 Reset/Reset/NONE
+5: 0..39 Rgb(250, 250, 250)/Reset/NONE | 39..80 Reset/Reset/NONE
+6: 0..80 Reset/Reset/NONE
+7: 0..14 Rgb(250, 250, 250)/Reset/NONE | 14..80 Reset/Reset/NONE
+8: 0..2 Reset/Reset/NONE | 2..21 Rgb(250, 250, 250)/Reset/NONE | 21..80 Reset/Reset/NONE
+9: 0..2 Reset/Reset/NONE | 2..54 Rgb(250, 250, 250)/Reset/NONE | 54..80 Reset/Reset/NONE
+10: 0..15 Rgb(250, 250, 250)/Reset/NONE | 15..80 Reset/Reset/NONE
+11: 0..80 Reset/Reset/NONE
+12: 0..14 Rgb(250, 250, 250)/Reset/NONE | 14..80 Reset/Reset/NONE
+13: 0..14 Rgb(250, 250, 250)/Reset/NONE | 14..80 Reset/Reset/NONE
+14: 0..80 Reset/Reset/NONE
+15: 0..2 Rgb(161, 161, 161)/Reset/NONE | 2..74 Rgb(250, 250, 250)/Reset/NONE | 74..80 Reset/Reset/NONE
+16: 0..80 Reset/Reset/NONE
+17: 0..4 Rgb(250, 250, 250)/Reset/BOLD | 4..8 Reset/Reset/NONE | 8..11 Rgb(161, 161, 161)/Reset/NONE | 11..22 Rgb(250, 250, 250)/Reset/BOLD | 22..47 Reset/Reset/NONE | 47..50 Rgb(161, 161, 161)/Reset/NONE | 50..56 Rgb(250, 250, 250)/Reset/BOLD | 56..80 Reset/Reset/NONE
+18: 0..61 Rgb(161, 161, 161)/Reset/NONE | 61..80 Reset/Reset/NONE
+19: 0..6 Rgb(250, 250, 250)/Reset/NONE | 6..8 Reset/Reset/NONE | 8..11 Rgb(161, 161, 161)/Reset/NONE | 11..37 Rgb(250, 250, 250)/Reset/NONE | 37..47 Reset/Reset/NONE | 47..50 Rgb(161, 161, 161)/Reset/NONE | 50..54 Rgb(250, 250, 250)/Reset/NONE | 54..80 Reset/Reset/NONE
+20: 0..8 Rgb(250, 250, 250)/Reset/NONE | 8..11 Rgb(161, 161, 161)/Reset/NONE | 11..47 Rgb(250, 250, 250)/Reset/NONE | 47..50 Rgb(161, 161, 161)/Reset/NONE | 50..61 Rgb(250, 250, 250)/Reset/NONE | 61..80 Reset/Reset/NONE
+21: 0..80 Reset/Reset/NONE
+22: 0..2 Reset/Reset/NONE | 2..15 Rgb(161, 161, 161)/Reset/NONE | 15..80 Reset/Reset/NONE
+23: 0..2 Reset/Reset/NONE | 2..4 Rgb(139, 92, 246)/Reset/NONE | 4..5 Rgb(250, 250, 250)/Reset/NONE | 5..9 Rgb(229, 229, 229)/Reset/NONE | 9..13 Rgb(250, 250, 250)/Reset/NONE | 13..80 Reset/Reset/NONE
+24: 0..2 Reset/Reset/NONE | 2..6 Rgb(250, 250, 250)/Reset/NONE | 6..9 Rgb(139, 92, 246)/Reset/NONE | 9..17 Rgb(250, 250, 250)/Reset/NONE | 17..18 Rgb(139, 92, 246)/Reset/NONE | 18..19 Rgb(250, 250, 250)/Reset/NONE | 19..21 Rgb(250, 204, 21)/Reset/NONE | 21..22 Rgb(250, 250, 250)/Reset/NONE | 22..80 Reset/Reset/NONE
+25: 0..2 Reset/Reset/NONE | 2..15 Rgb(250, 250, 250)/Reset/NONE | 15..75 Rgb(250, 204, 21)/Reset/NONE | 75..77 Rgb(250, 250, 250)/Reset/NONE | 77..80 Reset/Reset/NONE
+26: 0..2 Reset/Reset/NONE | 2..3 Rgb(250, 250, 250)/Reset/NONE | 3..80 Reset/Reset/NONE
+27: 0..80 Reset/Reset/NONE
+28: 0..80 Rgb(161, 161, 161)/Reset/NONE
