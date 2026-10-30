@@ -9,6 +9,9 @@
 //! turns to the `Transcript` through its `attr`. The `App` keeps no copy of
 //! them.
 
+use std::time::SystemTime;
+
+use chrono::{DateTime, Utc};
 use tuirealm::props::{AttrValue, PropPayload};
 
 use super::hints::browser_hints;
@@ -18,13 +21,13 @@ use super::selector::{SELECTOR_IDS, mount_selector};
 use super::session_port::{SessionUpdate, forward_to};
 use super::{App, Id};
 use crate::components::{
-    BrowserHeader, EMPTY_SESSION, EmptyState, HelpLine, MODEL_UPDATE_ATTR, OPEN_SUBAGENT_KEY_ATTR,
-    PARSE_WARNINGS_ATTR, STATUS_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript,
-    status_value,
+    BrowserHeader, EMPTY_SESSION, EmptyState, HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR,
+    NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR, PARSE_WARNINGS_ATTR, STATUS_ATTR,
+    TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript, status_value,
 };
 use crate::harness::WatchHandle;
 use crate::keymap::{Action, Context};
-use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary};
+use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary, is_active_at};
 use crate::theme::Role;
 
 /// The browser's components, in drawing order.
@@ -59,6 +62,15 @@ pub(super) struct BrowserState {
     loaded: bool,
     /// Whether the session is loaded and has no turns.
     empty: bool,
+    /// The percentage the initial load reports, while it runs.
+    loading: Option<u32>,
+    /// The sections the transcript counts as new (`↓ N new`).
+    new_sections: usize,
+    /// The latest `Activity`: when the data last changed, and the harness's
+    /// idle flag.
+    activity: Option<(SystemTime, Option<bool>)>,
+    /// Whether the header shows `● live`.
+    live: bool,
 }
 
 impl BrowserState {
@@ -162,8 +174,7 @@ impl App {
             open: Some(OpenSession { harness, summary }),
             generation,
             watch: Some(watch),
-            loaded: false,
-            empty: false,
+            ..BrowserState::default()
         };
         self.unmount_selector();
         self.unmount_browser();
@@ -212,7 +223,8 @@ impl App {
         let transcript = Transcript::new(self.theme.clone(), self.timestamps.clone())
             .keymap(self.keymap.clone())
             .dim_unselected(self.config.dim_unselected)
-            .show_system(self.config.show_system);
+            .show_system(self.config.show_system)
+            .loading(!self.browser.loaded);
         let help = HelpLine::new(
             browser_hints(&self.keymap),
             Vec::new(),
@@ -266,6 +278,7 @@ impl App {
             );
             return;
         }
+        self.request_redraw(RedrawRequest::Dirty);
         match update.update() {
             ModelUpdate::Progress(fraction) => {
                 if !self.browser.loaded {
@@ -275,6 +288,9 @@ impl App {
             ModelUpdate::Loaded => {
                 self.browser.loaded = true;
                 self.set_loading(None);
+                // The transcript decides whether to follow from here on.
+                self.forward_to_transcript(update);
+                self.sync_new_sections();
                 self.refresh_session_empty();
             }
             ModelUpdate::ParseWarnings(count) => {
@@ -286,12 +302,66 @@ impl App {
             }
             ModelUpdate::Appended(_) => {
                 self.forward_to_transcript(update);
+                self.sync_new_sections();
                 self.refresh_session_empty();
             }
-            ModelUpdate::Updated(_) | ModelUpdate::Reset => self.forward_to_transcript(update),
-            // The `● live` marker (SPEC §7.2) will read it; a later task stores
-            // `last_modified`/`idle` and draws the marker (with its snapshots).
-            ModelUpdate::Activity { .. } => {}
+            ModelUpdate::Updated(_) | ModelUpdate::Reset => {
+                self.forward_to_transcript(update);
+                self.sync_new_sections();
+            }
+            ModelUpdate::Activity {
+                last_modified,
+                idle,
+            } => {
+                self.browser.activity = Some((*last_modified, *idle));
+                self.refresh_live();
+            }
+        }
+    }
+
+    /// Re-evaluates whether the session is live (SPEC §7.2) and pushes the
+    /// result to the header when it changed. Runs on every `Tick`, so the
+    /// marker goes out once the session has been quiet for a minute.
+    pub(super) fn refresh_live(&mut self) {
+        let live = self.browser.activity.is_some_and(|(modified, idle)| {
+            is_active_at(DateTime::<Utc>::from(modified), idle, (self.clock)())
+        });
+        if live != self.browser.live {
+            self.browser.live = live;
+            self.set_attr(Id::BrowserHeader, LIVE_ATTR, AttrValue::Flag(live));
+        }
+    }
+
+    /// Whether the header shows `● live`.
+    pub fn session_is_live(&self) -> bool {
+        self.browser.live
+    }
+
+    /// The number the help line's `↓ N new` shows (0: nothing).
+    pub fn new_sections(&self) -> usize {
+        self.browser.new_sections
+    }
+
+    /// Takes the count of new sections from the transcript, after an update
+    /// that may have changed it (keys report it themselves, as a `Msg`).
+    pub(super) fn sync_new_sections(&mut self) {
+        let count = self
+            .application
+            .query(&Id::Transcript, NEW_SECTIONS_ATTR)
+            .ok()
+            .flatten()
+            .map(tuirealm::props::QueryResult::into_attr);
+        if let Some(AttrValue::Length(count)) = count {
+            self.set_new_sections(count);
+        }
+    }
+
+    /// The transcript counts `count` new sections: shows `↓ N new` in the
+    /// help line, or removes it at 0.
+    pub(super) fn set_new_sections(&mut self, count: usize) {
+        if count != self.browser.new_sections {
+            self.browser.new_sections = count;
+            self.refresh_status();
         }
     }
 
@@ -304,12 +374,22 @@ impl App {
         );
     }
 
-    /// Shows `Loading… N%` in the help line, or nothing.
+    /// Remembers the progress of the initial load and shows it.
     fn set_loading(&mut self, percent: Option<u32>) {
-        let items = percent
-            .map(|p| format!("Loading… {p}%"))
-            .into_iter()
-            .collect();
+        self.browser.loading = percent;
+        self.refresh_status();
+    }
+
+    /// Shows the status items in the help line: the progress of the load,
+    /// then `↓ N new`. A search position (SPEC §4.2) goes after them.
+    fn refresh_status(&mut self) {
+        let mut items = Vec::new();
+        if let Some(percent) = self.browser.loading {
+            items.push(format!("Loading… {percent}%"));
+        }
+        if self.browser.new_sections > 0 {
+            items.push(format!("↓ {} new", self.browser.new_sections));
+        }
         self.set_attr(Id::BrowserHelpLine, STATUS_ATTR, status_value(items));
     }
 

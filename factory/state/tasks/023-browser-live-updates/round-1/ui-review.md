@@ -1,0 +1,21 @@
+VERDICT: PASS
+
+## Summary
+All four UI states in the task's `UI` section have `insta` snapshots through `App::view` at the required sizes, and they match the description. `● live` is right-aligned on the cwd row and ends at column `w − 3`, with `●` in `primary` (229,229,229) and `live` in `muted_foreground` (161,161,161). The parse-warning note sits two cells to its left. `↓ N new` is right-aligned in the help line in `help_text`. The scratch-crate renders of the header, help line and transcript follow/count behaviour at other sizes found no problems at any width the app can show (MIN_WIDTH 60, MIN_HEIGHT 20). The test gate passes: `INSTA_UPDATE=no cargo test`, `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` all exit 0, and no pending snapshots were left behind.
+
+## States checked
+- Live session at the bottom @ 120x40: snapshot `live_session_at_the_bottom_120x40_text`. ok: the transcript ends on the last section, selected with `▒`, and `● live` ends at col 117 with the border at 119.
+- Live session at the bottom @ 120x40 styled: snapshot `live_session_at_the_bottom_120x40_styled`. ok: row 2 has 112 `●` primary and 113..118 ` live` muted_foreground. The rest of the row is unchanged from task 021.
+- Live session at the bottom @ 80x24: snapshot `live_session_at_the_bottom_80x24_text`. ok.
+- Scrolled up after 3 new sections @ 80x24: snapshot `scrolled_up_after_three_new_sections_80x24_text`. ok: the test asserts that rows 0..23 are identical before and after the append, and the help line ends with `↓ 3 new` (hints are dropped as needed, the status is kept).
+- Header with `2 entries could not be parsed` and `● live` @ 120x40: snapshot `header_with_the_parse_warning_and_the_live_marker_120x40_text`. ok: there are two cells between the note and `●`.
+- After `G` @ 80x24: snapshot `after_g_the_new_content_is_visible_and_the_indicator_is_gone_80x24_text`. ok: t9..t11 are visible, the last section is selected, and there is no `↓ N new`.
+- BrowserHeader @ 20/30/40/50/60/80 columns with a short cwd, the long cwd, 0/2/1234 warnings, and live on: rendered in the scratch crate. ok at every width ≥ 44, including at 60 with the long cwd plus 1234 warnings (the cwd is cut from the left with `…`). Below 44 the row overflows (see nit 1).
+- BrowserHeader styled @ 80x5 with note + live: rendered in the scratch crate. ok: the note and ` live` are muted_foreground and `●` is primary.
+- HelpLine (inset 1) @ 20/30/40/60/80 with `↓ 3 new`, `↓ 12345 new`, and `Loading… 50%` + `↓ 3 new`: rendered in the scratch crate. ok: right-aligned, ending one column before the edge, and hints are dropped whole to make room. Styled: the status is `help_text` (161,161,161).
+- Transcript @ 40x12, loading → `Loaded` (tall) → `G` → append while following → scroll up ×2 → 2 sections appended → the last turn grows by 1 section → `G`: rendered in the scratch crate. ok: the view stays at the top while loading, and `following=false` after `Loaded`. The view and selection follow the append. While scrolled up the offset and selection are kept, the count goes 2 → 3, and `G` resets it to 0 with the new content visible.
+- Transcript @ 20x3 (tiny viewport) following an append: rendered in the scratch crate. ok: it stays pinned to the last row.
+
+## Findings
+1. [nit] BrowserHeader, parse-warning note + `● live`, widths below 44 columns: the cwd row runs past the pane. At 40x5 the blank column and the right `│` are lost (`│ 2 entries could not be parsed  ● live `). With the note alone, the same width still fits. This can't happen in the app, because MIN_WIDTH = 60 shows "Terminal too small" first, so it is only a robustness detail. If it's addressed, change `cwd_row` so that when `note + gap + live` doesn't fit in `inner − 2`, it drops the note (keeping `● live`) or cuts the note with `…`, so the row is always exactly `w` cells and ends in `│`. See `ui/browser-header-note-live-40x5.txt`.
+2. [nit] Help line, `↓ N new`: no styled snapshot shows the indicator's colour through `App::view`. This isn't required, because state 2 is listed as text-only, the `help_text` colour of status items is already asserted in the `help_line` component tests, and the scratch render confirms it. A styled variant of `scrolled_up_after_three_new_sections` would still pin it at screen level.

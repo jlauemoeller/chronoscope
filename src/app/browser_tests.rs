@@ -168,6 +168,8 @@ struct Rig {
     app: App,
     harness: Arc<FakeHarness>,
     keys: Sender<Event<UserEvent>>,
+    /// What the app's clock shows; starts at [`now`].
+    clock: Arc<Mutex<chrono::DateTime<chrono::Utc>>>,
 }
 
 fn brio() -> Project {
@@ -237,13 +239,20 @@ fn rig_with(theme: Theme, width: u16, height: u16) -> Rig {
         )
         .add_port(Box::new(KeyPort(key_events)), Duration::from_millis(2), 4);
     let mut app = App::new(init(&[CLAUDE], theme), listener, PathBuf::from("/nowhere")).unwrap();
-    app.set_clock(now);
+    let clock = Arc::new(Mutex::new(now()));
+    let shown = Arc::clone(&clock);
+    app.set_clock(move || *shown.lock().unwrap());
     app.update(Msg::Resized(width, height));
     let harness = FakeHarness::new();
     app.set_harnesses([Arc::clone(&harness) as Arc<dyn Harness>]);
     app.set_session_sink(sink);
     app.update(fixtures::message(index()));
-    Rig { app, harness, keys }
+    Rig {
+        app,
+        harness,
+        keys,
+        clock,
+    }
 }
 
 fn rig() -> Rig {
@@ -1227,3 +1236,5 @@ theme_snapshot!(loaded_browser_theme_gruvbox, "gruvbox");
 theme_snapshot!(loaded_browser_theme_nord, "nord");
 theme_snapshot!(loaded_browser_theme_tokyo_night, "tokyo-night");
 theme_snapshot!(loaded_browser_theme_solarized, "solarized");
+
+mod live;

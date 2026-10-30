@@ -196,7 +196,13 @@ pub const ACTIVE_WINDOW: chrono::Duration = chrono::Duration::seconds(60);
 /// not idle, or it had activity within the last [`ACTIVE_WINDOW`]. The
 /// selector's `●` marker and the browser's `● live` header share this rule.
 pub fn is_active(session: &SessionSummary, now: DateTime<Utc>) -> bool {
-    session.idle == Some(false) || now.signed_duration_since(session.last_activity) <= ACTIVE_WINDOW
+    is_active_at(session.last_activity, session.idle, now)
+}
+
+/// The rule of [`is_active`] for a session whose last activity was at
+/// `last_activity` and whose harness reports `idle`.
+pub fn is_active_at(last_activity: DateTime<Utc>, idle: Option<bool>, now: DateTime<Utc>) -> bool {
+    idle == Some(false) || now.signed_duration_since(last_activity) <= ACTIVE_WINDOW
 }
 
 /// What the session list shows to the right of a row (SPEC §4.1).

@@ -803,6 +803,8 @@ impl App {
                 VIEWPORT_ATTR,
                 viewport_value(transcript.as_size()),
             );
+            // A new size can show the end again, which resumes following.
+            self.sync_new_sections();
         }
     }
 }

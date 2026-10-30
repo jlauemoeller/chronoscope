@@ -141,6 +141,11 @@ pub enum Msg {
     /// A key changed what the transcript shows (selection, scroll, folds):
     /// nothing but a redraw is needed.
     TranscriptChanged,
+    /// The transcript counts this many sections that arrived while the user
+    /// was away from the end (`↓ N new`); 0 once following resumes. Keys
+    /// report it this way; after the updates and viewport changes it
+    /// forwards, the App reads the count from the transcript itself.
+    NewSections(usize),
     /// `Enter` in the prompt, with its text (`"y"` for a yes in a `y/n`
     /// prompt).
     PromptSubmit(String),
@@ -493,6 +498,11 @@ impl App {
             Msg::Selector(msg) => self.selector_msg(msg),
             Msg::PromptChanged(text) => self.search_changed(text),
             Msg::PromptMoved | Msg::TranscriptChanged => self.request_redraw(RedrawRequest::Dirty),
+            Msg::NewSections(count) => {
+                // The key that reported it moved the view too.
+                self.request_redraw(RedrawRequest::Dirty);
+                self.set_new_sections(count);
+            }
             Msg::PromptSubmit(_) => self.search_submit(),
             Msg::PromptCancel => self.search_cancel(),
             Msg::PromptNav(direction) => self.search_nav(direction),
@@ -514,9 +524,9 @@ impl App {
     }
 
     fn tick_elapsed(&mut self) {
-        // The toast expires itself on `Tick` (see `Toast`). The browser's live
-        // marker comes with the browser.
+        // The toast expires itself on `Tick` (see `Toast`).
         self.refresh_activity();
+        self.refresh_live();
     }
 
     /// Removes the toast, unless `id` is that of a toast that was replaced.
