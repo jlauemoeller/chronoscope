@@ -344,7 +344,7 @@ impl App {
 
     /// Takes the count of new sections from the transcript, after an update
     /// that may have changed it (keys report it themselves, as a `Msg`).
-    fn sync_new_sections(&mut self) {
+    pub(super) fn sync_new_sections(&mut self) {
         let count = self
             .application
             .query(&Id::Transcript, NEW_SECTIONS_ATTR)

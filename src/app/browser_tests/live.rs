@@ -128,6 +128,19 @@ fn scrolled_up_new_turns_are_counted_in_the_help_line_and_g_resets_it() {
 }
 
 #[test]
+fn a_resize_that_shows_the_end_again_removes_a_stale_indicator() {
+    let mut rig = rig_with(theme("default"), 80, 24);
+    rig.open_live();
+    rig.live_update(ModelUpdate::Appended(replies(&["t9"])));
+    assert_eq!(status(&rig.app), ["↓ 1 new"]);
+    // Tall enough for the whole transcript: the end is in view again.
+    rig.app.update(Msg::Resized(80, 120));
+    assert!(following(&rig.app));
+    assert!(status(&rig.app).is_empty());
+    assert_eq!(rig.app.new_sections(), 0);
+}
+
+#[test]
 fn the_end_key_resumes_following_too() {
     let mut rig = rig_with(theme("default"), 80, 24);
     rig.open_live();

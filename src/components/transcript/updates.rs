@@ -55,9 +55,13 @@ impl Transcript {
         };
         let before = self.sections_if(|id| turns.iter().any(|t| t.id() == id));
         let top_block = self.visible_blocks().start;
+        let above = self.selected_above_top_row(turns, top_block);
         let changes = change(&mut self.content, turns);
         (0..changes.appended).for_each(|_| self.cache.push());
         self.invalidate_replaced(&changes.replaced, top_block);
+        if let Some((id, rows)) = above {
+            self.keep_screen_for(&id, rows);
+        }
         // Only a batch that touched the selected turn can have removed its
         // section; an untouched selection needs no layout to check.
         if before.is_some() || self.content.selected.is_none() {
@@ -73,6 +77,35 @@ impl Transcript {
             self.pin_to_bottom();
         }
         self.refresh();
+    }
+
+    /// When the selected section lies entirely above the top row of the
+    /// viewport, in the block that contains that row, and `turns` replace
+    /// that block: the section and how many rows it takes now.
+    fn selected_above_top_row(
+        &mut self,
+        turns: &[Arc<Turn>],
+        top_block: usize,
+    ) -> Option<(SectionId, usize)> {
+        let selected = self.content.selected.as_ref()?;
+        let at = *self.content.index.get(&selected.turn)?;
+        if at != top_block || !turns.iter().any(|t| *t.id() == selected.turn) {
+            return None;
+        }
+        let cur = self.cursor()?;
+        let rows = self.section_rows_abs(&cur);
+        (rows.end <= self.offset).then(|| (cur.id().clone(), rows.len()))
+    }
+
+    /// Moves the offset by how much the selected section `id`, which was
+    /// `rows` rows high above the top row, grew or shrank, so that the rows
+    /// on screen stay where they are.
+    fn keep_screen_for(&mut self, id: &SectionId, rows: usize) {
+        let Some(cur) = self.cursor().filter(|cur| cur.id() == id) else {
+            return;
+        };
+        let now = self.section_rows_abs(&cur).len();
+        self.offset = (self.offset + now).saturating_sub(rows);
     }
 
     /// Forgets the heights of the replaced blocks. A block above the top of

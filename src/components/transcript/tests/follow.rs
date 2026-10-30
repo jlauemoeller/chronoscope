@@ -459,6 +459,7 @@ fn an_arriving_tool_result_keeps_selection_folds_and_scroll_offset() {
     assert!(t.select(&tool_section()));
     t.set_folded(&tool_section(), false);
     t.set_folded(&item_section("a1", "x1"), true);
+    t.content.folds.set_expanded(tool_section());
     t.scroll_to(3);
     let offset = t.offset();
     let new_before = t.new_sections();
@@ -469,6 +470,10 @@ fn an_arriving_tool_result_keeps_selection_folds_and_scroll_offset() {
     assert_eq!(t.selected(), Some(&tool_section()));
     assert_eq!(t.is_folded(&tool_section()), Some(false));
     assert_eq!(t.is_folded(&item_section("a1", "x1")), Some(true));
+    assert!(
+        t.content.folds.is_expanded(&tool_section()),
+        "expansion stays"
+    );
     assert_eq!(t.offset(), offset);
     assert_eq!(t.new_sections(), new_before);
     let text = block_rows(&t, 1, 80).join("\n");
@@ -489,23 +494,84 @@ fn an_update_of_a_visible_turn_does_not_move_the_viewport_when_scrolled_up() {
     assert!(!t.following());
 }
 
-#[test]
-fn a_selected_section_that_changes_height_above_the_viewport_keeps_the_screen_still() {
-    let mut t = transcript_with_a_pending_call();
-    // Select the tool call, then scroll it out above the viewport.
-    assert!(t.select(&tool_section()));
-    let tool_end = {
-        let at = t.content.index[&TurnId::from("a1")];
-        let top = t.measured(|cache, m| cache.top(at, m));
-        top + t.cache.known_height(at).unwrap()
-    };
-    t.scroll_to(tool_end + 2);
-    assert_eq!(t.selected(), Some(&tool_section()));
-    let rows = text_rows(&draw(&mut t, 80, 14));
-    t.apply_update(&ModelUpdate::Updated(vec![pending_call(
-        Some((&numbered_lines(6), false)),
+/// The transcript rows of the tool call's block: where it starts, and where
+/// its tool section starts and ends.
+fn tool_rows(t: &mut Transcript) -> (usize, std::ops::Range<usize>) {
+    let at = t.content.index[&TurnId::from("a1")];
+    let top = t.measured(|cache, m| cache.top(at, m));
+    let rows = t
+        .content
+        .section_rows(t.turn(at).unwrap(), 80)
+        .into_iter()
+        .find(|(id, _)| *id == tool_section())
+        .unwrap()
+        .1;
+    (top, top + rows.start..top + rows.end)
+}
+
+fn result_of(lines: usize) -> ModelUpdate {
+    ModelUpdate::Updated(vec![pending_call(
+        Some((&numbered_lines(lines), false)),
         ToolStatus::Ok,
-    )]));
+    )])
+}
+
+fn height_of_block(t: &mut Transcript, id: &str) -> usize {
+    let at = t.content.index[&TurnId::from(id)];
+    t.measured(|cache, m| cache.height(at, m))
+}
+
+#[test]
+fn a_selected_section_that_grows_above_the_viewport_keeps_the_screen_still() {
+    let mut t = transcript_with_a_pending_call();
+    assert!(t.select(&tool_section()));
+    // Unfolded, the call shows its result, so the result changes its height.
+    t.set_folded(&tool_section(), false);
+    let (_, rows) = tool_rows(&mut t);
+    // The whole block is above the top row of the viewport.
+    let block_end = {
+        let (top, _) = tool_rows(&mut t);
+        top + height_of_block(&mut t, "a1")
+    };
+    t.scroll_to(block_end + 2);
+    assert!(t.offset() >= rows.end);
     assert_eq!(t.selected(), Some(&tool_section()));
-    assert_eq!(text_rows(&draw(&mut t, 80, 14)), rows);
+    let rows_before = text_rows(&draw(&mut t, 80, 14));
+    let height = height_of_block(&mut t, "a1");
+    t.apply_update(&result_of(6));
+    assert_ne!(
+        height_of_block(&mut t, "a1"),
+        height,
+        "the section's height changed"
+    );
+    assert_eq!(t.selected(), Some(&tool_section()));
+    assert_eq!(text_rows(&draw(&mut t, 80, 14)), rows_before);
+}
+
+#[test]
+fn a_selected_section_above_the_top_row_of_a_block_that_straddles_the_viewport_keeps_the_screen_still()
+ {
+    let mut t = transcript_with_a_pending_call();
+    assert!(t.select(&tool_section()));
+    t.set_folded(&tool_section(), false);
+    let (_, rows) = tool_rows(&mut t);
+    // The selected section ends above the top row, but its block goes on: the
+    // top row is the blank row or the bottom border after it.
+    t.scroll_to(rows.end);
+    assert_eq!(t.offset(), rows.end);
+    let block = t.content.index[&TurnId::from("a1")];
+    assert!(
+        t.visible_blocks().contains(&block),
+        "the block straddles the top"
+    );
+    let rows_before = text_rows(&draw(&mut t, 80, 14));
+    let height = height_of_block(&mut t, "a1");
+    t.apply_update(&result_of(6));
+    assert_ne!(
+        height_of_block(&mut t, "a1"),
+        height,
+        "the section's height changed"
+    );
+    assert_eq!(t.selected(), Some(&tool_section()));
+    assert_eq!(text_rows(&draw(&mut t, 80, 14)), rows_before);
 }
