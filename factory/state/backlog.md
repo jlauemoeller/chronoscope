@@ -13,7 +13,7 @@
 | 009-claude-session-loading | Complete |
 | 010-session-index-worker | Complete |
 | 011-app-runtime | Complete |
-| 012-help-line-toast | Planned |
+| 012-help-line-toast | In progress |
 | 013-selector-panes | Planned |
 | 014-selector-selection-rules | Planned |
 | 015-selector-search | Planned |
