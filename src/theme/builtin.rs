@@ -13,6 +13,8 @@ use super::{Palette, Theme};
 
 /// The id of the default theme.
 pub const DEFAULT_ID: &str = "default";
+/// Id of the Terminal theme, which uses only ANSI colours.
+pub const TERMINAL_ID: &str = "terminal";
 
 /// A compiled-in theme with the id used in `config.toml` and `--theme`.
 #[derive(Debug, Clone, PartialEq, Eq)]

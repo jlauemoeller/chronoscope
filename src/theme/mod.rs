@@ -8,11 +8,14 @@
 //! [`Theme::style`].
 //!
 //! Colour parsing lives in [`color`], theme-file parsing in [`parse`] and the
-//! compiled-in themes in [`builtin`].
+//! compiled-in themes in [`builtin`]. The list of available themes is the
+//! [`registry`], and [`resolve`] picks the active one for the terminal.
 
 pub mod builtin;
 pub mod color;
 pub mod parse;
+pub mod registry;
+pub mod resolve;
 
 use std::collections::BTreeMap;
 
@@ -20,6 +23,8 @@ use ratatui::style::{Color, Modifier, Style};
 
 pub use color::{ColorParseError, parse_color};
 pub use parse::ThemeError;
+pub use registry::{ThemeEntry, ThemeRegistry};
+pub use resolve::{ResolveError, TerminalEnv, resolve, resolve_by_id};
 
 /// A base colour role (every §8.1 base role except `name`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
