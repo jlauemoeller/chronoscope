@@ -12,7 +12,7 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
-use super::empty_state::{EmptyState, NO_SESSIONS};
+use super::empty_state::{EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS};
 use super::list_pane::{
     PaneKey, PaneState, Part, RowParts, border_role, pane_key, render_rows, title_width,
     titled_block,
@@ -30,6 +30,10 @@ pub const SESSION_STATS_ATTR: Attribute = Attribute::Custom("session_stats");
 /// The attribute that sets which rows show the `●` marker
 /// ([`ActiveSessions`]).
 pub const ACTIVE_ATTR: Attribute = Attribute::Custom("active_sessions");
+/// The attribute that moves the selection of the search results
+/// (a payload of `tuirealm::command::Direction`: `Up` or `Down`), for the owner of the prompt
+/// that has the input focus meanwhile.
+pub const SEARCH_NAV_ATTR: Attribute = Attribute::Custom("search_nav");
 
 /// The columns between the timestamp and the title, and between the title
 /// and the stats.
@@ -49,6 +53,9 @@ pub struct SessionRow {
     pub started: String,
     /// The title.
     pub title: String,
+    /// The display name of the session's project, shown before the title in
+    /// search results (`<project> › <title>`).
+    pub project: Option<String>,
     /// Whether the session shows the `●` marker.
     pub active: bool,
     /// The stats, once they are computed.
@@ -60,6 +67,10 @@ pub struct SessionRow {
 pub struct SessionRows {
     /// The display name of the project, for the title `Sessions in <name>`.
     pub project: String,
+    /// The query when the rows are search results: the title then reads
+    /// `Sessions matching "<query>"`, and no rows read `No matching
+    /// sessions`.
+    pub search: Option<String>,
     /// The harness the sessions belong to, sent in [`Msg::OpenSession`].
     pub harness: Option<HarnessId>,
     pub rows: Arc<Vec<SessionRow>>,
@@ -111,15 +122,22 @@ pub fn format_stats(stats: &SessionStats) -> String {
 /// [`SelectorMsg::SessionSelected`]; `Enter` on the selected session asks to
 /// open it ([`Msg::OpenSession`]). When the app says the harness has nothing
 /// to list, the pane shows the [`EmptyState`] "No sessions for this harness".
+///
+/// Search results come in the same way, with [`SessionRows::search`] set: the
+/// rows then carry their project's name. The list keeps the focus's look
+/// while the prompt has the input focus; the app moves the selection with
+/// [`SEARCH_NAV_ATTR`].
 #[derive(Debug, Clone)]
 pub struct SessionList {
     pane: PaneState,
     keymap: Keymap,
     project: String,
+    search: Option<String>,
     harness: Option<HarnessId>,
     rows: Arc<Vec<SessionRow>>,
     harness_empty: bool,
     empty: EmptyState,
+    no_matches: EmptyState,
 }
 
 impl SessionList {
@@ -127,9 +145,11 @@ impl SessionList {
     pub fn new(keymap: Keymap, theme: Theme) -> Self {
         Self {
             empty: EmptyState::new(NO_SESSIONS, theme.clone()).without_background(),
+            no_matches: EmptyState::new(NO_MATCHING_SESSIONS, theme.clone()).without_background(),
             pane: PaneState::new(theme),
             keymap,
             project: String::new(),
+            search: None,
             harness: None,
             rows: Arc::default(),
             harness_empty: false,
@@ -152,7 +172,15 @@ impl SessionList {
     }
 
     fn title(&self, pane_width: u16) -> String {
-        let title = if self.project.is_empty() {
+        let title = if let Some(query) = &self.search {
+            // The query is cut inside the quotes, so the title still reads
+            // as a quoted query.
+            let room = title_width(pane_width).saturating_sub("Sessions matching \"\"".width());
+            format!(
+                "Sessions matching \"{}\"",
+                truncate_with_ellipsis(query, room.max(1))
+            )
+        } else if self.project.is_empty() {
             "Sessions".to_owned()
         } else {
             format!("Sessions in {}", self.project)
@@ -185,9 +213,25 @@ impl SessionList {
     }
 }
 
+/// The project's name is cut to about a third of the row's room, so the
+/// title stays visible after it.
+const MIN_PROJECT_WIDTH: usize = 8;
+
+/// What a row shows after the dot, in `room` cells: its title, after the
+/// project's name in search results.
+fn label(row: &SessionRow, room: usize) -> String {
+    match &row.project {
+        Some(project) => {
+            let project = truncate_with_ellipsis(project, (room / 3).max(MIN_PROJECT_WIDTH));
+            format!("{project} › {}", row.title)
+        }
+        None => row.title.clone(),
+    }
+}
+
 /// The pieces of `row` for a text width of `width` columns: the start, the
-/// title cut with `…`, and the stats on the right unless they would leave
-/// fewer than [`MIN_TITLE_WIDTH`] cells for the title.
+/// label cut with `…`, and the stats on the right unless they would leave
+/// fewer than [`MIN_TITLE_WIDTH`] cells for it.
 fn row_parts(row: &SessionRow, width: usize) -> RowParts {
     let prefix = row.started.width() + GAP.width() + DOT_SLOT_WIDTH;
     let stats = row.stats.as_ref().map(format_stats);
@@ -209,7 +253,7 @@ fn row_parts(row: &SessionRow, width: usize) -> RowParts {
             (Part::Text, row.started.clone()),
             (Part::Text, GAP.to_owned()),
             dot,
-            (Part::Text, truncate_with_ellipsis(&row.title, room)),
+            (Part::Text, truncate_with_ellipsis(&label(row, room), room)),
         ],
         stats,
     }
@@ -224,9 +268,14 @@ impl Component for SessionList {
         let title = self.title(area.width);
         let block = titled_block(&self.pane.theme, &title, border_role(self.pane.focused));
         frame.render_widget(block, area);
+        // Inside the border and the same 2-cell margin the rows keep.
+        let interior = area.inner(Margin::new(3, 1));
         if self.harness_empty {
-            // Inside the border and the same 2-cell margin the rows keep.
-            self.empty.view(frame, area.inner(Margin::new(3, 1)));
+            self.empty.view(frame, interior);
+            return;
+        }
+        if self.search.is_some() && self.rows.is_empty() {
+            self.no_matches.view(frame, interior);
             return;
         }
         render_rows(frame, area, &self.pane, |index, width| {
@@ -240,6 +289,7 @@ impl Component for SessionList {
         if attr == SESSION_ROWS_ATTR {
             let rows = SessionRows {
                 project: self.project.clone(),
+                search: self.search.clone(),
                 harness: self.harness,
                 rows: Arc::clone(&self.rows),
                 selected: self.pane.cursor.selected(),
@@ -255,6 +305,7 @@ impl Component for SessionList {
             SESSION_ROWS_ATTR => {
                 if let Some(SessionRows {
                     project,
+                    search,
                     harness,
                     rows,
                     selected,
@@ -264,6 +315,7 @@ impl Component for SessionList {
                     self.harness_empty = harness_empty;
                     self.pane.cursor.set(rows.len(), selected);
                     self.project = project;
+                    self.search = search;
                     self.harness = harness;
                     self.rows = rows;
                 }
@@ -278,9 +330,15 @@ impl Component for SessionList {
                     self.set_active(&active);
                 }
             }
+            SEARCH_NAV_ATTR => {
+                if let Some(direction) = payload_from_value::<Direction>(&value) {
+                    self.pane.perform(Cmd::Move(direction));
+                }
+            }
             _ => {
                 if attr == THEME_ATTR {
                     self.empty.attr(attr, value.clone());
+                    self.no_matches.attr(attr, value.clone());
                 }
                 self.pane.attr(attr, &value);
             }
@@ -305,6 +363,7 @@ impl AppComponent<Msg, UserEvent> for SessionList {
                 Some(Msg::Selector(SelectorMsg::Focus(Pane::Projects)))
             }
             PaneKey::FocusSessions => None,
+            PaneKey::Search => Some(Msg::Selector(SelectorMsg::Search)),
             PaneKey::Open => self.open(),
             PaneKey::Cancel => Some(self.pane.cancel()),
             PaneKey::Harness(harness) => Some(Msg::Selector(SelectorMsg::SwitchHarness(harness))),
@@ -334,6 +393,7 @@ mod tests {
             id: SessionId::from(id),
             started: "2026-10-30 11:40Z".to_owned(),
             title: title.to_owned(),
+            project: None,
             active,
             stats: with_stats,
         }
@@ -350,6 +410,7 @@ mod tests {
 
     fn rows_value(rows: Vec<SessionRow>, selected: Option<usize>) -> AttrValue {
         payload_value(SessionRows {
+            search: None,
             project: "BRIO".to_owned(),
             harness: Some(HarnessId::Claude),
             rows: Arc::new(rows),
@@ -489,6 +550,7 @@ mod tests {
         l.attr(
             SESSION_ROWS_ATTR,
             payload_value(SessionRows {
+                search: None,
                 project: "A project with a really long display name".to_owned(),
                 harness: None,
                 rows: Arc::default(),
@@ -501,6 +563,212 @@ mod tests {
         assert_eq!(first.chars().count(), 30);
         assert!(first.contains("…"), "{first}");
         assert!(first.ends_with("─╮"), "{first}");
+    }
+
+    // -- search results
+
+    fn result(id: &str, project: &str, title: &str) -> SessionRow {
+        SessionRow {
+            project: Some(project.to_owned()),
+            ..row(id, title, false, None)
+        }
+    }
+
+    fn results_list(rows: Vec<SessionRow>, selected: Option<usize>) -> SessionList {
+        let mut l = list(Vec::new(), None, true);
+        l.attr(
+            SESSION_ROWS_ATTR,
+            payload_value(SessionRows {
+                project: String::new(),
+                search: Some("brio".to_owned()),
+                harness: Some(HarnessId::Claude),
+                rows: Arc::new(rows),
+                selected,
+                harness_empty: false,
+            }),
+        );
+        l
+    }
+
+    fn three_results() -> Vec<SessionRow> {
+        vec![
+            result("a", "Agentmon", "Brio importer"),
+            result("b", "BRIO", "Plan the sprint"),
+            result("c", "Calira", "Bring up the pipeline"),
+        ]
+    }
+
+    #[test]
+    fn results_are_titled_with_the_query_and_prefixed_with_their_project() {
+        let mut l = results_list(three_results(), Some(0));
+        let text = buffer_to_text(&draw_sized(&mut l, 60));
+        assert!(
+            text.starts_with("╭─ Sessions matching \"brio\" ─"),
+            "{text}"
+        );
+        assert!(
+            text.contains("2026-10-30 11:40Z    Agentmon › Brio importer"),
+            "{text}"
+        );
+        assert!(text.contains("BRIO › Plan the sprint"), "{text}");
+        assert!(text.contains("Calira › Bring up the pipeline"), "{text}");
+        assert!(!text.contains("Sessions in"), "{text}");
+    }
+
+    #[test]
+    fn a_result_row_keeps_the_dot_slot_before_the_project() {
+        let mut active = result("a", "Agentmon", "Brio importer");
+        active.active = true;
+        let parts = row_parts(&active, 60);
+        assert_eq!(parts.left[2], (Part::Dot, "● ".to_owned()));
+        assert_eq!(parts.left[3].1, "Agentmon › Brio importer");
+        let idle = row_parts(&result("a", "Agentmon", "Brio importer"), 60);
+        assert_eq!(idle.left[2], (Part::Text, "  ".to_owned()));
+    }
+
+    #[test]
+    fn the_project_and_the_title_are_cut_together_with_an_ellipsis() {
+        let r = result("a", "Agentmon", "A really long title for this row");
+        let parts = row_parts(&r, 21 + 14);
+        assert_eq!(parts.left[3].1, "Agentmon › A …");
+        assert_eq!(parts.left[3].1.width(), 14);
+    }
+
+    #[test]
+    fn a_long_project_name_is_cut_and_leaves_the_title_visible() {
+        let r = result(
+            "a",
+            "a-very-long-project-name-for-the-brio-integration",
+            "Plan the sprint",
+        );
+        let parts = row_parts(&r, 40);
+        let label = &parts.left[3].1;
+        assert!(label.contains("… › Plan"), "{label}");
+        assert!(label.width() <= 40 - 21);
+        // A short name is not touched.
+        let r = result("a", "BRIO", "Plan the sprint");
+        assert_eq!(row_parts(&r, 60).left[3].1, "BRIO › Plan the sprint");
+    }
+
+    #[test]
+    fn a_long_query_is_cut_inside_the_quotes() {
+        let mut l = results_list(three_results(), Some(0));
+        l.attr(
+            SESSION_ROWS_ATTR,
+            payload_value(SessionRows {
+                search: Some("the quick brown fox jumps over the lazy dog".to_owned()),
+                rows: Arc::new(three_results()),
+                ..SessionRows::default()
+            }),
+        );
+        let text = buffer_to_text(&draw_sized(&mut l, 40));
+        let first = text.lines().next().unwrap();
+        assert!(
+            first.starts_with("╭─ Sessions matching \"the quick"),
+            "{first}"
+        );
+        assert!(first.contains("…\" ─"), "{first}");
+        assert_eq!(first.chars().count(), 40);
+    }
+
+    #[test]
+    fn the_selected_result_is_the_focused_band() {
+        let mut l = results_list(three_results(), Some(0));
+        insta::assert_snapshot!(buffer_to_styled(&draw_sized(&mut l, 60)));
+    }
+
+    #[test]
+    fn a_long_query_is_cut_in_the_title() {
+        let mut l = results_list(three_results(), Some(0));
+        l.attr(
+            SESSION_ROWS_ATTR,
+            payload_value(SessionRows {
+                search: Some("a query that is much too long for this pane".to_owned()),
+                rows: Arc::new(three_results()),
+                ..SessionRows::default()
+            }),
+        );
+        let text = buffer_to_text(&draw_sized(&mut l, 30));
+        let first = text.lines().next().unwrap();
+        assert_eq!(first.chars().count(), 30);
+        assert!(first.contains("…"), "{first}");
+    }
+
+    #[test]
+    fn no_results_show_the_message_centred_in_muted_foreground() {
+        let mut l = results_list(Vec::new(), None);
+        let theme = builtin::default_theme();
+        let buffer = draw_sized(&mut l, 60);
+        let text = buffer_to_text(&buffer);
+        assert!(text.contains("Sessions matching \"brio\""), "{text}");
+        let (y, line) = text
+            .lines()
+            .enumerate()
+            .find(|(_, line)| line.contains("No matching sessions"))
+            .unwrap();
+        let x = line[..line.find("No matching").unwrap()].chars().count();
+        // 58 interior columns less the 3 + 3 of margin: centred in the middle.
+        assert_eq!(x, (60 - "No matching sessions".len()) / 2);
+        assert_eq!(
+            buffer[(x as u16, y as u16)].fg,
+            theme.role(Role::MutedForeground)
+        );
+        assert!(!text.contains("No sessions for this harness"));
+    }
+
+    #[test]
+    fn an_empty_list_that_is_not_a_search_keeps_its_own_message() {
+        let mut l = list(Vec::new(), None, true);
+        let text = buffer_to_text(&draw_sized(&mut l, 60));
+        assert!(!text.contains("No matching sessions"), "{text}");
+    }
+
+    #[test]
+    fn the_search_attribute_round_trips() {
+        let l = results_list(three_results(), Some(1));
+        let rows: SessionRows =
+            payload_from_value(&l.query(SESSION_ROWS_ATTR).unwrap().into_attr()).unwrap();
+        assert_eq!(rows.search.as_deref(), Some("brio"));
+        assert_eq!(rows.selected, Some(1));
+        assert_eq!(rows.rows[0].project.as_deref(), Some("Agentmon"));
+    }
+
+    fn nav(l: &mut SessionList, direction: Direction) {
+        l.attr(SEARCH_NAV_ATTR, payload_value(direction));
+    }
+
+    fn selected_row(l: &SessionList) -> Option<usize> {
+        match l.state() {
+            State::Single(StateValue::Usize(i)) => Some(i),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn the_search_nav_attribute_moves_the_selection_without_wrapping() {
+        let mut l = results_list(three_results(), Some(0));
+        nav(&mut l, Direction::Up);
+        assert_eq!(selected_row(&l), Some(0));
+        nav(&mut l, Direction::Down);
+        nav(&mut l, Direction::Down);
+        assert_eq!(selected_row(&l), Some(2));
+        nav(&mut l, Direction::Down);
+        assert_eq!(selected_row(&l), Some(2));
+        nav(&mut l, Direction::Up);
+        assert_eq!(selected_row(&l), Some(1));
+        // Other directions and other payloads change nothing.
+        nav(&mut l, Direction::Left);
+        l.attr(SEARCH_NAV_ATTR, AttrValue::Flag(true));
+        assert_eq!(selected_row(&l), Some(1));
+    }
+
+    #[test]
+    fn the_search_key_asks_the_app_to_search() {
+        let mut l = list(sample(false), Some(0), true);
+        assert_eq!(l.on(&ch('/')), Some(Msg::Selector(SelectorMsg::Search)));
+        let mut p =
+            crate::components::ProjectList::new(Keymap::default(), builtin::default_theme());
+        assert_eq!(p.on(&ch('/')), Some(Msg::Selector(SelectorMsg::Search)));
     }
 
     // -- events
@@ -590,6 +858,7 @@ mod tests {
             SESSION_ROWS_ATTR,
             payload_value(SessionRows {
                 project: String::new(),
+                search: None,
                 harness: None,
                 rows: Arc::new(sample(false)),
                 selected: Some(0),

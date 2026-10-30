@@ -8,6 +8,7 @@ mod harness_tabs;
 mod help_line;
 mod list_pane;
 mod project_list;
+mod prompt;
 mod selector_frame;
 mod session_list;
 mod toast;
@@ -17,18 +18,20 @@ use tuirealm::props::{AttrValue, Attribute, PropPayload};
 
 use crate::theme::Theme;
 
-pub use empty_state::{EmptyState, NO_SESSIONS, TOO_SMALL};
+pub use empty_state::{EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};
 pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
 pub use help_line::{HelpLine, Hint};
 pub use list_pane::{
-    ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_value, visible_rows,
+    ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
+    selected_value, visible_rows,
 };
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
+pub use prompt::{Prompt, PromptMode};
 pub use selector_frame::SelectorFrame;
 pub use session_list::{
-    ACTIVE_ATTR, ActiveSessions, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SessionList, SessionRow,
-    SessionRows, SessionStatsUpdate, format_duration, format_stats,
+    ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR,
+    SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_duration, format_stats,
 };
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 pub use working_dir::{CWD_ATTR, WorkingDir};

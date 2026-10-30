@@ -16,6 +16,7 @@ use tuirealm::props::{AttrValue, Attribute};
 use super::index_port::IndexUpdate;
 use super::layout::{Screen, selector_areas};
 use super::redraw::RedrawRequest;
+use super::search::SearchState;
 use super::{App, Id};
 use crate::components::{
     ACTIVE_ATTR, ActiveSessions, CWD_ATTR, PROJECT_ROWS_ATTR, ProjectRow, ProjectRows,
@@ -47,6 +48,8 @@ pub enum SelectorMsg {
     SessionSelected(SessionId),
     /// The user asked for focus on a pane.
     Focus(Pane),
+    /// The user pressed the search key.
+    Search,
     /// The user pressed the number of a harness.
     SwitchHarness(HarnessId),
 }
@@ -55,8 +58,8 @@ pub enum SelectorMsg {
 #[derive(Debug, Clone)]
 pub(super) struct HarnessData {
     available: bool,
-    projects: Arc<Vec<Project>>,
-    sessions: Arc<SessionMap>,
+    pub(super) projects: Arc<Vec<Project>>,
+    pub(super) sessions: Arc<SessionMap>,
 }
 
 /// Where the selector starts (see [`SelectorState::preselection`]).
@@ -76,14 +79,16 @@ pub(super) struct SelectorState {
     /// The last snapshot of each harness that sent one.
     data: HashMap<HarnessId, HarnessData>,
     /// The stats received so far; they outlive snapshots.
-    stats: HashMap<(HarnessId, SessionId), SessionStats>,
+    pub(super) stats: HashMap<(HarnessId, SessionId), SessionStats>,
     /// The harness shown. `None` until one is available.
-    current: Option<HarnessId>,
+    pub(super) current: Option<HarnessId>,
     project: Option<ProjectId>,
-    session: Option<SessionId>,
-    pane: Pane,
-    /// The sessions of the selected project pushed as active last.
-    active: Vec<SessionId>,
+    pub(super) session: Option<SessionId>,
+    pub(super) pane: Pane,
+    /// The sessions pushed as active last.
+    pub(super) active: Vec<SessionId>,
+    /// The search in progress, if any.
+    pub(super) search: Option<SearchState>,
     /// The directory the user started in.
     working_dir: PathBuf,
     /// Whether the harness and project are still the startup preselection:
@@ -171,7 +176,7 @@ impl SelectorState {
         })
     }
 
-    fn current_data(&self) -> Option<&HarnessData> {
+    pub(super) fn current_data(&self) -> Option<&HarnessData> {
         self.data.get(&self.current?)
     }
 
@@ -180,7 +185,7 @@ impl SelectorState {
     }
 
     /// The sessions of the selected project, newest first.
-    fn sessions(&self) -> &[SessionSummary] {
+    pub(super) fn sessions(&self) -> &[SessionSummary] {
         let sessions = self.current_data().zip(self.project.as_ref());
         sessions
             .and_then(|(data, project)| data.sessions.get(project))
@@ -211,7 +216,7 @@ impl SelectorState {
 
     /// Selects the newest session if the Sessions pane has focus and no
     /// session is selected.
-    fn select_newest_if_focused(&mut self) {
+    pub(super) fn select_newest_if_focused(&mut self) {
         if self.pane == Pane::Sessions && self.session.is_none() {
             self.session = self.sessions().first().map(|s| s.id.clone());
         }
@@ -265,7 +270,8 @@ impl App {
         }
     }
 
-    /// The sessions of the selected project that show the `●` marker.
+    /// The sessions that show the `●` marker: those of the selected project
+    /// (of the whole harness while search results are listed).
     pub fn active_sessions(&self) -> &[SessionId] {
         &self.selector.active
     }
@@ -414,8 +420,10 @@ impl App {
         self.selector
             .stats
             .insert((harness, session.clone()), stats);
+        // Search results come from every project of the harness.
         let shown = self.selector.current == Some(harness)
-            && self.selector.sessions().iter().any(|s| &s.id == session);
+            && (self.selector.search.is_some()
+                || self.selector.sessions().iter().any(|s| &s.id == session));
         if shown {
             let update = SessionStatsUpdate {
                 session: session.clone(),
@@ -435,6 +443,7 @@ impl App {
             SelectorMsg::ProjectSelected(id) => self.project_selected(id),
             SelectorMsg::SessionSelected(id) => self.session_selected(id),
             SelectorMsg::Focus(pane) => self.focus_pane(pane),
+            SelectorMsg::Search => self.start_search(),
             SelectorMsg::SwitchHarness(harness) => self.switch_harness(harness),
         }
     }
@@ -526,8 +535,23 @@ impl App {
         }
     }
 
-    fn active_ids(&self) -> Vec<SessionId> {
+    /// The sessions that show the marker: those of the selected project, or,
+    /// while search results are listed, those of every project of the
+    /// harness (sorted, so the list only changes when the set does).
+    pub(super) fn active_ids(&self) -> Vec<SessionId> {
         let now = (self.clock)();
+        if self.selector.search_shows_results() {
+            let mut ids: Vec<SessionId> = self
+                .selector
+                .current_data()
+                .into_iter()
+                .flat_map(|d| d.sessions.values().flatten())
+                .filter(|s| is_active(s, now))
+                .map(|s| s.id.clone())
+                .collect();
+            ids.sort();
+            return ids;
+        }
         let sessions = self.selector.sessions();
         sessions
             .iter()
@@ -538,7 +562,7 @@ impl App {
 
     // -- pushing data into the components
 
-    fn set_attr(&mut self, id: Id, attr: Attribute, value: AttrValue) {
+    pub(super) fn set_attr(&mut self, id: Id, attr: Attribute, value: AttrValue) {
         match self.application.attr(&id, attr, value) {
             Ok(()) => self.request_redraw(RedrawRequest::Dirty),
             Err(err) => log::warn!("could not update {id:?}: {err}"),
@@ -588,7 +612,13 @@ impl App {
 
     /// Pushes the sessions of the selected project with their stats and
     /// active flags, and records the flags.
-    fn push_sessions(&mut self) {
+    pub(super) fn push_sessions(&mut self) {
+        if self.selector.search_shows_results() {
+            // The results replace the project's sessions until the search
+            // ends.
+            self.push_search_results(true);
+            return;
+        }
         self.selector.active = self.active_ids();
         let harness = self.selector.current;
         let rows: Vec<SessionRow> = self
@@ -599,6 +629,7 @@ impl App {
                 id: s.id.clone(),
                 started: self.timestamps.format_short(s.started_at),
                 title: s.title.clone(),
+                project: None,
                 active: self.selector.active.contains(&s.id),
                 stats: harness
                     .and_then(|h| self.selector.stats.get(&(h, s.id.clone())))
@@ -612,6 +643,7 @@ impl App {
             .unwrap_or_default();
         let rows = SessionRows {
             project,
+            search: None,
             harness,
             rows: Arc::new(rows),
             selected: self.selector.session_index(),
@@ -620,7 +652,7 @@ impl App {
         self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
     }
 
-    fn push_session_selection(&mut self) {
+    pub(super) fn push_session_selection(&mut self) {
         let selected = self.selector.session_index();
         self.set_attr(Id::SessionList, SELECTED_ATTR, selected_value(selected));
     }

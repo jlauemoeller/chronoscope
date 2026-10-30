@@ -258,7 +258,7 @@ pub fn selected_value(selected: Option<usize>) -> AttrValue {
     })
 }
 
-fn selected_from_value(value: &AttrValue) -> Option<Option<usize>> {
+pub fn selected_from_value(value: &AttrValue) -> Option<Option<usize>> {
     match value {
         AttrValue::Payload(PropPayload::Single(PropValue::Usize(i))) => Some(Some(*i)),
         AttrValue::Payload(PropPayload::None) => Some(None),
@@ -277,6 +277,7 @@ pub(super) enum PaneKey {
     PrevPane,
     Open,
     Cancel,
+    Search,
     Harness(HarnessId),
 }
 
@@ -296,6 +297,7 @@ pub(super) fn pane_key(keymap: &Keymap, event: &Event<UserEvent>) -> Option<Pane
         Action::PrevPane => Some(PaneKey::PrevPane),
         Action::Open => Some(PaneKey::Open),
         Action::Cancel => Some(PaneKey::Cancel),
+        Action::Search => Some(PaneKey::Search),
         Action::Harness1 => harness(1),
         Action::Harness2 => harness(2),
         Action::Harness3 => harness(3),

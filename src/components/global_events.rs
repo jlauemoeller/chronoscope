@@ -11,6 +11,7 @@ use tuirealm::state::State;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
 use crate::app::index_port::index_event_kind;
+use crate::app::search_worker::search_event_kind;
 use crate::app::{Id, Msg, UserEvent};
 use crate::keymap::{Action, Context, KeySpec, Keymap};
 
@@ -21,7 +22,8 @@ const CTRL_C: KeyEvent = KeyEvent {
 };
 
 /// Draws nothing. It is subscribed to the global keys, to resizes, to ticks
-/// and to the session index's user events, and turns them into messages.
+/// and to the user events of the session index and the search worker, and
+/// turns them into messages.
 ///
 /// The quit keys come from the keymap's `global` context; `Ctrl-c` always
 /// quits. The other global keys (help, theme selector, session selector) are
@@ -40,34 +42,36 @@ impl GlobalEvents {
     /// The subscriptions that make the application forward the events this
     /// component handles to it, whichever component has focus.
     ///
-    /// Every subscription uses [`subscription_clause`], so later tasks can
-    /// stop the global keys firing while a prompt or an overlay has focus in
-    /// one place.
+    /// Every key subscription uses [`key_clause`], so the global keys stop
+    /// firing while a prompt or an overlay has focus, decided in one place.
+    /// Resizes, ticks and worker events are never filtered by focus (see
+    /// [`always_clause`]).
     pub fn subscriptions(keymap: &Keymap) -> Vec<Sub<Id, UserEvent>> {
         let mut subs: Vec<Sub<Id, UserEvent>> = quit_key_events(keymap)
             .into_iter()
-            .map(|key| Sub::new(EventClause::Keyboard(key), subscription_clause()))
+            .map(|key| Sub::new(EventClause::Keyboard(key), key_clause()))
             .collect();
-        subs.push(Sub::new(EventClause::WindowResize, subscription_clause()));
-        subs.push(Sub::new(EventClause::Tick, subscription_clause()));
-        subs.push(Sub::new(
-            EventClause::Discriminant(index_event_kind()),
-            worker_events_clause(),
-        ));
+        subs.push(Sub::new(EventClause::WindowResize, always_clause()));
+        subs.push(Sub::new(EventClause::Tick, always_clause()));
+        for kind in [index_event_kind(), search_event_kind()] {
+            subs.push(Sub::new(EventClause::Discriminant(kind), always_clause()));
+        }
         subs
     }
 }
 
-/// When the subscriptions of `GlobalEvents` apply: always, for now.
-fn subscription_clause() -> SubClause<Id> {
-    SubClause::Always
+/// When the global keys apply: not while the [`Prompt`](super::Prompt) has
+/// focus. It is mounted exactly while it has focus (input mode, SPEC §6), and
+/// handles its own keys, `Ctrl-c` among them. The overlays that take focus
+/// later (help, theme selector) are added here.
+fn key_clause() -> SubClause<Id> {
+    SubClause::not(SubClause::IsMounted(Id::Prompt))
 }
 
-/// When the subscription to worker events applies: always. Unlike the global
-/// keys, worker results must never be filtered by focus (an open overlay must
-/// not make the app miss a snapshot or stats, which are not sent again), so
-/// this does not follow [`subscription_clause`].
-fn worker_events_clause() -> SubClause<Id> {
+/// When resizes, ticks and worker results apply: always. A prompt or an
+/// overlay must not make the app miss a resize or a snapshot or stats (which
+/// are not sent again).
+fn always_clause() -> SubClause<Id> {
     SubClause::Always
 }
 
@@ -122,6 +126,7 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
             Event::WindowResize(width, height) => Some(Msg::Resized(*width, *height)),
             Event::Tick => Some(Msg::Tick),
             Event::User(UserEvent::Index(update)) => Some(Msg::Index(update.clone())),
+            Event::User(UserEvent::Search(update)) => Some(Msg::SearchResults(update.clone())),
             _ => None,
         }
     }
@@ -247,10 +252,10 @@ mod tests {
     }
 
     #[test]
-    fn subscriptions_include_resize_tick_and_index_events() {
+    fn subscriptions_include_resize_tick_index_and_search_events() {
         let subs = GlobalEvents::subscriptions(&Keymap::default());
         let keys = quit_key_events(&Keymap::default()).len();
-        assert_eq!(subs.len(), keys + 3);
+        assert_eq!(subs.len(), keys + 4);
     }
 
     #[test]

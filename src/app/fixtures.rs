@@ -255,3 +255,107 @@ pub fn twelve_projects(harness: HarnessId) -> Vec<Project> {
     })
     .collect()
 }
+
+/// Like [`fixture_snapshot`], with sessions for the search tests spread over
+/// the projects. `brio` fuzzy-matches (as `b`, `r`, `i`, `o` in order) the
+/// session titles and first prompts below, and the name of the project
+/// `BRIO`; no other session has a `b` followed by an `r`, an `i` and an `o`.
+///
+/// - `Agentmon` (5 sessions, `s1` the newest and active): `s2` by its title,
+///   `s3` by its first prompt.
+/// - `BRIO` (2 sessions): both by the project's name.
+/// - `Calira` (2 sessions): `c2` by its title.
+/// - The other projects: one session each, none of which matches.
+pub fn search_snapshot(harness: HarnessId) -> IndexEvent {
+    let projects = projects(harness);
+    let mut sessions = SessionMap::new();
+    let mut agentmon = first_project_sessions(&projects[0]);
+    agentmon[1].title = "Brio importer: handle empty files".to_owned();
+    agentmon[2].first_prompt = Some("can you debug the brio ingest step".to_owned());
+    sessions.insert(projects[0].id.clone(), agentmon);
+    let brio = [
+        ("b1", "Plan the sprint", at(2026, 10, 27, 9, 0, 0)),
+        ("b2", "Tidy the backlog", at(2026, 10, 20, 15, 30, 0)),
+    ];
+    sessions.insert(
+        projects[1].id.clone(),
+        brio.into_iter()
+            .map(|(id, title, start)| {
+                session(
+                    &projects[1],
+                    id,
+                    title,
+                    start,
+                    start + chrono::Duration::hours(1),
+                )
+            })
+            .collect(),
+    );
+    let calira = [
+        (
+            "c1",
+            "Update the camera firmware notes",
+            at(2026, 9, 30, 10, 0, 0),
+        ),
+        ("c2", "Bring up the old pipeline", at(2026, 9, 12, 8, 45, 0)),
+    ];
+    sessions.insert(
+        projects[2].id.clone(),
+        calira
+            .into_iter()
+            .map(|(id, title, start)| {
+                session(
+                    &projects[2],
+                    id,
+                    title,
+                    start,
+                    start + chrono::Duration::hours(1),
+                )
+            })
+            .collect(),
+    );
+    for (n, project) in projects.iter().enumerate().skip(3) {
+        let start = project.last_activity - chrono::Duration::minutes(30);
+        let one = session(
+            project,
+            &format!("other{n}"),
+            &format!("Tune the {} settings", project.name),
+            start,
+            project.last_activity,
+        );
+        sessions.insert(project.id.clone(), vec![one]);
+    }
+    snapshot_event(harness, true, projects, sessions)
+}
+
+/// 50 projects of Claude holding `count` sessions between them, with
+/// first prompts of a realistic length (a few hundred characters).
+pub fn big_data(count: usize) -> (Vec<Project>, SessionMap) {
+    let base = at(2026, 1, 1, 0, 0, 0);
+    let projects: Vec<Project> = (0..50)
+        .map(|n| project(HarnessId::Claude, &format!("project-{n:02}"), base))
+        .collect();
+    let mut sessions = SessionMap::new();
+    for n in 0..count {
+        let p = &projects[n % projects.len()];
+        let started = base + chrono::Duration::minutes(n as i64);
+        let mut s = session(
+            p,
+            &format!("session-{n}"),
+            &format!("Investigate the flaky test number {n} in the importer"),
+            started,
+            started,
+        );
+        s.first_prompt = Some(format!(
+            "Please look at failure {n}: the nightly run of the importer \
+             crashes with a timeout after about {} seconds when the cache \
+             is cold. Check the retry logic in the worker, the way the \
+             backoff is computed, and whether the lock file is released \
+             on every error path. Also compare with how the exporter \
+             handles the same situation, and write down what differs.",
+            n % 97
+        ));
+        sessions.entry(p.id.clone()).or_default().push(s);
+    }
+    (projects, sessions)
+}

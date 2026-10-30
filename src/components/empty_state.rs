@@ -19,6 +19,8 @@ pub const TOO_SMALL: &str = "Terminal too small";
 /// The message shown in the Sessions pane when the harness has nothing to
 /// list.
 pub const NO_SESSIONS: &str = "No sessions for this harness";
+/// The message shown in the Sessions pane when a search matches nothing.
+pub const NO_MATCHING_SESSIONS: &str = "No matching sessions";
 
 /// Shows a message centred horizontally and vertically in its area, in
 /// `muted_foreground` on `background` (the background is not painted when the

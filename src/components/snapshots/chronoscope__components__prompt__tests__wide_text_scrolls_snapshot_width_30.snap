@@ -1,0 +1,7 @@
+---
+source: src/components/prompt.rs
+expression: "buffer_to_styled(&draw(&mut p, 30))"
+---
+/本語日本語日本語日本語日本語 
+--- styles (fg/bg/modifiers) ---
+0: 0..1 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 1..27 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 27..29 Rgb(250, 250, 250)/Rgb(115, 115, 115)/NONE | 29..30 Reset/Rgb(18, 18, 18)/NONE

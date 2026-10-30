@@ -14,11 +14,15 @@ pub mod index_port;
 pub mod layout;
 pub mod redraw;
 pub mod runtime;
+pub mod search;
+pub mod search_worker;
 pub mod selector;
 pub mod startup;
 
 #[cfg(test)]
 mod fixtures;
+#[cfg(test)]
+mod search_tests;
 #[cfg(test)]
 mod selection_tests;
 #[cfg(test)]
@@ -33,6 +37,8 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 use ratatui::Frame;
 use tuirealm::application::{Application, ApplicationError, PollStrategy};
+use tuirealm::command::Direction;
+use tuirealm::component::AppComponent;
 use tuirealm::listener::EventListenerCfg;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
@@ -50,6 +56,8 @@ use hints::{selector_hints, startup_toast_text};
 pub use index_port::{IndexPort, IndexUpdate};
 use layout::{LayoutInput, Screen, layout};
 use redraw::RedrawRequest;
+pub use search::{Hit, search_sessions};
+pub use search_worker::{SearchPort, SearchResult, SearchUpdate, SearchWorker};
 use selector::SelectorState;
 pub use selector::{Pane, SelectorMsg};
 pub use startup::AppInit;
@@ -74,6 +82,8 @@ pub enum Id {
     WorkingDir,
     /// Key hints and status items.
     HelpLine,
+    /// The search, path and `y/n` prompt, drawn in place of the help line.
+    Prompt,
     /// The notification in the bottom-right corner.
     Toast,
 }
@@ -91,6 +101,8 @@ pub enum Msg {
     ToastExpired(u64),
     /// The session index worker reported something.
     Index(IndexUpdate),
+    /// The search worker answered a search.
+    SearchResults(SearchUpdate),
     /// Something happened in the session selector.
     Selector(SelectorMsg),
     /// The user asked to open this session of this harness. The browser
@@ -99,6 +111,17 @@ pub enum Msg {
     /// `Esc` in the selector with a session open behind it: close the
     /// selector. The browser handles it.
     CloseSelector,
+    /// The text of the prompt changed.
+    PromptChanged(String),
+    /// Only the prompt's cursor moved: nothing but a redraw is needed.
+    PromptMoved,
+    /// `Enter` in the prompt, with its text (`"y"` for a yes in a `y/n`
+    /// prompt).
+    PromptSubmit(String),
+    /// `Esc` in the prompt, or a no in a `y/n` prompt.
+    PromptCancel,
+    /// `↑` or `↓` in the prompt, for its owner to use.
+    PromptNav(Direction),
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -107,6 +130,8 @@ pub enum Msg {
 pub enum UserEvent {
     /// The session index worker reported a new snapshot or stats.
     Index(IndexUpdate),
+    /// The search worker finished a search.
+    Search(SearchUpdate),
 }
 
 /// How often the event listener sends `Event::Tick`.
@@ -120,10 +145,21 @@ const MAX_EVENTS_PER_TICK: usize = 64;
 
 /// The event listener configuration of the real application: crossterm input,
 /// a tick, and, when the session index runs, its events.
-pub fn production_listener(index: Option<Receiver<IndexEvent>>) -> EventListenerCfg<UserEvent> {
+pub fn production_listener(
+    index: Option<Receiver<IndexEvent>>,
+    search: Option<Receiver<SearchResult>>,
+) -> EventListenerCfg<UserEvent> {
     let cfg = EventListenerCfg::default()
         .crossterm_input_listener(INPUT_POLL_INTERVAL, 10)
         .tick_interval(TICK_INTERVAL);
+    let cfg = match search {
+        Some(results) => cfg.add_port(
+            Box::new(SearchPort::new(results)),
+            search_worker::SEARCH_POLL_INTERVAL,
+            search_worker::SEARCH_MAX_PER_POLL,
+        ),
+        None => cfg,
+    };
     match index {
         Some(events) => cfg.add_port(
             Box::new(IndexPort::new(events)),
@@ -152,6 +188,17 @@ pub struct App {
     timestamps: TimestampFormatter,
     clock: Box<dyn Fn() -> DateTime<Utc>>,
     index: Option<IndexHandle>,
+    /// Who had the focus before each overlay or prompt that is open, oldest
+    /// first (SPEC §1.4).
+    focus_stack: Vec<Id>,
+    /// The thread that runs the searches; without one they run on the UI
+    /// thread (tests).
+    search_worker: Option<SearchWorker>,
+    /// Numbers the search requests.
+    search_seq: u64,
+    /// Messages `update` made for itself or for the browser; `tick` hands
+    /// them out with the components'.
+    queued: Vec<Msg>,
 }
 
 impl App {
@@ -242,6 +289,10 @@ impl App {
             timestamps,
             clock: Box::new(Utc::now),
             index: None,
+            focus_stack: Vec::new(),
+            search_worker: None,
+            search_seq: 0,
+            queued: Vec::new(),
         };
         app.push_tabs();
         // The startup warnings are shown once, here, and never again.
@@ -263,8 +314,12 @@ impl App {
         self.index = Some(index);
     }
 
-    /// Stops the session index worker and waits until it has saved its cache.
+    /// Stops the search worker, and the session index worker, and waits until
+    /// it has saved its cache.
     pub fn shutdown(&mut self) {
+        if let Some(mut worker) = self.search_worker.take() {
+            worker.shutdown();
+        }
         if let Some(index) = self.index.take() {
             index.shutdown();
         }
@@ -350,9 +405,62 @@ impl App {
 
     /// Polls the components' event sources once and returns the messages the
     /// components produced.
+    ///
+    /// The messages that `update` queued come after them.
     pub fn tick(&mut self) -> Result<Vec<Msg>, ApplicationError> {
-        self.application
-            .tick(PollStrategy::UpTo(MAX_EVENTS_PER_TICK, POLL_TIMEOUT))
+        let mut msgs = self
+            .application
+            .tick(PollStrategy::UpTo(MAX_EVENTS_PER_TICK, POLL_TIMEOUT))?;
+        msgs.append(&mut self.queued);
+        Ok(msgs)
+    }
+
+    /// Queues `msg` to be handled after the current one: [`update`](Self::update)
+    /// returns nothing, so this is how it passes a request on (to the
+    /// browser, for the sessions the selector opens).
+    fn emit(&mut self, msg: Msg) {
+        self.queued.push(msg);
+    }
+
+    /// Takes the messages that `update` queued and `tick` has not handed
+    /// out yet.
+    pub fn take_queued(&mut self) -> Vec<Msg> {
+        std::mem::take(&mut self.queued)
+    }
+
+    // -- focus
+
+    /// Mounts the overlay or prompt `id` and gives it the focus; the
+    /// component that had it is remembered for [`close_overlay`](Self::close_overlay)
+    /// (SPEC §1.4).
+    fn open_overlay(
+        &mut self,
+        id: Id,
+        component: Box<dyn AppComponent<Msg, UserEvent>>,
+    ) -> Result<(), ApplicationError> {
+        self.application.mount(id, component, Vec::new())?;
+        let before = self.application.focus().cloned();
+        if let Err(err) = self.application.active(&id) {
+            self.application.umount(&id)?;
+            return Err(err);
+        }
+        self.focus_stack.extend(before);
+        self.request_redraw(RedrawRequest::Dirty);
+        Ok(())
+    }
+
+    /// Unmounts the overlay or prompt `id` and returns the focus to the
+    /// component that had it when it was opened.
+    fn close_overlay(&mut self, id: Id) {
+        if let Err(err) = self.application.umount(&id) {
+            log::warn!("could not unmount {id:?}: {err}");
+        }
+        if let Some(before) = self.focus_stack.pop()
+            && let Err(err) = self.application.active(&before)
+        {
+            log::warn!("could not return the focus to {before:?}: {err}");
+        }
+        self.request_redraw(RedrawRequest::Dirty);
     }
 
     /// Applies `msg`: the only place that changes domain state or components.
@@ -364,7 +472,13 @@ impl App {
             Msg::Tick => self.tick_elapsed(),
             Msg::ToastExpired(id) => self.toast_expired(id),
             Msg::Index(update) => self.index_update(&update),
+            Msg::SearchResults(update) => self.search_result_arrived(&update),
             Msg::Selector(msg) => self.selector_msg(msg),
+            Msg::PromptChanged(text) => self.search_changed(text),
+            Msg::PromptMoved => self.request_redraw(RedrawRequest::Dirty),
+            Msg::PromptSubmit(_) => self.search_submit(),
+            Msg::PromptCancel => self.search_cancel(),
+            Msg::PromptNav(direction) => self.search_nav(direction),
             // The browser (task 021) handles these.
             Msg::OpenSession(..) | Msg::CloseSelector => {}
         }
@@ -408,6 +522,7 @@ impl App {
         LayoutInput {
             screen: self.screen,
             toast_text_width: self.toast_text.as_deref().map(UnicodeWidthStr::width),
+            prompt: self.application.mounted(&Id::Prompt),
         }
     }
 
