@@ -1,0 +1,6 @@
+{"type":"mode","mode":"normal","sessionId":"aaaa0001"}
+{"type":"ai-title","aiTitle":"First title","sessionId":"aaaa0001"}
+{"isSidechain":false,"cwd":"/home/user/alpha","sessionId":"aaaa0001","version":"2.1.306","uuid":"a0000001","timestamp":"2026-03-01T09:00:00.000Z","type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"Add a parser"}}
+{"isSidechain":false,"cwd":"/home/user/alpha","sessionId":"aaaa0001","version":"2.1.306","uuid":"a0000002","timestamp":"2026-03-01T09:05:00.000Z","type":"assistant","message":{"id":"msg_a0000002","model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"ok"}]}}
+{"type":"ai-title","aiTitle":"Parser work","sessionId":"aaaa0001"}
+{"type":"ai-title","aiTitle":"Final parser title","sessionId":"aaaa0001"}

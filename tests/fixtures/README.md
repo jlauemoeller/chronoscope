@@ -78,3 +78,29 @@ hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
 
 The real compaction samples that `compaction.jsonl` was modelled on came from
 Claude Code 2.1.304 to 2.1.311 sessions.
+
+## claude/discovery/
+
+- **Origin:** hand-written (generated once with a throw-away script that is
+  not part of the repository). A miniature `~/.claude/projects` tree, so the
+  directory layout is part of the fixture. Nothing was copied from a real
+  session; ids and texts are made up and paths use `/home/user/...`.
+- **Used by:** `tests/claude_discovery.rs` (copies the tree into a temporary
+  directory and sets file mtimes there).
+- **Covers:**
+  - `-home-user-alpha/aaaa0001.jsonl`: three `ai-title` entries (the last
+    wins) and a prompt; leading `mode` entry without `cwd` or timestamp;
+  - `-home-user-alpha/aaaa0001/subagents/agent-a1.jsonl` and
+    `agent-a1.meta.json`: a subagent transcript that must not be listed (its
+    timestamps are the newest in the tree);
+  - `-home-user-my-app/bbbb0001.jsonl` and `-home-user-my.app/bbbb0002.jsonl`:
+    two encoded directories (the lossy encoding of `/home/user/my.app`) with
+    the same real `cwd`; the first has a prompt but no title;
+  - `-home-user-multi/cccc0001.jsonl` and `cccc0002.jsonl`: one encoded
+    directory, two different `cwd`s (`/home/user/multi/one` and `.../two`);
+  - `-home-user-prompt/dddd0001.jsonl`: no `ai-title`; a `tool_result`-only
+    user entry and an `isMeta` entry precede the human prompt, whose first
+    line is over 80 characters and which has a second line;
+  - `-home-user-prompt/dddd0002.jsonl`: no prompt and no title (only an
+    assistant entry and a `tool_result`-only user entry);
+  - `-home-user-empty/ffff0001.jsonl`: a 0-byte transcript.

@@ -62,6 +62,41 @@ impl Entry {
         self.origin.as_ref()?.get("kind")?.as_str()
     }
 
+    /// The text of this entry when it is a human prompt, else `None`.
+    ///
+    /// The one definition of "human prompt" (SPEC §3.1) shared by the
+    /// assembler and session discovery. Not a prompt: entries that carry any
+    /// `tool_result` block, compaction summaries, `isMeta` entries (injected,
+    /// not typed), entries whose `origin.kind` is not `human`, and, for
+    /// entries without an `origin`, entries without a text block. Human
+    /// prompts delivered as `queued_command` attachments are separate (see
+    /// `queued_prompt_text`).
+    pub fn human_prompt_text(&self) -> Option<String> {
+        let content = self.message.as_ref()?.content.as_ref()?;
+        let blocks: &[Block] = match content {
+            Content::Blocks(blocks) => blocks,
+            _ => &[],
+        };
+        if blocks
+            .iter()
+            .any(|b| b.kind.as_deref() == Some("tool_result"))
+            || self.is_compact_summary == Some(true)
+            || self.is_meta == Some(true)
+        {
+            return None;
+        }
+        let has_text = match content {
+            Content::Text(_) => true,
+            Content::Blocks(blocks) => blocks.iter().any(|b| b.kind.as_deref() == Some("text")),
+            Content::Other(_) => false,
+        };
+        let is_prompt = match self.origin {
+            Some(_) => self.origin_kind() == Some("human"),
+            None => has_text,
+        };
+        is_prompt.then(|| content_text(content))
+    }
+
     /// `effort`, falling back to `perTurnEffort`.
     pub fn effort(&self) -> Option<String> {
         [&self.effort, &self.per_turn_effort]
@@ -177,4 +212,19 @@ pub(crate) fn extract_result_text(line: &[u8], call_id: &str) -> Option<String> 
         .iter()
         .find(|b| b.is_result() && b.tool_use_id.as_deref() == Some(call_id))
         .map(|b| result_text(b.content.as_ref()))
+}
+
+/// The text of message content: a string as is, text blocks joined by
+/// newlines.
+pub(super) fn content_text(content: &Content) -> String {
+    match content {
+        Content::Text(s) => s.clone(),
+        Content::Blocks(blocks) => blocks
+            .iter()
+            .filter(|b| b.kind.as_deref() == Some("text"))
+            .filter_map(|b| b.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Content::Other(_) => String::new(),
+    }
 }

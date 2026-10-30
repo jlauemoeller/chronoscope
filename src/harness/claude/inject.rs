@@ -131,13 +131,23 @@ pub(super) fn text_of(value: &Value) -> String {
 }
 
 /// `origin.kind` of an attachment (falling back to the entry's own `origin`).
-pub(super) fn is_human_queued(attachment: &Value, entry_origin: Option<&Value>) -> bool {
+fn is_human_queued(attachment: &Value, entry_origin: Option<&Value>) -> bool {
     attachment
         .get("origin")
         .or(entry_origin)
         .and_then(|o| o.get("kind"))
         .and_then(Value::as_str)
         == Some("human")
+}
+
+/// The prompt text of a `queued_command` attachment, when it is a human prompt
+/// (typed while the agent was busy); `None` for any other queued command.
+pub(super) fn queued_prompt_text(
+    attachment: &Value,
+    entry_origin: Option<&Value>,
+) -> Option<String> {
+    is_human_queued(attachment, entry_origin)
+        .then(|| attachment.get("prompt").map(text_of).unwrap_or_default())
 }
 
 fn str_at<'a>(value: &'a Value, key: &str) -> Option<&'a str> {

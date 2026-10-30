@@ -61,13 +61,108 @@ string_id!(
     ItemId
 );
 
+string_id!(
+    /// Identity of a project within its harness: the real working directory
+    /// for Claude (the encoded directory name when no cwd is known).
+    ProjectId
+);
+string_id!(
+    /// Identity of a session within its harness (the transcript's file stem
+    /// for Claude).
+    SessionId
+);
+
 /// The agent harness a session came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Harness {
+///
+/// The numbers are stable (they may be persisted) and never reused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum HarnessId {
     /// Claude Code.
-    Claude,
+    Claude = 1,
     /// OpenCode.
-    OpenCode,
+    OpenCode = 2,
+    /// Codex.
+    Codex = 3,
+    /// Pi.
+    Pi = 4,
+}
+
+impl HarnessId {
+    /// Every harness, in number order.
+    pub const ALL: [HarnessId; 4] = [
+        HarnessId::Claude,
+        HarnessId::OpenCode,
+        HarnessId::Codex,
+        HarnessId::Pi,
+    ];
+
+    /// The stable number, 1 to 4.
+    pub fn number(self) -> u8 {
+        self as u8
+    }
+
+    /// The harness with the given stable number.
+    pub fn from_number(number: u8) -> Option<Self> {
+        Self::ALL.into_iter().find(|h| h.number() == number)
+    }
+
+    /// The name shown to the user.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            HarnessId::Claude => "Claude",
+            HarnessId::OpenCode => "OpenCode",
+            HarnessId::Codex => "Codex",
+            HarnessId::Pi => "Pi",
+        }
+    }
+}
+
+impl fmt::Display for HarnessId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.display_name())
+    }
+}
+
+/// A project: the sessions of one working directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Project {
+    /// Identity (the real cwd; see [`ProjectId`]).
+    pub id: ProjectId,
+    /// The harness it came from.
+    pub harness: HarnessId,
+    /// Display name: the configured alias, else the cwd's basename.
+    pub name: String,
+    /// The real working directory; `None` when the harness data names none
+    /// (Claude files without any `cwd`).
+    pub cwd: Option<PathBuf>,
+    /// The newest last activity of its sessions.
+    pub last_activity: DateTime<Utc>,
+    /// Number of sessions.
+    pub session_count: usize,
+}
+
+/// One session as listed by a harness, without its conversation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionSummary {
+    /// Session id.
+    pub id: SessionId,
+    /// The harness it came from.
+    pub harness: HarnessId,
+    /// The project it belongs to.
+    pub project: ProjectId,
+    /// The real working directory, when known.
+    pub cwd: Option<PathBuf>,
+    /// The session title (SPEC §4.1).
+    pub title: String,
+    /// The first human prompt, when there is one.
+    pub first_prompt: Option<String>,
+    /// When the session started.
+    pub started_at: DateTime<Utc>,
+    /// The later of the last entry's timestamp and the file's mtime.
+    pub last_activity: DateTime<Utc>,
+    /// The transcript file.
+    pub path: PathBuf,
 }
 
 /// A reference to a child session (e.g. a subagent run).
@@ -85,7 +180,7 @@ pub struct Session {
     /// Session id.
     pub id: String,
     /// The harness it came from.
-    pub harness: Harness,
+    pub harness: HarnessId,
     /// Project name (derived from the cwd).
     pub project: String,
     /// The real working directory.

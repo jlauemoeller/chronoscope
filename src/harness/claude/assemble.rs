@@ -14,12 +14,12 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 use super::inject::{
-    NEWEST_KNOWN_VERSION, attachment_text, is_human_queued, is_injected_attachment,
-    is_injected_system, is_known_noise_attachment, is_metadata_type, is_noise_type, system_text,
-    text_of, version_newer,
+    NEWEST_KNOWN_VERSION, attachment_text, is_injected_attachment, is_injected_system,
+    is_known_noise_attachment, is_metadata_type, is_noise_type, queued_prompt_text, system_text,
+    version_newer,
 };
 use super::tools::{describe, tool_kind};
-use super::wire::{Block, Content, Entry, Head, result_text};
+use super::wire::{Block, Content, Entry, Head, content_text, result_text};
 use crate::model::{
     AssistantTurn, ByteSource, CompactionTurn, InjectedEntry, Item, ItemId, LineFormat,
     ModelUpdate, OutputSource, Thinking, ToolCall, ToolOutput, ToolResult, ToolStatus, Turn,
@@ -457,8 +457,12 @@ impl Assembler {
         let Some(attachment) = &entry.attachment else {
             return;
         };
-        if kind == "queued_command" && is_human_queued(attachment, entry.origin.as_ref()) {
-            let text = attachment.get("prompt").map(text_of).unwrap_or_default();
+        let queued = if kind == "queued_command" {
+            queued_prompt_text(attachment, entry.origin.as_ref())
+        } else {
+            None
+        };
+        if let Some(text) = queued {
             let id = entry_id(entry.uuid.as_deref(), range);
             self.start_user_turn(id, ts, text);
         } else {
@@ -622,19 +626,9 @@ impl Assembler {
             self.hold("meta", ts, text, entry.uuid.as_deref(), range);
             return;
         }
-        let has_text = match content {
-            Content::Text(_) => true,
-            Content::Blocks(blocks) => blocks.iter().any(|b| b.kind.as_deref() == Some("text")),
-            Content::Other(_) => false,
-        };
-        let is_prompt = match entry.origin {
-            Some(_) => entry.origin_kind() == Some("human"),
-            None => has_text,
-        };
-        if !is_prompt {
+        let Some(text) = entry.human_prompt_text() else {
             return;
-        }
-        let text = content_text(content);
+        };
         let id = entry_id(entry.uuid.as_deref(), range);
         self.start_user_turn(id, ts, text);
     }
@@ -916,21 +910,6 @@ fn is_known_block(kind: Option<&str>) -> bool {
                 | "document"
         ) || k.ends_with("_tool_result")
     })
-}
-
-/// The text of message content: a string as is, text blocks joined by
-/// newlines.
-fn content_text(content: &Content) -> String {
-    match content {
-        Content::Text(s) => s.clone(),
-        Content::Blocks(blocks) => blocks
-            .iter()
-            .filter(|b| b.kind.as_deref() == Some("text"))
-            .filter_map(|b| b.text.as_deref())
-            .collect::<Vec<_>>()
-            .join("\n"),
-        Content::Other(_) => String::new(),
-    }
 }
 
 /// Turns the held injected entries into one `Injected` item, identified by

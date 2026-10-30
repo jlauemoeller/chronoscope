@@ -35,6 +35,7 @@ syntect = { version = "5", default-features = false, features = ["default-fancy"
 similar = "2"
 chrono = "0.4"
 log = { version = "0.4", features = ["std"] }
+anyhow = "1.0.104"
 
 [dev-dependencies]
 insta = "1"
