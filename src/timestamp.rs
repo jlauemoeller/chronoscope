@@ -3,14 +3,30 @@
 use std::fmt::Write;
 
 use chrono::format::{Item, StrftimeItems};
-use chrono::{DateTime, FixedOffset, Local, Utc};
+use chrono::{DateTime, FixedOffset, Local, TimeZone, Utc};
 
 /// The default `timestamp_format`.
 pub const DEFAULT_TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
-/// Returns whether chrono accepts `format` as a strftime string.
+/// Returns whether `format` is a strftime string chrono accepts: it must parse
+/// and also render (some specifiers, such as `%#z`, parse but fail to render).
 pub fn is_valid_format(format: &str) -> bool {
-    !StrftimeItems::new(format).any(|item| matches!(item, Item::Error))
+    if StrftimeItems::new(format).any(|item| matches!(item, Item::Error)) {
+        return false;
+    }
+    let Some(offset) = FixedOffset::east_opt(0) else {
+        return false;
+    };
+    let Some(sample) = offset.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).single() else {
+        return false;
+    };
+    let mut out = String::new();
+    write!(
+        out,
+        "{}",
+        sample.format_with_items(StrftimeItems::new(format))
+    )
+    .is_ok()
 }
 
 /// The timezone used when `utc` is off.
@@ -34,6 +50,9 @@ pub struct TimestampFormatter {
 impl TimestampFormatter {
     /// Builds a formatter. An invalid `format` falls back to
     /// [`DEFAULT_TIMESTAMP_FORMAT`] (config loading already warns about it).
+    ///
+    /// With `utc` set, a `Z` is always appended, so a format that itself
+    /// contains a zone specifier (`%z`, `%Z`) shows the zone twice.
     pub fn new(format: &str, utc: bool, tz: DisplayTz) -> Self {
         let format = if is_valid_format(format) {
             format
@@ -64,8 +83,8 @@ impl TimestampFormatter {
     fn render(&self, time: DateTime<Utc>, format: &str) -> String {
         let items = StrftimeItems::new(format);
         let mut out = String::new();
-        // The format was validated, so writing cannot fail; if it somehow
-        // does, whatever was rendered so far is still shown.
+        // The format was validated by `is_valid_format`, so writing cannot
+        // fail; if it somehow does, whatever was rendered so far is shown.
         let _ = if self.utc {
             write!(out, "{}Z", time.format_with_items(items))
         } else {
@@ -125,12 +144,20 @@ fn tokenize(format: &str) -> Vec<Token> {
 ///
 /// `%S` is removed together with the separator character before it,
 /// fractional-second specifiers (`%f`, `%.f`, `%.3f`, `%3f`, ...) are removed
-/// (with a directly preceding `.` or `,`), and `%T` becomes `%H:%M`.
+/// (with a directly preceding `.` or `,`), `%T` and `%X` become `%H:%M`, and
+/// `%r` becomes `%I:%M %p`. The composite `%c` and `%+` keep their seconds.
 fn short_format(format: &str) -> String {
     let mut out: Vec<Token> = Vec::new();
     for token in tokenize(format) {
         match token {
-            Token::Spec(_, 'T') => {
+            Token::Spec(_, 'r') => {
+                out.push(Token::Spec("%I".into(), 'I'));
+                out.push(Token::Literal(':'));
+                out.push(Token::Spec("%M".into(), 'M'));
+                out.push(Token::Literal(' '));
+                out.push(Token::Spec("%p".into(), 'p'));
+            }
+            Token::Spec(_, 'T' | 'X') => {
                 out.push(Token::Spec("%H".into(), 'H'));
                 out.push(Token::Literal(':'));
                 out.push(Token::Spec("%M".into(), 'M'));
@@ -202,6 +229,8 @@ mod tests {
         assert_eq!(short_format("%H.%M.%S"), "%H.%M");
         assert_eq!(short_format("%H:%M:%-S"), "%H:%M");
         assert_eq!(short_format("%T"), "%H:%M");
+        assert_eq!(short_format("%F %X"), "%F %H:%M");
+        assert_eq!(short_format("%r"), "%I:%M %p");
         assert_eq!(short_format("%T%.9f"), "%H:%M");
         assert_eq!(short_format("%Y-%m-%d"), "%Y-%m-%d");
         assert_eq!(short_format("100%% %H:%M:%S"), "100%% %H:%M");
@@ -220,6 +249,15 @@ mod tests {
         let t = instant() + chrono::Duration::milliseconds(42);
         assert_eq!(f.format(t), "08:35:15.042");
         assert_eq!(f.format_short(t), "08:35");
+    }
+
+    #[test]
+    fn format_that_parses_but_cannot_render_is_invalid() {
+        assert!(!is_valid_format("%Y %#z"));
+        let f = TimestampFormatter::new("%Y %#z", false, plus_two());
+        assert_eq!(f.format(instant()), "2026-10-21 08:35:15");
+        let f = TimestampFormatter::new("%Y %#z", true, plus_two());
+        assert_eq!(f.format(instant()), "2026-10-21 06:35:15Z");
     }
 
     #[test]

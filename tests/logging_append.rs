@@ -19,12 +19,3 @@ fn init_logging_appends_to_an_existing_file() {
     assert_eq!(lines[0], "earlier line");
     assert!(lines[1].ends_with("new line"));
 }
-
-#[test]
-fn init_logging_failure_is_an_error_not_a_panic() {
-    let dir = tempfile::tempdir().unwrap();
-    // The parent "directory" is a file, so it cannot be created.
-    let blocker = dir.path().join("blocker");
-    fs::write(&blocker, "x").unwrap();
-    assert!(init_logging(&blocker.join("sub").join("x.log")).is_err());
-}

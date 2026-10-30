@@ -134,7 +134,9 @@ impl Config {
     ///
     /// A missing file gives the defaults and no warnings. A file that cannot
     /// be read or parsed gives the defaults and one warning. All warnings are
-    /// also written to the log.
+    /// also written to the log, so call
+    /// [`init_logging`](crate::logging::init_logging) before loading or the
+    /// warnings only reach the returned list.
     pub fn load(path: &Path, home: &Path) -> (Self, Vec<ConfigWarning>) {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
@@ -339,6 +341,37 @@ fn log_warnings(warnings: &[ConfigWarning]) {
     }
 }
 
+/// The TOML type a key must have.
+#[derive(Clone, Copy)]
+enum Expected {
+    Boolean,
+    String,
+    Integer,
+    Table,
+}
+
+impl Expected {
+    fn matches(self, value: &Value) -> bool {
+        match self {
+            Self::Boolean => value.is_bool(),
+            Self::String => value.is_str(),
+            Self::Integer => value.is_integer(),
+            Self::Table => value.is_table(),
+        }
+    }
+}
+
+impl fmt::Display for Expected {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Boolean => "a boolean",
+            Self::String => "a string",
+            Self::Integer => "an integer",
+            Self::Table => "a table",
+        })
+    }
+}
+
 /// Helpers that take values out of a table (so what remains is unknown) and
 /// record warnings.
 struct Reader<'a> {
@@ -385,17 +418,11 @@ impl Reader<'_> {
         table: &mut Table,
         prefix: &str,
         key: &str,
-        expected: &str,
+        expected: Expected,
         default: &str,
     ) -> Option<Value> {
         let value = table.remove(key)?;
-        let matches = match expected {
-            "a boolean" => value.is_bool(),
-            "a string" => value.is_str(),
-            "an integer" => value.is_integer(),
-            _ => value.is_table(),
-        };
-        if matches {
+        if expected.matches(&value) {
             Some(value)
         } else {
             let full = Self::dotted(prefix, key);
@@ -416,7 +443,7 @@ impl Reader<'_> {
         key: &str,
         default: impl fmt::Display,
     ) -> Option<bool> {
-        self.take(table, prefix, key, "a boolean", &default.to_string())?
+        self.take(table, prefix, key, Expected::Boolean, &default.to_string())?
             .as_bool()
     }
 
@@ -427,7 +454,7 @@ impl Reader<'_> {
         key: &str,
         default: impl fmt::Display,
     ) -> Option<String> {
-        match self.take(table, prefix, key, "a string", &default.to_string())? {
+        match self.take(table, prefix, key, Expected::String, &default.to_string())? {
             Value::String(s) => Some(s),
             _ => None,
         }
@@ -440,12 +467,12 @@ impl Reader<'_> {
         key: &str,
         default: impl fmt::Display,
     ) -> Option<i64> {
-        self.take(table, prefix, key, "an integer", &default.to_string())?
+        self.take(table, prefix, key, Expected::Integer, &default.to_string())?
             .as_integer()
     }
 
     fn table(&mut self, table: &mut Table, prefix: &str, key: &str) -> Option<Table> {
-        match self.take(table, prefix, key, "a table", "settings")? {
+        match self.take(table, prefix, key, Expected::Table, "settings")? {
             Value::Table(t) => Some(t),
             _ => None,
         }

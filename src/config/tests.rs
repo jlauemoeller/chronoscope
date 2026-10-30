@@ -351,3 +351,11 @@ fn non_string_alias_and_key_binding_are_skipped_with_a_warning() {
     assert!(c.keys["browser"].is_empty());
     assert_eq!(warnings.len(), 3);
 }
+
+#[test]
+fn timestamp_format_that_cannot_render_falls_back_to_default() {
+    let (c, warnings) = parse("timestamp_format = \"%Y %#z\"\n");
+    assert_eq!(c.timestamp_format, "%Y-%m-%d %H:%M:%S");
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].key, "timestamp_format");
+}
