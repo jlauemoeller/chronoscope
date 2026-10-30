@@ -3,7 +3,7 @@
 | Task | Status |
 |------|--------|
 | 001-scaffold-crate | Complete |
-| 002-theme-model | Planned |
+| 002-theme-model | In progress |
 | 003-config-file | Planned |
 | 004-theme-registry | Planned |
 | 005-keymap-bindings | Planned |
