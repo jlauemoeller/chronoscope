@@ -24,7 +24,7 @@
 | 020-transcript-navigation | Complete |
 | 021-browser-screen | Complete |
 | 022-claude-live-watch | Complete |
-| 023-browser-live-updates | Planned |
+| 023-browser-live-updates | In progress |
 | 024-transcript-search | Planned |
 | 025-copy-to-clipboard | Planned |
 | 026-save-and-export | Planned |
