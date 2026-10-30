@@ -12,15 +12,15 @@ use crate::model::ItemId;
 
 use super::super::selector_tests::{press as press_in_selector, project_rows, styled, tabs};
 
-struct OpenCodeRig {
-    rig: Rig,
-    harness: Arc<OpenCodeHarness>,
+pub(super) struct OpenCodeRig {
+    pub(super) rig: Rig,
+    pub(super) harness: Arc<OpenCodeHarness>,
     _db: TempDb,
 }
 
 /// An app with a Claude tab (the fixed fixture index) and an OpenCode tab
 /// (the fixture database, read by the real adapter), 120x40.
-fn two_tabs() -> OpenCodeRig {
+pub(super) fn two_tabs() -> OpenCodeRig {
     let db = TempDb::new();
     let harness = Arc::new(OpenCodeHarness::with_db_path(
         db.path.clone(),

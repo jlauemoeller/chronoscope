@@ -120,7 +120,8 @@ pub fn format_stats(stats: &SessionStats) -> String {
 /// are updated one by one through [`SESSION_STATS_ATTR`] and
 /// [`ACTIVE_ATTR`]. Moving the selection reports
 /// [`SelectorMsg::SessionSelected`]; `Enter` on the selected session asks to
-/// open it ([`Msg::OpenSession`]). When the app says the harness has nothing
+/// open it ([`Msg::OpenSession`]) and `R` to resume it in its harness
+/// ([`Msg::RequestResume`]). When the app says the harness has nothing
 /// to list, the pane shows the [`EmptyState`] "No sessions for this harness".
 ///
 /// Search results come in the same way, with [`SessionRows::search`] set: the
@@ -161,6 +162,13 @@ impl SessionList {
         let harness = self.harness?;
         self.selected_id()
             .map(|session| Msg::OpenSession(harness, session))
+    }
+
+    /// The request to resume the selected session, if there is one.
+    fn resume(&self) -> Option<Msg> {
+        let harness = self.harness?;
+        self.selected_id()
+            .map(|session| Msg::RequestResume(Some((harness, session))))
     }
 
     fn selected_id(&self) -> Option<SessionId> {
@@ -364,6 +372,7 @@ impl AppComponent<Msg, UserEvent> for SessionList {
             }
             PaneKey::FocusSessions => None,
             PaneKey::Search => Some(Msg::Selector(SelectorMsg::Search)),
+            PaneKey::Resume => self.resume(),
             PaneKey::Open => self.open(),
             PaneKey::Cancel => Some(self.pane.cancel()),
             PaneKey::Harness(harness) => Some(Msg::Selector(SelectorMsg::SwitchHarness(harness))),
@@ -772,6 +781,35 @@ mod tests {
     }
 
     // -- events
+
+    #[test]
+    fn r_asks_to_resume_the_selected_session() {
+        let mut l = list(sample(false), Some(1), true);
+        let want = Some(Msg::RequestResume(Some((
+            HarnessId::Claude,
+            SessionId::from("b"),
+        ))));
+        assert_eq!(l.on(&ch('R')), want);
+        let shifted = Event::Keyboard(KeyEvent::new(Key::Char('R'), KeyModifiers::SHIFT));
+        assert_eq!(l.on(&shifted), want);
+        // Asking does not move the selection or open the session.
+        assert_eq!(l.state(), State::Single(StateValue::Usize(1)));
+    }
+
+    #[test]
+    fn r_with_no_session_selected_does_nothing() {
+        let mut l = list(sample(false), None, true);
+        assert_eq!(l.on(&ch('R')), None);
+        let mut empty = list(Vec::new(), None, true);
+        assert_eq!(empty.on(&ch('R')), None);
+    }
+
+    #[test]
+    fn r_in_the_projects_list_does_nothing() {
+        let mut p =
+            crate::components::ProjectList::new(Keymap::default(), builtin::default_theme());
+        assert_eq!(p.on(&ch('R')), None);
+    }
 
     #[test]
     fn down_and_up_move_the_selection_and_report_the_session() {

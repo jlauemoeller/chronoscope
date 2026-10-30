@@ -278,6 +278,7 @@ pub(super) enum PaneKey {
     Open,
     Cancel,
     Search,
+    Resume,
     Harness(HarnessId),
 }
 
@@ -298,6 +299,7 @@ pub(super) fn pane_key(keymap: &Keymap, event: &Event<UserEvent>) -> Option<Pane
         Action::Open => Some(PaneKey::Open),
         Action::Cancel => Some(PaneKey::Cancel),
         Action::Search => Some(PaneKey::Search),
+        Action::Resume => Some(PaneKey::Resume),
         Action::Harness1 => harness(1),
         Action::Harness2 => harness(2),
         Action::Harness3 => harness(3),

@@ -164,3 +164,20 @@ fn y_on_a_folded_prompt_copies_the_rows_shown_at_the_transcripts_width() {
     // `Y` is all of it either way.
     assert_eq!(copied(ch(&mut t, 'Y')), blocks::LONG_PROMPT);
 }
+
+#[test]
+fn r_asks_to_resume_the_open_session_whatever_is_selected() {
+    let mut t = session_transcript(80, 24);
+    assert_eq!(ch(&mut t, 'R'), Some(Msg::RequestResume(None)));
+    assert_eq!(
+        t.on(&key(Key::Char('R'), KeyModifiers::SHIFT)),
+        Some(Msg::RequestResume(None))
+    );
+    move_to(&mut t, &item_section("t2", "c1"));
+    assert_eq!(ch(&mut t, 'R'), Some(Msg::RequestResume(None)));
+    // Without a selection too: the target is the session, not a section.
+    let mut empty = Transcript::new(blocks::theme(), blocks::formatter());
+    assert_eq!(ch(&mut empty, 'R'), Some(Msg::RequestResume(None)));
+    // A lower-case `r` is not the resume key.
+    assert_eq!(ch(&mut t, 'r'), None);
+}

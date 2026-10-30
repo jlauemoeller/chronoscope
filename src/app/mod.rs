@@ -16,6 +16,7 @@ pub mod hints;
 pub mod index_port;
 pub mod layout;
 pub mod redraw;
+pub mod resume;
 pub mod runtime;
 pub mod save;
 pub mod search;
@@ -220,6 +221,10 @@ pub enum Msg {
     /// (`e` as currently folded, `E` in full, as `full` says). `document` is
     /// the markdown.
     Export { full: bool, document: String },
+    /// `R`: the user asks to resume a session in its harness. The target is
+    /// the session of that harness the selector has selected; `None` (the
+    /// browser) is the open session, whatever transcript is on top.
+    RequestResume(Option<(HarnessId, SessionId)>),
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -357,6 +362,8 @@ pub struct App {
     save_dir: PathBuf,
     /// What `~` stands for in those paths.
     home_dir: Option<PathBuf>,
+    /// The resume waiting for its `y/n` answer, and the one confirmed.
+    resume: resume::ResumeState,
 }
 
 impl App {
@@ -434,6 +441,7 @@ impl App {
             config_path,
             save_dir: working_dir,
             home_dir: crate::paths::Paths::detect().map(|paths| paths.home_dir),
+            resume: resume::ResumeState::default(),
         };
         app.push_tabs();
         // The startup warnings are shown once, here, and never again.
@@ -626,6 +634,9 @@ impl App {
             Msg::Index(update) => self.index_update(&update),
             Msg::SearchResults(update) => self.search_result_arrived(&update),
             Msg::Selector(msg) => self.selector_msg(msg),
+            Msg::PromptSubmit(answer) if self.resume.pending() => self.resume_answered(&answer),
+            Msg::PromptCancel if self.resume.pending() => self.resume_declined(),
+            Msg::PromptChanged(_) | Msg::PromptNav(_) if self.resume.pending() => {}
             Msg::PromptChanged(_) if self.browser.write.is_some() => {
                 self.request_redraw(RedrawRequest::Dirty);
             }
@@ -665,6 +676,7 @@ impl App {
             Msg::CopyText(text) => self.copy_text(&text),
             Msg::SaveSection { text, kind } => self.save_section(text, kind),
             Msg::Export { full: _, document } => self.export_session(document),
+            Msg::RequestResume(target) => self.request_resume(target),
             Msg::OpenSubagent { call_id, label } => self.open_subagent(&call_id, label),
             Msg::CloseSubagent => self.close_subagent(),
             Msg::OpenSession(harness, session) => self.open_session(harness, &session),

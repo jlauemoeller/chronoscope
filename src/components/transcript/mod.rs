@@ -657,7 +657,8 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     /// keys [`Msg::Export`] with the whole document. The open key answers
     /// [`Msg::OpenSubagent`] on a subagent section (nothing on any other),
     /// and the back key [`Msg::CloseSubagent`] when the transcript is
-    /// [`nested`](Self::nested).
+    /// [`nested`](Self::nested). The resume key answers
+    /// [`Msg::RequestResume`] for the open session.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let Event::Keyboard(key) = ev else {
             return None;
@@ -675,6 +676,7 @@ impl AppComponent<Msg, UserEvent> for Transcript {
             Action::SaveFull => return self.save_msg(self.full_text()),
             Action::Export => return Some(self.export_msg(false)),
             Action::ExportFull => return Some(self.export_msg(true)),
+            Action::Resume => return Some(Msg::RequestResume(None)),
             _ => {}
         }
         let cmd = keys::cmd_for(action)?;

@@ -60,6 +60,8 @@ struct FakeHarness {
     subagents: Mutex<HashMap<(SessionId, ToolCallId), SessionId>>,
     /// Every `subagent` question asked.
     subagent_asks: Mutex<Vec<(SessionId, ToolCallId)>>,
+    /// The resume command template; none: the harness has no command.
+    resume: Mutex<Option<String>>,
 }
 
 impl FakeHarness {
@@ -74,7 +76,13 @@ impl FakeHarness {
             earlier_stopped: Mutex::default(),
             subagents: Mutex::default(),
             subagent_asks: Mutex::default(),
+            resume: Mutex::default(),
         })
+    }
+
+    /// Sets the resume command template (`{id}` is the session id).
+    fn set_resume(&self, template: Option<&str>) {
+        *self.resume.lock().unwrap() = template.map(str::to_owned);
     }
 
     fn script(&self, session: &str, updates: Vec<ModelUpdate>) {
@@ -168,8 +176,9 @@ impl Harness for FakeHarness {
         self.subagents.lock().unwrap().get(&key).cloned()
     }
 
-    fn resume_command(&self, _session: &SessionSummary) -> Option<std::process::Command> {
-        None
+    fn resume_command(&self, session: &SessionSummary) -> Option<std::process::Command> {
+        let template = self.resume.lock().unwrap().clone()?;
+        crate::harness::resume::build(&template, session)
     }
 }
 
@@ -1295,6 +1304,7 @@ mod copy;
 mod help;
 mod live;
 mod opencode;
+mod resume;
 mod save;
 mod search;
 mod subagent;
