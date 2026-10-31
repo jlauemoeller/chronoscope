@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use tuirealm::command::{Cmd, CmdResult, Direction};
 use tuirealm::component::{AppComponent, Component};
-use tuirealm::event::Event;
+use tuirealm::event::{Event, MouseEventKind};
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 
@@ -12,7 +12,7 @@ use super::list_pane::{
     PaneKey, PaneState, Part, RowParts, border_role, pane_key, render_rows, titled_block,
 };
 use super::{payload_from_value, payload_value, truncate_with_ellipsis};
-use crate::app::{Msg, Pane, SelectorMsg, UserEvent};
+use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
 use crate::keymap::Keymap;
 use crate::model::ProjectId;
 use crate::theme::Theme;
@@ -86,6 +86,23 @@ impl ProjectList {
             _ => None,
         }
     }
+
+    /// The wheel moves the selection like the keys; a left press on a row
+    /// reports the project, elsewhere in the pane it asks for the focus.
+    fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => self.moved(Direction::Up),
+            MouseEventKind::ScrollDown => self.moved(Direction::Down),
+            _ if mouse.is_left_press() => {
+                let row = self.pane.row_at(mouse.column, mouse.row, mouse.area);
+                Some(Msg::Selector(match row.and_then(|i| self.rows.get(i)) {
+                    Some(row) => SelectorMsg::ProjectClicked(row.id.clone()),
+                    None => SelectorMsg::PaneClicked(Pane::Projects),
+                }))
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Component for ProjectList {
@@ -134,6 +151,9 @@ impl Component for ProjectList {
 
 impl AppComponent<Msg, UserEvent> for ProjectList {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
+        if let Event::User(UserEvent::Mouse(mouse)) = ev {
+            return self.on_mouse(mouse);
+        }
         match pane_key(&self.keymap, ev)? {
             PaneKey::Up => self.moved(Direction::Up),
             PaneKey::Down => self.moved(Direction::Down),
@@ -437,5 +457,126 @@ mod tests {
                 list(&NAMES, Some(0), true).view(frame, Rect::new(0, 0, w, h));
             });
         }
+    }
+
+    // -- the mouse
+
+    use ratatui::layout::Size;
+    use tuirealm::event::{MouseButton, MouseEventKind};
+
+    /// A pane of 36 x 10 shows 7 rows, from its row 2.
+    fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Event<UserEvent> {
+        Event::User(UserEvent::Mouse(RoutedMouse {
+            kind,
+            column,
+            row,
+            area: Size::new(36, 10),
+        }))
+    }
+
+    fn press(column: u16, row: u16) -> Event<UserEvent> {
+        mouse(MouseEventKind::Down(MouseButton::Left), column, row)
+    }
+
+    fn clicked(id: &str) -> Option<Msg> {
+        Some(Msg::Selector(SelectorMsg::ProjectClicked(ProjectId::from(
+            format!("/p/{id}"),
+        ))))
+    }
+
+    #[test]
+    fn the_wheel_moves_the_selection_like_the_keys() {
+        let mut l = list(&NAMES, Some(1), false);
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollDown, 5, 4)),
+            selected("Calira")
+        );
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollUp, 5, 4)),
+            selected("BRIO")
+        );
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollUp, 5, 4)),
+            selected("Agentmon")
+        );
+        assert_eq!(l.on(&mouse(MouseEventKind::ScrollUp, 5, 4)), None);
+        assert_eq!(
+            l.state(),
+            State::Single(tuirealm::state::StateValue::Usize(0))
+        );
+        // Wherever in the pane the pointer is.
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollDown, 0, 0)),
+            selected("BRIO")
+        );
+    }
+
+    #[test]
+    fn a_press_on_a_row_reports_the_project() {
+        let mut l = list(&NAMES, Some(0), true);
+        assert_eq!(l.on(&press(5, 2)), clicked("Agentmon"));
+        assert_eq!(l.on(&press(5, 3)), clicked("BRIO"));
+        assert_eq!(
+            l.on(&press(30, 5)),
+            clicked("A very long project name indeed")
+        );
+    }
+
+    #[test]
+    fn a_press_where_there_is_no_row_asks_for_the_focus() {
+        let mut l = list(&NAMES, Some(0), false);
+        let pane = Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Projects)));
+        // Under the last row, the blank row, the border, the margin.
+        for (column, row) in [(5, 6), (5, 9), (5, 1), (5, 0), (0, 3), (35, 3)] {
+            assert_eq!(l.on(&press(column, row)), pane, "{column}, {row}");
+        }
+    }
+
+    #[test]
+    fn other_mouse_events_do_nothing() {
+        let mut l = list(&NAMES, Some(0), true);
+        for kind in [
+            MouseEventKind::Down(MouseButton::Right),
+            MouseEventKind::Up(MouseButton::Left),
+            MouseEventKind::ScrollLeft,
+            MouseEventKind::Moved,
+        ] {
+            assert_eq!(l.on(&mouse(kind, 5, 3)), None, "{kind:?}");
+        }
+        // The raw event, in screen coordinates, is not theirs to read.
+        let raw = Event::Mouse(tuirealm::event::MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            modifiers: KeyModifiers::NONE,
+            column: 5,
+            row: 3,
+        });
+        assert_eq!(l.on(&raw), None);
+        assert_eq!(
+            l.state(),
+            State::Single(tuirealm::state::StateValue::Usize(0))
+        );
+    }
+
+    #[test]
+    fn a_press_on_the_second_page_hits_the_row_drawn_there() {
+        let mut l = list(&NAMES, Some(0), true);
+        l.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(2));
+        l.on(&ch('j'));
+        l.on(&ch('j'));
+        // A pane of 36 x 5 shows two rows: rows 1 and 2 are drawn.
+        let small = |row| {
+            Event::User(UserEvent::Mouse(RoutedMouse {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 5,
+                row,
+                area: Size::new(36, 5),
+            }))
+        };
+        assert_eq!(l.on(&small(2)), clicked("BRIO"));
+        assert_eq!(l.on(&small(3)), clicked("Calira"));
+        assert_eq!(
+            l.on(&small(4)),
+            Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Projects)))
+        );
     }
 }

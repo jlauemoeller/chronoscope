@@ -1,8 +1,8 @@
 //! The screen layout (SPEC §4, §1.4): a pure function from the screen state
 //! and size to the area of every visible component.
 //!
-//! `App::view` draws from it, and the mouse subscriptions will be built from
-//! it, so both always agree on where a component is.
+//! `App::view` draws from it, and the mouse router hit-tests against it, so
+//! both always agree on where a component is.
 
 use ratatui::layout::{Rect, Size};
 
@@ -99,7 +99,7 @@ pub struct LayoutInput {
 }
 
 /// The area of each visible component, in drawing order (overlays last).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ScreenLayout {
     areas: Vec<(Id, Rect)>,
 }

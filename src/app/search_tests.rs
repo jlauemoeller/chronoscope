@@ -23,7 +23,7 @@ use crate::test_support::buffer_to_text;
 
 /// An app of 120x40 that has the search fixture of Claude, started in
 /// `/nowhere`, with two sessions' stats.
-fn searchable() -> App {
+pub(super) fn searchable() -> App {
     let mut app = empty_app_in(&[CLAUDE], theme("default"), "/nowhere");
     send(&mut app, search_snapshot(CLAUDE));
     send(&mut app, fixtures::stats_event(CLAUDE, "s1", 23, 3900));
@@ -43,7 +43,7 @@ fn open_search(app: &mut App) {
     press(app, Key::Char('/'));
 }
 
-fn searching(query: &str) -> App {
+pub(super) fn searching(query: &str) -> App {
     let mut app = searchable();
     open_search(&mut app);
     type_text(&mut app, query);
