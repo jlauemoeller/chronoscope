@@ -9,6 +9,7 @@ use tuirealm::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::*;
 use crate::app::layout::Screen;
+use crate::app::{Pane, SelectorMsg};
 
 fn press(column: u16, row: u16) -> Msg {
     Msg::Mouse(MouseEvent {
@@ -108,4 +109,44 @@ fn the_selector_over_the_browser_takes_the_mouse_and_the_browser_under_it_does_n
         row: list.y + 3,
     }));
     assert_eq!(selected_session(&rig).as_deref(), Some(BRIO_SESSION));
+}
+
+#[test]
+fn a_click_during_the_resume_confirmation_does_nothing() {
+    let mut rig = rig();
+    rig.harness.set_resume(Some("claude --resume {id}"));
+    rig.app.set_dir_exists(|_| true);
+    rig.app
+        .update(Msg::Selector(SelectorMsg::Focus(Pane::Sessions)));
+    rig.key(Key::Char('R'), KeyModifiers::SHIFT);
+    rig.settle();
+    assert!(rig.app.resume_prompt_open());
+    assert_eq!(rig.focus(), Some(Id::Prompt));
+    let before = (
+        rig.app.selected_session().cloned(),
+        rig.app.selected_project().cloned(),
+        rig.app.selected_harness(),
+    );
+    click_row(&mut rig, Id::SessionList, 1);
+    click_row(&mut rig, Id::ProjectList, 1);
+    let tabs = rig.app.routing().area(Id::HarnessTabs).unwrap();
+    rig.app.update(press(tabs.x + 2, tabs.y));
+    let list = rig.app.routing().area(Id::SessionList).unwrap();
+    rig.app.update(Msg::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        modifiers: KeyModifiers::NONE,
+        column: list.x + 6,
+        row: list.y + 3,
+    }));
+    assert_eq!(
+        (
+            rig.app.selected_session().cloned(),
+            rig.app.selected_project().cloned(),
+            rig.app.selected_harness(),
+        ),
+        before
+    );
+    assert!(rig.app.resume_prompt_open());
+    assert_eq!(rig.focus(), Some(Id::Prompt));
+    assert!(rig.app.take_queued().is_empty());
 }

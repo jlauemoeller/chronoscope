@@ -455,8 +455,8 @@ fn a_click_in_the_empty_pane_area_only_focuses_the_pane() {
     assert_eq!(app.focused_pane(), Pane::Sessions);
     assert_eq!(focus_of(&app), Some(Id::SessionList));
     assert!(project(&app).ends_with("/Agentmon"));
-    // The pane has the focus, so (as for any way of focusing it) the newest
-    // session is selected.
+    // Gaining the focus with nothing selected selects the newest session
+    // (SPEC §4.1), as it does for any way of focusing the pane.
     assert_eq!(session(&app), Some("s1"));
     // Under the last project row, on the blank row and on the border.
     for (column, row) in [(6, 12), (6, 1), (0, 5), (3, 0)] {
@@ -467,6 +467,29 @@ fn a_click_in_the_empty_pane_area_only_focuses_the_pane() {
         assert_eq!(app.focused_pane(), Pane::Sessions, "{column}, {row}");
         assert!(project(&app).ends_with("/Agentmon"), "{column}, {row}");
     }
+}
+
+#[test]
+fn a_click_in_the_empty_pane_area_changes_nothing_but_the_focus() {
+    let mut app = loaded();
+    click_row(&mut app, Id::SessionList, 2);
+    assert_eq!(session(&app), Some("s3"));
+    app.update(Msg::Selector(super::SelectorMsg::Focus(Pane::Projects)));
+    let project_before = project(&app);
+    // Under the last session row: Sessions gets the focus, s3 stays.
+    click(&mut app, Id::SessionList, 6, 12);
+    assert_eq!(app.focused_pane(), Pane::Sessions);
+    assert_eq!(focus_of(&app), Some(Id::SessionList));
+    assert_eq!(session(&app), Some("s3"));
+    assert_eq!(project(&app), project_before);
+    // Under the last project row: Projects gets the focus, nothing else
+    // changes.
+    click(&mut app, Id::ProjectList, 6, 12);
+    assert_eq!(app.focused_pane(), Pane::Projects);
+    assert_eq!(focus_of(&app), Some(Id::ProjectList));
+    assert_eq!(session(&app), Some("s3"));
+    assert_eq!(project(&app), project_before);
+    assert!(app.take_queued().is_empty());
 }
 
 #[test]
@@ -780,22 +803,6 @@ fn the_projects_and_the_tabs_are_off_while_searching() {
     );
     assert_eq!(focus_of(&app), Some(Id::Prompt));
     assert!(app.focus_stack.len() == 1);
-}
-
-#[test]
-fn a_click_during_the_resume_confirmation_does_nothing() {
-    let mut app = loaded();
-    app.update(Msg::Selector(super::SelectorMsg::Focus(Pane::Sessions)));
-    app.update(Msg::Selector(super::SelectorMsg::Resume));
-    // Without a harness to resume in nothing may be asked; the test only
-    // holds when the confirmation is on.
-    if !app.application().mounted(&Id::Prompt) {
-        return;
-    }
-    click_row(&mut app, Id::SessionList, 3);
-    click_row(&mut app, Id::ProjectList, 3);
-    assert_eq!(session(&app), Some("s1"));
-    assert!(project(&app).ends_with("/Agentmon"));
 }
 
 // -- the filtered selector
