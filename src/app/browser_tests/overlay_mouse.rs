@@ -50,6 +50,37 @@ fn wheel_outside(rig: &mut Rig, kind: MouseEventKind) {
     rig.app.update(at(kind, 0, 0));
 }
 
+/// The screen position of a `▶ Thinking:` summary row of the transcript at
+/// the left edge of the screen (column 3), which a centred overlay does not
+/// cover. Call it before the overlay opens: the overlay hides rows.
+fn summary_point(rig: &mut Rig, width: u16, height: u16) -> (u16, u16) {
+    let area = rig.app.routing().area(Id::Transcript).unwrap();
+    let screen = screen_text(rig, width, height);
+    let row = screen
+        .lines()
+        .enumerate()
+        .skip(usize::from(area.y))
+        .take(usize::from(area.height))
+        .find(|(_, row)| row.contains("▶ Thinking:"))
+        .map(|(row, _)| u16::try_from(row).unwrap())
+        .expect("a folded thinking section is on screen");
+    (area.x + 3, row)
+}
+
+/// Asserts that `point` is outside the overlay `id`, and on the transcript.
+fn assert_outside(rig: &Rig, id: Id, point: (u16, u16)) {
+    let overlay = rig.app.routing().area(id).unwrap();
+    assert!(
+        !overlay.contains(point.into()),
+        "{point:?} is in {overlay:?}"
+    );
+    let transcript = rig.app.routing().area(Id::Transcript).unwrap();
+    assert!(
+        transcript.contains(point.into()),
+        "{point:?} is not on the transcript"
+    );
+}
+
 fn click_clock(rig: &mut Rig) -> Rc<Cell<Duration>> {
     let start = Instant::now();
     let elapsed = Rc::new(Cell::new(Duration::ZERO));
@@ -105,38 +136,80 @@ fn click_theme(rig: &mut Rig, line: u16) {
 
 // -- the selector over the browser
 
-#[test]
-fn a_click_outside_the_selector_over_the_browser_closes_it_and_focuses_the_transcript() {
-    for outside in [press_outside, press_far_corner] {
-        let mut rig = rig();
-        rig.open_loaded();
-        let transcript = presentation(&rig);
-        rig.ctrl_o();
-        rig.settle();
-        assert_eq!(rig.app.screen(), Screen::BrowserSelector);
-        assert_eq!(rig.focus(), Some(Id::SessionList));
-        outside(&mut rig);
-        assert_eq!(rig.app.screen(), Screen::Browser);
-        assert!(!mounted(&rig, Id::SelectorFrame));
-        assert_eq!(rig.focus(), Some(Id::Transcript));
-        assert_eq!(presentation(&rig), transcript, "the click went no further");
-        assert!(rig.app.take_queued().is_empty());
-    }
+/// A 200x50 rig with the session open and the selector over it: the overlay
+/// is 160 columns wide, so the transcript shows in the 20 columns either side.
+/// Returns the screen position of a summary row at the left edge.
+fn selector_over_wide_browser() -> (Rig, (u16, u16)) {
+    let mut rig = rig_with(theme("default"), 200, 50);
+    rig.open_loaded();
+    let point = summary_point(&mut rig, 200, 50);
+    rig.ctrl_o();
+    rig.settle();
+    assert_eq!(rig.app.screen(), Screen::BrowserSelector);
+    assert_eq!(rig.focus(), Some(Id::SessionList));
+    assert_outside(&rig, Id::SelectorFrame, point);
+    (rig, point)
 }
 
 #[test]
-fn the_click_that_closes_the_selector_is_not_a_click_on_the_transcript() {
+fn a_click_outside_the_selector_over_the_browser_closes_it_and_focuses_the_transcript() {
+    let (mut rig, point) = selector_over_wide_browser();
+    let transcript = presentation(&rig);
+    rig.app.update(at(PRESS, point.0, point.1));
+    assert_eq!(rig.app.screen(), Screen::Browser);
+    assert!(!mounted(&rig, Id::SelectorFrame));
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(
+        presentation(&rig),
+        transcript,
+        "the click was on a summary row but toggled nothing and selected nothing"
+    );
+    assert!(rig.app.take_queued().is_empty());
+}
+
+#[test]
+fn a_click_above_the_selector_over_the_browser_closes_it_too() {
     let mut rig = rig();
     rig.open_loaded();
     rig.ctrl_o();
     rig.settle();
-    let transcript = presentation(&rig);
-    // Where the transcript's rows are, right of the overlay's content: the
-    // overlay covers the screen's width at 120x40, so use its corner row.
     let header = rig.app.routing().area(Id::BrowserHeader).unwrap();
     rig.app.update(at(PRESS, header.x + 3, header.y));
     assert_eq!(rig.app.screen(), Screen::Browser);
-    assert_eq!(presentation(&rig), transcript);
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+}
+
+#[test]
+fn a_click_outside_the_selector_during_its_search_closes_it() {
+    let mut rig = rig();
+    rig.open_loaded();
+    rig.ctrl_o();
+    rig.settle();
+    rig.press(Key::Char('/'));
+    rig.settle();
+    assert_eq!(rig.focus(), Some(Id::Prompt));
+    rig.app.update(at(PRESS, 0, 0));
+    assert_eq!(rig.app.screen(), Screen::Browser);
+    assert!(!mounted(&rig, Id::Prompt), "the search ended with it");
+    assert!(!mounted(&rig, Id::SelectorFrame));
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+}
+
+#[test]
+fn the_resume_confirmation_is_modal_to_a_click_outside_the_selector() {
+    let mut rig = rig();
+    rig.harness.set_resume(Some("claude --resume {id}"));
+    rig.app.set_dir_exists(|_| true);
+    rig.open_loaded();
+    rig.ctrl_o();
+    rig.settle();
+    rig.key(Key::Char('R'), KeyModifiers::SHIFT);
+    rig.settle();
+    assert!(rig.app.resume_prompt_open());
+    press_outside(&mut rig);
+    assert_eq!(rig.app.screen(), Screen::BrowserSelector);
+    assert!(rig.app.resume_prompt_open());
+    assert_eq!(rig.focus(), Some(Id::Prompt));
 }
 
 #[test]
@@ -161,16 +234,19 @@ fn a_click_inside_the_selector_acts_on_it_and_does_not_close_it() {
 
 #[test]
 fn the_wheel_outside_the_selector_over_the_browser_is_ignored() {
-    let mut rig = rig();
-    rig.open_loaded();
-    rig.ctrl_o();
-    rig.settle();
+    let (mut rig, point) = selector_over_wide_browser();
     let transcript = presentation(&rig);
     let session = rig.app.selected_session().cloned();
-    wheel_outside(&mut rig, WHEEL_DOWN);
-    wheel_outside(&mut rig, WHEEL_UP);
-    assert_eq!(rig.app.screen(), Screen::BrowserSelector);
-    assert_eq!(presentation(&rig), transcript);
+    for kind in [WHEEL_DOWN, WHEEL_UP, WHEEL_DOWN] {
+        rig.app.update(at(kind, point.0, point.1));
+    }
+    assert_eq!(rig.app.screen(), Screen::BrowserSelector, "still open");
+    assert_eq!(rig.focus(), Some(Id::SessionList));
+    assert_eq!(
+        presentation(&rig),
+        transcript,
+        "the transcript did not scroll"
+    );
     assert_eq!(rig.app.selected_session().cloned(), session);
 }
 
@@ -208,34 +284,26 @@ fn at_startup_a_click_outside_the_selector_does_nothing() {
     }
 }
 
-#[test]
-fn an_open_prompt_keeps_a_click_outside_from_closing_the_selector() {
-    let mut rig = rig();
-    rig.open_loaded();
-    rig.ctrl_o();
-    rig.settle();
-    rig.press(Key::Char('/'));
-    rig.settle();
-    assert_eq!(rig.focus(), Some(Id::Prompt));
-    press_outside(&mut rig);
-    assert_eq!(rig.app.screen(), Screen::BrowserSelector);
-    assert_eq!(rig.focus(), Some(Id::Prompt));
-}
-
 // -- the help overlay
 
 #[test]
 fn a_click_outside_the_help_overlay_closes_it_and_returns_the_focus() {
     let mut rig = rig();
     rig.open_loaded();
+    let point = summary_point(&mut rig, 120, 40);
+    let transcript = presentation(&rig);
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
-    let transcript = presentation(&rig);
-    press_outside(&mut rig);
+    assert_outside(&rig, Id::HelpOverlay, point);
+    rig.app.update(at(PRESS, point.0, point.1));
     assert!(!mounted(&rig, Id::HelpOverlay));
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert_eq!(rig.app.screen(), Screen::Browser);
-    assert_eq!(presentation(&rig), transcript, "the transcript got nothing");
+    assert_eq!(
+        presentation(&rig),
+        transcript,
+        "the press on a summary row did not reach the transcript"
+    );
 }
 
 #[test]
@@ -271,6 +339,7 @@ fn a_click_inside_the_help_overlay_does_nothing() {
 fn the_wheel_scrolls_the_help_overlay_and_outside_it_is_ignored() {
     let mut rig = rig_with(theme("default"), 80, 24);
     rig.open_loaded();
+    let transcript = presentation(&rig);
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
     assert_eq!(help_offset(&rig), 0);
     on(&mut rig, Id::HelpOverlay, WHEEL_DOWN, 5, 5);
@@ -279,25 +348,54 @@ fn the_wheel_scrolls_the_help_overlay_and_outside_it_is_ignored() {
     assert_eq!(help_offset(&rig), 6);
     on(&mut rig, Id::HelpOverlay, WHEEL_UP, 5, 5);
     assert_eq!(help_offset(&rig), 3);
-    // Outside: ignored, and the overlay stays open.
-    let transcript = presentation(&rig);
-    wheel_outside(&mut rig, WHEEL_DOWN);
-    wheel_outside(&mut rig, WHEEL_UP);
-    assert_eq!(help_offset(&rig), 3);
-    assert!(mounted(&rig, Id::HelpOverlay));
     assert_eq!(presentation(&rig), transcript);
 }
 
 #[test]
-fn the_wheel_outside_an_overlay_does_not_scroll_the_transcript_or_stop_following() {
+fn the_wheel_outside_an_overlay_over_the_browser_is_ignored() {
+    // On the transcript, beside the overlay, and while it is following.
+    for open in [Msg::OpenHelp(HelpContext::Browser), Msg::OpenThemeSelector] {
+        let mut rig = rig();
+        rig.open_loaded();
+        let point = summary_point(&mut rig, 120, 40);
+        let overlay = if open == Msg::OpenThemeSelector {
+            Id::ThemeSelector
+        } else {
+            Id::HelpOverlay
+        };
+        rig.app.update(open);
+        assert_outside(&rig, overlay, point);
+        let transcript = presentation(&rig);
+        for kind in [WHEEL_DOWN, WHEEL_UP, WHEEL_DOWN] {
+            rig.app.update(at(kind, point.0, point.1));
+        }
+        assert!(mounted(&rig, overlay), "{overlay:?} stays open");
+        assert_eq!(presentation(&rig), transcript, "{overlay:?}");
+        assert_eq!(rig.focus(), Some(overlay));
+        if overlay == Id::HelpOverlay {
+            assert_eq!(help_offset(&rig), 0);
+        } else {
+            assert_eq!(cursor(&rig).as_deref(), Some("default"));
+            assert_eq!(rig.app.theme_id(), "default");
+        }
+    }
+}
+
+#[test]
+fn the_wheel_outside_an_overlay_does_not_stop_following() {
     let mut rig = rig();
     rig.open_loaded();
     for _ in 0..40 {
         on(&mut rig, Id::Transcript, WHEEL_DOWN, 10, 5);
     }
     assert!(following(&rig));
+    let point = {
+        let area = rig.app.routing().area(Id::Transcript).unwrap();
+        (area.x + 3, area.y + 4)
+    };
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
-    wheel_outside(&mut rig, WHEEL_UP);
+    assert_outside(&rig, Id::HelpOverlay, point);
+    rig.app.update(at(WHEEL_UP, point.0, point.1));
     assert!(following(&rig));
 }
 
@@ -308,10 +406,13 @@ fn a_click_outside_the_theme_selector_cancels_and_restores_the_theme() {
     let mut rig = rig();
     rig.open_loaded();
     let original = rig.app.theme().clone();
+    let point = summary_point(&mut rig, 120, 40);
+    let transcript = presentation(&rig);
     rig.open_themes();
     rig.move_to(Key::Down, "terminal");
     assert_ne!(rig.app.theme(), &original, "previewed");
-    press_outside(&mut rig);
+    assert_outside(&rig, Id::ThemeSelector, point);
+    rig.app.update(at(PRESS, point.0, point.1));
     assert!(!mounted(&rig, Id::ThemeSelector));
     assert_eq!(rig.app.theme_id(), "default");
     assert_eq!(rig.app.theme(), &original);
@@ -321,6 +422,7 @@ fn a_click_outside_the_theme_selector_cancels_and_restores_the_theme() {
         assert_eq!(theme, original, "{id:?}");
     }
     assert_eq!(rig.app.config().theme, "default", "nothing was kept");
+    assert_eq!(presentation(&rig), transcript, "the press stopped there");
 }
 
 #[test]

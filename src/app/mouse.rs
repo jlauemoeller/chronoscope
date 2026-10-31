@@ -177,18 +177,13 @@ impl App {
     }
 
     fn route_mouse(&mut self, event: MouseEvent) {
-        let hit = hit_test(&self.mouse.routing, event.column, event.row);
         if let Some((overlay, area)) = topmost_overlay(&self.mouse.routing)
             && !area.contains((event.column, event.row).into())
         {
-            // Only the toast, which is drawn over the overlay, is a target
-            // out here.
-            if hit.is_none_or(|(id, _)| id != Id::Toast) {
-                self.outside_overlay(overlay, event.kind);
-            }
+            self.outside_overlay(overlay, event.kind);
             return;
         }
-        let Some((id, area)) = hit else {
+        let Some((id, area)) = hit_test(&self.mouse.routing, event.column, event.row) else {
             return;
         };
         // The layout places "the transcript"; the one on top gets the event.
@@ -216,9 +211,10 @@ impl App {
     /// A press or a wheel step outside the topmost overlay `overlay`. The
     /// wheel is ignored. A left press closes the overlay with the message
     /// `Esc` gives: `CloseHelp`, `CancelTheme` (which gives the previous
-    /// theme back) and, for the selector over a session, `CloseSelector`. At
-    /// startup there is nothing to return to (closing would quit) and while
-    /// a prompt has the input `Esc` would end that, so nothing happens.
+    /// theme back) and, for the selector over a session, `CloseSelector` (which
+    /// also ends the search whose prompt is open). At startup there is
+    /// nothing to return to (closing would quit), and the resume
+    /// confirmation is modal, so nothing happens then.
     fn outside_overlay(&mut self, overlay: Id, kind: MouseEventKind) {
         if kind != MouseEventKind::Down(MouseButton::Left) {
             return;
@@ -227,8 +223,7 @@ impl App {
             Id::HelpOverlay => Msg::CloseHelp,
             Id::ThemeSelector => Msg::CancelTheme,
             Id::SelectorFrame
-                if self.screen == Screen::BrowserSelector
-                    && !self.application.mounted(&Id::Prompt) =>
+                if self.screen == Screen::BrowserSelector && !self.resume.pending() =>
             {
                 Msg::CloseSelector
             }
