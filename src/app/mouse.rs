@@ -1,5 +1,6 @@
 //! Mouse routing (SPEC §1.4, §6.9): which component is under the pointer,
-//! and what the selector does with the clicks and the wheel.
+//! what the selector and the theme selector do with the clicks and the wheel,
+//! and what a click outside an open overlay does.
 //!
 //! `GlobalEvents` turns every left press and wheel step into
 //! [`Msg::Mouse`] (only when `mouse = true`). [`App::update`] finds the
@@ -19,7 +20,7 @@ use std::time::{Duration, Instant};
 use ratatui::layout::{Rect, Size};
 use tuirealm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
 
-use super::layout::{ScreenLayout, layout};
+use super::layout::{Screen, ScreenLayout, layout};
 use super::{App, Id, Msg, Pane, UserEvent};
 use crate::model::{ProjectId, SessionId};
 
@@ -58,6 +59,15 @@ impl RoutedMouse {
 /// mouse events.
 const OVERLAYS: [Id; 3] = [Id::SelectorFrame, Id::HelpOverlay, Id::ThemeSelector];
 
+/// The topmost overlay and its area, or `None` if none is open.
+pub fn topmost_overlay(layout: &ScreenLayout) -> Option<(Id, Rect)> {
+    layout
+        .areas()
+        .iter()
+        .rfind(|(id, _)| OVERLAYS.contains(id))
+        .copied()
+}
+
 /// The component drawn topmost at (`column`, `row`) and its area, or `None`
 /// if no component is there.
 ///
@@ -82,6 +92,7 @@ pub fn hit_test(layout: &ScreenLayout, column: u16, row: u16) -> Option<(Id, Rec
 enum ClickTarget {
     Project(ProjectId),
     Session(SessionId),
+    Theme(String),
 }
 
 /// What the `App` keeps for the mouse: the layout it routes with, the last
@@ -166,11 +177,31 @@ impl App {
     }
 
     fn route_mouse(&mut self, event: MouseEvent) {
-        let Some((id, area)) = hit_test(&self.mouse.routing, event.column, event.row) else {
+        let hit = hit_test(&self.mouse.routing, event.column, event.row);
+        if let Some((overlay, area)) = topmost_overlay(&self.mouse.routing)
+            && !area.contains((event.column, event.row).into())
+        {
+            // Only the toast, which is drawn over the overlay, is a target
+            // out here.
+            if hit.is_none_or(|(id, _)| id != Id::Toast) {
+                self.outside_overlay(overlay, event.kind);
+            }
             return;
+        }
+        let Some((id, area)) = hit else {
+            return;
+        };
+        // The layout places "the transcript"; the one on top gets the event.
+        let id = if id == Id::Transcript {
+            self.top_transcript()
+        } else {
+            id
         };
         if !self.takes_mouse(id, event.kind) {
             return;
+        }
+        if id == self.top_transcript() && event.kind == MouseEventKind::Down(MouseButton::Left) {
+            self.focus_transcript(id);
         }
         let routed = Event::User(UserEvent::Mouse(RoutedMouse::new(event, area)));
         let msg = self
@@ -182,8 +213,44 @@ impl App {
         }
     }
 
-    /// Whether `id` reacts to the mouse now. The selector's tabs and panes
-    /// do, unless a prompt has the input: the search prompt lets the
+    /// A press or a wheel step outside the topmost overlay `overlay`. The
+    /// wheel is ignored. A left press closes the overlay with the message
+    /// `Esc` gives: `CloseHelp`, `CancelTheme` (which gives the previous
+    /// theme back) and, for the selector over a session, `CloseSelector`. At
+    /// startup there is nothing to return to (closing would quit) and while
+    /// a prompt has the input `Esc` would end that, so nothing happens.
+    fn outside_overlay(&mut self, overlay: Id, kind: MouseEventKind) {
+        if kind != MouseEventKind::Down(MouseButton::Left) {
+            return;
+        }
+        let msg = match overlay {
+            Id::HelpOverlay => Msg::CloseHelp,
+            Id::ThemeSelector => Msg::CancelTheme,
+            Id::SelectorFrame
+                if self.screen == Screen::BrowserSelector
+                    && !self.application.mounted(&Id::Prompt) =>
+            {
+                Msg::CloseSelector
+            }
+            _ => return,
+        };
+        self.update(msg);
+    }
+
+    /// A click on the transcript `id` gives it the focus, if something else
+    /// has it.
+    fn focus_transcript(&mut self, id: Id) {
+        if self.application.focus() == Some(&id) {
+            return;
+        }
+        if let Err(err) = self.application.active(&id) {
+            log::warn!("could not focus the transcript: {err}");
+        }
+    }
+
+    /// Whether `id` reacts to the mouse now. The overlays do. So does the
+    /// transcript, unless a prompt has the input. The selector's tabs and
+    /// panes do, unless a prompt has the input: the search prompt lets the
     /// Sessions pane's results be clicked and scrolled, any other (the
     /// resume confirmation) is modal. In the filtered selector the Projects
     /// pane is as at a start without the prefix: the wheel leaves it alone
@@ -192,10 +259,27 @@ impl App {
         let prompt = self.application.mounted(&Id::Prompt);
         let wheel = matches!(kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown);
         match id {
+            Id::HelpOverlay | Id::ThemeSelector => true,
+            Id::Transcript | Id::Subagent(_) => !prompt,
             Id::ProjectList if wheel && self.selector.filtered.is_some() => false,
             Id::SessionList => !prompt || self.selector.search.is_some(),
             Id::ProjectList | Id::HarnessTabs => !prompt,
             _ => false,
+        }
+    }
+
+    // -- the theme selector's clicks
+
+    /// A click on the theme `id`, where the theme selector's cursor is now: it
+    /// is previewed. A double-click keeps it, like `Enter`.
+    pub(super) fn theme_clicked(&mut self, id: &str) {
+        if self.theme_selector.is_none() {
+            return;
+        }
+        if self.mouse.press(ClickTarget::Theme(id.to_owned())) {
+            self.select_theme(id);
+        } else {
+            self.preview_theme(id);
         }
     }
 

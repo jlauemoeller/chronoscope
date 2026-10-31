@@ -21,6 +21,12 @@ pub const HALF_PAGE_UP: &str = "half_page_up";
 pub const PAGE_DOWN: &str = "page_down";
 /// `Cmd::Custom` name: scroll a page up.
 pub const PAGE_UP: &str = "page_up";
+/// `Cmd::Custom` name: scroll [`WHEEL_ROWS`] rows down (a wheel step).
+pub const WHEEL_DOWN: &str = "wheel_down";
+/// `Cmd::Custom` name: scroll [`WHEEL_ROWS`] rows up (a wheel step).
+pub const WHEEL_UP: &str = "wheel_up";
+/// How many rows one step of the mouse wheel scrolls.
+pub const WHEEL_ROWS: usize = 3;
 /// `Cmd::Custom` name: fold the selected section.
 pub const FOLD: &str = "fold";
 /// `Cmd::Custom` name: unfold the selected section.
@@ -68,6 +74,8 @@ impl Transcript {
             HALF_PAGE_UP => self.scroll_pages(Step::Previous, Amount::Half),
             PAGE_DOWN => self.scroll_pages(Step::Next, Amount::Full),
             PAGE_UP => self.scroll_pages(Step::Previous, Amount::Full),
+            WHEEL_DOWN => self.scroll_pages(Step::Next, Amount::Rows(WHEEL_ROWS)),
+            WHEEL_UP => self.scroll_pages(Step::Previous, Amount::Rows(WHEEL_ROWS)),
             FOLD => self.fold_command(FoldOp::Fold),
             UNFOLD => self.fold_command(FoldOp::Unfold),
             FOLD_ALL => self.set_all_folded(true),

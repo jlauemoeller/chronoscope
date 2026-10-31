@@ -11,7 +11,7 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, Clear};
 use tuirealm::command::{Cmd, CmdResult};
 use tuirealm::component::{AppComponent, Component};
-use tuirealm::event::Event;
+use tuirealm::event::{Event, MouseEventKind};
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 use unicode_width::UnicodeWidthStr;
@@ -20,7 +20,7 @@ pub use rows::{ThemeItem, ThemeRows};
 
 use super::list_pane::{ListCursor, VISIBLE_ROWS_ATTR, titled_block};
 use super::{HelpLine, Hint, THEME_ATTR, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent};
+use crate::app::{Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, Keymap};
 use crate::theme::{Role, Theme, ThemeRegistry};
 
@@ -254,8 +254,11 @@ impl Component for ThemeSelector {
 
 impl AppComponent<Msg, UserEvent> for ThemeSelector {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
-        let Event::Keyboard(key) = ev else {
-            return None;
+        let key = match ev {
+            Event::Keyboard(key) => key,
+            // Only what the `App` routed here, in the overlay's coordinates.
+            Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
+            _ => return None,
         };
         match self.keymap.resolve(Context::Overlay, key)? {
             Action::Close => Some(Msg::CancelTheme),
@@ -268,6 +271,40 @@ impl AppComponent<Msg, UserEvent> for ThemeSelector {
 }
 
 impl ThemeSelector {
+    /// The wheel moves the cursor a theme like the arrow keys. A left press on
+    /// a theme that can be selected moves the cursor there and says
+    /// [`Msg::ThemeClicked`] (the `App` previews it, or keeps it on a
+    /// double-click); anywhere else in the overlay it does nothing.
+    fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => self.moved(false),
+            MouseEventKind::ScrollDown => self.moved(true),
+            _ if mouse.is_left_press() => {
+                let index = self.row_at(mouse)?;
+                self.move_cursor(index);
+                Some(Msg::ThemeClicked(self.items[index].id.clone()))
+            }
+            _ => None,
+        }
+    }
+
+    /// The theme row at the position of `mouse` (relative to the overlay),
+    /// if it is a theme that can be selected: not the border, the blank rows,
+    /// the help row or an empty row below the last theme.
+    fn row_at(&self, mouse: &RoutedMouse) -> Option<usize> {
+        let (width, height) = (mouse.area.width, mouse.area.height);
+        // The inside of the border, as `view` places it.
+        let inner = Rect::new(1, 1, width.saturating_sub(2), height.saturating_sub(2));
+        let (list, _) = Self::parts(inner);
+        let inside = (list.x..list.right()).contains(&mouse.column);
+        let line = mouse.row.checked_sub(list.y)?;
+        if !inside || line >= list.height {
+            return None;
+        }
+        let index = self.cursor.offset_for(usize::from(list.height)) + usize::from(line);
+        self.items.get(index)?.selectable.then_some(index)
+    }
+
     /// The preview message for a move of the cursor, if it moved.
     fn moved(&mut self, down: bool) -> Option<Msg> {
         if !self.step(down) {
@@ -517,6 +554,150 @@ mod tests {
         );
         assert_eq!(press(&mut s, Key::Enter), None);
         assert_eq!(press(&mut s, Key::Down), None);
+    }
+
+    // -- the mouse
+
+    fn mouse(s: &ThemeSelector, kind: MouseEventKind, column: u16, row: u16) -> Event<UserEvent> {
+        Event::User(UserEvent::Mouse(RoutedMouse {
+            kind,
+            column,
+            row,
+            area: s.desired_size(),
+        }))
+    }
+
+    const PRESS: MouseEventKind = MouseEventKind::Down(tuirealm::event::MouseButton::Left);
+
+    /// A press on list row `line` (0 is the first theme).
+    fn click_line(s: &mut ThemeSelector, line: u16) -> Option<Msg> {
+        s.on(&mouse(s, PRESS, 6, 2 + line))
+    }
+
+    #[test]
+    fn a_click_on_a_theme_moves_the_cursor_there_and_says_which() {
+        let mut s = selector_for(&ThemeRegistry::builtin(), "default");
+        // Rows are Default, Terminal, Catppuccin, Gruvbox, ...
+        assert_eq!(
+            click_line(&mut s, 3),
+            Some(Msg::ThemeClicked("gruvbox".into()))
+        );
+        assert_eq!(selected(&s).as_deref(), Some("gruvbox"));
+        assert_eq!(
+            click_line(&mut s, 0),
+            Some(Msg::ThemeClicked("default".into()))
+        );
+        assert_eq!(selected(&s).as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn a_click_on_the_theme_under_the_cursor_says_so_too() {
+        let mut s = selector_for(&ThemeRegistry::builtin(), "nord");
+        assert_eq!(
+            click_line(&mut s, 4),
+            Some(Msg::ThemeClicked("nord".into()))
+        );
+        assert_eq!(selected(&s).as_deref(), Some("nord"));
+    }
+
+    #[test]
+    fn a_click_anywhere_but_on_a_theme_row_does_nothing() {
+        let mut s = selector_for(&ThemeRegistry::builtin(), "nord");
+        let size = s.desired_size();
+        let last = size.height - 1;
+        // The top border, the blank row, the blank row under the list, the
+        // help row and the bottom border; the border columns of a theme row.
+        for row in [0, 1, last - 2, last - 1, last] {
+            assert_eq!(s.on(&mouse(&s, PRESS, 6, row)), None, "row {row}");
+        }
+        for column in [0, size.width - 1] {
+            assert_eq!(s.on(&mouse(&s, PRESS, column, 3)), None, "column {column}");
+        }
+        assert_eq!(selected(&s).as_deref(), Some("nord"));
+    }
+
+    #[test]
+    fn a_click_below_the_last_theme_does_nothing() {
+        // Two themes in an overlay with room for five.
+        let items = vec![ThemeItem::valid("a", "A"), ThemeItem::valid("b", "B")];
+        let mut s = ThemeSelector::new(items, "a", builtin::default_theme(), Keymap::default());
+        let event = Event::User(UserEvent::Mouse(RoutedMouse {
+            kind: PRESS,
+            column: 6,
+            row: 5,
+            area: Size::new(41, 10),
+        }));
+        assert_eq!(s.on(&event), None);
+        assert_eq!(selected(&s).as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn a_click_on_an_invalid_theme_does_nothing() {
+        let registry = registry_with(&[("broken", false)]);
+        let mut s = selector_for(&registry, "default");
+        assert_eq!(click_line(&mut s, 7), None);
+        assert_eq!(selected(&s).as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn a_click_in_a_scrolled_list_hits_the_row_drawn_there() {
+        let mut s = numbered(12);
+        for _ in 0..9 {
+            press(&mut s, Key::Down);
+        }
+        // Five rows fit; the cursor on Theme 9 scrolls the list to 5..10.
+        s.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(5));
+        let area = Size::new(41, 10);
+        let at = |line: u16| {
+            Event::User(UserEvent::Mouse(RoutedMouse {
+                kind: PRESS,
+                column: 6,
+                row: 2 + line,
+                area,
+            }))
+        };
+        assert_eq!(s.on(&at(0)), Some(Msg::ThemeClicked("t5".into())));
+        assert_eq!(s.on(&at(4)), Some(Msg::ThemeClicked("t9".into())));
+        assert_eq!(selected(&s).as_deref(), Some("t9"));
+    }
+
+    #[test]
+    fn the_wheel_moves_the_cursor_a_theme_and_previews_it() {
+        let mut s = selector_for(&ThemeRegistry::builtin(), "default");
+        let down = mouse(&s, MouseEventKind::ScrollDown, 0, 0);
+        let up = mouse(&s, MouseEventKind::ScrollUp, 0, 0);
+        assert_eq!(s.on(&down), Some(Msg::PreviewTheme("terminal".into())));
+        assert_eq!(s.on(&down), Some(Msg::PreviewTheme("catppuccin".into())));
+        assert_eq!(s.on(&up), Some(Msg::PreviewTheme("terminal".into())));
+        assert_eq!(selected(&s).as_deref(), Some("terminal"));
+        assert_eq!(s.on(&up), Some(Msg::PreviewTheme("default".into())));
+        assert_eq!(s.on(&up), None, "the first theme");
+        for _ in 0..10 {
+            s.on(&down);
+        }
+        assert_eq!(selected(&s).as_deref(), Some("solarized"));
+        assert_eq!(s.on(&down), None, "the last theme");
+    }
+
+    #[test]
+    fn other_mouse_events_and_the_raw_event_do_nothing() {
+        let mut s = selector_for(&ThemeRegistry::builtin(), "nord");
+        for kind in [
+            MouseEventKind::Down(tuirealm::event::MouseButton::Right),
+            MouseEventKind::Up(tuirealm::event::MouseButton::Left),
+            MouseEventKind::Moved,
+            MouseEventKind::ScrollLeft,
+        ] {
+            assert_eq!(s.on(&mouse(&s, kind, 6, 3)), None, "{kind:?}");
+        }
+        let raw = Event::Mouse(tuirealm::event::MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            modifiers: KeyModifiers::NONE,
+            column: 6,
+            row: 3,
+        });
+        assert_eq!(s.on(&raw), None);
+        assert_eq!(selected(&s).as_deref(), Some("nord"));
     }
 
     #[test]

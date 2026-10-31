@@ -11,7 +11,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 use tuirealm::command::{Cmd, CmdResult};
 use tuirealm::component::{AppComponent, Component};
-use tuirealm::event::Event;
+use tuirealm::event::{Event, MouseEventKind};
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
@@ -19,7 +19,7 @@ pub use content::{HelpContent, HelpContext, HelpGroup, HelpRow, MIN_WIDTH, SHIFT
 
 use super::list_pane::titled_block;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent};
+use crate::app::{Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, Keymap};
 use crate::theme::{Role, Theme};
 
@@ -45,6 +45,9 @@ pub fn context_value(context: HelpContext) -> AttrValue {
 pub fn context_from_value(value: &AttrValue) -> Option<HelpContext> {
     payload_from_value(value)
 }
+
+/// How many rows one step of the mouse wheel scrolls.
+pub const WHEEL_ROWS: usize = 3;
 
 /// The text of the indicator on the top border when rows are hidden above.
 const MORE_ABOVE: &str = " ↑ more ";
@@ -191,10 +194,26 @@ impl Component for HelpOverlay {
     }
 }
 
+impl HelpOverlay {
+    /// The wheel scrolls [`WHEEL_ROWS`] rows; clicks do nothing (the `App`
+    /// closes the overlay for one outside it).
+    fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
+        let moved = match mouse.kind {
+            MouseEventKind::ScrollUp => self.scroll_by(WHEEL_ROWS, false),
+            MouseEventKind::ScrollDown => self.scroll_by(WHEEL_ROWS, true),
+            _ => false,
+        };
+        moved.then_some(Msg::HelpScrolled)
+    }
+}
+
 impl AppComponent<Msg, UserEvent> for HelpOverlay {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
-        let Event::Keyboard(key) = ev else {
-            return None;
+        let key = match ev {
+            Event::Keyboard(key) => key,
+            // Only what the `App` routed here, in the overlay's coordinates.
+            Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
+            _ => return None,
         };
         let Some(action) = self.keymap.resolve(Context::Overlay, key) else {
             let closes = self.keymap.resolve(Context::Global, key) == Some(Action::Help);
@@ -294,6 +313,77 @@ mod tests {
         }
         assert_eq!(offset(&overlay), 0);
         assert_eq!(press(&mut overlay, Key::Char('k')), None);
+    }
+
+    fn wheel(overlay: &mut HelpOverlay, kind: MouseEventKind) -> Option<Msg> {
+        let mouse = RoutedMouse {
+            kind,
+            column: 5,
+            row: 4,
+            area: Size::new(72, 22),
+        };
+        overlay.on(&Event::User(UserEvent::Mouse(mouse)))
+    }
+
+    #[test]
+    fn the_wheel_scrolls_three_rows_per_step_and_clamps_at_both_ends() {
+        let mut overlay = with_interior(20);
+        let last = 50 - 20;
+        assert_eq!(
+            wheel(&mut overlay, MouseEventKind::ScrollDown),
+            Some(Msg::HelpScrolled)
+        );
+        assert_eq!(offset(&overlay), WHEEL_ROWS);
+        assert_eq!(WHEEL_ROWS, 3);
+        wheel(&mut overlay, MouseEventKind::ScrollDown);
+        assert_eq!(offset(&overlay), 6);
+        assert_eq!(
+            wheel(&mut overlay, MouseEventKind::ScrollUp),
+            Some(Msg::HelpScrolled)
+        );
+        assert_eq!(offset(&overlay), 3);
+        for _ in 0..20 {
+            wheel(&mut overlay, MouseEventKind::ScrollDown);
+        }
+        assert_eq!(offset(&overlay), last);
+        assert_eq!(wheel(&mut overlay, MouseEventKind::ScrollDown), None);
+        for _ in 0..20 {
+            wheel(&mut overlay, MouseEventKind::ScrollUp);
+        }
+        assert_eq!(offset(&overlay), 0);
+        assert_eq!(wheel(&mut overlay, MouseEventKind::ScrollUp), None);
+    }
+
+    #[test]
+    fn the_wheel_shows_the_rows_it_scrolled_to() {
+        let mut overlay = with_interior(20);
+        let top = text_of(&mut overlay, 20);
+        wheel(&mut overlay, MouseEventKind::ScrollDown);
+        let scrolled = text_of(&mut overlay, 20);
+        assert_ne!(top, scrolled);
+        assert!(scrolled.iter().any(|row| row.contains("↑ more")));
+    }
+
+    #[test]
+    fn clicks_and_the_raw_mouse_event_do_nothing() {
+        let mut overlay = with_interior(20);
+        for kind in [
+            MouseEventKind::Down(tuirealm::event::MouseButton::Left),
+            MouseEventKind::Down(tuirealm::event::MouseButton::Right),
+            MouseEventKind::Up(tuirealm::event::MouseButton::Left),
+            MouseEventKind::Moved,
+            MouseEventKind::ScrollLeft,
+        ] {
+            assert_eq!(wheel(&mut overlay, kind), None, "{kind:?}");
+        }
+        let raw = Event::Mouse(tuirealm::event::MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            modifiers: KeyModifiers::NONE,
+            column: 5,
+            row: 4,
+        });
+        assert_eq!(overlay.on(&raw), None);
+        assert_eq!(offset(&overlay), 0);
     }
 
     #[test]
