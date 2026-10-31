@@ -36,6 +36,6 @@
 | 032-resume-in-harness | Complete |
 | 033-command-line-args | Complete |
 | 034-selector-mouse | Complete |
-| 035-transcript-overlay-mouse | Planned |
+| 035-transcript-overlay-mouse | In progress |
 | 036-large-session-perf | Planned |
 | 037-release-and-docs | Planned |
