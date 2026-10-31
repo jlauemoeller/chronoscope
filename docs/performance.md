@@ -47,31 +47,36 @@ and reused after that. They are never committed.
 
 ## Measurements
 
-From `cargo test --release --test budgets -- --ignored budgets --nocapture`
+From `cargo test --release -- --ignored budgets --nocapture`
 (worst of five loads; frames: 100 wheel steps of three rows each through the
 middle of the session at 200x50, each frame being the scroll and the draw into
 a `TestBackend`):
 
 | budget                | limit     | mixed         | dense          |
 |-----------------------|-----------|---------------|----------------|
-| first content         | < 300 ms  | 1.6 ms        | 1.7 ms         |
-| full parse            | < 2 s     | 122 ms        | 348 ms         |
-| slowest frame         | < 16 ms   | 2.3 ms        | 1.1 ms         |
+| first content         | < 300 ms  | 1.9 ms        | 1.9 ms         |
+| full parse            | < 2 s     | 172 ms        | 353 ms         |
+| slowest frame         | < 16 ms   | 3.3 ms        | 1.0 ms         |
 | peak heap             | < 3x file | 0.21x (21 MiB)| 0.83x (83 MiB) |
 
 More numbers from the same runs:
 
 - Loading into a `Transcript` as the application does (every update applied
-  as it arrives): loaded after 124 ms (mixed) and 331 ms (dense).
+  as it arrives): loaded after 175 ms (mixed) and 335 ms (dense).
+- The numbers move between runs: over several runs the mixed full parse took
+  111 to 172 ms and its slowest frame 2.3 to 3.6 ms; the margins are 10x or
+  more either way.
 - Heap held once the load is done: 0.11x the file (mixed), 0.80x (dense). The
   mixed session is small because the lazy outputs stay on disk.
-- Median frame: 0.40 ms (mixed), 0.54 ms (dense).
+- Median frame: 0.59 ms (mixed), 0.54 ms (dense).
 - Unfolding the slowest of the 84 large outputs (2 MB, which has to be read
-  and parsed again) takes 7.8 ms. That is one key press, not part of a scroll,
-  and it is also under the frame budget.
-- Expanding a 2 MB output past `truncate_output_lines` (`Enter` on the `... N
-  more lines` row) lays out all of its ~25 000 lines: about 30 ms once, then
-  frames are as fast as before.
+  and parsed again) takes 8 to 12 ms. That is one key press, not part of a
+  scroll, and it is also under the frame budget.
+- Expanding the unfolded large output past `truncate_output_lines` (`Enter` on
+  the `... N more lines` row) lays out all of its lines: 22 to 33 ms, once.
+  This is the one interaction that takes more than a frame. It is not a
+  scrolled frame, so it is outside the budget, and the frames after it are as
+  fast as before. Both are printed by the budget test as "reference" lines.
 
 From `cargo bench` (criterion, mean of the samples):
 
@@ -117,7 +122,7 @@ The budget check is an ignored test, because the numbers depend on the machine
 and CI runners vary. Run it in release mode; `--nocapture` shows the numbers:
 
 ```
-cargo test --release --test budgets -- --ignored budgets --nocapture
+cargo test --release -- --ignored budgets --nocapture
 ```
 
 It fails when any of the four budgets is missed on either session, and lists

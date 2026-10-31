@@ -4,7 +4,7 @@
 //! release mode (see `docs/performance.md`):
 //!
 //! ```text
-//! cargo test --release --test budgets -- --ignored budgets --nocapture
+//! cargo test --release -- --ignored budgets --nocapture
 //! ```
 //!
 //! The test checks two sessions of 100 MiB, one after the other (timings
@@ -23,6 +23,8 @@ use chronoscope::components::Transcript;
 use chronoscope::components::turn_block::{SectionId, SectionKey};
 use chronoscope::model::{Item, Turn};
 use ratatui::layout::Size;
+use tuirealm::command::Cmd;
+use tuirealm::component::Component;
 
 #[global_allocator]
 static ALLOC: CountingAlloc = CountingAlloc::new();
@@ -62,6 +64,11 @@ fn worst_unfold(transcript: &mut Transcript) -> Option<(usize, Duration)> {
                 turn: assistant.id.clone(),
                 key: SectionKey::Item(call.id.clone()),
             };
+            // Only outputs that are folded now are unfolded for the
+            // measurement, and folded again after it.
+            if transcript.is_folded(&id) != Some(true) {
+                continue;
+            }
             transcript.select(&id);
             let start = Instant::now();
             transcript.set_folded(&id, false);
@@ -73,6 +80,19 @@ fn worst_unfold(transcript: &mut Transcript) -> Option<(usize, Duration)> {
         }
     }
     worst
+}
+
+/// The time `Enter` takes on the `... N more lines` row of the scenario's
+/// unfolded large output, which lays out all of its lines. Reported, not
+/// asserted, like [`worst_unfold`].
+fn expand_large_output(scenario: &mut FrameScenario) -> Option<Duration> {
+    let more = scenario.large_section.as_ref()?.more_row()?;
+    if !scenario.transcript.select(&more) {
+        return None;
+    }
+    let start = Instant::now();
+    scenario.transcript.perform(Cmd::Submit);
+    Some(start.elapsed())
 }
 
 /// Measures `fixture` against the four budgets and returns the failures.
@@ -171,6 +191,12 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
     if worst_frame >= FRAME {
         failures.push(format!("{label}: the slowest frame took {worst_frame:?}"));
     }
+    if let Some(took) = expand_large_output(&mut scenario) {
+        println!(
+            "reference: expanding the large output past its truncation (every line laid out) took {:.1} ms",
+            ms(took)
+        );
+    }
     if let Some((bytes, took)) = worst_unfold(&mut scenario.transcript) {
         println!(
             "reference: unfolding the slowest large output ({bytes} bytes) took {:.1} ms",
@@ -181,7 +207,7 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "machine dependent: cargo test --release --test budgets -- --ignored budgets --nocapture"]
+#[ignore = "machine dependent: cargo test --release -- --ignored budgets --nocapture"]
 fn budgets() {
     let cache = fixture_cache_dir();
     let mixed = cached_fixture(&cache, FIXTURE_BYTES, SEED, LARGE_PERCENT).expect("the fixture");

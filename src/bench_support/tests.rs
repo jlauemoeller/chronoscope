@@ -245,6 +245,11 @@ fn small_sessions_are_indexed_into_ten_projects() {
     write_small_sessions(&data_dir, 50, 3).unwrap();
     let harness = ClaudeHarness::with_data_dir(data_dir, Default::default());
     harness.refresh().unwrap();
+    // The build reads every file once (the "cold" benchmark), and a second
+    // build of unchanged files reads none (the "warm" one).
+    assert_eq!(harness.scan_count(), 50);
+    harness.refresh().unwrap();
+    assert_eq!(harness.scan_count(), 50);
     let projects = harness.projects().unwrap();
     assert_eq!(projects.len(), 10);
     let sessions: usize = projects
@@ -257,12 +262,43 @@ fn small_sessions_are_indexed_into_ten_projects() {
 /// A loaded transcript of a generated session, drawn at `SIZE`.
 const SIZE: Size = Size::new(200, 50);
 
+/// Loads a generated session into a transcript the way the loader streams it,
+/// but on this thread (the counters the tests read are per thread): the file
+/// is fed to the assembler in chunks of 256 KiB, and every `Appended` and
+/// `Updated` batch it returns is applied as it comes, ending with `Loaded`.
 fn loaded_transcript(dir: &Path, bytes: u64) -> (Transcript, SyntheticSession) {
     let session = generated(dir, bytes, SEED);
-    let turns = Assembler::from_file(&session.path).unwrap().into_turns();
+    let data = fs::read(&session.path).unwrap();
+    let mut asm = Assembler::new(crate::model::ByteSource::File(Arc::new(
+        session.path.clone(),
+    )));
     let mut transcript = new_transcript().loading(true).viewport(SIZE);
-    transcript.apply_update(&ModelUpdate::Appended(turns));
+    let (mut appended, mut updated) = (0, 0);
+    let mut apply = |transcript: &mut Transcript, updates: Vec<ModelUpdate>| {
+        for update in updates {
+            match &update {
+                ModelUpdate::Appended(_) => appended += 1,
+                ModelUpdate::Updated(_) => updated += 1,
+                _ => {}
+            }
+            transcript.apply_update(&update);
+        }
+    };
+    for chunk in data.chunks(256 * 1024) {
+        let updates = asm.push_chunk(chunk);
+        apply(&mut transcript, updates);
+        let updates = asm.flush_held();
+        apply(&mut transcript, updates);
+    }
+    let updates = asm.finish();
+    apply(&mut transcript, updates);
     transcript.apply_update(&ModelUpdate::Loaded);
+    // Many batches, and some of them updated turns that were already shown.
+    assert!(
+        appended > 5 && updated > 0,
+        "{appended} appended, {updated} updated"
+    );
+    assert_eq!(transcript.turn_count(), asm.turns().len());
     (transcript, session)
 }
 
