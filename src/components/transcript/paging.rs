@@ -15,6 +15,8 @@ pub(super) enum Amount {
     Half,
     /// The viewport height.
     Full,
+    /// This many rows (a step of the mouse wheel), at least one.
+    Rows(usize),
 }
 
 impl Transcript {
@@ -126,6 +128,7 @@ impl Transcript {
         let rows = match amount {
             Amount::Half => (height / 2).max(1),
             Amount::Full => height,
+            Amount::Rows(rows) => rows.max(1),
         };
         let before = self.offset;
         self.offset = match step {

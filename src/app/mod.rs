@@ -146,6 +146,9 @@ pub enum Msg {
     /// `Enter` in the theme selector on the theme with this id: keep it,
     /// save it to the config and close the selector.
     SelectTheme(String),
+    /// A click on the theme with this id in the theme selector (its cursor
+    /// is there now): show it as a preview, or, on a double-click, keep it.
+    ThemeClicked(String),
     /// `Esc` in the theme selector: restore the theme that was active when
     /// it opened and close it.
     CancelTheme,
@@ -645,6 +648,7 @@ impl App {
             Msg::OpenThemeSelector => self.open_theme_selector(),
             Msg::PreviewTheme(id) => self.preview_theme(&id),
             Msg::SelectTheme(id) => self.select_theme(&id),
+            Msg::ThemeClicked(id) => self.theme_clicked(&id),
             Msg::CancelTheme => self.cancel_theme(),
             Msg::Resized(width, height) => self.resized(width, height),
             Msg::Tick => self.tick_elapsed(),

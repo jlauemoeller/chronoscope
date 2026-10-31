@@ -65,6 +65,14 @@
 //!   match, wrapping, and `Custom(`[`CLEAR_SEARCH`]`)` clears the search.
 //!   `/` is not a `Cmd`: the key answers [`Msg::OpenSearch`].
 //!
+//! The mouse (see the `mouse` module) arrives as a [`RoutedMouse`](crate::app::RoutedMouse)
+//! the `App` made for the pointer's position in the transcript's area. A wheel
+//! step is `Custom(`[`WHEEL_UP`]`/`[`WHEEL_DOWN`]`)`: it scrolls [`WHEEL_ROWS`]
+//! rows the way the page keys scroll. A left press selects the section under
+//! the pointer, toggles its fold when it is on the section's first row, and
+//! expands the output on a `… N more lines` row; the borders, the padding and
+//! the blank rows are not sections.
+//!
 //! The subagent keys are not `Cmd`s either: `a` on a subagent section
 //! answers [`Msg::OpenSubagent`] (nothing on any other), and the back key of
 //! a [`nested`](Transcript::nested) transcript [`Msg::CloseSubagent`].
@@ -74,6 +82,7 @@ mod content;
 mod folding;
 mod follow;
 mod keys;
+mod mouse;
 mod nav;
 mod paging;
 mod search;
@@ -107,7 +116,7 @@ use tuirealm::state::{State, StateValue};
 pub(crate) use cache::LayoutCache;
 pub use keys::{
     FOLD, FOLD_ALL, HALF_PAGE_DOWN, HALF_PAGE_UP, NEXT_TURN, PAGE_DOWN, PAGE_UP, PREV_TURN,
-    TOGGLE_SYSTEM, UNFOLD, UNFOLD_ALL,
+    TOGGLE_SYSTEM, UNFOLD, UNFOLD_ALL, WHEEL_DOWN, WHEEL_ROWS, WHEEL_UP,
 };
 pub use search::{
     CLEAR_SEARCH, SEARCH_NEXT, SEARCH_POSITION_ATTR, SEARCH_PREV, SEARCH_QUERY_ATTR,
@@ -660,8 +669,12 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     /// [`nested`](Self::nested). The resume key answers
     /// [`Msg::RequestResume`] for the open session.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
-        let Event::Keyboard(key) = ev else {
-            return None;
+        let key = match ev {
+            Event::Keyboard(key) => key,
+            // Only what the `App` routed here: the raw event reaches the
+            // focused component in screen coordinates.
+            Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
+            _ => return None,
         };
         let Resolved::Action(action) = self.resolver.feed(&self.keymap, key) else {
             return None;

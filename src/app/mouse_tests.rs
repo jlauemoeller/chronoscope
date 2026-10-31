@@ -784,12 +784,23 @@ fn nothing_under_the_help_overlay_or_the_theme_selector_gets_the_mouse() {
         let focus = focus_of(&app);
         assert_eq!(focus, Some(overlay));
         let before = (project(&app), session(&app).map(str::to_owned));
-        for line in 0..3 {
-            click_row(&mut app, Id::ProjectList, line);
-            click_row(&mut app, Id::SessionList, line);
+        // The points of the panes that the overlay covers.
+        let covered = app.routing().area(overlay).unwrap();
+        let mut tried = 0;
+        for pane in [Id::ProjectList, Id::SessionList] {
+            let area = covered.intersection(app.routing().area(pane).unwrap());
+            for (column, row) in [(area.x, area.y), (area.x + 1, area.y + 2)] {
+                if !area.contains((column, row).into()) {
+                    continue;
+                }
+                tried += 1;
+                // The overlay may act on the click itself (a theme row); the
+                // pane under it must not.
+                app.update(Msg::Mouse(mouse(PRESS, column, row)));
+                assert_eq!(app.routing().area(overlay), Some(covered), "{overlay:?}");
+            }
         }
-        wheel(&mut app, Id::ProjectList, true);
-        wheel(&mut app, Id::SessionList, true);
+        assert!(tried > 0, "the overlay covers part of a pane");
         assert_eq!(focus_of(&app), focus, "{overlay:?}");
         assert_eq!(
             (project(&app), session(&app).map(str::to_owned)),
