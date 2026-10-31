@@ -38,4 +38,4 @@
 | 034-selector-mouse | Complete |
 | 035-transcript-overlay-mouse | Complete |
 | 036-large-session-perf | Complete |
-| 037-release-and-docs | In progress |
+| 037-release-and-docs | Complete |
