@@ -18,7 +18,7 @@ Chronoscope is a read-only viewer. It never writes to the data of a harness
 ### From a release
 
 Download the archive for your platform from the
-[GitHub releases](../../releases) page, unpack it and put the `chronoscope`
+GitHub releases page of this project, unpack it and put the `chronoscope`
 binary somewhere on your `PATH`. Release builds exist for:
 
 | Platform | Target |
@@ -35,11 +35,11 @@ platform-specific work may be degraded.
 
 ### From source
 
-You need a Rust toolchain (1.85 or newer).
+You need a Rust toolchain (1.88 or newer).
 
 ```sh
 git clone <this repository>
-cd chronoscope2
+cd <the clone>
 cargo install --path .
 ```
 
@@ -372,9 +372,10 @@ Chronoscope reads the session data of the harnesses and never writes to it.
 Saving a section (`w`, `W`) and exporting a session (`e`, `E`) ask for a path
 and refuse to write into the data of a harness. Besides those files,
 Chronoscope writes only its own files: the theme choice in `config.toml`, a
-cache of session statistics (`$XDG_CACHE_HOME/chronoscope/`) and a log file
-(`chronoscope.log`, in the state directory, or the cache directory where there
-is none). Warnings about the config file and problems loading themes or
+cache of session statistics (`$XDG_CACHE_HOME/chronoscope/`, i.e.
+`~/.cache/chronoscope/`; `%LOCALAPPDATA%\chronoscope\` on Windows) and a log
+file (`chronoscope.log`, in `$XDG_STATE_HOME/chronoscope/`, or in the cache
+directory where there is no state directory, as on Windows). Warnings about the config file and problems loading themes or
 sessions are written to the log.
 
 ## Open items to verify
@@ -382,10 +383,9 @@ sessions are written to the log.
 - OpenCode data directory on macOS and Windows.
 - The OpenCode resume flag (`opencode --session <id>`).
 - herdr OSC52 / clipboard passthrough behaviour.
-- Compaction. Real Claude Code compacted sessions now exist locally (Claude
-  Code 2.1.304 to 2.1.311), and the fixture is modelled on them (`system`
-  `compact_boundary` followed by a summary entry); the parser should still be
-  checked against more recent versions. OpenCode compaction
+- Compaction. The Claude Code fixture (`system` `compact_boundary` followed by
+  a summary entry) is modelled on real compacted sessions; it is still to be
+  checked against newer Claude Code versions. OpenCode compaction
   (`session_pending` type `compaction`) is still unverified.
 - The reasoning-effort field in OpenCode (`model.variant`?).
 

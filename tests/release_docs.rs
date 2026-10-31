@@ -373,23 +373,62 @@ fn readme_credits_ratcn_and_points_to_the_notices() {
 #[test]
 fn release_workflow_builds_and_uploads_all_five_targets_on_version_tags() {
     let text = read(".github/workflows/release.yml");
-    assert!(text.contains("tags:"), "no tag trigger");
-    assert!(text.contains("\"v*\""), "tags v*");
-    for target in [
-        "x86_64-unknown-linux-gnu",
-        "aarch64-unknown-linux-gnu",
-        "aarch64-apple-darwin",
-        "x86_64-apple-darwin",
-        "x86_64-pc-windows-msvc",
-    ] {
-        assert!(
-            text.contains(&format!("target: {target}")),
-            "target {target}"
-        );
-    }
-    assert!(text.contains("cargo build --release --locked --target"));
-    assert!(text.contains("README.md THIRD-PARTY-NOTICES.md"));
-    assert!(text.contains(".tar.gz") && text.contains(".zip"));
-    assert!(text.contains("gh release upload"));
-    assert!(text.contains("contents: write"));
+    let workflow: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("valid YAML");
+
+    // `on` is a plain string key here (YAML 1.2), but accept a boolean key too.
+    let on = workflow
+        .get("on")
+        .or_else(|| workflow.get(serde_yaml_ng::Value::Bool(true)))
+        .expect("an `on` trigger");
+    let tags: Vec<&str> = on["push"]["tags"]
+        .as_sequence()
+        .expect("push.tags")
+        .iter()
+        .filter_map(|t| t.as_str())
+        .collect();
+    assert_eq!(tags, ["v*"]);
+    assert!(on["push"].get("branches").is_none(), "no branch trigger");
+    assert_eq!(on.as_mapping().unwrap().len(), 1, "only the push trigger");
+
+    let build = &workflow["jobs"]["build"];
+    let mut targets: Vec<&str> = build["strategy"]["matrix"]["include"]
+        .as_sequence()
+        .expect("matrix.include")
+        .iter()
+        .map(|entry| entry["target"].as_str().expect("target"))
+        .collect();
+    targets.sort_unstable();
+    assert_eq!(
+        targets,
+        [
+            "aarch64-apple-darwin",
+            "aarch64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "x86_64-pc-windows-msvc",
+            "x86_64-unknown-linux-gnu",
+        ]
+    );
+
+    let steps = serde_yaml_ng::to_string(&build["steps"]).unwrap();
+    assert!(steps.contains("cargo build --release --locked --target"));
+    assert!(steps.contains("README.md THIRD-PARTY-NOTICES.md"));
+    assert!(steps.contains(".tar.gz") && steps.contains(".zip"));
+    assert!(steps.contains("actions/upload-artifact"));
+
+    let release = &workflow["jobs"]["release"];
+    assert_eq!(release["needs"].as_str(), Some("build"));
+    assert_eq!(release["permissions"]["contents"].as_str(), Some("write"));
+    let steps = serde_yaml_ng::to_string(&release["steps"]).unwrap();
+    assert!(steps.contains("gh release upload"));
+}
+
+#[test]
+fn readme_rust_version_matches_the_manifest() {
+    let manifest: toml::Table = read("Cargo.toml").parse().unwrap();
+    let msrv = manifest["package"]["rust-version"].as_str().unwrap();
+    let text = readme();
+    assert!(
+        text.contains(&format!("({msrv} or newer)")),
+        "README must say Rust {msrv} or newer"
+    );
 }
