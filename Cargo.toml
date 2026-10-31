@@ -49,3 +49,19 @@ proptest = "1.11.0"
 
 [target.'cfg(unix)'.dev-dependencies]
 expectrl = "0.9"
+
+[[bench]]
+name = "first_content"
+harness = false
+
+[[bench]]
+name = "full_parse"
+harness = false
+
+[[bench]]
+name = "frame_render"
+harness = false
+
+[[bench]]
+name = "selector_index"
+harness = false
