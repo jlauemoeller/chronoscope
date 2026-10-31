@@ -33,7 +33,7 @@
 | 029-opencode-live-watch | Complete |
 | 030-help-overlay | Complete |
 | 031-theme-selector | Complete |
-| 032-resume-in-harness | In progress |
+| 032-resume-in-harness | Complete |
 | 033-command-line-args | Planned |
 | 034-selector-mouse | Planned |
 | 035-transcript-overlay-mouse | Planned |
