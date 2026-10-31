@@ -1304,6 +1304,7 @@ mod copy;
 mod help;
 mod launch;
 mod live;
+mod mouse;
 mod opencode;
 mod resume;
 mod save;

@@ -122,6 +122,15 @@ pub enum SelectorMsg {
     /// `Esc` in the filtered selector (the sessions whose ids start with
     /// the argument of the command line): back to the normal start.
     LeaveFilter,
+    /// A click on this project's row.
+    ProjectClicked(ProjectId),
+    /// A click on this session's row.
+    SessionClicked(SessionId),
+    /// A click on a pane where there is no row.
+    PaneClicked(Pane),
+    /// The wheel scrolled the Sessions pane without moving a selection: a
+    /// redraw is all that is needed.
+    ListScrolled,
 }
 
 /// What the last snapshot of a harness held.
@@ -815,13 +824,17 @@ impl App {
             }
             SelectorMsg::SwitchHarness(harness) => self.switch_harness(harness),
             SelectorMsg::LeaveFilter => self.leave_filtered(),
+            SelectorMsg::ProjectClicked(id) => self.project_clicked(id),
+            SelectorMsg::SessionClicked(id) => self.session_clicked(id),
+            SelectorMsg::PaneClicked(pane) => self.focus_pane(pane),
+            SelectorMsg::ListScrolled => self.request_redraw(RedrawRequest::Dirty),
             SelectorMsg::Resume => {}
         }
     }
 
     /// Another project was selected: its sessions are shown with none
     /// selected.
-    fn project_selected(&mut self, id: ProjectId) {
+    pub(super) fn project_selected(&mut self, id: ProjectId) {
         let known = self.selector.projects().iter().any(|p| p.id == id);
         if !known || self.selector.project.as_ref() == Some(&id) {
             return;
@@ -834,8 +847,8 @@ impl App {
         self.push_cwd();
     }
 
-    fn session_selected(&mut self, id: SessionId) {
-        if self.selector.filtered.is_some() {
+    pub(super) fn session_selected(&mut self, id: SessionId) {
+        if self.selector.filtered.is_some() || self.selector.search_shows_results() {
             // The list moved its own cursor over sessions of any project.
             self.request_redraw(RedrawRequest::Dirty);
             return;
@@ -852,7 +865,7 @@ impl App {
 
     /// Moves focus to `pane`. The Sessions pane selects the newest session if
     /// none is selected.
-    fn focus_pane(&mut self, pane: Pane) {
+    pub(super) fn focus_pane(&mut self, pane: Pane) {
         if self.selector.pane == pane {
             return;
         }
@@ -1076,6 +1089,7 @@ impl App {
     /// Tells the lists how many rows their pane shows at the current size,
     /// and the transcript how big its area is.
     pub(super) fn push_viewports(&mut self) {
+        self.refresh_routing();
         self.push_help_interior();
         self.push_theme_selector_rows();
         let area = ratatui::layout::Rect::new(0, 0, self.size.0, self.size.1);

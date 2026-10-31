@@ -5,10 +5,12 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use tuirealm::command::{Cmd, CmdResult};
 use tuirealm::component::{AppComponent, Component};
-use tuirealm::event::{Event, Key, KeyEvent, KeyModifiers};
+use tuirealm::event::{
+    Event, Key, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
-use tuirealm::subscription::{EventClause, Sub, SubClause};
+use tuirealm::subscription::{EventClause, MouseEventClause, Sub, SubClause};
 
 use crate::app::index_port::index_event_kind;
 use crate::app::search_worker::search_event_kind;
@@ -56,7 +58,12 @@ impl GlobalEvents {
     /// firing while a prompt or an overlay has focus, decided in one place.
     /// Resizes, ticks and worker events are never filtered by focus (see
     /// [`always_clause`]).
-    pub fn subscriptions(keymap: &Keymap) -> Vec<Sub<Id, UserEvent>> {
+    ///
+    /// With `mouse` it is also subscribed to the mouse anywhere on the
+    /// screen and turns the left press and the wheel (see [`MOUSE_KINDS`])
+    /// into [`Msg::Mouse`]; the `App` finds the component under the pointer.
+    /// Without, no mouse event reaches it.
+    pub fn subscriptions(keymap: &Keymap, mouse: bool) -> Vec<Sub<Id, UserEvent>> {
         let mut subs: Vec<Sub<Id, UserEvent>> = quit_key_events(keymap)
             .into_iter()
             .map(|key| {
@@ -77,6 +84,20 @@ impl GlobalEvents {
             .collect();
         subs.push(Sub::new(EventClause::WindowResize, always_clause()));
         subs.push(Sub::new(EventClause::Tick, always_clause()));
+        if mouse {
+            // One subscription for every mouse event on the screen. The
+            // library forwards on the position alone, whatever the kind and
+            // modifiers of the clause, so `on` picks the events it acts on.
+            subs.push(Sub::new(
+                EventClause::Mouse(MouseEventClause {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    modifiers: KeyModifiers::NONE,
+                    column: 0..u16::MAX,
+                    row: 0..u16::MAX,
+                }),
+                always_clause(),
+            ));
+        }
         for kind in [
             index_event_kind(),
             search_event_kind(),
@@ -87,6 +108,20 @@ impl GlobalEvents {
         }
         subs
     }
+}
+
+/// The mouse events the application acts on: a left press and a wheel step
+/// either way, without modifiers.
+pub const MOUSE_KINDS: [MouseEventKind; 3] = [
+    MouseEventKind::Down(MouseButton::Left),
+    MouseEventKind::ScrollUp,
+    MouseEventKind::ScrollDown,
+];
+
+/// Whether the application acts on `mouse`: a left press or a wheel step,
+/// without modifiers (`Shift` is the terminal's text selection).
+fn is_acted_on(mouse: &MouseEvent) -> bool {
+    mouse.modifiers == KeyModifiers::NONE && MOUSE_KINDS.contains(&mouse.kind)
 }
 
 /// When the global keys apply: not while the [`Prompt`](super::Prompt), the
@@ -185,6 +220,7 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
             Event::Keyboard(key) => self.on_key(key),
             Event::WindowResize(width, height) => Some(Msg::Resized(*width, *height)),
             Event::Tick => Some(Msg::Tick),
+            Event::Mouse(mouse) if is_acted_on(mouse) => Some(Msg::Mouse(*mouse)),
             Event::User(UserEvent::Index(update)) => Some(Msg::Index(update.clone())),
             Event::User(UserEvent::Search(update)) => Some(Msg::SearchResults(update.clone())),
             Event::User(UserEvent::TranscriptSearch(matches)) => {
@@ -324,7 +360,7 @@ mod tests {
 
     #[test]
     fn subscriptions_include_the_keys_resize_tick_and_the_worker_events() {
-        let subs = GlobalEvents::subscriptions(&Keymap::default());
+        let subs = GlobalEvents::subscriptions(&Keymap::default(), false);
         let keys = quit_key_events(&Keymap::default()).len();
         let open = action_key_events(&Keymap::default(), Action::OpenSelector);
         assert_eq!(open, [KeyEvent::new(Key::Char('o'), KeyModifiers::CONTROL)]);
@@ -347,6 +383,59 @@ mod tests {
         // Resize, tick, and the index, session search, transcript search
         // and session events.
         assert_eq!(subs.len(), keys + open.len() + help.len() + theme.len() + 6);
+    }
+
+    fn mouse(kind: MouseEventKind, modifiers: KeyModifiers) -> Event<UserEvent> {
+        Event::Mouse(MouseEvent {
+            kind,
+            modifiers,
+            column: 7,
+            row: 3,
+        })
+    }
+
+    fn mouse_subscriptions(mouse: bool) -> usize {
+        GlobalEvents::subscriptions(&Keymap::default(), mouse).len()
+            - GlobalEvents::subscriptions(&Keymap::default(), false).len()
+    }
+
+    #[test]
+    fn the_mouse_is_subscribed_to_only_with_mouse_on() {
+        assert_eq!(mouse_subscriptions(false), 0);
+        assert_eq!(mouse_subscriptions(true), 1);
+    }
+
+    #[test]
+    fn presses_and_wheel_steps_are_given_to_the_app() {
+        let mut component = GlobalEvents::new(Keymap::default());
+        for kind in MOUSE_KINDS {
+            let event = mouse(kind, KeyModifiers::NONE);
+            let Event::Mouse(raw) = event.clone() else {
+                unreachable!()
+            };
+            assert_eq!(component.on(&event), Some(Msg::Mouse(raw)), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn other_mouse_events_are_dropped() {
+        let mut component = GlobalEvents::new(Keymap::default());
+        for (kind, modifiers) in [
+            (MouseEventKind::Down(MouseButton::Right), KeyModifiers::NONE),
+            (
+                MouseEventKind::Down(MouseButton::Middle),
+                KeyModifiers::NONE,
+            ),
+            (MouseEventKind::Up(MouseButton::Left), KeyModifiers::NONE),
+            (MouseEventKind::Drag(MouseButton::Left), KeyModifiers::NONE),
+            (MouseEventKind::Moved, KeyModifiers::NONE),
+            (MouseEventKind::ScrollLeft, KeyModifiers::NONE),
+            (MouseEventKind::ScrollRight, KeyModifiers::NONE),
+            (MouseEventKind::Down(MouseButton::Left), KeyModifiers::SHIFT),
+            (MouseEventKind::ScrollDown, KeyModifiers::CONTROL),
+        ] {
+            assert_eq!(component.on(&mouse(kind, modifiers)), None, "{kind:?}");
+        }
     }
 
     #[test]

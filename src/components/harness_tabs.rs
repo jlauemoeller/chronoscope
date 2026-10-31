@@ -13,7 +13,7 @@ use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent};
+use crate::app::{Msg, RoutedMouse, SelectorMsg, UserEvent};
 use crate::model::HarnessId;
 use crate::theme::{Role, Theme};
 
@@ -78,6 +78,31 @@ impl HarnessTabs {
             spans.push(Span::styled(Self::label(tab.id), style));
         }
         Line::from(spans)
+    }
+
+    /// The tab whose label is under `column` of the labels' row.
+    fn tab_at(&self, column: u16) -> Option<&Tab> {
+        let mut start = 0;
+        for tab in &self.tabs.tabs {
+            let end = start + Self::label(tab.id).width();
+            if (start..end).contains(&usize::from(column)) {
+                return Some(tab);
+            }
+            start = end + SEPARATOR.width();
+        }
+        None
+    }
+
+    /// A left press on the label of an available tab asks to switch to it.
+    /// The separators, the underline row, and the labels of tabs without data
+    /// do nothing.
+    fn on_mouse(&self, mouse: &RoutedMouse) -> Option<Msg> {
+        if !mouse.is_left_press() || mouse.row != 0 {
+            return None;
+        }
+        self.tab_at(mouse.column)
+            .filter(|tab| tab.available)
+            .map(|tab| Msg::Selector(SelectorMsg::SwitchHarness(tab.id)))
     }
 
     /// The underline row: spaces up to the selected tab, then `━` as wide as
@@ -151,8 +176,11 @@ impl Component for HarnessTabs {
 }
 
 impl AppComponent<Msg, UserEvent> for HarnessTabs {
-    fn on(&mut self, _ev: &Event<UserEvent>) -> Option<Msg> {
-        None
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
+        match ev {
+            Event::User(UserEvent::Mouse(mouse)) => self.on_mouse(mouse),
+            _ => None,
+        }
     }
 }
 
@@ -263,5 +291,75 @@ mod tests {
             bar(tabs(Some(HarnessId::Claude))).view(frame, frame.area())
         });
         assert!(buffer_to_text(&buffer).starts_with("[1] Claude"));
+    }
+
+    // -- the mouse
+
+    use ratatui::layout::Size;
+    use tuirealm::event::{MouseButton, MouseEventKind};
+
+    fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Event<UserEvent> {
+        Event::User(UserEvent::Mouse(RoutedMouse {
+            kind,
+            column,
+            row,
+            area: Size::new(60, 2),
+        }))
+    }
+
+    fn press(column: u16, row: u16) -> Event<UserEvent> {
+        mouse(MouseEventKind::Down(MouseButton::Left), column, row)
+    }
+
+    fn switch(harness: HarnessId) -> Option<Msg> {
+        Some(Msg::Selector(SelectorMsg::SwitchHarness(harness)))
+    }
+
+    #[test]
+    fn a_press_on_the_label_of_an_available_tab_asks_to_switch_to_it() {
+        let mut b = bar(tabs(None));
+        // `[1] Claude` is columns 0..10.
+        for column in [0, 4, 9] {
+            assert_eq!(b.on(&press(column, 0)), switch(HarnessId::Claude));
+        }
+    }
+
+    #[test]
+    fn a_press_on_the_label_of_a_muted_tab_does_nothing() {
+        let mut b = bar(tabs(Some(HarnessId::Claude)));
+        // `[2] OpenCode` is columns 12..24 and has no data.
+        for column in [12, 18, 23] {
+            assert_eq!(b.on(&press(column, 0)), None, "{column}");
+        }
+    }
+
+    #[test]
+    fn a_press_between_the_labels_or_elsewhere_does_nothing() {
+        let mut b = bar(tabs(Some(HarnessId::Claude)));
+        for (column, row) in [(10, 0), (11, 0), (24, 0), (50, 0), (3, 1)] {
+            assert_eq!(b.on(&press(column, row)), None, "{column}, {row}");
+        }
+    }
+
+    #[test]
+    fn tabs_ignore_every_other_mouse_event() {
+        let mut b = bar(tabs(None));
+        for kind in [
+            MouseEventKind::Down(MouseButton::Right),
+            MouseEventKind::Up(MouseButton::Left),
+            MouseEventKind::ScrollDown,
+            MouseEventKind::ScrollUp,
+            MouseEventKind::Moved,
+        ] {
+            assert_eq!(b.on(&mouse(kind, 2, 0)), None, "{kind:?}");
+        }
+        // The raw event, in screen coordinates, is not theirs to read.
+        let raw = Event::Mouse(tuirealm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            modifiers: tuirealm::event::KeyModifiers::NONE,
+            column: 2,
+            row: 0,
+        });
+        assert_eq!(b.on(&raw), None);
     }
 }

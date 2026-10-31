@@ -3,7 +3,7 @@
 //! resolution of selector keys through the keymap.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Rect, Size};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Paragraph};
@@ -105,6 +105,21 @@ impl ListCursor {
     pub fn set_visible(&mut self, visible: usize) {
         self.visible = visible;
         self.reveal();
+    }
+
+    /// Scrolls the rows by one without moving the selection, keeping the
+    /// first row between 0 and `len - visible` (`visible` rows are shown).
+    /// Returns whether the list scrolled.
+    pub fn scroll(&mut self, down: bool, visible: usize) -> bool {
+        let last = self.len.saturating_sub(visible);
+        let from = self.offset.min(last);
+        let to = if down {
+            (from + 1).min(last)
+        } else {
+            from.saturating_sub(1)
+        };
+        self.offset = to;
+        to != from
     }
 
     /// Selects the previous row. Returns whether the selection changed; at
@@ -228,6 +243,20 @@ impl PaneState {
             _ => return None,
         };
         Some(QueryResult::Owned(value))
+    }
+
+    /// The row of the list at (`column`, `row`) of a pane of `size` (as
+    /// drawn: the border, a blank row, then the rows), or `None` on the
+    /// border, the blank row, the margin and below the last row.
+    pub fn row_at(&self, column: u16, row: u16, size: Size) -> Option<usize> {
+        let line = usize::from(row.checked_sub(ROWS_ABOVE_LIST)?);
+        let inside = column >= 1 && column < size.width.saturating_sub(1);
+        let visible = visible_rows(size.height);
+        if !inside || line >= visible {
+            return None;
+        }
+        let index = self.cursor.offset_for(visible) + line;
+        (index < self.cursor.len).then_some(index)
     }
 
     /// Moves the selection one row for `Cmd::Move(Up | Down)`.
@@ -566,6 +595,71 @@ mod tests {
         c.select(None);
         assert_eq!(c.offset(), 0);
         assert_eq!(c.offset_for(5), 0);
+    }
+
+    #[test]
+    fn scrolling_moves_the_rows_by_one_and_keeps_the_selection_alone() {
+        let mut c = cursor(10, None, 4);
+        assert!(!c.scroll(false, 4), "already at the top");
+        assert!(c.scroll(true, 4));
+        assert_eq!((c.offset(), c.selected()), (1, None));
+        for _ in 0..5 {
+            assert!(c.scroll(true, 4));
+        }
+        assert_eq!(c.offset(), 6, "the last row is at the bottom");
+        assert!(!c.scroll(true, 4));
+        assert!(c.scroll(false, 4));
+        assert_eq!(c.offset(), 5);
+    }
+
+    #[test]
+    fn a_list_that_fits_does_not_scroll() {
+        let mut c = cursor(3, None, 4);
+        assert!(!c.scroll(true, 4) && !c.scroll(false, 4));
+        let mut c = cursor(0, None, 4);
+        assert!(!c.scroll(true, 4));
+        assert_eq!(c.offset(), 0);
+    }
+
+    #[test]
+    fn a_scroll_survives_a_selection_that_stays_none() {
+        let mut c = cursor(10, None, 4);
+        c.scroll(true, 4);
+        c.set_visible(4);
+        assert_eq!(c.offset_for(4), 1);
+    }
+
+    fn pane(len: usize, selected: Option<usize>) -> PaneState {
+        let mut pane = PaneState::new(crate::theme::builtin::default_theme());
+        pane.cursor.set(len, selected);
+        pane
+    }
+
+    #[test]
+    fn row_at_maps_a_cell_to_the_row_drawn_there() {
+        // A pane of 20 x 8 shows 5 rows, from its row 2.
+        let size = Size::new(20, 8);
+        let pane = pane(3, None);
+        assert_eq!(pane.row_at(5, 2, size), Some(0));
+        assert_eq!(pane.row_at(1, 3, size), Some(1));
+        assert_eq!(pane.row_at(18, 4, size), Some(2));
+        // Under the last row, on the blank row and the border, and the
+        // border columns.
+        assert_eq!(pane.row_at(5, 5, size), None);
+        assert_eq!(pane.row_at(5, 1, size), None);
+        assert_eq!(pane.row_at(5, 0, size), None);
+        assert_eq!(pane.row_at(0, 2, size), None);
+        assert_eq!(pane.row_at(19, 2, size), None);
+    }
+
+    #[test]
+    fn row_at_follows_the_scroll_offset_and_the_rows_that_fit() {
+        let size = Size::new(20, 5);
+        // Two rows fit; the selection at 7 scrolls the list to rows 6 and 7.
+        let pane = pane(10, Some(7));
+        assert_eq!(pane.row_at(5, 2, size), Some(6));
+        assert_eq!(pane.row_at(5, 3, size), Some(7));
+        assert_eq!(pane.row_at(5, 4, size), None, "the bottom border");
     }
 
     #[test]

@@ -7,7 +7,7 @@ use ratatui::Frame;
 use ratatui::layout::{Margin, Rect};
 use tuirealm::command::{Cmd, CmdResult, Direction};
 use tuirealm::component::{AppComponent, Component};
-use tuirealm::event::Event;
+use tuirealm::event::{Event, MouseEventKind};
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
@@ -15,10 +15,10 @@ use unicode_width::UnicodeWidthStr;
 use super::empty_state::{EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS};
 use super::list_pane::{
     PaneKey, PaneState, Part, RowParts, border_role, pane_key, render_rows, title_width,
-    titled_block,
+    titled_block, visible_rows,
 };
 use super::{THEME_ATTR, payload_from_value, payload_value, truncate_with_ellipsis};
-use crate::app::{Msg, Pane, SelectorMsg, UserEvent};
+use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
 use crate::keymap::Keymap;
 use crate::model::{HarnessId, SessionId, SessionStats};
 use crate::theme::Theme;
@@ -215,6 +215,40 @@ impl SessionList {
         }
     }
 
+    /// The wheel moves the selection like the keys, or, with none selected,
+    /// only scrolls the rows. A left press on a row selects it and reports
+    /// the session; elsewhere in the pane it asks for the focus.
+    fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
+        let wheel = |list: &mut Self, direction| {
+            if list.pane.cursor.selected().is_some() {
+                return list.moved(direction);
+            }
+            let visible = visible_rows(mouse.area.height);
+            let down = direction == Direction::Down;
+            list.pane
+                .cursor
+                .scroll(down, visible)
+                .then_some(Msg::Selector(SelectorMsg::ListScrolled))
+        };
+        match mouse.kind {
+            MouseEventKind::ScrollUp => wheel(self, Direction::Up),
+            MouseEventKind::ScrollDown => wheel(self, Direction::Down),
+            _ if mouse.is_left_press() => {
+                let row = self.pane.row_at(mouse.column, mouse.row, mouse.area);
+                let Some(index) = row.filter(|&i| i < self.rows.len()) else {
+                    return Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Sessions)));
+                };
+                // The list moves its own cursor: over search results and
+                // filtered sessions the app does not track the selection.
+                self.pane.cursor.select(Some(index));
+                Some(Msg::Selector(SelectorMsg::SessionClicked(
+                    self.rows[index].id.clone(),
+                )))
+            }
+            _ => None,
+        }
+    }
+
     fn set_stats(&mut self, update: &SessionStatsUpdate) {
         if let Some(row) = Arc::make_mut(&mut self.rows)
             .iter_mut()
@@ -379,6 +413,9 @@ impl Component for SessionList {
 
 impl AppComponent<Msg, UserEvent> for SessionList {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
+        if let Event::User(UserEvent::Mouse(mouse)) = ev {
+            return self.on_mouse(mouse);
+        }
         match pane_key(&self.keymap, ev)? {
             PaneKey::Up => self.moved(Direction::Up),
             PaneKey::Down => self.moved(Direction::Down),
@@ -1092,5 +1129,123 @@ mod tests {
         assert_eq!(got.rows[0].stats, Some(stats(23, 3900)));
         l.attr(SELECTED_ATTR, selected_value(None));
         assert_eq!(l.state(), State::None);
+    }
+
+    // -- the mouse
+
+    use ratatui::layout::Size;
+    use tuirealm::event::{MouseButton, MouseEventKind};
+
+    /// A pane `rows` list rows high and 60 wide: its rows start at row 2.
+    fn mouse(kind: MouseEventKind, column: u16, row: u16, rows: u16) -> Event<UserEvent> {
+        Event::User(UserEvent::Mouse(RoutedMouse {
+            kind,
+            column,
+            row,
+            area: Size::new(60, rows + 3),
+        }))
+    }
+
+    fn press(row: u16, rows: u16) -> Event<UserEvent> {
+        mouse(MouseEventKind::Down(MouseButton::Left), 10, row, rows)
+    }
+
+    fn clicked(id: &str) -> Option<Msg> {
+        Some(Msg::Selector(SelectorMsg::SessionClicked(SessionId::from(
+            id,
+        ))))
+    }
+
+    fn offset_of(list: &SessionList, rows: usize) -> usize {
+        list.pane.cursor.offset_for(rows)
+    }
+
+    #[test]
+    fn the_wheel_moves_a_selection_like_the_keys() {
+        let mut l = list(sample(true), Some(0), true);
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 5)),
+            selected("b")
+        );
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 5)),
+            selected("c")
+        );
+        assert_eq!(l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 5)), None);
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollUp, 5, 3, 5)),
+            selected("b")
+        );
+    }
+
+    #[test]
+    fn the_wheel_scrolls_the_rows_when_nothing_is_selected() {
+        let mut l = list(sample(false), None, false);
+        let scrolled = Some(Msg::Selector(SelectorMsg::ListScrolled));
+        // Room for one row: three rows scroll twice.
+        assert_eq!(l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 1)), scrolled);
+        assert_eq!(offset_of(&l, 1), 1);
+        assert_eq!(l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 1)), scrolled);
+        assert_eq!(l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 1)), None);
+        assert_eq!(offset_of(&l, 1), 2);
+        assert_eq!(l.on(&mouse(MouseEventKind::ScrollUp, 5, 3, 1)), scrolled);
+        assert_eq!(offset_of(&l, 1), 1);
+        // Nothing got selected.
+        assert_eq!(l.state(), State::None);
+        // A list that fits does not scroll.
+        let mut l = list(sample(false), None, false);
+        assert_eq!(l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 5)), None);
+    }
+
+    #[test]
+    fn a_press_on_a_row_selects_it_and_reports_the_session() {
+        let mut l = list(sample(true), Some(0), false);
+        assert_eq!(l.on(&press(3, 5)), clicked("b"));
+        assert_eq!(l.state(), State::Single(StateValue::Usize(1)));
+        assert_eq!(l.on(&press(4, 5)), clicked("c"));
+        assert_eq!(l.state(), State::Single(StateValue::Usize(2)));
+        // From no selection too.
+        let mut l = list(sample(true), None, false);
+        assert_eq!(l.on(&press(4, 5)), clicked("c"));
+        assert_eq!(l.state(), State::Single(StateValue::Usize(2)));
+    }
+
+    #[test]
+    fn a_press_where_there_is_no_row_asks_for_the_focus_and_selects_nothing() {
+        let mut l = list(sample(true), Some(1), false);
+        let pane = Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Sessions)));
+        for row in [0, 1, 5, 6, 7] {
+            assert_eq!(l.on(&press(row, 5)), pane, "{row}");
+        }
+        assert_eq!(l.state(), State::Single(StateValue::Usize(1)));
+    }
+
+    #[test]
+    fn an_empty_list_asks_for_the_focus() {
+        let mut l = list(Vec::new(), None, false);
+        assert_eq!(
+            l.on(&press(2, 5)),
+            Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Sessions)))
+        );
+    }
+
+    #[test]
+    fn other_mouse_events_and_the_raw_event_do_nothing() {
+        let mut l = list(sample(true), Some(0), true);
+        for kind in [
+            MouseEventKind::Down(MouseButton::Right),
+            MouseEventKind::Up(MouseButton::Left),
+            MouseEventKind::ScrollRight,
+        ] {
+            assert_eq!(l.on(&mouse(kind, 5, 3, 5)), None, "{kind:?}");
+        }
+        let raw = Event::Mouse(tuirealm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            modifiers: KeyModifiers::NONE,
+            column: 10,
+            row: 3,
+        });
+        assert_eq!(l.on(&raw), None);
+        assert_eq!(l.state(), State::Single(StateValue::Usize(0)));
     }
 }

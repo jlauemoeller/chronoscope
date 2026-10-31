@@ -15,6 +15,7 @@ pub mod help;
 pub mod hints;
 pub mod index_port;
 pub mod layout;
+pub mod mouse;
 pub mod redraw;
 pub mod resume;
 pub mod runtime;
@@ -31,6 +32,8 @@ pub mod transcript_search;
 mod browser_tests;
 #[cfg(test)]
 mod fixtures;
+#[cfg(test)]
+mod mouse_tests;
 #[cfg(test)]
 mod search_tests;
 #[cfg(test)]
@@ -51,6 +54,7 @@ use ratatui::Frame;
 use tuirealm::application::{Application, ApplicationError, PollStrategy};
 use tuirealm::command::Direction;
 use tuirealm::component::AppComponent;
+use tuirealm::event::MouseEvent;
 use tuirealm::listener::EventListenerCfg;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
@@ -68,6 +72,7 @@ use browser::BrowserState;
 use hints::startup_toast_text;
 pub use index_port::{IndexPort, IndexUpdate};
 use layout::{LayoutInput, Screen, layout};
+pub use mouse::RoutedMouse;
 use redraw::RedrawRequest;
 pub use search::{Hit, search_sessions};
 pub use search_worker::{SearchPort, SearchResult, SearchUpdate, SearchWorker};
@@ -225,6 +230,10 @@ pub enum Msg {
     /// the session of that harness the selector has selected; `None` (the
     /// browser) is the open session, whatever transcript is on top.
     RequestResume(Option<(HarnessId, SessionId)>),
+    /// A left press or a wheel step at this position of the screen (only
+    /// with `mouse = true`). The `App` routes it to the component under the
+    /// pointer.
+    Mouse(MouseEvent),
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -243,6 +252,11 @@ pub enum UserEvent {
         generation: u64,
         update: SessionUpdate,
     },
+    /// A mouse event the `App` routed to the component under the pointer,
+    /// with the position relative to the component's area. Built by the
+    /// `App`, never delivered by a Port: the raw `Event::Mouse` goes to the
+    /// focused component too, in screen coordinates.
+    Mouse(RoutedMouse),
 }
 
 /// How often the event listener sends `Event::Tick`.
@@ -350,6 +364,8 @@ pub struct App {
     /// The theme selector: what it wants and what to restore on `Esc`, while
     /// it is open.
     theme_selector: Option<theme_selector::ThemeSelection>,
+    /// The routing areas and the double-click state of the mouse.
+    mouse: mouse::MouseState,
     /// The id of the active theme.
     theme_id: String,
     /// The terminal the theme is adapted to, as at startup.
@@ -393,7 +409,7 @@ impl App {
         application.mount(
             Id::GlobalEvents,
             Box::new(GlobalEvents::new(keymap.clone())),
-            GlobalEvents::subscriptions(&keymap),
+            GlobalEvents::subscriptions(&keymap, config.mouse),
         )?;
         selector::mount_selector(&mut application, &keymap, &theme, true)?;
         application.mount(
@@ -436,6 +452,7 @@ impl App {
             osc52_out: None,
             help_size: None,
             theme_selector: None,
+            mouse: mouse::MouseState::default(),
             theme_id,
             theme_env: env,
             config_path,
@@ -497,6 +514,7 @@ impl App {
         let subs = vec![Sub::new(EventClause::Tick, SubClause::Always)];
         self.application.remount(Id::Toast, Box::new(toast), subs)?;
         self.toast_text = Some(text);
+        self.refresh_routing();
         self.request_redraw(RedrawRequest::Dirty);
         Ok(())
     }
@@ -683,7 +701,10 @@ impl App {
             Msg::OpenSelector => self.open_selector(),
             Msg::CloseSelector => self.close_selector(),
             Msg::Session { generation, update } => self.session_update(generation, &update),
+            Msg::Mouse(event) => self.mouse(event),
         }
+        // The screen, an overlay, the prompt or the size may have changed.
+        self.refresh_routing();
     }
 
     fn quit(&mut self) {
@@ -692,6 +713,7 @@ impl App {
 
     fn resized(&mut self, width: u16, height: u16) {
         self.size = (width, height);
+        self.refresh_routing();
         self.push_viewports();
         self.request_redraw(RedrawRequest::Resized);
     }

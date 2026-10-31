@@ -101,7 +101,7 @@ pub(super) fn init(harnesses: &[HarnessId], theme: Theme) -> AppInit {
 }
 
 /// An app of 120x40 with a fixed clock, before any index data arrived.
-fn empty_app(harnesses: &[HarnessId], theme: Theme) -> App {
+pub(super) fn empty_app(harnesses: &[HarnessId], theme: Theme) -> App {
     empty_app_in(harnesses, theme, "/nowhere")
 }
 
@@ -497,7 +497,7 @@ fn moving_in_either_list_asks_for_a_redraw() {
 
 // -- harness switching
 
-fn two_harnesses() -> App {
+pub(super) fn two_harnesses() -> App {
     two_harnesses_with(theme("default"))
 }
 
