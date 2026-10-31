@@ -3,6 +3,8 @@
 //! All application code lives in this library; the binary only calls [`run`].
 
 pub mod app;
+#[doc(hidden)]
+pub mod bench_support;
 pub mod cli;
 pub mod clipboard;
 pub mod components;

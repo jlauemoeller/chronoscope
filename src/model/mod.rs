@@ -15,9 +15,9 @@ use std::time::{Duration, SystemTime};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-pub(crate) use output::text_calls;
 pub use output::{ByteSource, LineFormat, OutputSource, ToolOutput, ToolOutputError, ToolResult};
+#[cfg(test)]
+pub(crate) use output::{source_reads, text_calls};
 
 /// Tool results longer than this many bytes are stored lazily (SPEC §9.2).
 pub const INLINE_OUTPUT_LIMIT: usize = 4096;

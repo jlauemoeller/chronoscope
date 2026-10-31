@@ -22,6 +22,8 @@ pub enum ByteSource {
 impl ByteSource {
     /// Reads the bytes in `range` (absolute offsets into the transcript).
     pub fn read(&self, range: Range<u64>) -> io::Result<Vec<u8>> {
+        #[cfg(test)]
+        SOURCE_READS.with(|reads| reads.set(reads.get() + 1));
         let out_of_range =
             || io::Error::new(io::ErrorKind::UnexpectedEof, "byte range out of range");
         match self {
@@ -133,6 +135,15 @@ thread_local! {
     /// How many times `text()` was called on this thread (tests assert that
     /// folded sections never materialise output).
     static TEXT_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// How many times `ByteSource::read` was called on this thread.
+    static SOURCE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times [`ByteSource::read`] was called on this thread: the only
+/// way the transcript is read again after the parse.
+#[cfg(test)]
+pub(crate) fn source_reads() -> usize {
+    SOURCE_READS.with(std::cell::Cell::get)
 }
 
 /// How many times [`ToolOutput::text`] was called on this thread.
