@@ -115,6 +115,9 @@ pub enum SelectorMsg {
     Search,
     /// The user pressed the number of a harness.
     SwitchHarness(HarnessId),
+    /// The user pressed the resume key in the Projects pane: resume the
+    /// session that is selected, if any.
+    Resume,
 }
 
 /// What the last snapshot of a harness held.
@@ -549,6 +552,14 @@ impl App {
 
     /// Applies a message from the selector's components.
     pub(super) fn selector_msg(&mut self, msg: SelectorMsg) {
+        if msg == SelectorMsg::Resume {
+            // Asking changes nothing in the selector.
+            let target = self.selector.current.zip(self.selector.session.clone());
+            if target.is_some() {
+                self.request_resume(target);
+            }
+            return;
+        }
         // The user has taken over from the startup preselection.
         self.selector.preselecting = false;
         match msg {
@@ -557,6 +568,7 @@ impl App {
             SelectorMsg::Focus(pane) => self.focus_pane(pane),
             SelectorMsg::Search => self.start_search(),
             SelectorMsg::SwitchHarness(harness) => self.switch_harness(harness),
+            SelectorMsg::Resume => {}
         }
     }
 

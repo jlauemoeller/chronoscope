@@ -65,11 +65,17 @@ pub struct Prompt {
     question: Option<Question>,
 }
 
-/// The parts of a question: `Overwrite `, `./notes.txt`, `? (y/n)`.
+/// The parts of a question: `Overwrite `, `./notes.txt`, `? (y/n)`; or
+/// `Resume `, `85a86657`, ` in `, `Claude`, `? (y/n)`. The question is drawn
+/// in `help_text`, the subjects in `foreground`.
 #[derive(Debug, Clone)]
 struct Question {
     before: String,
     subject: String,
+    /// Between the subjects; empty with one subject.
+    between: String,
+    /// The second subject; empty with one subject.
+    second: String,
     after: String,
 }
 
@@ -102,8 +108,30 @@ impl Prompt {
         prompt.question = Some(Question {
             before: before.to_owned(),
             subject: subject.to_owned(),
+            between: String::new(),
+            second: String::new(),
             after: after.to_owned(),
         });
+        prompt
+    }
+
+    /// Like [`Prompt::confirm`], with two subjects: `before` + `subject` +
+    /// `between` + `second` + `after` (`Resume `, the id, ` in `, the
+    /// harness, `? (y/n)`). Only the first subject is cut when the row is too
+    /// narrow.
+    pub fn confirm_two(
+        before: &str,
+        subject: &str,
+        between: &str,
+        second: &str,
+        after: &str,
+        theme: Theme,
+    ) -> Self {
+        let mut prompt = Self::confirm(before, subject, after, theme);
+        if let Some(question) = &mut prompt.question {
+            question.between = between.to_owned();
+            question.second = second.to_owned();
+        }
         prompt
     }
 
@@ -178,14 +206,22 @@ impl Prompt {
         use unicode_width::UnicodeWidthStr;
         let text_style = self.theme.style(Token::HelpText);
         let subject_style = Style::new().fg(self.theme.role(Role::Foreground));
-        let fixed = question.before.width() + question.after.width();
+        let fixed = question.before.width()
+            + question.between.width()
+            + question.second.width()
+            + question.after.width();
         let room = usize::from(row.width).saturating_sub(fixed);
         let subject = tail_fitting(&question.subject, room);
-        let line = Line::from(vec![
+        let mut spans = vec![
             Span::styled(question.before.clone(), text_style),
             Span::styled(subject, subject_style),
-            Span::styled(question.after.clone(), text_style),
-        ]);
+        ];
+        if !question.second.is_empty() {
+            spans.push(Span::styled(question.between.clone(), text_style));
+            spans.push(Span::styled(question.second.clone(), subject_style));
+        }
+        spans.push(Span::styled(question.after.clone(), text_style));
+        let line = Line::from(spans);
         frame.render_widget(Paragraph::new(line), row);
     }
 
@@ -753,6 +789,35 @@ mod tests {
         assert!((21..28).all(|x| fg(x) == help_text), "? (y/n)");
         // No cursor: nothing is typed.
         assert!((0..40).all(|x| buffer[(x, 0)].bg != theme.role(Role::Cursor)));
+    }
+
+    #[test]
+    fn a_two_subject_confirm_prompt_has_both_subjects_in_foreground() {
+        let theme = builtin::default_theme();
+        let mut p = Prompt::confirm_two(
+            "Resume ",
+            "85a86657",
+            " in ",
+            "Claude",
+            "? (y/n)",
+            builtin::default_theme(),
+        );
+        let buffer = draw(&mut p, 40);
+        assert_eq!(
+            buffer_to_text(&buffer),
+            "Resume 85a86657 in Claude? (y/n)        \n"
+        );
+        let fg = |x| buffer[(x, 0)].fg;
+        let help_text = theme.style(Token::HelpText).fg.unwrap();
+        let foreground = theme.role(Role::Foreground);
+        assert!((0..7).all(|x| fg(x) == help_text), "Resume ");
+        assert!((7..15).all(|x| fg(x) == foreground), "the id");
+        assert!((15..19).all(|x| fg(x) == help_text), " in ");
+        assert!((19..25).all(|x| fg(x) == foreground), "the harness");
+        assert!((25..32).all(|x| fg(x) == help_text), "? (y/n)");
+        // It answers like any y/n prompt.
+        assert_eq!(p.on(&ch('y')), Some(Msg::PromptSubmit("y".to_owned())));
+        assert_eq!(p.on(&ch('n')), Some(Msg::PromptCancel));
     }
 
     #[test]

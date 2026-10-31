@@ -888,6 +888,8 @@ impl App {
     /// selector's data stays.
     pub(super) fn unmount_selector(&mut self) {
         self.selector.search = None;
+        // The question was in the prompt that is unmounted.
+        self.clear_resume_question();
         for id in SELECTOR_IDS.into_iter().chain([Id::Prompt]) {
             if self.application.mounted(&id)
                 && let Err(err) = self.application.umount(&id)

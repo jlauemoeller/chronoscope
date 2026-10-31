@@ -170,7 +170,7 @@ impl Rig {
     }
 
     /// `a`, and the wait until the subagent at `depth` is loaded.
-    fn open_subagent(&mut self, depth: usize) {
+    pub(super) fn open_subagent(&mut self, depth: usize) {
         self.press(Key::Char('a'));
         self.pump_until(|app| app.subagent_depth() == depth && app.session_loaded());
         self.settle();
@@ -191,7 +191,7 @@ impl Rig {
     }
 }
 
-fn subagent_rig(width: u16, height: u16) -> Rig {
+pub(super) fn subagent_rig(width: u16, height: u16) -> Rig {
     let mut rig = rig_with(theme("default"), width, height);
     rig.open_with_subagent();
     rig

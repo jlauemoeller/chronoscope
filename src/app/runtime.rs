@@ -7,6 +7,7 @@ use std::time::Instant;
 use tuirealm::terminal::TerminalAdapter;
 
 use super::redraw::RedrawLimiter;
+use super::resume::{SystemSteps, hand_off};
 use super::startup::AppInit;
 use super::{App, Msg, SearchWorker, TranscriptSearchWorker, production_listener, session_channel};
 use crate::clipboard::SystemClipboard;
@@ -118,8 +119,20 @@ pub fn run_app() -> anyhow::Result<()> {
     let result = run_loop(&mut app, guard.adapter_mut(), &shutdown);
     // The index saves its cache before the process ends.
     app.shutdown();
+    let plan = app.take_resume_plan();
     // The event listener stops before the terminal is restored.
     drop(app);
-    drop(guard);
-    result
+    match plan {
+        // Resume in the harness (SPEC §6.7): the terminal is restored first,
+        // then this process is replaced. It does not return.
+        Some(plan) if result.is_ok() => {
+            let mut guard = Some(guard);
+            let mut steps = SystemSteps::new(move || drop(guard.take()));
+            std::process::exit(hand_off(&plan, &mut steps));
+        }
+        _ => {
+            drop(guard);
+            result
+        }
+    }
 }

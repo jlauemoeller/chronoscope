@@ -142,6 +142,8 @@ impl AppComponent<Msg, UserEvent> for ProjectList {
             }
             PaneKey::FocusProjects => None,
             PaneKey::Search => Some(Msg::Selector(SelectorMsg::Search)),
+            // The app resumes the session that is selected, if there is one.
+            PaneKey::Resume => Some(Msg::Selector(SelectorMsg::Resume)),
             PaneKey::Cancel => Some(self.pane.cancel()),
             PaneKey::Harness(harness) => Some(Msg::Selector(SelectorMsg::SwitchHarness(harness))),
         }

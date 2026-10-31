@@ -1,0 +1,23 @@
+Missing-cwd toast, fixture path /home/user/projects/brio, rendered in the scratch
+crate with the toast_rect geometry (min(MAX_TOAST_WIDTH, width - 4) wide,
+1 column from the right). Only the toast rows are shown.
+
+--- 60 columns (MIN_WIDTH): the box is 56 wide, the text is cut at its end ---
+   ╭──────────────────────────────────────────────────────╮ 
+   │ Cannot resume: /home/user/projects/brio no longer e… │ 
+   ╰──────────────────────────────────────────────────────╯ 
+
+--- 62 columns ---
+   ╭────────────────────────────────────────────────────────╮ 
+   │ Cannot resume: /home/user/projects/brio no longer exi… │ 
+   ╰────────────────────────────────────────────────────────╯ 
+
+--- 64 columns: fits ---
+   ╭──────────────────────────────────────────────────────────╮ 
+   │ Cannot resume: /home/user/projects/brio no longer exists │ 
+   ╰──────────────────────────────────────────────────────────╯ 
+
+--- wanted at 60 columns (path cut at its start for the 52-column interior) ---
+   ╭──────────────────────────────────────────────────────╮ 
+   │ Cannot resume: …/user/projects/brio no longer exists │ 
+   ╰──────────────────────────────────────────────────────╯ 
