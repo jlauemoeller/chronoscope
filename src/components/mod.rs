@@ -43,8 +43,9 @@ pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
 pub use prompt::{Prompt, PromptMode, tail_fitting};
 pub use selector_frame::SelectorFrame;
 pub use session_list::{
-    ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR,
-    SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_duration, format_stats,
+    ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_FILTERED_ATTR, SESSION_ROWS_ATTR,
+    SESSION_STATS_ATTR, SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_duration,
+    format_stats,
 };
 pub use theme_selector::{ThemeItem, ThemeRows, ThemeSelector, theme_items};
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};

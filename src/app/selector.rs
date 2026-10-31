@@ -22,12 +22,13 @@ use super::search::SearchState;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
     ACTIVE_ATTR, ActiveSessions, CWD_ATTR, HarnessTabs, HelpLine, PROJECT_ROWS_ATTR, ProjectList,
-    ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR,
-    SESSION_STATS_ATTR, SelectorFrame, SessionList, SessionRow, SessionRows, SessionStatsUpdate,
-    TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir, payload_value,
-    selected_value, viewport_value, visible_rows,
+    ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR,
+    SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame, SessionList, SessionRow, SessionRows,
+    SessionStatsUpdate, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir,
+    payload_value, selected_from_value, selected_value, viewport_value, visible_rows,
 };
 use crate::keymap::Keymap;
+use crate::launch::{HarnessIndex, Preselect, deepest_ancestor};
 use crate::theme::{Role, Theme};
 
 use crate::index::{IndexEvent, SessionMap};
@@ -118,6 +119,9 @@ pub enum SelectorMsg {
     /// The user pressed the resume key in the Projects pane: resume the
     /// session that is selected, if any.
     Resume,
+    /// `Esc` in the filtered selector (the sessions whose ids start with
+    /// the argument of the command line): back to the normal start.
+    LeaveFilter,
 }
 
 /// What the last snapshot of a harness held.
@@ -161,6 +165,13 @@ pub(super) struct SelectorState {
     /// true until the user acts or every harness has reported once. While it
     /// is, a snapshot of another harness may change the preselection.
     preselecting: bool,
+    /// What the command line says about where to start.
+    hint: Preselect,
+    /// The id prefix whose sessions the Sessions pane lists, when the
+    /// command line gave one that several sessions start with.
+    pub(super) filtered: Option<String>,
+    /// The sessions listed while filtered, in row order.
+    pub(super) shown: Vec<SessionId>,
 }
 
 impl SelectorState {
@@ -200,37 +211,42 @@ impl SelectorState {
     /// harness on a tie; else the first project of the first available
     /// harness. Only available harnesses take part.
     fn preselection(&self) -> Option<Preselection> {
-        let mut harnesses: Vec<HarnessId> = self
-            .registered
-            .iter()
-            .copied()
-            .filter(|&h| self.is_available(h))
-            .collect();
-        harnesses.sort_by_key(|h| h.number());
-        let mut best: Option<(usize, HarnessId, &ProjectId)> = None;
-        for &harness in &harnesses {
+        let available: Vec<HarnessId> = {
+            let mut available: Vec<HarnessId> = self
+                .registered
+                .iter()
+                .copied()
+                .filter(|&h| self.is_available(h))
+                .collect();
+            available.sort_by_key(|h| h.number());
+            available
+        };
+        // `--project` names the project outright; `--harness` the tab.
+        if let Some((harness, project)) = &self.hint.project
+            && available.contains(harness)
+            && self.find_project(*harness, project).is_some()
+        {
+            return Some(Preselection {
+                harness: *harness,
+                project: Some(project.clone()),
+                matched: true,
+            });
+        }
+        let harnesses: Vec<HarnessId> = match self.hint.harness.filter(|h| available.contains(h)) {
+            Some(only) => vec![only],
+            None => available,
+        };
+        let candidates = harnesses.iter().flat_map(|&harness| {
             let projects = self
                 .data
                 .get(&harness)
                 .map_or(&[][..], |d| d.projects.as_slice());
-            for project in projects {
-                let Some(cwd) = project.cwd.as_ref().filter(|cwd| cwd.is_absolute()) else {
-                    continue;
-                };
-                // `starts_with` compares whole path components.
-                if !self.working_dir.starts_with(cwd) {
-                    continue;
-                }
-                let depth = cwd.components().count();
-                if best.is_none_or(|(deepest, ..)| depth > deepest) {
-                    best = Some((depth, harness, &project.id));
-                }
-            }
-        }
-        if let Some((_, harness, project)) = best {
+            projects.iter().map(move |project| (harness, project))
+        });
+        if let Some((harness, project)) = deepest_ancestor(candidates, &self.working_dir) {
             return Some(Preselection {
                 harness,
-                project: Some(project.clone()),
+                project: Some(project.id.clone()),
                 matched: true,
             });
         }
@@ -270,6 +286,34 @@ impl SelectorState {
             .find(|p| &p.id == id)
     }
 
+    /// The sessions of the current harness whose ids start with the filter's
+    /// prefix, newest first, with the name of their project.
+    pub(super) fn filtered_hits(&self) -> Vec<(&str, &SessionSummary)> {
+        let (Some(prefix), Some(data)) = (self.filtered.as_deref(), self.current_data()) else {
+            return Vec::new();
+        };
+        let mut hits: Vec<(&str, &SessionSummary)> = data
+            .projects
+            .iter()
+            .flat_map(|project| {
+                let sessions = data
+                    .sessions
+                    .get(&project.id)
+                    .map_or(&[][..], Vec::as_slice);
+                sessions
+                    .iter()
+                    .filter(|s| s.id.as_str().starts_with(prefix))
+                    .map(|s| (project.name.as_str(), s))
+            })
+            .collect();
+        hits.sort_by(|a, b| {
+            b.1.started_at
+                .cmp(&a.1.started_at)
+                .then_with(|| a.1.id.cmp(&b.1.id))
+        });
+        hits
+    }
+
     /// Selects `session` of `harness` with Sessions focused, as the selector
     /// is when it is opened over that session. The session is left
     /// unselected if the last snapshot no longer lists it; the newest one is
@@ -277,6 +321,8 @@ impl SelectorState {
     pub(super) fn show_session(&mut self, harness: HarnessId, session: &SessionSummary) {
         self.preselecting = false;
         self.search = None;
+        self.filtered = None;
+        self.shown.clear();
         self.pane = Pane::Sessions;
         self.current = Some(harness);
         let project = self
@@ -383,6 +429,161 @@ impl App {
         for id in [Id::ProjectList, Id::SessionList] {
             self.set_attr(id, SESSION_OPEN_ATTR, AttrValue::Flag(open));
         }
+    }
+
+    /// Tells the selector where the command line says to start. It is
+    /// honoured while the selector is still on its startup preselection.
+    pub fn set_preselection(&mut self, preselect: Preselect) {
+        self.selector.hint = preselect;
+    }
+
+    /// Gives the selector the lists the command line was resolved against, as
+    /// if the index worker had reported them.
+    pub fn seed_index(&mut self, index: &[HarnessIndex]) {
+        for harness in index {
+            if !self.selector.registered.contains(&harness.harness) {
+                continue;
+            }
+            let data = HarnessData {
+                available: harness.available,
+                projects: Arc::clone(&harness.projects),
+                sessions: Arc::clone(&harness.sessions),
+            };
+            self.snapshot(harness.harness, data);
+        }
+    }
+
+    /// Whether the Sessions pane lists the sessions whose ids start with a
+    /// prefix given on the command line.
+    pub fn filter_prefix(&self) -> Option<&str> {
+        self.selector.filtered.as_deref()
+    }
+
+    /// The sessions listed while the selector is filtered, in row order.
+    pub fn filtered_sessions(&self) -> &[SessionId] {
+        &self.selector.shown
+    }
+
+    /// Starts the selector filtered to the sessions of `harness` whose ids
+    /// start with `prefix`: the Sessions pane has the focus and lists them as
+    /// results, the first one selected. `Esc` leaves the filter.
+    pub fn show_filtered(&mut self, prefix: &str, harness: HarnessId) {
+        if !self.screen.has_selector() {
+            return;
+        }
+        self.selector.preselecting = false;
+        self.selector.search = None;
+        self.selector.filtered = Some(prefix.to_owned());
+        self.selector.current = Some(harness);
+        let first = self
+            .selector
+            .filtered_hits()
+            .first()
+            .map(|(_, s)| s.project.clone());
+        self.selector.project =
+            first.or_else(|| self.selector.projects().first().map(|p| p.id.clone()));
+        self.selector.session = None;
+        self.selector.pane = Pane::Sessions;
+        if let Err(err) = self.application.active(&Id::SessionList) {
+            log::warn!("could not focus the sessions: {err}");
+        }
+        self.set_attr(
+            Id::SessionList,
+            SESSION_FILTERED_ATTR,
+            AttrValue::Flag(true),
+        );
+        self.sync_pane_focus();
+        self.push_all();
+        self.request_redraw(RedrawRequest::Dirty);
+    }
+
+    /// `Esc` in the filtered selector: the selector is as at a start without
+    /// the prefix: the preselection, Projects focused, no session selected.
+    fn leave_filtered(&mut self) {
+        if self.selector.filtered.take().is_none() {
+            return;
+        }
+        self.selector.shown.clear();
+        self.set_attr(
+            Id::SessionList,
+            SESSION_FILTERED_ATTR,
+            AttrValue::Flag(false),
+        );
+        self.selector.pane = Pane::Projects;
+        if let Some(want) = self.selector.preselection() {
+            self.selector.current = Some(want.harness);
+            self.selector.project = want
+                .project
+                .or_else(|| self.selector.projects().first().map(|p| p.id.clone()));
+        }
+        self.selector.session = None;
+        if let Err(err) = self.application.active(&Id::ProjectList) {
+            log::warn!("could not focus the projects: {err}");
+        }
+        self.sync_pane_focus();
+        self.push_all();
+        self.request_redraw(RedrawRequest::Dirty);
+    }
+
+    /// Lists the filtered sessions in the Sessions pane, as search results
+    /// are, keeping the selected one when it is still there.
+    fn push_filtered_results(&mut self) {
+        let Some(prefix) = self.selector.filtered.clone() else {
+            return;
+        };
+        let previous = self
+            .selected_filtered_row()
+            .and_then(|row| self.selector.shown.get(row).cloned());
+        let now = (self.clock)();
+        let harness = self.selector.current;
+        let mut ids = Vec::new();
+        let rows: Vec<SessionRow> = self
+            .selector
+            .filtered_hits()
+            .into_iter()
+            .map(|(project, s)| {
+                ids.push(s.id.clone());
+                SessionRow {
+                    id: s.id.clone(),
+                    started: self.timestamps.format_short(s.started_at),
+                    title: s.title.clone(),
+                    project: Some(project.to_owned()),
+                    active: is_active(s, now),
+                    stats: harness
+                        .and_then(|h| self.selector.stats.get(&(h, s.id.clone())))
+                        .copied(),
+                }
+            })
+            .collect();
+        let selected = previous
+            .and_then(|id| ids.iter().position(|shown| *shown == id))
+            .or_else(|| (!ids.is_empty()).then_some(0));
+        self.selector.active = ids
+            .iter()
+            .zip(&rows)
+            .filter(|(_, row)| row.active)
+            .map(|(id, _)| id.clone())
+            .collect();
+        self.selector.shown = ids;
+        let rows = SessionRows {
+            project: String::new(),
+            search: Some(prefix),
+            harness,
+            rows: Arc::new(rows),
+            selected,
+            harness_empty: false,
+        };
+        self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
+    }
+
+    /// The row the Sessions pane has selected, asked of the list.
+    fn selected_filtered_row(&self) -> Option<usize> {
+        let value = self
+            .application
+            .query(&Id::SessionList, SELECTED_ATTR)
+            .ok()??
+            .into_attr();
+        selected_from_value(&value)?
     }
 
     /// The sessions that show the `●` marker: those of the selected project
@@ -538,6 +739,7 @@ impl App {
         // Search results come from every project of the harness.
         let shown = self.selector.current == Some(harness)
             && (self.selector.search.is_some()
+                || self.selector.filtered.is_some()
                 || self.selector.sessions().iter().any(|s| &s.id == session));
         if shown {
             let update = SessionStatsUpdate {
@@ -566,8 +768,13 @@ impl App {
             SelectorMsg::ProjectSelected(id) => self.project_selected(id),
             SelectorMsg::SessionSelected(id) => self.session_selected(id),
             SelectorMsg::Focus(pane) => self.focus_pane(pane),
-            SelectorMsg::Search => self.start_search(),
+            SelectorMsg::Search => {
+                // The search lists its own results: the filter ends.
+                self.leave_filtered();
+                self.start_search();
+            }
             SelectorMsg::SwitchHarness(harness) => self.switch_harness(harness),
+            SelectorMsg::LeaveFilter => self.leave_filtered(),
             SelectorMsg::Resume => {}
         }
     }
@@ -588,6 +795,11 @@ impl App {
     }
 
     fn session_selected(&mut self, id: SessionId) {
+        if self.selector.filtered.is_some() {
+            // The list moved its own cursor over sessions of any project.
+            self.request_redraw(RedrawRequest::Dirty);
+            return;
+        }
         let known = self.selector.sessions().iter().any(|s| s.id == id);
         if known && self.selector.session.as_ref() != Some(&id) {
             self.selector.session = Some(id);
@@ -602,6 +814,12 @@ impl App {
     /// none is selected.
     fn focus_pane(&mut self, pane: Pane) {
         if self.selector.pane == pane {
+            return;
+        }
+        if self.selector.filtered.is_some() {
+            // Only the Projects pane can be asked for: leaving the Sessions
+            // pane ends the filter.
+            self.leave_filtered();
             return;
         }
         self.selector.pane = pane;
@@ -664,6 +882,15 @@ impl App {
     /// harness (sorted, so the list only changes when the set does).
     pub(super) fn active_ids(&self) -> Vec<SessionId> {
         let now = (self.clock)();
+        if self.selector.filtered.is_some() {
+            return self
+                .selector
+                .filtered_hits()
+                .into_iter()
+                .filter(|(_, s)| is_active(s, now))
+                .map(|(_, s)| s.id.clone())
+                .collect();
+        }
         if self.selector.search_shows_results() {
             let mut ids: Vec<SessionId> = self
                 .selector
@@ -743,6 +970,10 @@ impl App {
     /// Pushes the sessions of the selected project with their stats and
     /// active flags, and records the flags.
     pub(super) fn push_sessions(&mut self) {
+        if self.selector.filtered.is_some() {
+            self.push_filtered_results();
+            return;
+        }
         if self.selector.search_shows_results() {
             // The results replace the project's sessions until the search
             // ends.
@@ -783,6 +1014,11 @@ impl App {
     }
 
     pub(super) fn push_session_selection(&mut self) {
+        if self.selector.filtered.is_some() {
+            // The list moves its own cursor over the matches.
+            self.request_redraw(RedrawRequest::Dirty);
+            return;
+        }
         let selected = self.selector.session_index();
         self.set_attr(Id::SessionList, SELECTED_ATTR, selected_value(selected));
     }

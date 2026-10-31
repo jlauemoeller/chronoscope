@@ -616,7 +616,7 @@ fn key_prefix(id: crate::model::HarnessId) -> String {
 }
 
 /// Reads a harness's projects and all their sessions.
-fn collect(harness: &dyn Harness) -> Result<(Vec<Project>, SessionMap)> {
+pub(crate) fn collect(harness: &dyn Harness) -> Result<(Vec<Project>, SessionMap)> {
     let projects = harness.projects()?;
     let mut sessions = SessionMap::new();
     for project in &projects {

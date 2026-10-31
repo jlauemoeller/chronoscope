@@ -63,7 +63,9 @@ pub fn browser_hints_at(keymap: &Keymap, depth: usize) -> Vec<Hint> {
 /// there are none.
 ///
 /// One warning reads `Config: <warning>`; more read
-/// `Config: <first warning> (+N more, see log)`.
+/// `Config: <first warning> (+N more, see log)`. A warning about a command-line
+/// option (its key starts with `--`) is not a config warning and has no
+/// `Config: ` prefix: its message names the option.
 pub fn startup_toast_text(warnings: &[ConfigWarning]) -> Option<String> {
     let (first, rest) = warnings.split_first()?;
     let first = first
@@ -71,10 +73,15 @@ pub fn startup_toast_text(warnings: &[ConfigWarning]) -> Option<String> {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    Some(if rest.is_empty() {
-        format!("Config: {first}")
+    let prefix = if warnings[0].key.starts_with("--") {
+        ""
     } else {
-        format!("Config: {first} (+{} more, see log)", rest.len())
+        "Config: "
+    };
+    Some(if rest.is_empty() {
+        format!("{prefix}{first}")
+    } else {
+        format!("{prefix}{first} (+{} more, see log)", rest.len())
     })
 }
 

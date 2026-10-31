@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 
 use super::assemble::Assembler;
-use super::subagent::resolve;
+use super::subagent::{Opened, resolve};
 use super::watch;
 use crate::model::{ByteSource, ModelUpdate, SessionId, Turn, TurnId};
 
@@ -64,6 +64,7 @@ pub(super) enum WatchMode {
 /// Everything the worker thread needs.
 pub(super) struct Job {
     pub data_dir: PathBuf,
+    pub opened: Opened,
     pub session: SessionId,
     pub tx: Sender<ModelUpdate>,
     pub stop: Arc<AtomicBool>,
@@ -89,7 +90,7 @@ pub(super) fn run(job: Job) {
 /// was stopped; an error when the file could not be found or read, after the
 /// turns parsed so far have been sent.
 fn stream(job: &Job) -> io::Result<()> {
-    let path = resolve(&job.data_dir, &job.session).ok_or_else(|| {
+    let path = resolve(&job.data_dir, &job.opened, &job.session).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
             format!("no transcript for session {}", job.session),

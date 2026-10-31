@@ -7,9 +7,11 @@
 //! `<session-uuid>/subagents/agent-<agentId>`, which makes the file name
 //! `<id>.jsonl` below the project directory, like that of a main session.
 
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -52,10 +54,56 @@ fn classify(id: &str) -> Option<IdKind<'_>> {
     }
 }
 
-/// Finds the transcript of session `id`: `<data_dir>/<project dir>/<id>.jsonl`.
-/// Lists the project directories (sorted by name, so a clash is resolved the
-/// same way every time) and stats one candidate in each; reads no file.
-pub(super) fn resolve(data_dir: &Path, id: &SessionId) -> Option<PathBuf> {
+/// The transcript files the user named on the command line, which need not
+/// be under the data directory: file stem to file. Shared with the loader
+/// threads, so a clone sees what the others register.
+#[derive(Debug, Clone, Default)]
+pub(super) struct Opened(Arc<Mutex<HashMap<String, PathBuf>>>);
+
+impl Opened {
+    /// Remembers that session `stem` is the file `path`.
+    pub(super) fn insert(&self, stem: String, path: PathBuf) {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(stem, path);
+    }
+
+    fn get(&self, stem: &str) -> Option<PathBuf> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(stem)
+            .cloned()
+    }
+}
+
+/// The file of an opened session, or of a subagent of one: its transcripts
+/// are in `<stem>/subagents/` next to the file.
+fn resolve_opened(opened: &Opened, id: &SessionId) -> Option<PathBuf> {
+    if let Some(path) = opened.get(id.as_str()) {
+        return path.exists().then_some(path);
+    }
+    let Some(IdKind::Subagent { root }) = classify(id.as_str()) else {
+        return None;
+    };
+    let agent = id.as_str().rsplit('/').next()?;
+    let parent = opened.get(root)?;
+    let candidate = parent
+        .with_extension("")
+        .join("subagents")
+        .join(format!("{agent}.jsonl"));
+    candidate.exists().then_some(candidate)
+}
+
+/// Finds the transcript of session `id`: a file the user opened by its path,
+/// else `<data_dir>/<project dir>/<id>.jsonl`. Lists the project directories
+/// (sorted by name, so a clash is resolved the same way every time) and stats
+/// one candidate in each; reads no file.
+pub(super) fn resolve(data_dir: &Path, opened: &Opened, id: &SessionId) -> Option<PathBuf> {
+    if let Some(path) = resolve_opened(opened, id) {
+        return Some(path);
+    }
     classify(id.as_str())?;
     let mut dirs: Vec<PathBuf> = fs::read_dir(data_dir)
         .ok()?
@@ -81,8 +129,13 @@ pub(super) fn subagents_dir(path: &Path, session: &SessionId) -> Option<PathBuf>
 /// Finds the subagent started by `call` in `parent`: through the meta file
 /// whose `toolUseId` is `call`, else through the `agentId` of the call's
 /// `tool_result` entry in the parent transcript.
-pub(super) fn find(data_dir: &Path, parent: &SessionId, call: &str) -> Option<SessionId> {
-    let path = resolve(data_dir, parent)?;
+pub(super) fn find(
+    data_dir: &Path,
+    opened: &Opened,
+    parent: &SessionId,
+    call: &str,
+) -> Option<SessionId> {
+    let path = resolve(data_dir, opened, parent)?;
     let dir = subagents_dir(&path, parent)?;
     let root = match classify(parent.as_str())? {
         IdKind::Main => parent.as_str(),
@@ -93,11 +146,11 @@ pub(super) fn find(data_dir: &Path, parent: &SessionId, call: &str) -> Option<Se
 }
 
 /// Reads the meta file of subagent session `id`.
-pub(super) fn info(data_dir: &Path, id: &SessionId) -> Option<SubagentInfo> {
+pub(super) fn info(data_dir: &Path, opened: &Opened, id: &SessionId) -> Option<SubagentInfo> {
     let IdKind::Subagent { .. } = classify(id.as_str())? else {
         return None;
     };
-    let path = resolve(data_dir, id)?;
+    let path = resolve(data_dir, opened, id)?;
     let meta = path.with_extension("meta.json");
     let text = match fs::read_to_string(&meta) {
         Ok(text) => text,
