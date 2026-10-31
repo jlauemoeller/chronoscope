@@ -122,3 +122,20 @@ fn an_error_is_reported_with_an_alternative_config_file_too() {
     let out = in_empty_home(&["--config", path, "--theme", "gruvbox", "abc"], None);
     assert_failed_with(&out, "chronoscope: no session matches \"abc\"\n");
 }
+
+#[test]
+fn a_jsonl_path_with_claude_disabled_in_the_given_config_exits_with_1() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("mine.toml");
+    std::fs::write(&config, "[harness.claude]\nenabled = false\n").unwrap();
+    let file = dir.path().join("1234.jsonl");
+    std::fs::write(&file, "{}\n").unwrap();
+    let out = in_empty_home(
+        &["--config", config.to_str().unwrap(), file.to_str().unwrap()],
+        None,
+    );
+    assert_failed_with(
+        &out,
+        "chronoscope: the Claude harness is disabled in the config; cannot open a .jsonl file\n",
+    );
+}

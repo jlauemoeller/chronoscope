@@ -5,7 +5,7 @@
 
 use super::super::Pane;
 use super::super::fixtures::fixture_snapshot;
-use super::super::runtime::{Startup, launch_warnings, resolve_startup, start_with};
+use super::super::runtime::{Startup, launch_warnings, prepare, resolve_startup, start_with};
 use super::super::selector_tests::{
     OPENCODE, empty_app_in, press, project_rows, send, styled, text,
 };
@@ -317,6 +317,143 @@ fn the_filtered_selector_120x40_styled() {
     insta::assert_snapshot!(styled(&mut app, 120, 40));
 }
 
+/// Claude's and OpenCode's sessions `85a8…`, three and two.
+fn both_harnesses_index() -> Vec<HarnessIndex> {
+    let projects = fixtures::projects(OPENCODE);
+    let mut sessions = SessionMap::new();
+    for (n, project) in projects.iter().take(2).enumerate() {
+        let name = format!("85a8op{n}");
+        let one = session(
+            project,
+            &name,
+            "An OpenCode session",
+            project.last_activity - chrono::Duration::minutes(30),
+            project.last_activity,
+        );
+        sessions.insert(project.id.clone(), vec![one]);
+    }
+    let opencode = snapshot_event(OPENCODE, true, projects, sessions);
+    vec![harness_index(prefixed_index()), harness_index(opencode)]
+}
+
+fn started_in_both(request: &Request) -> App {
+    let index = both_harnesses_index();
+    let resolution = launch::resolve(
+        request,
+        std::path::Path::new("/nowhere"),
+        &[CLAUDE, OPENCODE],
+        &index,
+    )
+    .unwrap();
+    let mut app = empty_app_in(&[CLAUDE, OPENCODE], theme("default"), "/nowhere");
+    start_with(
+        &mut app,
+        Startup {
+            resolution,
+            index,
+            open: None,
+        },
+    );
+    app
+}
+
+#[test]
+fn harness_keeps_restricting_the_filter_after_a_tab_switch() {
+    let request = Request {
+        harness: Some(OPENCODE),
+        ..request("85a8")
+    };
+    let mut app = started_in_both(&request);
+    assert_eq!(app.selected_harness(), Some(OPENCODE));
+    assert_eq!(app.filtered_sessions().len(), 2);
+    // Claude has `85a8…` sessions too, but the lookup did not include them.
+    press(&mut app, Key::Char('1'));
+    assert_eq!(app.selected_harness(), Some(CLAUDE));
+    assert!(app.filtered_sessions().is_empty());
+    assert_eq!(session_rows(&app).rows.len(), 0);
+    assert_eq!(app.filter_prefix(), Some("85a8"));
+    press(&mut app, Key::Char('2'));
+    assert_eq!(app.filtered_sessions().len(), 2);
+}
+
+#[test]
+fn without_harness_both_tabs_list_their_matches() {
+    let mut app = started_in_both(&request("85a8"));
+    assert_eq!(app.selected_harness(), Some(CLAUDE));
+    assert_eq!(app.filtered_sessions().len(), 3);
+    press(&mut app, Key::Char('2'));
+    assert_eq!(app.filtered_sessions().len(), 2);
+}
+
+/// The projects BRIO (the newest match) and Agentmon (the preselected
+/// project, an older match).
+fn brio_first_index() -> IndexEvent {
+    let projects = fixtures::projects(CLAUDE);
+    let mut sessions = SessionMap::new();
+    let mut agentmon = fixtures::first_project_sessions(&projects[0]);
+    agentmon[3].id = id(THIRD);
+    sessions.insert(projects[0].id.clone(), agentmon);
+    for (n, project) in projects.iter().enumerate().skip(1) {
+        let name = if n == 1 {
+            SECOND.to_owned()
+        } else {
+            format!("other{n}")
+        };
+        let one = session(
+            project,
+            &name,
+            &format!("A session of {}", project.name),
+            project.last_activity - chrono::Duration::minutes(30),
+            project.last_activity,
+        );
+        sessions.insert(project.id.clone(), vec![one]);
+    }
+    snapshot_event(CLAUDE, true, projects, sessions)
+}
+
+#[test]
+fn the_projects_pane_keeps_the_startup_selection_whatever_project_the_match_is_in() {
+    let mut normal = empty_app_in(&[CLAUDE], theme("default"), "/nowhere");
+    send(&mut normal, brio_first_index());
+    let mut app = started(&request("85a8"), brio_first_index());
+    // The first match is in BRIO; the startup project is Agentmon.
+    assert_eq!(ids_of(&app), [SECOND, THIRD]);
+    let expect = project_rows(&normal).selected;
+    assert_eq!(project_rows(&app).selected, expect);
+    assert_eq!(app.selected_project(), normal.selected_project());
+    assert_eq!(
+        super::super::selector_tests::cwd(&app),
+        super::super::selector_tests::cwd(&normal)
+    );
+    // Moving among the matches changes neither.
+    press(&mut app, Key::Down);
+    assert_eq!(project_rows(&app).selected, expect);
+    assert_eq!(
+        super::super::selector_tests::cwd(&app),
+        super::super::selector_tests::cwd(&normal)
+    );
+    // The Projects and Working Directory boxes read as at startup.
+    let screen = text(&mut app, 120, 40);
+    let startup = text(&mut normal, 120, 40);
+    let left = |text: &str| -> Vec<String> {
+        text.lines()
+            .map(|l| l.chars().take(38).collect::<String>())
+            .collect()
+    };
+    assert_eq!(left(&screen), left(&startup));
+    assert!(screen.contains("/home/jacob/Development/projects/Agentmon"));
+}
+
+#[test]
+fn the_filtered_selector_hints_say_esc_shows_all_sessions() {
+    let mut app = filtered();
+    assert!(text(&mut app, 120, 40).contains("ESC to show all sessions"));
+    press(&mut app, Key::Esc);
+    let after = text(&mut app, 120, 40);
+    assert!(after.contains("ESC to Cancel"), "{after}");
+    assert!(!after.contains("show all sessions"));
+}
+
 // -- opening directly
 
 fn direct_rig() -> Rig {
@@ -607,7 +744,7 @@ fn choosing_a_theme_saves_it_to_the_config_file_given_with_config() {
 }
 
 #[test]
-fn a_theme_given_for_the_run_is_applied_and_choosing_one_still_saves() {
+fn a_theme_given_for_the_run_is_applied_without_writing() {
     use crate::app::AppInit;
     use crate::paths::Paths;
     use crate::theme::TerminalEnv;
@@ -627,13 +764,113 @@ fn a_theme_given_for_the_run_is_applied_and_choosing_one_still_saves() {
         no_color: false,
     };
     let init = AppInit::load_with_theme(Some(&paths), &env, Some("gruvbox"));
-    let rig = build_rig_from(init, 120, 40, false);
+    let mut rig = build_rig_from(init, 120, 40, false);
     assert_eq!(rig.app.theme_id(), "gruvbox");
     assert_eq!(rig.app.theme().name(), "Gruvbox");
     assert_eq!(
         std::fs::read_to_string(&config).unwrap(),
         "theme = \"nord\"\n",
         "starting with --theme writes nothing"
+    );
+    // Choosing a theme is still saved, to the file in use.
+    rig.open_themes();
+    rig.app.update(Msg::SelectTheme("solarized".to_owned()));
+    let saved = std::fs::read_to_string(&config).unwrap();
+    assert!(saved.contains("theme = \"solarized\""), "{saved}");
+}
+
+// -- the options of the command line reach the app
+
+fn truecolor_env() -> crate::theme::TerminalEnv {
+    crate::theme::TerminalEnv {
+        colorterm: Some("truecolor".to_owned()),
+        no_color: false,
+    }
+}
+
+/// Detected locations in `dir`, as `Paths::detect` would give them.
+fn detected_paths(dir: &std::path::Path) -> crate::paths::Paths {
+    crate::paths::Paths::from_dirs(&dir.join("config"), &dir.join("cache"), None, dir)
+}
+
+fn cli(args: &[&str]) -> crate::cli::Cli {
+    crate::cli::parse_args(std::iter::once("chronoscope").chain(args.iter().copied())).unwrap()
+}
+
+#[test]
+fn the_config_option_makes_the_app_load_and_save_that_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mine = dir.path().join("mine.toml");
+    std::fs::write(&mine, "theme = \"nord\"\n").unwrap();
+    let paths = detected_paths(dir.path());
+    let args = cli(&["--config", mine.to_str().unwrap()]);
+    let prepared = prepare(&args, Some(&paths), &truecolor_env(), dir.path()).unwrap();
+    assert_eq!(prepared.init.theme_id, "nord");
+    assert_eq!(prepared.init.config_path.as_deref(), Some(mine.as_path()));
+    // Without the option the default location is used.
+    let prepared = prepare(&cli(&[]), Some(&paths), &truecolor_env(), dir.path()).unwrap();
+    assert_eq!(prepared.init.theme_id, "default");
+    assert_eq!(
+        prepared.init.config_path.as_deref(),
+        Some(paths.config_file.as_path())
+    );
+}
+
+#[test]
+fn the_theme_option_makes_the_app_show_that_theme_and_write_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mine = dir.path().join("mine.toml");
+    std::fs::write(&mine, "theme = \"nord\"\n").unwrap();
+    let paths = detected_paths(dir.path());
+    let args = cli(&["--config", mine.to_str().unwrap(), "--theme", "gruvbox"]);
+    let prepared = prepare(&args, Some(&paths), &truecolor_env(), dir.path()).unwrap();
+    assert_eq!(prepared.init.theme_id, "gruvbox");
+    assert_eq!(prepared.init.theme.name(), "Gruvbox");
+    assert!(prepared.init.warnings.is_empty());
+    assert_eq!(
+        std::fs::read_to_string(&mine).unwrap(),
+        "theme = \"nord\"\n"
+    );
+    assert!(!paths.config_file.exists());
+    // An unknown theme warns.
+    let args = cli(&["--theme", "nope"]);
+    let prepared = prepare(&args, Some(&paths), &truecolor_env(), dir.path()).unwrap();
+    assert_eq!(prepared.init.theme_id, "default");
+    assert_eq!(prepared.init.warnings.len(), 1);
+}
+
+#[test]
+fn the_config_file_decides_which_harnesses_a_path_may_use() {
+    let dir = tempfile::tempdir().unwrap();
+    let mine = dir.path().join("mine.toml");
+    std::fs::write(&mine, "[harness.claude]\nenabled = false\n").unwrap();
+    let file = dir.path().join("1234.jsonl");
+    std::fs::write(&file, LOOSE_LINE).unwrap();
+    let paths = detected_paths(dir.path());
+    let args = cli(&["--config", mine.to_str().unwrap(), file.to_str().unwrap()]);
+    let err = prepare(&args, Some(&paths), &truecolor_env(), dir.path())
+        .err()
+        .expect("an error");
+    assert_eq!(
+        err.to_string(),
+        "the Claude harness is disabled in the config; cannot open a .jsonl file"
+    );
+}
+
+#[test]
+fn the_config_option_without_a_home_directory_warns() {
+    let dir = tempfile::tempdir().unwrap();
+    let args = cli(&["--config", dir.path().join("x.toml").to_str().unwrap()]);
+    let prepared = prepare(&args, None, &truecolor_env(), dir.path()).unwrap();
+    let messages: Vec<&str> = prepared
+        .init
+        .warnings
+        .iter()
+        .map(|w| w.message.as_str())
+        .collect();
+    assert!(
+        messages.iter().any(|m| m.starts_with("--config:")),
+        "{messages:?}"
     );
 }
 

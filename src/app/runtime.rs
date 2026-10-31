@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use tuirealm::terminal::TerminalAdapter;
 
+use super::hints::COMMAND_LINE_KEY;
 use super::redraw::RedrawLimiter;
 use super::resume::{SystemSteps, hand_off};
 use super::startup::AppInit;
@@ -67,11 +68,7 @@ pub(super) fn start_with(app: &mut App, startup: Startup) {
     app.seed_index(&index);
     match (open, resolution.target) {
         (Some((harness, summary)), _) => app.open_summary(harness, summary),
-        (None, Target::Filtered { prefix, matches }) => {
-            if let Some(&(harness, _)) = matches.first() {
-                app.show_filtered(&prefix, harness);
-            }
-        }
+        (None, Target::Filtered { prefix, matches }) => app.show_filtered(&prefix, &matches),
         (None, _) => {}
     }
 }
@@ -112,6 +109,8 @@ pub(super) fn resolve_startup(
     let index: Vec<HarnessIndex> = if request.needs_index() {
         harnesses
             .iter()
+            // Only the harness `--harness` names is looked at.
+            .filter(|harness| request.harness.is_none_or(|only| harness.id() == only))
             .map(|harness| HarnessIndex::read(harness.as_ref()))
             .collect()
     } else {
@@ -125,7 +124,12 @@ pub(super) fn resolve_startup(
             let claude = harnesses
                 .iter()
                 .find(|harness| harness.id() == HarnessId::Claude)
-                .ok_or(launch::LaunchError::ClaudeDisabled)?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "cannot open a .jsonl file: the Claude data directory is unknown \
+                         (no home directory)"
+                    )
+                })?;
             let summary = claude
                 .open_file(path)
                 .map_err(|err| anyhow::anyhow!("cannot read {}: {err:#}", path.display()))?;
@@ -148,10 +152,50 @@ pub(super) fn launch_warnings(resolution: &Resolution) -> Vec<ConfigWarning> {
         .iter()
         .inspect(|message| log::warn!("command line: {message}"))
         .map(|message| ConfigWarning {
-            key: "--args".to_owned(),
+            key: COMMAND_LINE_KEY.to_owned(),
             message: message.clone(),
         })
         .collect()
+}
+
+/// What the application starts with, before the terminal is set up.
+pub(super) struct Prepared {
+    pub(super) init: AppInit,
+    pub(super) harnesses: Vec<Arc<dyn Harness>>,
+    pub(super) startup: Startup,
+}
+
+/// Everything the command line decides before the terminal is set up: the
+/// config file (`--config`) and the theme (`--theme`) that `AppInit` loads,
+/// the harnesses, and what to start with. Errors in the command line are
+/// returned here.
+///
+/// `paths` are the detected locations (none without a home directory).
+pub(super) fn prepare(
+    cli: &Cli,
+    paths: Option<&Paths>,
+    env: &TerminalEnv,
+    working_dir: &std::path::Path,
+) -> anyhow::Result<Prepared> {
+    let paths = paths.map(|paths| match &cli.config {
+        Some(config) => paths.clone().with_config_file(config.clone()),
+        None => paths.clone(),
+    });
+    let mut init = AppInit::load_with_theme(paths.as_ref(), env, cli.theme.as_deref());
+    if paths.is_none() && cli.config.is_some() {
+        init.warnings.push(ConfigWarning {
+            key: COMMAND_LINE_KEY.to_owned(),
+            message: "--config: ignored, the home directory is unknown".to_owned(),
+        });
+    }
+    let harnesses = build_harnesses(&init.config, paths.as_ref());
+    let startup = resolve_startup(&cli.request(), working_dir, &init.config, &harnesses)?;
+    init.warnings.extend(launch_warnings(&startup.resolution));
+    Ok(Prepared {
+        init,
+        harnesses,
+        startup,
+    })
 }
 
 /// Starts the application: loads the configuration, resolves the command line,
@@ -159,26 +203,20 @@ pub(super) fn launch_warnings(resolution: &Resolution) -> Vec<ConfigWarning> {
 /// is restored on every way out. An error in the command line is returned
 /// before the terminal is touched.
 pub fn run_app(cli: &Cli) -> anyhow::Result<()> {
-    let paths = Paths::detect().map(|paths| match &cli.config {
-        Some(config) => paths.with_config_file(config.clone()),
-        None => paths,
-    });
+    let paths = Paths::detect();
     if let Some(paths) = &paths {
         // Logging is optional; the application works without it.
         let _ = crate::logging::init_logging(&paths.log_file);
     }
-    let mut init = AppInit::load_with_theme(
-        paths.as_ref(),
-        &TerminalEnv::from_env(),
-        cli.theme.as_deref(),
-    );
-    let harnesses = build_harnesses(&init.config, paths.as_ref());
     let working_dir = std::env::current_dir().unwrap_or_else(|err| {
         log::warn!("could not read the working directory: {err}");
         PathBuf::new()
     });
-    let startup = resolve_startup(&cli.request(), &working_dir, &init.config, &harnesses)?;
-    init.warnings.extend(launch_warnings(&startup.resolution));
+    let Prepared {
+        init,
+        harnesses,
+        startup,
+    } = prepare(cli, paths.as_ref(), &TerminalEnv::from_env(), &working_dir)?;
     let setup = TerminalSetup::from_mouse_config(init.config.mouse);
 
     let shutdown = match install_signal_handler() {

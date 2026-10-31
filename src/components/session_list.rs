@@ -796,6 +796,26 @@ mod tests {
         assert_eq!(p.on(&ch('/')), Some(Msg::Selector(SelectorMsg::Search)));
     }
 
+    #[test]
+    fn esc_leaves_the_filter_only_while_the_rows_are_filtered() {
+        let mut l = list(sample(false), Some(0), true);
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
+        l.attr(SESSION_FILTERED_ATTR, AttrValue::Flag(true));
+        assert_eq!(
+            l.on(&key(Key::Esc)),
+            Some(Msg::Selector(SelectorMsg::LeaveFilter))
+        );
+        // With a session open behind the selector it is the filter that goes
+        // first, too.
+        l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(true));
+        assert_eq!(
+            l.on(&key(Key::Esc)),
+            Some(Msg::Selector(SelectorMsg::LeaveFilter))
+        );
+        l.attr(SESSION_FILTERED_ATTR, AttrValue::Flag(false));
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::CloseSelector));
+    }
+
     // -- events
 
     #[test]
