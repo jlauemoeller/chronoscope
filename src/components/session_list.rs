@@ -27,6 +27,10 @@ use crate::theme::Theme;
 pub const SESSION_ROWS_ATTR: Attribute = Attribute::Custom("session_rows");
 /// The attribute that sets the stats of one row ([`SessionStatsUpdate`]).
 pub const SESSION_STATS_ATTR: Attribute = Attribute::Custom("session_stats");
+/// The attribute that tells the list its rows are the sessions an id prefix
+/// of the command line matches (a flag): `Esc` then leaves that filter
+/// instead of closing the selector or quitting.
+pub const SESSION_FILTERED_ATTR: Attribute = Attribute::Custom("session_filtered");
 /// The attribute that sets which rows show the `●` marker
 /// ([`ActiveSessions`]).
 pub const ACTIVE_ATTR: Attribute = Attribute::Custom("active_sessions");
@@ -124,6 +128,9 @@ pub fn format_stats(stats: &SessionStats) -> String {
 /// ([`Msg::RequestResume`]). When the app says the harness has nothing
 /// to list, the pane shows the [`EmptyState`] "No sessions for this harness".
 ///
+/// While the rows are filtered ([`SESSION_FILTERED_ATTR`]) `Esc` asks to
+/// leave the filter ([`SelectorMsg::LeaveFilter`]).
+///
 /// Search results come in the same way, with [`SessionRows::search`] set: the
 /// rows then carry their project's name. The list keeps the focus's look
 /// while the prompt has the input focus; the app moves the selection with
@@ -134,6 +141,8 @@ pub struct SessionList {
     keymap: Keymap,
     project: String,
     search: Option<String>,
+    /// Whether the rows are the matches of an id prefix.
+    filtered: bool,
     harness: Option<HarnessId>,
     rows: Arc<Vec<SessionRow>>,
     harness_empty: bool,
@@ -151,6 +160,7 @@ impl SessionList {
             keymap,
             project: String::new(),
             search: None,
+            filtered: false,
             harness: None,
             rows: Arc::default(),
             harness_empty: false,
@@ -338,6 +348,11 @@ impl Component for SessionList {
                     self.set_active(&active);
                 }
             }
+            SESSION_FILTERED_ATTR => {
+                if let AttrValue::Flag(filtered) = value {
+                    self.filtered = filtered;
+                }
+            }
             SEARCH_NAV_ATTR => {
                 if let Some(direction) = payload_from_value::<Direction>(&value) {
                     self.pane.perform(Cmd::Move(direction));
@@ -374,6 +389,7 @@ impl AppComponent<Msg, UserEvent> for SessionList {
             PaneKey::Search => Some(Msg::Selector(SelectorMsg::Search)),
             PaneKey::Resume => self.resume(),
             PaneKey::Open => self.open(),
+            PaneKey::Cancel if self.filtered => Some(Msg::Selector(SelectorMsg::LeaveFilter)),
             PaneKey::Cancel => Some(self.pane.cancel()),
             PaneKey::Harness(harness) => Some(Msg::Selector(SelectorMsg::SwitchHarness(harness))),
         }
@@ -778,6 +794,26 @@ mod tests {
         let mut p =
             crate::components::ProjectList::new(Keymap::default(), builtin::default_theme());
         assert_eq!(p.on(&ch('/')), Some(Msg::Selector(SelectorMsg::Search)));
+    }
+
+    #[test]
+    fn esc_leaves_the_filter_only_while_the_rows_are_filtered() {
+        let mut l = list(sample(false), Some(0), true);
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
+        l.attr(SESSION_FILTERED_ATTR, AttrValue::Flag(true));
+        assert_eq!(
+            l.on(&key(Key::Esc)),
+            Some(Msg::Selector(SelectorMsg::LeaveFilter))
+        );
+        // With a session open behind the selector it is the filter that goes
+        // first, too.
+        l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(true));
+        assert_eq!(
+            l.on(&key(Key::Esc)),
+            Some(Msg::Selector(SelectorMsg::LeaveFilter))
+        );
+        l.attr(SESSION_FILTERED_ATTR, AttrValue::Flag(false));
+        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::CloseSelector));
     }
 
     // -- events

@@ -38,8 +38,19 @@ impl AppInit {
     /// as well. Without `paths` (no home directory) the defaults are used and
     /// a warning says so.
     pub fn load(paths: Option<&Paths>, env: &TerminalEnv) -> Self {
+        Self::load_with_theme(paths, env, None)
+    }
+
+    /// Like [`load`](Self::load), with `theme_override` (the id given with `--theme`)
+    /// used for this run instead of the configured one. The config file is
+    /// not touched. An unknown id gives a warning and the default theme.
+    pub fn load_with_theme(
+        paths: Option<&Paths>,
+        env: &TerminalEnv,
+        theme_override: Option<&str>,
+    ) -> Self {
         let mut warnings = Vec::new();
-        let (config, registry) = match paths {
+        let (mut config, registry) = match paths {
             Some(paths) => {
                 let (config, config_warnings) = Config::load(&paths.config_file, &paths.home_dir);
                 warnings.extend(config_warnings);
@@ -55,9 +66,18 @@ impl AppInit {
                 (Config::default(), ThemeRegistry::builtin())
             }
         };
+        if let Some(id) = theme_override {
+            config.theme = id.to_owned();
+        }
         let (theme, theme_warnings) =
             resolve(&registry, &config.theme, config.transparent_background, env);
-        warnings.extend(theme_warnings);
+        warnings.extend(theme_warnings.into_iter().map(|mut warning| {
+            if theme_override.is_some() {
+                warning.key = "--theme".to_owned();
+                warning.message = format!("--theme: {}", warning.message);
+            }
+            warning
+        }));
         // The configured theme if it can be used, else the one `resolve`
         // fell back to. (`NO_COLOR` shows the Terminal theme whatever the id.)
         let theme_id = match registry.get(&config.theme) {
@@ -203,5 +223,72 @@ mod tests {
         assert_eq!(init.config, Config::default());
         assert_eq!(init.warnings.len(), 1);
         assert!(init.warnings[0].message.contains("home directory"));
+    }
+
+    #[test]
+    fn theme_override_applies_the_theme_without_touching_the_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        fs::create_dir_all(paths.config_file.parent().unwrap()).unwrap();
+        let text = "theme = \"nord\"\n";
+        fs::write(&paths.config_file, text).unwrap();
+        let init = AppInit::load_with_theme(Some(&paths), &env(), Some("gruvbox"));
+        assert_eq!(init.theme_id, "gruvbox");
+        assert_eq!(init.theme.name(), "Gruvbox");
+        assert!(init.warnings.is_empty(), "{:?}", init.warnings);
+        assert_eq!(fs::read_to_string(&paths.config_file).unwrap(), text);
+        // Without the override the configured theme is used, as before.
+        let init = AppInit::load_with_theme(Some(&paths), &env(), None);
+        assert_eq!(init.theme_id, "nord");
+    }
+
+    #[test]
+    fn theme_override_works_without_a_config_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        let init = AppInit::load_with_theme(Some(&paths), &env(), Some("gruvbox"));
+        assert_eq!(init.theme.name(), "Gruvbox");
+        assert!(!paths.config_file.exists(), "nothing is written");
+    }
+
+    #[test]
+    fn an_unknown_theme_override_warns_and_uses_the_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        fs::create_dir_all(paths.config_file.parent().unwrap()).unwrap();
+        fs::write(&paths.config_file, "theme = \"nord\"\n").unwrap();
+        let init = AppInit::load_with_theme(Some(&paths), &env(), Some("no-such-theme"));
+        assert_eq!(init.theme_id, "default");
+        assert_eq!(init.theme.name(), "Default");
+        assert_eq!(init.warnings.len(), 1);
+        let message = &init.warnings[0].message;
+        assert!(message.contains("--theme"), "{message}");
+        assert!(message.contains("no-such-theme"), "{message}");
+        let toast = crate::app::hints::startup_toast_text(&init.warnings).unwrap();
+        assert!(toast.starts_with("--theme: unknown theme"), "{toast}");
+    }
+
+    #[test]
+    fn the_config_option_loads_that_file_instead_of_the_default_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let default = paths_in(dir.path());
+        fs::create_dir_all(default.config_file.parent().unwrap()).unwrap();
+        fs::write(&default.config_file, "theme = \"nord\"\n").unwrap();
+        let other = dir.path().join("other.toml");
+        fs::write(&other, "theme = \"solarized\"\nutc = true\n").unwrap();
+        let paths = default.with_config_file(other.clone());
+        let init = AppInit::load(Some(&paths), &env());
+        assert_eq!(init.theme_id, "solarized");
+        assert!(init.config.utc);
+        assert_eq!(init.config_path, Some(other));
+    }
+
+    #[test]
+    fn a_missing_config_file_at_the_given_path_means_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path()).with_config_file(dir.path().join("missing.toml"));
+        let init = AppInit::load(Some(&paths), &env());
+        assert_eq!(init.config, Config::default());
+        assert!(init.warnings.is_empty(), "{:?}", init.warnings);
     }
 }

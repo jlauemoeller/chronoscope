@@ -287,6 +287,14 @@ impl App {
             log::warn!("cannot open {id}: the index does not list it");
             return;
         };
+        self.open_summary(harness, summary);
+    }
+
+    /// Opens `summary`, a session of `harness` the index may not list yet (a
+    /// session given on the command line): the same as [`open_session`]
+    /// from there on.
+    pub fn open_summary(&mut self, harness: HarnessId, summary: SessionSummary) {
+        let id = &summary.id;
         let (Some(loader), Some(sink)) = (
             self.harnesses.get(&harness).cloned(),
             self.session_sink.clone(),
@@ -888,6 +896,8 @@ impl App {
     /// selector's data stays.
     pub(super) fn unmount_selector(&mut self) {
         self.selector.search = None;
+        self.selector.filtered = None;
+        self.selector.shown.clear();
         // The question was in the prompt that is unmounted.
         self.clear_resume_question();
         for id in SELECTOR_IDS.into_iter().chain([Id::Prompt]) {

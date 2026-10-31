@@ -11,11 +11,22 @@ use crate::keymap::{Action, Context, Keymap};
 /// With the default keys they read `/ to search sessions | ENTER to open |
 /// TAB to switch between projects and sessions | ESC to Cancel`.
 pub fn selector_hints(keymap: &Keymap) -> Vec<Hint> {
+    selector_hints_with(keymap, "to Cancel")
+}
+
+/// The hints of the session selector while it lists the sessions an id prefix
+/// of the command line matches: `Esc` shows all sessions again instead of
+/// cancelling.
+pub fn filtered_selector_hints(keymap: &Keymap) -> Vec<Hint> {
+    selector_hints_with(keymap, "to show all sessions")
+}
+
+fn selector_hints_with(keymap: &Keymap, cancel: &'static str) -> Vec<Hint> {
     [
         (Action::Search, "to search sessions"),
         (Action::Open, "to open"),
         (Action::NextPane, "to switch between projects and sessions"),
-        (Action::Cancel, "to Cancel"),
+        (Action::Cancel, cancel),
     ]
     .into_iter()
     .filter_map(|(action, text)| {
@@ -59,22 +70,34 @@ pub fn browser_hints_at(keymap: &Keymap, depth: usize) -> Vec<Hint> {
         .collect()
 }
 
+/// The key of the startup warnings about the command line as a whole. Like
+/// `--theme`, it starts with `--`: such warnings name the option in their
+/// message and are shown without the `Config: ` prefix.
+pub const COMMAND_LINE_KEY: &str = "--command-line";
+
 /// The text of the toast that shows the startup `warnings`, or `None` when
 /// there are none.
 ///
 /// One warning reads `Config: <warning>`; more read
-/// `Config: <first warning> (+N more, see log)`.
+/// `Config: <first warning> (+N more, see log)`. A warning about a command-line
+/// option (its key starts with `--`) is not a config warning and has no
+/// `Config: ` prefix: its message names the option.
 pub fn startup_toast_text(warnings: &[ConfigWarning]) -> Option<String> {
-    let (first, rest) = warnings.split_first()?;
-    let first = first
+    let (head, rest) = warnings.split_first()?;
+    let first = head
         .message
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    Some(if rest.is_empty() {
-        format!("Config: {first}")
+    let prefix = if head.key.starts_with("--") {
+        ""
     } else {
-        format!("Config: {first} (+{} more, see log)", rest.len())
+        "Config: "
+    };
+    Some(if rest.is_empty() {
+        format!("{prefix}{first}")
+    } else {
+        format!("{prefix}{first} (+{} more, see log)", rest.len())
     })
 }
 

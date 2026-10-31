@@ -92,6 +92,18 @@ pub trait Harness: Send + Sync {
     /// The command that resumes `session` in its harness, or `None` when the
     /// configured template is unusable.
     fn resume_command(&self, session: &SessionSummary) -> Option<Command>;
+
+    /// Reads the transcript file at `path` (given on the command line, so it
+    /// need not be in the harness's data store) and returns its summary. The
+    /// harness can [`load`](Self::load) the session from then on. The
+    /// default: the harness has no transcript files.
+    fn open_file(&self, path: &Path) -> Result<SessionSummary> {
+        anyhow::bail!(
+            "{} sessions are not files ({})",
+            self.id().display_name(),
+            path.display()
+        )
+    }
 }
 
 /// Keeps a session's worker alive. Dropping it tells the worker to stop; it

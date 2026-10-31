@@ -23,7 +23,7 @@ use super::assemble::Assembler;
 use super::load::{self, LoadHook, Tuning, WatchMode};
 use super::resume::{self, DEFAULT_RESUME_COMMAND};
 use super::scan::{FileScan, scan_reader};
-use super::subagent::{self, SubagentInfo};
+use super::subagent::{self, Opened, SubagentInfo};
 use crate::config::Config;
 use crate::harness::shared::{UNTITLED, truncate_title};
 use crate::harness::{Harness, Result, WatchHandle};
@@ -88,6 +88,8 @@ type ScanHook = Box<dyn Fn(&Path) + Send + Sync>;
 /// The Claude Code adapter's discovery half.
 pub struct ClaudeHarness {
     data_dir: PathBuf,
+    /// The transcripts opened by their path (see [`Harness::open_file`]).
+    opened: Opened,
     aliases: BTreeMap<PathBuf, String>,
     max_workers: Option<usize>,
     scans: AtomicUsize,
@@ -118,6 +120,7 @@ impl ClaudeHarness {
     pub fn with_data_dir(data_dir: PathBuf, aliases: BTreeMap<PathBuf, String>) -> Self {
         Self {
             data_dir,
+            opened: Opened::default(),
             aliases,
             max_workers: None,
             scans: AtomicUsize::new(0),
@@ -175,7 +178,7 @@ impl ClaudeHarness {
     /// the breadcrumb. `None` for a session that is not a subagent, or whose
     /// meta file is missing or unreadable.
     pub fn subagent_info(&self, session: &SessionId) -> Option<SubagentInfo> {
-        subagent::info(&self.data_dir, session)
+        subagent::info(&self.data_dir, &self.opened, session)
     }
 
     /// Caps the scan worker threads (default: `available_parallelism()`).
@@ -442,6 +445,7 @@ impl Harness for ClaudeHarness {
         let stop = Arc::new(AtomicBool::new(false));
         let job = load::Job {
             data_dir: self.data_dir.clone(),
+            opened: self.opened.clone(),
             session: session.clone(),
             tx,
             stop: Arc::clone(&stop),
@@ -460,11 +464,41 @@ impl Harness for ClaudeHarness {
     /// `call`, then in the parent transcript for the call's `toolUseResult`.
     /// Reads files, so it is not for the UI thread.
     fn subagent(&self, parent: &SessionId, call: &ToolCallId) -> Option<SessionId> {
-        subagent::find(&self.data_dir, parent, call.as_str())
+        subagent::find(&self.data_dir, &self.opened, parent, call.as_str())
     }
 
     fn resume_command(&self, session: &SessionSummary) -> Option<Command> {
         resume::build(&self.resume_command, session)
+    }
+
+    /// Reads the transcript at `path`, wherever it is, and remembers it, so
+    /// that [`load`](Harness::load) and [`subagent`](Harness::subagent) find
+    /// it (and its `<stem>/subagents/` directory) next to the file.
+    fn open_file(&self, path: &Path) -> Result<SessionSummary> {
+        let path =
+            std::path::absolute(path).with_context(|| format!("resolving {}", path.display()))?;
+        let meta = fs::metadata(&path).with_context(|| format!("reading {}", path.display()))?;
+        anyhow::ensure!(meta.is_file(), "{} is not a file", path.display());
+        let id = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .with_context(|| format!("{} has no file name", path.display()))?;
+        let dir_name = path
+            .parent()
+            .and_then(Path::file_name)
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let scan = self.scan_file(&path)?;
+        let file = FileMeta {
+            path: path.clone(),
+            dir_name,
+            id: id.clone(),
+            size: meta.len(),
+            mtime: meta.modified()?,
+        };
+        let summary = summarize(&file, &scan);
+        self.opened.insert(id, path);
+        Ok(summary)
     }
 }
 

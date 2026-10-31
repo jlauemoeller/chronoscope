@@ -27,6 +27,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 pub use cache::CACHE_FILE;
+pub(crate) use worker::collect;
 
 use crate::harness::Harness;
 use crate::model::{HarnessId, Project, ProjectId, SessionId, SessionStats, SessionSummary};
