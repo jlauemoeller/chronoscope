@@ -327,20 +327,20 @@ impl Assembler {
             }
             "system" => {
                 let sub = head.subtype.as_deref().unwrap_or_default();
-                if matches!(sub, "turn_duration" | "compact_boundary") || is_injected_system(sub) {
-                    if let Some(entry) = self.parse_entry(line) {
-                        let ts = self.timestamp(&entry);
-                        match sub {
-                            "turn_duration" => self.on_turn_duration(&entry),
-                            "compact_boundary" => self.on_compact_boundary(&entry, ts, range),
-                            _ => {
-                                let text = system_text(
-                                    sub,
-                                    entry.content.as_ref(),
-                                    entry.command_run.as_ref(),
-                                );
-                                self.hold(sub, ts, text, entry.uuid.as_deref(), range);
-                            }
+                if (matches!(sub, "turn_duration" | "compact_boundary") || is_injected_system(sub))
+                    && let Some(entry) = self.parse_entry(line)
+                {
+                    let ts = self.timestamp(&entry);
+                    match sub {
+                        "turn_duration" => self.on_turn_duration(&entry),
+                        "compact_boundary" => self.on_compact_boundary(&entry, ts, range),
+                        _ => {
+                            let text = system_text(
+                                sub,
+                                entry.content.as_ref(),
+                                entry.command_run.as_ref(),
+                            );
+                            self.hold(sub, ts, text, entry.uuid.as_deref(), range);
                         }
                     }
                 }
