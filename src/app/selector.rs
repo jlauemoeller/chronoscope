@@ -1097,7 +1097,10 @@ impl App {
             return;
         }
         if self.screen.has_selector() {
-            let overlay = super::layout::layout(&self.layout_input(), area)
+            // The routing layout was refreshed above.
+            let overlay = self
+                .mouse
+                .routing
                 .area(Id::SelectorFrame)
                 .unwrap_or_default();
             let rows = visible_rows(selector_areas(overlay).projects.height);

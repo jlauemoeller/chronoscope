@@ -470,6 +470,79 @@ fn a_click_in_the_empty_pane_area_only_focuses_the_pane() {
 }
 
 #[test]
+fn a_double_click_in_a_list_scrolled_by_the_wheel_opens_the_row_under_the_pointer() {
+    let mut app = loaded();
+    app.update(Msg::Resized(80, 22));
+    let time = click_clock(&mut app);
+    // Three rows are drawn; nothing is selected, so the wheel only scrolls.
+    wheel(&mut app, Id::SessionList, true);
+    wheel(&mut app, Id::SessionList, true);
+    assert_eq!(session(&app), None);
+    let before = drawn(&mut app, 80, 22);
+    assert!(before.contains("2026-10-12 17:02Z"), "{before}");
+    click_row(&mut app, Id::SessionList, 0);
+    assert_eq!(session(&app), Some("s3"));
+    // The list did not jump under the pointer.
+    assert_eq!(
+        drawn(&mut app, 80, 22).replace('>', " "),
+        before.replace('>', " ")
+    );
+    time.set(Duration::from_millis(100));
+    click_row(&mut app, Id::SessionList, 0);
+    assert_eq!(session(&app), Some("s3"));
+    assert_eq!(
+        app.take_queued(),
+        [Msg::OpenSession(CLAUDE, SessionId::from("s3"))]
+    );
+}
+
+#[test]
+fn a_press_that_is_not_on_a_row_ends_a_double_click_under_way() {
+    for (id, column, row) in [
+        (Id::HarnessTabs, 3, 0),
+        (Id::SessionList, 6, 12),
+        (Id::WorkingDir, 3, 2),
+        (Id::SelectorFrame, 0, 5),
+    ] {
+        let mut app = loaded();
+        let time = click_clock(&mut app);
+        click_row(&mut app, Id::SessionList, 1);
+        time.set(Duration::from_millis(100));
+        click(&mut app, id, column, row);
+        time.set(Duration::from_millis(200));
+        click_row(&mut app, Id::SessionList, 1);
+        assert!(app.take_queued().is_empty(), "{id:?}");
+    }
+    // A press on nothing at all does too.
+    let mut app = loaded();
+    let time = click_clock(&mut app);
+    click_row(&mut app, Id::SessionList, 1);
+    app.update(Msg::Mouse(mouse(PRESS, 0, 0)));
+    time.set(Duration::from_millis(100));
+    click_row(&mut app, Id::SessionList, 1);
+    assert!(app.take_queued().is_empty());
+}
+
+#[test]
+fn the_wheel_over_projects_leaves_the_filtered_selector_alone() {
+    let mut app = loaded();
+    let matches = vec![(CLAUDE, SessionId::from("s2"))];
+    app.show_filtered("s2", &matches);
+    let before = (project(&app), cwd(&app), project_rows(&app).selected);
+    wheel(&mut app, Id::ProjectList, true);
+    wheel(&mut app, Id::ProjectList, false);
+    assert_eq!(app.filter_prefix(), Some("s2"));
+    assert_eq!(
+        (project(&app), cwd(&app), project_rows(&app).selected),
+        before
+    );
+    assert_eq!(app.focused_pane(), Pane::Sessions);
+    // The wheel over the matches still works.
+    wheel(&mut app, Id::SessionList, true);
+    assert_eq!(app.filter_prefix(), Some("s2"));
+}
+
+#[test]
 fn a_click_in_the_empty_pane_area_changes_nothing_but_the_focus() {
     let mut app = loaded();
     click_row(&mut app, Id::SessionList, 2);

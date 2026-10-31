@@ -703,7 +703,7 @@ impl App {
             Msg::Session { generation, update } => self.session_update(generation, &update),
             Msg::Mouse(event) => self.mouse(event),
         }
-        // The screen, an overlay, the prompt or the size may have changed.
+        // Any message may have changed the screen, an overlay or the prompt.
         self.refresh_routing();
     }
 
@@ -713,7 +713,6 @@ impl App {
 
     fn resized(&mut self, width: u16, height: u16) {
         self.size = (width, height);
-        self.refresh_routing();
         self.push_viewports();
         self.request_redraw(RedrawRequest::Resized);
     }

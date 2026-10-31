@@ -84,9 +84,9 @@ impl ListCursor {
 
     /// Sets the number of rows and the selection (ignored when out of range)
     /// and scrolls the least that keeps the selection visible. Without a
-    /// selection the list shows its first rows: a list nothing is selected
-    /// in cannot have been scrolled, and the offset of the list it replaces
-    /// means nothing for the new one.
+    /// selection the list shows its first rows: the offset of the list it
+    /// replaces means nothing for the new one, so new rows also undo a
+    /// scroll made with [`scroll`](Self::scroll) while nothing was selected.
     pub fn set(&mut self, len: usize, selected: Option<usize>) {
         self.len = len;
         self.selected = selected.filter(|&i| i < len);

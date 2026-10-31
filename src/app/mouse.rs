@@ -90,6 +90,8 @@ pub(super) struct MouseState {
     /// The areas events are routed with.
     pub(super) routing: ScreenLayout,
     last_press: Option<(ClickTarget, Instant)>,
+    /// Whether the left press being handled was on a row.
+    row_pressed: bool,
     clock: Box<dyn Fn() -> Instant>,
 }
 
@@ -98,6 +100,7 @@ impl Default for MouseState {
         Self {
             routing: ScreenLayout::default(),
             last_press: None,
+            row_pressed: false,
             clock: Box::new(Instant::now),
         }
     }
@@ -113,6 +116,7 @@ impl MouseState {
     /// [`DOUBLE_CLICK`] ago. A completed double-click is forgotten, so a
     /// third press starts a new one.
     fn press(&mut self, target: ClickTarget) -> bool {
+        self.row_pressed = true;
         let now = (self.clock)();
         let double = self.last_press.as_ref().is_some_and(|(last, at)| {
             *last == target && now.saturating_duration_since(*at) <= DOUBLE_CLICK
@@ -134,8 +138,12 @@ impl App {
         self.mouse.set_clock(clock);
     }
 
-    /// Recomputes the routing areas. Called when the screen, an overlay, the
-    /// size or the toast changes; `view` never calls it.
+    /// Recomputes the routing areas from the current state. `update` calls
+    /// it after every message (any of them can open an overlay or a prompt,
+    /// or change the screen), `push_viewports` when the screen or the size
+    /// changes, and `show_toast_for` when a toast appears; `view` never
+    /// calls it. It is a handful of rectangles, so it is not worth finding
+    /// out which messages can change the layout.
     pub(super) fn refresh_routing(&mut self) {
         let area = Rect::new(0, 0, self.size.0, self.size.1);
         self.mouse.routing = layout(&self.layout_input(), area);
@@ -143,14 +151,25 @@ impl App {
 
     /// A left press or a wheel step at a position of the screen: gives it to
     /// the component under the pointer, wherever the focus is.
+    ///
+    /// A left press that is not on a row (a tab, empty space, anywhere
+    /// else) ends a double-click that was under way.
     pub(super) fn mouse(&mut self, event: MouseEvent) {
         if !self.config.mouse {
             return;
         }
+        self.mouse.row_pressed = false;
+        self.route_mouse(event);
+        if event.kind == MouseEventKind::Down(MouseButton::Left) && !self.mouse.row_pressed {
+            self.mouse.last_press = None;
+        }
+    }
+
+    fn route_mouse(&mut self, event: MouseEvent) {
         let Some((id, area)) = hit_test(&self.mouse.routing, event.column, event.row) else {
             return;
         };
-        if !self.takes_mouse(id) {
+        if !self.takes_mouse(id, event.kind) {
             return;
         }
         let routed = Event::User(UserEvent::Mouse(RoutedMouse::new(event, area)));
@@ -166,10 +185,14 @@ impl App {
     /// Whether `id` reacts to the mouse now. The selector's tabs and panes
     /// do, unless a prompt has the input: the search prompt lets the
     /// Sessions pane's results be clicked and scrolled, any other (the
-    /// resume confirmation) is modal.
-    fn takes_mouse(&self, id: Id) -> bool {
+    /// resume confirmation) is modal. In the filtered selector the Projects
+    /// pane is as at a start without the prefix: the wheel leaves it alone
+    /// (a click ends the filter).
+    fn takes_mouse(&self, id: Id, kind: MouseEventKind) -> bool {
         let prompt = self.application.mounted(&Id::Prompt);
+        let wheel = matches!(kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown);
         match id {
+            Id::ProjectList if wheel && self.selector.filtered.is_some() => false,
             Id::SessionList => !prompt || self.selector.search.is_some(),
             Id::ProjectList | Id::HarnessTabs => !prompt,
             _ => false,
@@ -196,8 +219,11 @@ impl App {
     /// selected. A double-click opens it.
     pub(super) fn session_clicked(&mut self, id: SessionId) {
         let double = self.mouse.press(ClickTarget::Session(id.clone()));
-        self.focus_pane(Pane::Sessions);
+        // Select first: focusing Sessions with nothing selected would select
+        // the newest session, which resets the scroll of the list and moves
+        // the clicked row from under the pointer.
         self.session_selected(id.clone());
+        self.focus_pane(Pane::Sessions);
         if double && let Some(harness) = self.selector.current {
             self.emit(Msg::OpenSession(harness, id));
         }
