@@ -35,7 +35,7 @@
 | 031-theme-selector | Complete |
 | 032-resume-in-harness | Complete |
 | 033-command-line-args | Complete |
-| 034-selector-mouse | Planned |
+| 034-selector-mouse | In progress |
 | 035-transcript-overlay-mouse | Planned |
 | 036-large-session-perf | Planned |
 | 037-release-and-docs | Planned |
