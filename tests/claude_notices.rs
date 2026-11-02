@@ -466,6 +466,114 @@ fn each_message_has_its_own_notice() {
     assert_eq!(ids, ["notice:msg_1", "notice:msg_2"]);
 }
 
+#[test]
+fn distinct_error_blocks_on_separate_lines_without_an_index_are_joined() {
+    let lines = [
+        api_error_line(1, "msg_e", "null", "first"),
+        api_error_line(2, "msg_e", "null", "second"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(
+        notices(&items),
+        [(
+            "notice:msg_e".to_owned(),
+            NoticeLevel::Error,
+            "first\nsecond".to_owned()
+        )]
+    );
+    assert!(texts(&items).is_empty());
+}
+
+#[test]
+fn repeated_lines_of_several_error_blocks_without_an_index_collapse() {
+    let lines: Vec<String> = (0..2)
+        .flat_map(|round| {
+            [
+                api_error_line(1 + 2 * round, "msg_e", "null", "first"),
+                api_error_line(2 + 2 * round, "msg_e", "null", "second"),
+            ]
+        })
+        .collect();
+    let items = items_of(&assemble(&lines));
+    assert_eq!(notices(&items)[0].2, "first\nsecond");
+    assert_eq!(items.len(), 1);
+}
+
+#[test]
+fn a_grown_error_block_without_an_index_replaces_the_earlier_one() {
+    let lines = [
+        api_error_line(1, "msg_e", "null", "API Error"),
+        api_error_line(2, "msg_e", "null", "API Error: 529"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(notices(&items)[0].2, "API Error: 529");
+}
+
+#[test]
+fn a_flag_arriving_after_the_same_text_replaces_the_text_block() {
+    let lines = [
+        line(1, "msg_e", "null", &text("API Error")),
+        api_error_line(2, "msg_e", "null", "API Error"),
+    ];
+    let asm = assemble(&lines);
+    let items = items_of(&asm);
+    assert_eq!(
+        notices(&items),
+        [(
+            "notice:msg_e".to_owned(),
+            NoticeLevel::Error,
+            "API Error".to_owned()
+        )]
+    );
+    assert!(texts(&items).is_empty(), "{items:?}");
+    assert_eq!(items.len(), 1);
+}
+
+#[test]
+fn text_shown_before_the_flag_joins_the_errors_text() {
+    let lines = [
+        line(1, "msg_e", "null", &text("first")),
+        api_error_line(2, "msg_e", "null", "second"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(notices(&items)[0].2, "first\nsecond");
+    assert!(texts(&items).is_empty());
+}
+
+#[test]
+fn other_messages_text_stays_when_a_message_turns_out_to_be_an_error() {
+    let lines = [
+        line(1, "msg_1", r#""end_turn""#, &text("Real answer")),
+        line(2, "msg_e", "null", &text("API Error")),
+        api_error_line(3, "msg_e", "null", "API Error"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(texts(&items), ["Real answer"]);
+    assert_eq!(notices(&items).len(), 1);
+}
+
+#[test]
+fn a_tool_result_attaches_to_a_call_that_follows_the_text_taken_into_the_error() {
+    let lines = [
+        line(1, "msg_e", "null", &text("API Error")),
+        line(2, "msg_1", "null", &tool_use("c1")),
+        api_error_line(3, "msg_e", "null", "API Error"),
+        result_line(4, "c1"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert!(texts(&items).is_empty(), "{items:?}");
+    let status = items.iter().find_map(|i| match i {
+        Item::ToolCall(c) => Some(c.status),
+        _ => None,
+    });
+    assert_eq!(status, Some(ToolStatus::Ok));
+}
+
+#[test]
+fn an_empty_stop_reason_is_no_reason() {
+    assert!(notices_for_stop(r#""""#).is_empty());
+}
+
 // ------------------------------------------------- unexpected JSON types
 
 #[test]
@@ -490,6 +598,21 @@ fn stop_reason_and_flag_of_unexpected_types_leave_the_line_parsed_without_notice
 fn the_flag_of_an_unexpected_type_inside_the_message_leaves_the_line_parsed() {
     let l = r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","message":{"id":"msg_1","model":"m","stop_reason":7,"isApiErrorMessage":"no","content":[{"type":"text","text":"Fine."}]}}"#;
     let asm = assemble(&[l.to_owned()]);
+    assert_eq!(asm.unparsed_count(), 0);
+    let items = items_of(&asm);
+    assert!(notices(&items).is_empty());
+    assert_eq!(texts(&items), ["Fine."]);
+}
+
+#[test]
+fn invalid_utf8_in_a_top_level_flag_keeps_the_line_parsed() {
+    // Bytes that are not UTF-8 inside a field that is not a boolean: the line
+    // is parsed, as it is when the field is unknown, with no notice.
+    let mut bytes = PROMPT.as_bytes().to_vec();
+    bytes.extend_from_slice(
+        b"\n{\"type\":\"assistant\",\"uuid\":\"a1\",\"isApiErrorMessage\":\"x\xffy\",\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":{\"id\":\"msg_1\",\"model\":\"m\",\"stop_reason\":null,\"content\":[{\"type\":\"text\",\"text\":\"Fine.\"}]}}\n",
+    );
+    let asm = Assembler::from_memory(Arc::from(bytes));
     assert_eq!(asm.unparsed_count(), 0);
     let items = items_of(&asm);
     assert!(notices(&items).is_empty());

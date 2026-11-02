@@ -59,12 +59,14 @@ struct Builder {
     /// Signatures of redacted thinking blocks (to tell re-sends from
     /// distinct blocks when there is no `apiBlockIndex`).
     signatures: HashMap<ItemId, String>,
-    /// The last non-null `stop_reason` per message id.
+    /// The last non-null `stop_reason` per message id, within this turn: a
+    /// message id that continues after a human prompt starts over.
     stop: HashMap<String, String>,
     /// Message ids flagged as API errors on any of their lines.
     api_errors: HashSet<String>,
-    /// The text blocks of flagged messages, by message id and block number,
-    /// so that a line sent again replaces its blocks instead of adding them.
+    /// The text blocks of flagged messages, by message id and block number
+    /// (`apiBlockIndex` plus position, else the next free number), so that a
+    /// line sent again replaces its blocks instead of adding them.
     error_text: HashMap<String, BTreeMap<usize, String>>,
 }
 
@@ -723,6 +725,7 @@ impl Assembler {
         let Some(message) = entry.message else {
             return;
         };
+        // An empty reason is no reason: it would give the notice `stopped: `.
         let stop_reason = message.stop_reason.filter(|s| !s.is_empty());
         if let Some(content) = &message.content {
             self.check_blocks(content);
@@ -806,8 +809,10 @@ impl Assembler {
                 }
             }
 
-            if api_error_line {
-                b.api_errors.insert(msg_id.clone());
+            if api_error_line && b.api_errors.insert(msg_id.clone()) {
+                // The message turns out to be an error: text already shown
+                // for it is the error's text and moves to the notice.
+                take_message_text(turn, &mut b, &mut self.calls, &msg_id, &mut changed);
             }
             let api_error = b.api_errors.contains(&msg_id);
             let stop_changed = stop_reason.is_some();
@@ -825,16 +830,18 @@ impl Assembler {
                 _ => Vec::new(),
             };
             let api_index = entry.api_block_index;
+            // The numbers given to the error blocks of this line.
+            let mut error_keys: Vec<usize> = Vec::new();
             for (i, block) in blocks.into_iter().enumerate() {
                 match block.kind.as_deref() {
                     Some("text") if api_error => {
                         // The error is shown as a notice instead of text.
                         let text = block.text.unwrap_or_default();
                         if !text.is_empty() {
-                            b.error_text
-                                .entry(msg_id.clone())
-                                .or_default()
-                                .insert(api_index.unwrap_or(0) + i, text);
+                            let blocks = b.error_text.entry(msg_id.clone()).or_default();
+                            let key = error_block_key(blocks, &error_keys, api_index, i, &text);
+                            error_keys.push(key);
+                            blocks.insert(key, text);
                         }
                     }
                     Some("text") => {
@@ -1171,6 +1178,58 @@ fn upsert(turn: &mut AssistantTurn, b: &mut Builder, mut item: Item, changed: &m
         turn.items.push(item);
         *changed = true;
         pos
+    }
+}
+
+/// The number of an error text block. With `apiBlockIndex` it is that index
+/// plus the block's position. Without it, a text that equals or extends a
+/// block the message already has (not one from this line) is a re-send and
+/// replaces it; any other text gets the next free number.
+fn error_block_key(
+    blocks: &BTreeMap<usize, String>,
+    taken: &[usize],
+    api_index: Option<usize>,
+    position: usize,
+    text: &str,
+) -> usize {
+    if let Some(base) = api_index {
+        return base + position;
+    }
+    blocks
+        .iter()
+        .rev()
+        .find(|(key, old)| !taken.contains(key) && text.starts_with(old.as_str()))
+        .map(|(&key, _)| key)
+        .unwrap_or_else(|| blocks.keys().next_back().map_or(0, |last| last + 1))
+}
+
+/// Moves the text blocks the turn already shows for message `msg_id` into the
+/// message's error text, and removes them from the turn. Their ids end in the
+/// block number (`<message id>:<number>`), which stays their number there.
+fn take_message_text(
+    turn: &mut AssistantTurn,
+    b: &mut Builder,
+    calls: &mut HashMap<String, CallRef>,
+    msg_id: &str,
+    changed: &mut bool,
+) {
+    let taken: Vec<(ItemId, usize, String)> = turn
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text { id, text } => {
+                let number = id.as_str().strip_prefix(msg_id)?.strip_prefix(':')?;
+                Some((id.clone(), number.parse().ok()?, text.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    for (id, number, text) in taken {
+        b.error_text
+            .entry(msg_id.to_owned())
+            .or_default()
+            .insert(number, text);
+        remove(turn, b, calls, &id, changed);
     }
 }
 

@@ -35,10 +35,11 @@ pub struct AttachmentHead {
     pub kind: Option<String>,
 }
 
-/// A JSONL line. `M` is the type of `message` and `T` that of
-/// `toolUseResult`; only [`read_entry`] uses other ones than the defaults.
+/// A JSONL line. `M` is the type of `message`, `T` that of `toolUseResult`
+/// and `F` that of `isApiErrorMessage`; only [`read_entry`] uses other ones
+/// than the defaults.
 #[derive(Deserialize)]
-pub struct Entry<M = Message, T = ToolUseResult> {
+pub struct Entry<M = Message, T = ToolUseResult, F = ApiErrorFlag> {
     /// Top-level `content` of `system` entries.
     pub content: Option<Value>,
     #[serde(rename = "commandRun")]
@@ -66,8 +67,22 @@ pub struct Entry<M = Message, T = ToolUseResult> {
     pub tool_use_result: Option<T>,
     /// Set on the line that carries an API error as its text. A value of
     /// another type than a boolean counts as missing.
-    #[serde(rename = "isApiErrorMessage", default, deserialize_with = "lenient")]
-    pub is_api_error_message: Option<bool>,
+    #[serde(rename = "isApiErrorMessage")]
+    pub is_api_error_message: Option<F>,
+}
+
+/// An entry's `isApiErrorMessage`: `true` only for a boolean `true`; a value
+/// of another type counts as missing. Like `message.usage` it is read as raw
+/// text, so the check parse in [`read_entry`]'s retry reads the field as
+/// [`IgnoredAny`] instead, which does not check its UTF-8.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApiErrorFlag(pub bool);
+
+impl<'de> Deserialize<'de> for ApiErrorFlag {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let flag: Option<bool> = lenient(deserializer)?;
+        Ok(Self(flag == Some(true)))
+    }
 }
 
 impl<T> Entry<Message, T> {
@@ -212,7 +227,7 @@ impl Entry {
 
     /// Whether the entry (or its message) is flagged as an API error.
     pub fn is_api_error(&self) -> bool {
-        self.is_api_error_message == Some(true)
+        self.is_api_error_message == Some(ApiErrorFlag(true))
             || self
                 .message
                 .as_ref()
@@ -271,7 +286,7 @@ fn lenient_entry(line: &[u8]) -> Option<Entry> {
     if std::str::from_utf8(line).is_ok() {
         return None;
     }
-    serde_json::from_slice::<Entry<MessageWithoutUsage, IgnoredAny>>(line).ok()?;
+    serde_json::from_slice::<Entry<MessageWithoutUsage, IgnoredAny, IgnoredAny>>(line).ok()?;
     let text = String::from_utf8_lossy(line);
     serde_json::from_str(&text)
         .ok()
