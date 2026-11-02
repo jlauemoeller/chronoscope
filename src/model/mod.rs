@@ -374,7 +374,9 @@ impl TokenUsage {
 pub struct TurnStats {
     /// Wall-clock duration of the turn.
     pub duration: Duration,
-    /// Number of messages in the turn, as reported by the harness.
+    /// Number of messages in the turn. Claude counts the turn's distinct
+    /// message ids, leaving out `<synthetic>` ones; OpenCode counts its
+    /// assistant messages.
     pub message_count: usize,
     /// Token usage summed over the turn's messages, counting each message
     /// once. `None` when no usage is known.
