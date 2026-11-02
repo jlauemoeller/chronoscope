@@ -1,0 +1,39 @@
+VERDICT: FAIL
+
+## Summary
+The round-1 must-fix is fixed for out-of-range numbers, with tests on both harnesses, and the footer, `TokenUsage`, both adapters, footer search, snapshots and all test gates are correct. The `RawValue` helpers that fixed it add a new regression of the same kind: on Claude, invalid UTF-8 inside `message.usage` now makes a line unparsed that parses on `main`, which breaks the same binding planner note. OpenCode is not affected, because `Row.data` is a `String`.
+
+## Acceptance criteria
+- [x] Assembler tests cover cache tokens on both harnesses, each message counted once when its lines repeat, Claude thinking tokens not added to output, and OpenCode reasoning added to output — `token_usage` in `src/harness/claude/assemble.rs`, `Tokens::usage` in `src/harness/opencode/assemble.rs`. Claude tests in `tests/claude_assembly.rs`: `cache_reads_and_writes_are_summed_over_messages_each_counted_once`, `tokens_count_each_message_once_with_cache_reads_and_writes`, `claude_thinking_tokens_are_not_added_to_output`, `usage_applies_to_a_footer_that_already_exists`. OpenCode tests in `token_tests`: `cache_tokens_are_summed_over_the_rows`, `opencode_reasoning_is_added_to_output_once`, `a_row_updated_in_place_replaces_its_cache_share`.
+- [x] `format_stats` tests cover `cached` shown and hidden, and cost remaining last — `stats_footer_shows_cached_after_tokens_and_hides_it_when_zero`, `stats_footer_keeps_the_cost_last_after_cached` in `src/components/turn_block/tests.rs`.
+- [x] Footer search matches the footer as displayed, and a test finds the `cached` text highlighted on the footer row — `section_text` in `src/transcript_search.rs` uses `format_stats`, and `StatsSection` restores the no-break spaces to plain spaces before drawing. Tests: `searching_the_cached_part_highlights_it_on_the_footer_row`, `a_cached_part_that_is_hidden_cannot_be_found`.
+- [x] The spec's example figures give `1.5M tokens · 359.0M cached` — `the_spec_example_figures_give_1_5m_tokens_and_359_0m_cached`.
+- [x] Assembler tests on both harnesses show that a usage field of an unexpected JSON type leaves the line or row parsed, is not counted in `unparsed_count`, and is treated as missing — `usage_fields_of_an_unexpected_type_count_as_missing_and_keep_the_line_parsed`, `token_fields_of_an_unexpected_type_count_as_missing_and_keep_the_row_parsed`, plus the `1e400` tests `an_out_of_range_number_in_usage_keeps_the_line_parsed` and `an_out_of_range_number_in_tokens_keeps_the_row_parsed`. These meet the criterion as worded, but the planner note behind it still does not fully hold: see finding 1.
+- [x] A turn with no usage shows no token part and no `cached` part — `a_turn_without_usage_shows_neither_tokens_nor_cached`, `a_turn_without_any_usage_has_no_token_figures`, `rows_without_tokens_leave_the_token_figures_unknown`. The last two now also cover an absent key, as round 1 asked.
+- [x] `TurnStats.tokens` is no longer `Option<u64>`, and no code adds `reasoning` to a total — `src/model/mod.rs`: `tokens: Option<TokenUsage>`; `TokenUsage::total` is input + output + cache writes; `the_footer_total_is_input_plus_output_plus_cache_writes`. The only addition of reasoning is the specified one, to `output` in `Tokens::usage`.
+- [x] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` pass — rerun for this review with `INSTA_UPDATE=no`: 0 failed (lib 2169 passed).
+- [x] `cargo test --release -- --ignored budgets --nocapture` stays within budget — rerun for this review: worst first content 1.7 ms, full parse 594.8 ms, frame 3.35 ms, peak memory 0.83x.
+- [x] Snapshot changes are limited to footer rows whose token figures change — 5 snapshots added (the 4 required by the task's `UI` section and `footer_with_cached_and_cost_at_80_styled`) and 0 modified.
+
+## Findings
+1. [must-fix] Invalid UTF-8 inside `message.usage` now fails the whole Claude line, although the same line parses on `main`. This breaks the binding planner note "A wire field added by this task must not turn a line or row that parses today into an unparsed one", and the line's content is lost from the transcript. The cause is `Box::<RawValue>::deserialize` in `lenient_object` in `src/harness/shared.rs`: with `serde_json::from_slice`, a `RawValue` must be valid UTF-8, whereas `main` skipped these values with `IgnoredAny`, which does not check UTF-8. The input is unrealistic, like the `1e400` of round 1, but the regression is real. I fed raw bytes to the real `Assembler` from a scratch copy of `main` and of this branch:
+
+   | `usage` value | `main` | Branch |
+   |---|---|---|
+   | `{"output_tokens":7,"service_tier":"\xff"}` | `unparsed_count` 0, text kept, 7 tokens | `unparsed_count` 1, no assistant turn |
+   | `{"output_tokens":7,"cache_read_input_tokens":"\xff"}` | `unparsed_count` 0, text kept, 7 tokens | `unparsed_count` 1, no assistant turn |
+   | `{"output_tokens":7,"output_tokens_details":{"x":"\xc3"}}` | `unparsed_count` 0, text kept, 7 tokens | `unparsed_count` 1, no assistant turn |
+
+   Change: make invalid UTF-8 inside `usage` leave the line parsed, and leave every other line's outcome as it is on `main`. In particular, invalid UTF-8 in a known string field outside `usage`, such as a text block or `uuid`, is counted as unparsed on `main` and must stay so.
+
+   One way, which I checked in the scratch copy: in `src/harness/shared.rs`, add a private helper that both `lenient` and `lenient_object` call. It runs `Box::<RawValue>::deserialize(d)`, returns `Ok(None)` when the error text contains `invalid unicode code point`, and returns any other error unchanged. The reader is already past the value at that point, so parsing continues. With this helper all three inputs above give `unparsed_count` 0, the text is kept, a bad text block stays unparsed, and the full suite passes. It has two costs: it relies on `serde_json`'s error text, and the whole `usage` of that message counts as missing (`tokens == None`, where `main` showed 7). If the builder finds a fix that keeps the readable figures, that is better.
+
+   I also tried retrying the whole line through `String::from_utf8_lossy` when parsing fails. Do not use that: it makes lines with invalid UTF-8 in other fields parse too, which changes §9.5 behaviour outside this task.
+
+   Add a test in `tests/claude_assembly.rs` that feeds the three inputs above as bytes through `asm.push_line` (the `&str` `push` helper cannot carry invalid UTF-8). It asserts `unparsed_count() == 0`, that the text item is kept, and that the token figures match the chosen fix (`None` with the helper above). Add a second test that a line with invalid UTF-8 in a text block is still counted as unparsed.
+
+2. [nit] `StatsSection::lines` in `src/components/turn_block/renderers/stats.rs` says "A row never starts with the separator", but at text widths 9 and below, where `messages ·` no longer fits and the word is broken, it still can: width 8 gives `   · 45.2k` and width 9 gives `  · 45.2k`. `a_wrapped_footer_row_never_starts_with_the_separator` only claims widths 10 to 70, so nothing is wrong with the test. Those text widths are blocks of about 15 cells and narrower. Change: reword the comment to say "when the part and its separator fit on a row".
+
+3. [nit] `src/harness/claude/wire.rs:3-6`: the module comment says a known field of a different JSON type still fails the line, which is no longer true inside `usage`. Change: add "except inside `usage`, which is lenient" to that sentence.
+
+4. [nit] `token_usage` (Claude) and `Tokens::usage` (OpenCode): a usage object with no readable number, such as `{}` or `{"output_tokens":1e400}`, shows `0 tokens`. This follows the planner's "a missing number counts as zero", and `main` does the same for `{}`, so the builder's decision in round 2 to leave it is acceptable. Change: none needed unless `0 tokens` is unwanted; then record no usage when every number is missing.
