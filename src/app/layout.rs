@@ -93,6 +93,9 @@ pub struct LayoutInput {
     pub session_empty: bool,
     /// The size the help overlay wants, borders included, while it is open.
     pub help: Option<Size>,
+    /// The size the details overlay wants, borders included, while it is
+    /// open.
+    pub details: Option<Size>,
     /// The size the theme selector wants, borders included, while it is
     /// open.
     pub theme_selector: Option<Size>,
@@ -133,10 +136,10 @@ pub fn too_small(area: Rect) -> bool {
 /// in the same place instead of the help line; over the browser alone it
 /// takes the browser's help line.
 ///
-/// The help overlay, when `input` has one, comes after the screen (see
-/// [`help_overlay_rect`]). The toast, when `input` has one, comes last (on
-/// top) in the bottom-right corner of the screen, except on the too-small
-/// screen.
+/// The help overlay and the details overlay, when `input` has one, come after
+/// the screen (see [`help_overlay_rect`]). The toast, when `input` has one,
+/// comes last (on top) in the bottom-right corner of the screen, except on the
+/// too-small screen.
 pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
     if too_small(area) {
         return ScreenLayout {
@@ -183,6 +186,9 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
     }
     if let Some(wanted) = input.help {
         areas.push((Id::HelpOverlay, help_overlay_rect(area, wanted)));
+    }
+    if let Some(wanted) = input.details {
+        areas.push((Id::DetailsOverlay, help_overlay_rect(area, wanted)));
     }
     if let Some(wanted) = input.theme_selector {
         areas.push((Id::ThemeSelector, help_overlay_rect(area, wanted)));
@@ -287,11 +293,20 @@ fn selector_help_line(overlay: Rect) -> Rect {
     }
 }
 
-/// The help overlay and the theme selector: `wanted` (its widest entry and its content, with the
-/// border) but at most the screen less two columns either side and one row
-/// above and below, and centred.
+/// The columns an overlay leaves free on a screen: two either side.
+pub const OVERLAY_MARGIN_COLUMNS: u16 = 4;
+
+/// The most columns an overlay can be wide on a screen `screen_width` wide.
+pub fn overlay_max_width(screen_width: u16) -> u16 {
+    screen_width.saturating_sub(OVERLAY_MARGIN_COLUMNS)
+}
+
+/// The help overlay, the details overlay and the theme selector: `wanted`
+/// (its widest entry and its content, with the border) but at most the
+/// screen less two columns either side and one row above and below, and
+/// centred.
 pub fn help_overlay_rect(area: Rect, wanted: Size) -> Rect {
-    let width = wanted.width.min(area.width.saturating_sub(4));
+    let width = wanted.width.min(overlay_max_width(area.width));
     let height = wanted.height.min(area.height.saturating_sub(2));
     Rect {
         x: area.x + (area.width - width) / 2,
@@ -647,6 +662,48 @@ mod tests {
         assert_eq!(ids.len(), help + 2);
         assert_eq!(ids[help + 1], Id::Toast);
         assert!(ids[..help].contains(&Id::Transcript));
+    }
+
+    #[test]
+    fn the_details_overlay_is_centred_and_drawn_after_the_screen_and_before_the_toast() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            details: Some(Size::new(60, 20)),
+            toast_text_width: Some(10),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 120, 40));
+        assert_eq!(l.area(Id::DetailsOverlay), Some(Rect::new(30, 10, 60, 20)));
+        assert_eq!(l.area(Id::HelpOverlay), None);
+        let ids: Vec<Id> = l.areas().iter().map(|(id, _)| *id).collect();
+        let at = ids.iter().position(|i| *i == Id::DetailsOverlay).unwrap();
+        assert_eq!(ids.len(), at + 2);
+        assert_eq!(ids[at + 1], Id::Toast);
+        assert!(ids[..at].contains(&Id::Transcript));
+    }
+
+    #[test]
+    fn the_details_overlay_is_capped_to_the_screen_like_the_help_overlay() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            details: Some(Size::new(150, 80)),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 80, 24));
+        assert_eq!(l.area(Id::DetailsOverlay), Some(Rect::new(2, 1, 76, 22)));
+    }
+
+    #[test]
+    fn a_too_small_screen_shows_no_details_overlay() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            details: Some(Size::new(60, 20)),
+            ..LayoutInput::default()
+        };
+        assert_eq!(
+            layout(&input, Rect::new(0, 0, 50, 15)).area(Id::DetailsOverlay),
+            None
+        );
     }
 
     #[test]

@@ -186,6 +186,18 @@ fn nothing_under_an_overlay_is_a_target() {
     // Where the panes are, but the overlay is not.
     assert_eq!(hit(&l, 5, 7), None);
     assert_eq!(hit(&l, 70, 10), None);
+    let details = LayoutInput {
+        details: Some(ratatui::layout::Size::new(40, 10)),
+        ..LayoutInput::default()
+    };
+    let l = layout(&details, area);
+    let overlay = l.area(Id::DetailsOverlay).unwrap();
+    assert_eq!(
+        hit(&l, overlay.x + 1, overlay.y + 1),
+        Some(Id::DetailsOverlay)
+    );
+    assert_eq!(hit(&l, 5, 7), None);
+    assert_eq!(hit(&l, 70, 10), None);
     let themes = LayoutInput {
         theme_selector: Some(ratatui::layout::Size::new(40, 10)),
         ..LayoutInput::default()

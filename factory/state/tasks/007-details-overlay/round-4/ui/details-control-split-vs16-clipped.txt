@@ -1,0 +1,82 @@
+DetailsOverlay, one row `value`, value = "⚠\u{7}\u{fe0f}" x 40 + "END", default theme.
+The BEL is not drawn. Removing it joins "⚠" and U+FE0F into one 2-column grapheme.
+
+Measured by `drawn_graphemes` at HEAD d518ba4, on the value with the BEL still in it:
+  "⚠"       1 column
+  "\u{7}"   dropped
+  "\u{fe0f}" 0 columns
+  total for one repeat: 1 column. Drawn: 2 columns.
+
+So 83 drawn columns are counted as 43. The overlay is 58 wide at every size, no row wraps,
+there is no indicator, and 18 signs and END are never drawn.
+
+The same value without the BEL is correct at HEAD (see `a_value_is_drawn_to_its_end_however_its_graphemes_are_measured`).
+
+Sweep at HEAD, 14 bases x 15 separators x 12 marks, repeated 40 times + END, widths 60, 80, 120, 200 (10080 cases):
+  120 bad, all with a C0/C1 control character as the separator (BEL, ESC, NUL, DEL, NEL), all with U+FE0F as the mark.
+  No bad case with a separator that is not a control character (U+200B, U+2060, U+00AD, U+200D, U+2028, U+FEFF, U+180E).
+Random mix of those characters (6000 cases): 233 bad at HEAD.
+
+The same sweep and mix with the change in ui-review.md finding 1: 0 bad of 10080, 0 bad of 6000.
+
+--- Real binary, tmux, 120x40, HEAD: an Assistant turn whose `message.model` is this value (JSON "⚠\u0007️")
+▒   I'll look around the╭─ Details ───────────────────────────────────────────────────────────╮                        │
+│                       │                                                                     │                        │
+│ ▶ List the project fil│  Turn                                                               │                        │
+│                       │                                                                     │                        │
+│ ▶ Thinking: The test p│    model               ⚠️  ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️ │                        │
+│                       │    effort              high                                         │                        │
+│ ▶ Read src/lib.rs · 2.│    start               2026-10-21 10:00:01                          │                        │
+
+=== HEAD d518ba4, TestBackend
+--- 80x24, area 58x7, END drawn: false
+           ╭─ Details ──────────────────────────────────────────────╮
+           │                                                        │
+           │  Environment                                           │
+           │                                                        │
+           │    value  ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️ │
+           │                                                        │
+           ╰────────────────────────────────────────────────────────╯
+--- 120x40, area 58x7, END drawn: false
+                               ╭─ Details ──────────────────────────────────────────────╮
+                               │                                                        │
+                               │  Environment                                           │
+                               │                                                        │
+                               │    value  ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️ │
+                               │                                                        │
+                               ╰────────────────────────────────────────────────────────╯
+--- 200x30, area 58x7, END drawn: false
+                                                                       ╭─ Details ──────────────────────────────────────────────╮
+                                                                       │                                                        │
+                                                                       │  Environment                                           │
+                                                                       │                                                        │
+                                                                       │    value  ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️ │
+                                                                       │                                                        │
+                                                                       ╰────────────────────────────────────────────────────────╯
+
+=== With the change in finding 1 (patched copy outside the repo), TestBackend
+--- 80x24, area 76x8, END drawn: true
+  ╭─ Details ────────────────────────────────────────────────────────────────╮
+  │                                                                          │
+  │  Environment                                                             │
+  │                                                                          │
+  │    value  ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️   │
+  │           ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️END                                        │
+  │                                                                          │
+  ╰──────────────────────────────────────────────────────────────────────────╯
+--- 120x40, area 98x7, END drawn: true
+           ╭─ Details ──────────────────────────────────────────────────────────────────────────────────────╮
+           │                                                                                                │
+           │  Environment                                                                                   │
+           │                                                                                                │
+           │    value  ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️END  │
+           │                                                                                                │
+           ╰────────────────────────────────────────────────────────────────────────────────────────────────╯
+--- 200x30, area 98x7, END drawn: true
+                                                   ╭─ Details ──────────────────────────────────────────────────────────────────────────────────────╮
+                                                   │                                                                                                │
+                                                   │  Environment                                                                                   │
+                                                   │                                                                                                │
+                                                   │    value  ⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️END  │
+                                                   │                                                                                                │
+                                                   ╰────────────────────────────────────────────────────────────────────────────────────────────────╯

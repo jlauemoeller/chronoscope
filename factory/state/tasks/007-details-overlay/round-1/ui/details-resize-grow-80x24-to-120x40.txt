@@ -1,0 +1,41 @@
+# Scratch crate, App::update(Msg::OpenDetails) at 80x24 with a section whose cwd is 63 columns (the content wants 102 wide), then Msg::Resized(120, 40).
+# The selector under the overlay is only the scratch app's screen. Expected: overlay 102 wide, cwd on one row. Drawn: 76 wide, cwd wrapped, the width of the old screen.
+=== APP back large (opened at 80x24) 120x40; mounted=true focus=Some(DetailsOverlay)
+╭─────────────────────╭─ Details ────────────────────────────────────────────────────────────────╮─────────────────────╮
+│                     │                                                                          │                     │
+│                     │  Turn                                                                    │                     │
+│                     │                                                                          │                     │
+│                     │    model                          claude-opus-5-5                        │                     │
+│   ╭─ Projects ──────│    effort                         high                                   │─────────────────╮   │
+│   │                 │    start                          2026-10-21 08:35:18Z                   │                 │   │
+│   │                 │    duration                       4m 3s                                  │                 │   │
+│   │                 │    messages                       12                                     │                 │   │
+│   │                 │    input tokens                   2.8k                                   │                 │   │
+│   │                 │    output tokens                  42.4k                                  │                 │   │
+│   │                 │    thinking tokens                9.0k                                   │                 │   │
+│   │                 │    cache read tokens              359.4M                                 │                 │   │
+│   │                 │    cache write tokens             1.2k                                   │                 │   │
+│   │                 │                                                                          │                 │   │
+│   │                 │  Message                                                                 │                 │   │
+│   │                 │                                                                          │                 │   │
+│   │                 │    message.id                     msg_01Q7ZkR2m4Wc9xT8vHn3LbYe           │                 │   │
+│   │                 │    requestId                      req_011CUKq8xN2dPz5aVf7GhJrT           │                 │   │
+│   │                 │    timestamp                      2026-10-21 08:35:21Z                   │                 │   │
+│   │                 │    requestedModel                 claude-opus-5-5                        │                 │   │
+│   │                 │    stop_reason                    end_turn                               │                 │   │
+│   │                 │    service_tier                   standard                               │                 │   │
+│   │                 │    speed                          standard                               │                 │   │
+│   │                 │    inference_geo                  us                                     │                 │   │
+│   │                 │    5m cache writes                800                                    │                 │   │
+│   │                 │    1h cache writes                400                                    │                 │   │
+│   │                 │    web searches                   2                                      │                 │   │
+│   ╰─────────────────│    web fetches                    1                                      │─────────────────╯   │
+│   ╭─ Working Directo│    diagnostics.cache_miss_reason  prefix_changed                         │─────────────────╮   │
+│   │                 │                                                                          │                 │   │
+│   │                 │  Environment                                                             │                 │   │
+│   │                 │                                                                          │                 │   │
+│   ╰─────────────────│    gitBranch                      feature/camera-profiles                │─────────────────╯   │
+│                     │    cwd                            /home/user/projects/brio/crates/camer  │                     │
+│    / to search sessi│                                   a-profiles/src/descriptors             │ancel                │
+│                     │    version                        2.1.0                                  │                     │
+╰─────────────────────╰───────────────────────────────────────────────────────────────── ↓ more ─╯─────────────────────╯

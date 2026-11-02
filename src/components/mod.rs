@@ -3,12 +3,14 @@
 //! frame without an `Application`.
 
 mod browser_header;
+mod details_overlay;
 mod empty_state;
 mod global_events;
 mod harness_tabs;
 mod help_line;
 mod help_overlay;
 mod list_pane;
+mod overlay_frame;
 mod project_list;
 mod prompt;
 mod selector_frame;
@@ -27,18 +29,23 @@ pub use browser_header::{
     BREADCRUMB_ATTR, BrowserHeader, HEADER_HEIGHT, LIVE_ATTR, PARSE_WARNINGS_ATTR, SESSION_ID_ATTR,
     parse_warning_note,
 };
+pub use details_overlay::{
+    DESIRED_SIZE_ATTR, DetailsContent, DetailsGroup, DetailsOverlay, DetailsRow, MAX_WIDTH_ATTR,
+    max_width_value,
+};
 pub use empty_state::{EMPTY_SESSION, EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};
 pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
 pub use help_line::{HINTS_ATTR, HelpLine, Hint, STATUS_ATTR, hints_value, status_value};
 pub use help_overlay::{
-    HELP_CONTEXT_ATTR, HelpContent, HelpContext, HelpGroup, HelpOverlay, HelpRow, INTERIOR_ATTR,
-    MIN_WIDTH as HELP_MIN_WIDTH, SHIFT_NOTE, context_from_value, context_value, interior_value,
+    HELP_CONTEXT_ATTR, HelpContent, HelpContext, HelpGroup, HelpOverlay, HelpRow,
+    MIN_WIDTH as HELP_MIN_WIDTH, SHIFT_NOTE, context_from_value, context_value,
 };
 pub use list_pane::{
     ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
     selected_value, visible_rows,
 };
+pub use overlay_frame::{INTERIOR_ATTR, interior_of, interior_value};
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
 pub use prompt::{Prompt, PromptMode, tail_fitting};
 pub use selector_frame::SelectorFrame;

@@ -19,6 +19,11 @@ pub fn format_tokens(tokens: u64) -> String {
     format!("{}.{}M", millions / 10, millions % 10)
 }
 
+/// A cost in US dollars: `$0.42`.
+pub fn format_cost(cost: f64) -> String {
+    format!("${cost:.2}")
+}
+
 /// The footer text: `<duration> · <n> messages · <tokens> tokens ·
 /// <cached> cached`, with ` · $<cost>` last when the cost is known. Unknown
 /// parts are left out, and `cached` is hidden when no tokens were read from
@@ -42,7 +47,7 @@ pub fn format_stats(stats: &TurnStats) -> String {
         }
     }
     if let Some(cost) = stats.cost {
-        parts.push(format!("${cost:.2}"));
+        parts.push(format_cost(cost));
     }
     parts.join(" · ")
 }

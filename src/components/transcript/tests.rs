@@ -15,6 +15,7 @@ use crate::theme::{Role, builtin};
 
 mod cache_lookup;
 mod copy;
+mod details;
 mod follow;
 pub(super) mod keys;
 mod mouse;

@@ -36,6 +36,7 @@ fn every_id_is_themed_but_the_global_events() {
             | Id::EmptySession
             | Id::Prompt
             | Id::HelpOverlay
+            | Id::DetailsOverlay
             | Id::ThemeSelector
             | Id::Toast => true,
         };

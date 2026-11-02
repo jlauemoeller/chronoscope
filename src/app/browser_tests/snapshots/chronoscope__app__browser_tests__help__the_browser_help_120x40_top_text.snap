@@ -30,15 +30,15 @@ expression: "screen_text(&mut rig, 120, 40)"
 │                       │    Y                                 Copy full section               │                       │
 │   model → claude-sonne│    w / Ctrl-s                        Save section as displayed       │                       │
 │                       │    W                                 Save full section               │                       │
-│   5m 2s · 112 messages│                                                                      │                       │
-│                       │  Search                                                              │                       │
-╰───────────────────────│                                                                      │───────────────────────╯
-╭─ User ────────────────│    /                                 Search transcript               │ 2026-10-21 08:35:15Z ─╮
-│                       │    n                                 Next match                      │                       │
-│ ▶ Dump the full descri│    N                                 Previous match                  │                       │
-│                       │    ESC                               Clear search                    │                       │
-╰───────────────────────│                                                                      │───────────────────────╯
-╭─ Assistant ── claude-o│  Sessions                                                            │ 2026-10-21 08:35:18Z ─╮
+│   5m 2s · 112 messages│    i                                 Show section details            │                       │
 │                       │                                                                      │                       │
+╰───────────────────────│  Search                                                              │───────────────────────╯
+╭─ User ────────────────│                                                                      │ 2026-10-21 08:35:15Z ─╮
+│                       │    /                                 Search transcript               │                       │
+│ ▶ Dump the full descri│    n                                 Next match                      │                       │
+│                       │    N                                 Previous match                  │                       │
+╰───────────────────────│    ESC                               Clear search                    │───────────────────────╯
+╭─ Assistant ── claude-o│                                                                      │ 2026-10-21 08:35:18Z ─╮
+│                       │  Sessions                                                            │                       │
                         ╰───────────────────────────────────────────────────────────── ↓ more ─╯                        
  / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

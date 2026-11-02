@@ -1301,6 +1301,7 @@ theme_snapshot!(loaded_browser_theme_tokyo_night, "tokyo-night");
 theme_snapshot!(loaded_browser_theme_solarized, "solarized");
 
 mod copy;
+mod details;
 mod help;
 mod launch;
 mod live;

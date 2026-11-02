@@ -488,6 +488,19 @@ mod tests {
     }
 
     #[test]
+    fn the_sections_group_lists_the_details_key_from_the_active_keymap() {
+        let default = rows(&browser(&Keymap::default(), true), "Sections");
+        assert_eq!(
+            default.last(),
+            Some(&("i".to_owned(), "Show section details"))
+        );
+        let remapped = keymap_with("browser", "details", &["x"]);
+        let rows = rows(&browser(&remapped, true), "Sections");
+        assert_eq!(rows.last(), Some(&("x".to_owned(), "Show section details")));
+        assert!(rows.iter().all(|(keys, _)| keys != "i"));
+    }
+
+    #[test]
     fn the_row_count_matches_the_lines() {
         let theme = crate::theme::builtin::default_theme();
         for content in [
@@ -498,7 +511,7 @@ mod tests {
         ] {
             assert_eq!(content.lines(&theme).len(), content.row_count());
         }
-        assert_eq!(browser(&Keymap::default(), true).row_count(), 50);
+        assert_eq!(browser(&Keymap::default(), true).row_count(), 51);
     }
 
     #[test]
@@ -506,7 +519,7 @@ mod tests {
         let content = browser(&Keymap::default(), true);
         // "q / Ctrl-q / Ctrl-w / Ctrl-c" (28) + 6, then the longest
         // description "Fold or unfold current section" (30) + 8.
-        assert_eq!(content.desired_size(), Size::new(28 + 6 + 30 + 8, 52));
+        assert_eq!(content.desired_size(), Size::new(28 + 6 + 30 + 8, 53));
     }
 
     #[test]

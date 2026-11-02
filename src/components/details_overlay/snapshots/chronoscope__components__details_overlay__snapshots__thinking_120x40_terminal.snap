@@ -1,0 +1,85 @@
+---
+source: src/components/details_overlay/snapshots.rs
+expression: "draw(&mut overlay, area, width, height)"
+---
+                                                                                                                        
+         ╭─ Details ──────────────────────────────────────────────────────────────────────────────────────────╮         
+         │                                                                                                    │         
+         │  Turn                                                                                              │         
+         │                                                                                                    │         
+         │    model                          claude-opus-5-5                                                  │         
+         │    effort                         high                                                             │         
+         │    start                          2026-10-21 08:35:18Z                                             │         
+         │    duration                       4m 3s                                                            │         
+         │    messages                       12                                                               │         
+         │    input tokens                   2.8k                                                             │         
+         │    output tokens                  42.4k                                                            │         
+         │    thinking tokens                9.0k                                                             │         
+         │    cache read tokens              359.4M                                                           │         
+         │    cache write tokens             1.2k                                                             │         
+         │                                                                                                    │         
+         │  Message                                                                                           │         
+         │                                                                                                    │         
+         │    message.id                     msg_01Q7ZkR2m4Wc9xT8vHn3LbYe                                     │         
+         │    requestId                      req_011CUKq8xN2dPz5aVf7GhJrT                                     │         
+         │    timestamp                      2026-10-21 08:35:21Z                                             │         
+         │    requestedModel                 claude-opus-5-5                                                  │         
+         │    stop_reason                    end_turn                                                         │         
+         │    service_tier                   standard                                                         │         
+         │    speed                          standard                                                         │         
+         │    inference_geo                  us                                                               │         
+         │    5m cache writes                800                                                              │         
+         │    1h cache writes                400                                                              │         
+         │    web searches                   2                                                                │         
+         │    web fetches                    1                                                                │         
+         │    diagnostics.cache_miss_reason  prefix_changed                                                   │         
+         │                                                                                                    │         
+         │  Environment                                                                                       │         
+         │                                                                                                    │         
+         │    gitBranch                      feature/camera-profiles                                          │         
+         │    cwd                            /home/user/projects/brio/crates/camera-profiles/src/descriptors  │         
+         │    version                        2.1.0                                                            │         
+         │    entrypoint                     cli                                                              │         
+         ╰─────────────────────────────────────────────────────────────────────────────────────────── ↓ more ─╯         
+                                                                                                                        
+--- styles (fg/bg/modifiers) ---
+0: 0..120 Reset/Reset/NONE
+1: 0..9 Reset/Reset/NONE | 9..11 White/Black/NONE | 11..20 Reset/Black/NONE | 20..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+2: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+3: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..12 Reset/Black/NONE | 12..16 Reset/Black/BOLD | 16..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+4: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+5: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..19 Gray/Black/NONE | 19..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+6: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..20 Gray/Black/NONE | 20..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+7: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..19 Gray/Black/NONE | 19..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+8: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..22 Gray/Black/NONE | 22..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+9: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..22 Gray/Black/NONE | 22..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+10: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..26 Gray/Black/NONE | 26..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+11: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..27 Gray/Black/NONE | 27..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+12: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..29 Gray/Black/NONE | 29..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+13: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..31 Gray/Black/NONE | 31..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+14: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..32 Gray/Black/NONE | 32..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+15: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+16: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..12 Reset/Black/NONE | 12..19 Reset/Black/BOLD | 19..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+17: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+18: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..24 Gray/Black/NONE | 24..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+19: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..23 Gray/Black/NONE | 23..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+20: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..23 Gray/Black/NONE | 23..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+21: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..28 Gray/Black/NONE | 28..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+22: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..25 Gray/Black/NONE | 25..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+23: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..26 Gray/Black/NONE | 26..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+24: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..19 Gray/Black/NONE | 19..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+25: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..27 Gray/Black/NONE | 27..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+26: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..29 Gray/Black/NONE | 29..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+27: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..29 Gray/Black/NONE | 29..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+28: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..26 Gray/Black/NONE | 26..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+29: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..25 Gray/Black/NONE | 25..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+30: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..43 Gray/Black/NONE | 43..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+31: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+32: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..12 Reset/Black/NONE | 12..23 Reset/Black/BOLD | 23..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+33: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+34: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..23 Gray/Black/NONE | 23..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+35: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..17 Gray/Black/NONE | 17..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+36: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..21 Gray/Black/NONE | 21..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+37: 0..9 Reset/Reset/NONE | 9..10 White/Black/NONE | 10..14 Reset/Black/NONE | 14..24 Gray/Black/NONE | 24..110 Reset/Black/NONE | 110..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+38: 0..9 Reset/Reset/NONE | 9..101 White/Black/NONE | 101..109 Gray/Black/NONE | 109..111 White/Black/NONE | 111..120 Reset/Reset/NONE
+39: 0..120 Reset/Reset/NONE

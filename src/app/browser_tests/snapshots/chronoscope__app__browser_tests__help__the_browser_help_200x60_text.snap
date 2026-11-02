@@ -5,34 +5,34 @@ expression: text
 ╭─ Project BRIO ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
 │                                                                                                                                                                                                      │
 │ /home/user/projects/brio                                                                                                                                                                             │
-│                                                                                                                                                                                                      │
-╰───────────────────────────────────────────────────────────────╭─ Keybindings ────────────────────────────────────────────────────────╮───────────────────────────────────────────────────────────────╯
-╭─ User ────────────────────────────────────────────────────────│                                                                      │──────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
-│                                                               │  Navigation                                                          │                                                               │
-▒ ▶ I have a Logitech BRIO web camera attached to this machine v│                                                                      │way to access settings that would have been available on say   │
-▒   a mac or windows, since there are no proprietary drivers: we│    Up / k                            Previous section                │itional profiles the camera has and how to access them? The…   │
-│                                                               │    Down / j                          Next section                    │                                                               │
-╰───────────────────────────────────────────────────────────────│    [                                 Previous turn                   │───────────────────────────────────────────────────────────────╯
-╭─ Assistant ── claude-opus-5.5 @ high ─────────────────────────│    ]                                 Next turn                       │──────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│                                                               │    Ctrl-u                            Scroll half a page up           │                                                               │
-│   I'll start by looking at what the camera exposes over USB:  │    Ctrl-d                            Scroll half a page down         │                                                               │
-│                                                               │    PgUp                              Scroll a page up                │                                                               │
-│   • Check lsusb -v for the UVC descriptors                    │    PgDn                              Scroll a page down              │                                                               │
-│   • Look at v4l2-ctl --list-ctrls                             │    g / Home                          Jump to start                   │                                                               │
-│                                                               │    G / End                           Jump to end and follow          │                                                               │
-│   Then I'll compare the results.                              │                                                                      │                                                               │
-│                                                               │  Sections                                                            │                                                               │
-│ ▶ Thinking: The user wants the UVC extension units. Start with│                                                                      │                                                               │
-│                                                               │    ENTER / SPACE                     Fold or unfold current section  │                                                               │
-│ ▶ Find the BRIO on USB and check available tools              │    Left / h                          Fold current section            │                                                               │
-│                                                               │    Right / l                         Unfold current section          │                                                               │
-│ ▶ Dump full USB descriptors for the BRIO                      │    -                                 Fold all sections               │                                                               │
-│                                                               │    + / =                             Unfold all sections             │                                                               │
-│   model → claude-sonnet-5.5                                   │    s                                 Show or hide system content     │                                                               │
-│                                                               │    y                                 Copy section as displayed       │                                                               │
-│   5m 2s · 112 messages · 45.2k tokens                         │    Y                                 Copy full section               │                                                               │
-│                                                               │    w / Ctrl-s                        Save section as displayed       │                                                               │
-╰───────────────────────────────────────────────────────────────│    W                                 Save full section               │───────────────────────────────────────────────────────────────╯
+│                                                               ╭─ Keybindings ────────────────────────────────────────────────────────╮                                                               │
+╰───────────────────────────────────────────────────────────────│                                                                      │───────────────────────────────────────────────────────────────╯
+╭─ User ────────────────────────────────────────────────────────│  Navigation                                                          │──────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                               │                                                                      │                                                               │
+▒ ▶ I have a Logitech BRIO web camera attached to this machine v│    Up / k                            Previous section                │way to access settings that would have been available on say   │
+▒   a mac or windows, since there are no proprietary drivers: we│    Down / j                          Next section                    │itional profiles the camera has and how to access them? The…   │
+│                                                               │    [                                 Previous turn                   │                                                               │
+╰───────────────────────────────────────────────────────────────│    ]                                 Next turn                       │───────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 @ high ─────────────────────────│    Ctrl-u                            Scroll half a page up           │──────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                               │    Ctrl-d                            Scroll half a page down         │                                                               │
+│   I'll start by looking at what the camera exposes over USB:  │    PgUp                              Scroll a page up                │                                                               │
+│                                                               │    PgDn                              Scroll a page down              │                                                               │
+│   • Check lsusb -v for the UVC descriptors                    │    g / Home                          Jump to start                   │                                                               │
+│   • Look at v4l2-ctl --list-ctrls                             │    G / End                           Jump to end and follow          │                                                               │
+│                                                               │                                                                      │                                                               │
+│   Then I'll compare the results.                              │  Sections                                                            │                                                               │
+│                                                               │                                                                      │                                                               │
+│ ▶ Thinking: The user wants the UVC extension units. Start with│    ENTER / SPACE                     Fold or unfold current section  │                                                               │
+│                                                               │    Left / h                          Fold current section            │                                                               │
+│ ▶ Find the BRIO on USB and check available tools              │    Right / l                         Unfold current section          │                                                               │
+│                                                               │    -                                 Fold all sections               │                                                               │
+│ ▶ Dump full USB descriptors for the BRIO                      │    + / =                             Unfold all sections             │                                                               │
+│                                                               │    s                                 Show or hide system content     │                                                               │
+│   model → claude-sonnet-5.5                                   │    y                                 Copy section as displayed       │                                                               │
+│                                                               │    Y                                 Copy full section               │                                                               │
+│   5m 2s · 112 messages · 45.2k tokens                         │    w / Ctrl-s                        Save section as displayed       │                                                               │
+│                                                               │    W                                 Save full section               │                                                               │
+╰───────────────────────────────────────────────────────────────│    i                                 Show section details            │───────────────────────────────────────────────────────────────╯
 ╭─ User ────────────────────────────────────────────────────────│                                                                      │──────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
 │                                                               │  Search                                                              │                                                               │
 │ ▶ Dump the full descriptors and look for extension units.     │                                                                      │                                                               │

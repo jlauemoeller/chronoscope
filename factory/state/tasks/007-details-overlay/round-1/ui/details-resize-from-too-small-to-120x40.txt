@@ -1,0 +1,44 @@
+# Real binary in tmux, tests/fixtures/claude/session.jsonl. At 50x15 press j then i: nothing visible changes, but the overlay is mounted with the focus.
+--- 50x15 after i
+                Terminal too small
+--- grown to 120x40: 46 wide, chosen at 50 columns, so 'start' wraps with 74 spare columns on the screen. Expected: 47 wide, no wrap.
+╭─ Project project ────────────────────────────────────────────────────────────────────────────────────────── session ─╮
+│                                                                                                                      │
+│ /home/user/project                                                               1 entry could not be parsed  ● live │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ User ───────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 10:00:00 ─╮
+│                                                                                                                      │
+│ ▶ Please look at the project and fix the failing test.                                                               │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5-5 @ high ────────────────────────────────────────────────────────── 2026-10-21 10:00:01 ─╮
+│                                                                                                                      │
+▒   I'll look around the repo first. ╭─ Details ──────────────────────────────────╮                                    │
+│                                    │                                            │                                    │
+│ ▶ List the project files · 2.0s    │  Turn                                      │                                    │
+│                                    │                                            │                                    │
+│ ▶ Thinking: The test probably lives│    model               claude-opus-5-5     │                                    │
+│                                    │    effort              high                │                                    │
+│ ▶ Read src/lib.rs · 2.0s           │    start               2026-10-21 10:00:0  │                                    │
+│                                    │                        1                   │                                    │
+│ ▶ Grep "fn broken" in src · 2.0s   │    duration            30s                 │                                    │
+│                                    │    messages            3                   │                                    │
+│   model → claude-sonnet-5-5        │    input tokens        60                  │                                    │
+│                                    │    output tokens       350                 │                                    │
+│   Switching to a faster model to fi│    cache read tokens   270.0k              │                                    │
+│                                    │    cache write tokens  150.0k              │                                    │
+│ ▶ mcp__docs__search                │                                            │                                    │
+│                                    ╰────────────────────────────────────────────╯                                    │
+│   30s · 3 messages · 150.4k tokens · 270.0k cached                                                                   │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ User ───────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 10:01:00 ─╮
+│                                                                                                                      │
+│ ▶ Thanks. Now summarise what changed.                                                                                │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-sonnet-5-5 @ medium ────────────────────────────────────────────────────── 2026-10-21 10:01:01 ─╮
+│                                                                                                                      │
+
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

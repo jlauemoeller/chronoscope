@@ -70,6 +70,7 @@ const EXPECTED: &[Row] = &[
     (Browser, "copy_full", CopyFull, &["Y"], "Sections", "Copy full section"),
     (Browser, "save", Save, &["w", "ctrl-s"], "Sections", "Save section as displayed"),
     (Browser, "save_full", SaveFull, &["W"], "Sections", "Save full section"),
+    (Browser, "details", Details, &["i"], "Sections", "Show section details"),
     (Browser, "search", Search, &["/"], "Search", "Search transcript"),
     (Browser, "search_next", SearchNext, &["n"], "Search", "Next match"),
     (Browser, "search_prev", SearchPrev, &["N"], "Search", "Previous match"),
@@ -561,6 +562,19 @@ fn chord_completes_with_its_second_key() {
 }
 
 #[test]
+fn completes_is_about_the_chord_and_not_about_the_key_alone() {
+    let (km, warnings) = keymap("[keys.browser]\nsearch = \"z x\"\ntop = \"v\"\n");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let mut r = KeyResolver::new(Browser);
+    assert!(!r.completes(&km, &ch('x'), Search), "nothing is pending");
+    assert_eq!(feed(&mut r, &km, 'z'), Resolved::Pending);
+    assert!(r.completes(&km, &ch('x'), Search));
+    assert!(!r.completes(&km, &ch('x'), Top), "another action");
+    assert!(!r.completes(&km, &ch('v'), Top), "a single key");
+    assert!(r.is_pending(), "asking changes nothing");
+}
+
+#[test]
 fn a_key_that_does_not_complete_the_chord_is_resolved_afresh() {
     let (km, _) = keymap("[keys.browser]\ntop = \"g g\"\n");
     let mut r = KeyResolver::new(Browser);
@@ -749,6 +763,30 @@ fn help_entries_show_remapped_keys() {
     assert_eq!(copy.keys, "c");
     assert_eq!(copy.group, "Sections");
     assert!(entries.iter().all(|e| e.keys != "y"));
+}
+
+#[test]
+fn the_details_key_is_remappable_and_resolves_to_the_action() {
+    let km = Keymap::default();
+    assert_eq!(
+        km.resolve(Browser, &seq("i").first().to_event()),
+        Some(Details)
+    );
+    let (km, warnings) = keymap("[keys.browser]\ndetails = [\"x\", \"ctrl-i\"]\n");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        km.resolve(Browser, &seq("x").first().to_event()),
+        Some(Details)
+    );
+    assert_eq!(km.resolve(Browser, &seq("i").first().to_event()), None);
+    assert_eq!(km.labels(Browser, Details).as_deref(), Some("x / Ctrl-i"));
+    let entries = km.help_entries(Browser);
+    let details = entries
+        .iter()
+        .find(|e| e.description == "Show section details")
+        .unwrap();
+    assert_eq!(details.keys, "x / Ctrl-i");
+    assert_eq!(details.group, "Sections");
 }
 
 #[test]

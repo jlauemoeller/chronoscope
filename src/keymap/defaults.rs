@@ -229,6 +229,14 @@ pub(super) const DEFAULTS: &[DefaultBinding] = &[
     ),
     row(
         Browser,
+        Action::Details,
+        "details",
+        &["i"],
+        SECTIONS,
+        "Show section details",
+    ),
+    row(
+        Browser,
         Action::Search,
         "search",
         &["/"],
