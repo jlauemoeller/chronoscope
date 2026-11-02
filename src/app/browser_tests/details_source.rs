@@ -118,6 +118,17 @@ fn full() -> Vec<Value> {
     ]
 }
 
+/// [`full`] with the effort and the cache and thinking tokens a Claude
+/// transcript can record, which fill the whole Turn group.
+fn rich() -> Vec<Value> {
+    let mut lines = full();
+    lines[1]["effort"] = json!("high");
+    lines[2]["message"]["usage"]["cache_read_input_tokens"] = json!(29361);
+    lines[2]["message"]["usage"]["cache_creation_input_tokens"] = json!(13212);
+    lines[2]["message"]["usage"]["output_tokens_details"] = json!({"thinking_tokens": 113});
+    lines
+}
+
 impl Claude {
     /// Selects the section `n` below the prompt and opens its details.
     fn details_of(&mut self, n: usize) -> Vec<String> {
@@ -177,13 +188,24 @@ fn assert_in_order(rows: &[String], labels: &[&str]) {
 
 #[test]
 fn a_text_section_shows_the_message_and_environment_rows_of_its_source() {
-    let mut c = claude(120, 40, &full(), true);
+    let mut c = claude(120, 40, &rich(), true);
     // The prompt is selected first; the text is below it.
     let rows = c.details_of(1);
+    // The Turn group is the model's: every row a Claude transcript fills.
     assert_in_order(
         &rows,
         &[
             "Turn",
+            "model",
+            "effort",
+            "start",
+            "duration",
+            "messages",
+            "input tokens",
+            "output tokens",
+            "thinking tokens",
+            "cache read tokens",
+            "cache write tokens",
             "Message",
             "message.id",
             "requestId",
@@ -205,6 +227,9 @@ fn a_text_section_shows_the_message_and_environment_rows_of_its_source() {
         ],
     );
     // The stop reason is on the later line of the message.
+    assert_eq!(value_in(&rows, "Turn", "effort"), "high");
+    assert_eq!(value_in(&rows, "Turn", "thinking tokens"), "113");
+    assert_eq!(value_in(&rows, "Turn", "cache read tokens"), "29.4k");
     assert_eq!(value_in(&rows, "Message", "stop_reason"), "tool_use");
     assert_eq!(value_in(&rows, "Environment", "gitBranch"), "main");
     assert_eq!(value_in(&rows, "Environment", "cwd"), CWD);
@@ -303,12 +328,31 @@ fn unavailable_in_each_group(rows: &[String]) {
     );
 }
 
+/// Every `unavailable` on the screen is drawn in `muted_foreground`.
+fn unavailable_is_muted(rig: &mut Rig) {
+    let buffer = screen_buffer(rig, 120, 40);
+    let muted = theme("default").role(Role::MutedForeground);
+    let mut seen = 0;
+    for (y, row) in rows_of(&buffer).iter().enumerate() {
+        if let Some(at) = row.find("unavailable") {
+            let x = row[..at].chars().count();
+            for dx in 0.."unavailable".len() {
+                let cell = &buffer[(u16::try_from(x + dx).unwrap(), u16::try_from(y).unwrap())];
+                assert_eq!(cell.fg, muted, "column {} of row {y}", x + dx);
+            }
+            seen += 1;
+        }
+    }
+    assert_eq!(seen, 2, "one per group");
+}
+
 #[test]
 fn a_file_that_is_gone_leaves_an_unavailable_row_per_group_and_the_overlay_open() {
     let mut c = claude(120, 40, &full(), true);
     fs::remove_file(&c.path).unwrap();
     let rows = c.details_of(1);
     unavailable_in_each_group(&rows);
+    unavailable_is_muted(&mut c.rig);
     assert!(
         has(&rows, "Turn") && has(&rows, "model"),
         "the model's rows stay"

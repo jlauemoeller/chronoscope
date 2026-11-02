@@ -838,7 +838,9 @@ impl Assembler {
                     changed = true;
                 } else if real && model != b.last_model {
                     let id = ItemId::from(format!("model:{msg_id}"));
-                    changed |= turn.sources.link_message_item(&id, message_no);
+                    if !b.index.contains_key(&id) {
+                        turn.sources.link_message_item(&id, message_no);
+                    }
                     let item = Item::ModelChange {
                         id,
                         model: model.clone(),
@@ -900,7 +902,9 @@ impl Assembler {
                                 |old, _| matches!(old, Item::Text { text: o, .. } if text.starts_with(o.as_str())),
                             );
                             note_block(&mut b, &msg_id, api_index, &id);
-                            changed |= turn.sources.link_message_item(&id, message_no);
+                            if !b.index.contains_key(&id) {
+                                turn.sources.link_message_item(&id, message_no);
+                            }
                             upsert(turn, &mut b, Item::Text { id, text }, &mut changed);
                         }
                     }
@@ -934,7 +938,9 @@ impl Assembler {
                             b.signatures.insert(id.clone(), sig);
                         }
                         note_block(&mut b, &msg_id, api_index, &id);
-                        changed |= turn.sources.link_message_item(&id, message_no);
+                        if !b.index.contains_key(&id) {
+                            turn.sources.link_message_item(&id, message_no);
+                        }
                         upsert(turn, &mut b, Item::Thinking { id, thinking }, &mut changed);
                     }
                     Some("tool_use" | "server_tool_use") => {
@@ -953,7 +959,12 @@ impl Assembler {
                             duration: None,
                         };
                         note_block(&mut b, &msg_id, api_index, &call.id);
-                        let source = turn.sources.link_call(&self.source, &call.id, range);
+                        // A call sent again is linked already; a new one is added without
+                        // looking for it in the table, which would scan it.
+                        let source = match self.calls.get(&call_id) {
+                            Some(known) => known.source,
+                            None => turn.sources.add_call(&self.source, &call.id, range),
+                        };
                         let item = upsert(turn, &mut b, Item::ToolCall(call), &mut changed);
                         self.calls.entry(call_id).or_insert(CallRef {
                             turn: b.idx,
@@ -971,7 +982,9 @@ impl Assembler {
                 let notice_id = ItemId::from(format!("notice:{msg_id}"));
                 match message_notice(&b, &msg_id) {
                     Some((level, text)) => {
-                        changed |= turn.sources.link_message_item(&notice_id, message_no);
+                        if !b.index.contains_key(&notice_id) {
+                            turn.sources.link_message_item(&notice_id, message_no);
+                        }
                         let item = Item::Notice {
                             id: notice_id,
                             level,

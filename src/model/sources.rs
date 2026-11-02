@@ -157,6 +157,21 @@ impl TurnSources {
         .0
     }
 
+    /// Adds the tool call `id`, which the caller knows is not linked yet,
+    /// with the line of its call, without looking for it first (a turn can
+    /// hold thousands of calls). Returns the call's number in the table.
+    pub fn add_call(&mut self, bytes: &ByteSource, id: &ItemId, range: &Range<u64>) -> usize {
+        self.bytes_of(bytes);
+        self.items.push((
+            id.clone(),
+            ItemSource::Call {
+                call: range.clone(),
+                result: None,
+            },
+        ));
+        self.items.len() - 1
+    }
+
     fn link(&mut self, id: &ItemId, new: impl FnOnce() -> ItemSource) -> (usize, bool) {
         if let Some(at) = self.items.iter().rposition(|(item, _)| item == id) {
             return (at, false);
