@@ -20,7 +20,7 @@ expression: "buffer_to_styled(&draw(&turn, &opts, 40))"
 0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..13 Rgb(139, 92, 246)/Reset/NONE | 13..15 Rgb(94, 94, 94)/Reset/NONE | 15..37 Rgb(139, 92, 246)/Reset/NONE | 37..40 Rgb(94, 94, 94)/Reset/NONE
 1: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..39 Reset/Reset/NONE | 39..40 Rgb(94, 94, 94)/Reset/NONE
 2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..34 Rgb(229, 229, 229)/Reset/NONE | 34..39 Reset/Reset/NONE | 39..40 Rgb(94, 94, 94)/Reset/NONE
-3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..15 Rgb(229, 229, 229)/Reset/NONE | 15..22 Rgb(161, 161, 161)/Reset/NONE | 22..39 Reset/Reset/NONE | 39..40 Rgb(94, 94, 94)/Reset/NONE
+3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..14 Rgb(229, 229, 229)/Reset/NONE | 14..22 Rgb(161, 161, 161)/Reset/NONE | 22..39 Reset/Reset/NONE | 39..40 Rgb(94, 94, 94)/Reset/NONE
 4: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..39 Reset/Reset/NONE | 39..40 Rgb(94, 94, 94)/Reset/NONE
 5: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(229, 229, 229)/Reset/NONE | 4..12 Rgb(250, 204, 21)/Reset/NONE | 12..39 Reset/Reset/NONE | 39..40 Rgb(94, 94, 94)/Reset/NONE
 6: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..39 Reset/Reset/NONE | 39..40 Rgb(94, 94, 94)/Reset/NONE

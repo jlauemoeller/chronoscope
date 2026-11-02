@@ -953,18 +953,16 @@ mod tests {
         // the drawn row ends where the source line ends.
         let source = Source::new("Do it · 1.2s\nls\nout".to_owned(), false, false);
         let view = view(&["▼ Do it · 1.2s", "", "  Command:", "     ls"], &source);
-        assert!(view.place(0).is_some(), "the description row is found");
-        assert_eq!(view.row_at(view.place(0).unwrap()), 2);
-        let wrapped = view_wrapped();
-        assert_eq!(wrapped, Some(2));
+        let at = view.place(0).expect("the description row is found");
+        assert_eq!(view.row_at(at), 2);
     }
 
-    /// A description wrapped over two rows, the duration at the end of the
-    /// second.
-    fn view_wrapped() -> Option<usize> {
+    #[test]
+    fn a_description_wrapped_over_two_rows_is_found_by_its_end() {
         let source = Source::new("Do it now and then · 1.2s".to_owned(), false, false);
         let view = view(&["▼ Do it now and", "  then · 1.2s"], &source);
-        view.place(0).map(|at| view.row_at(at))
+        let at = view.place(0).expect("the description rows are found");
+        assert_eq!(view.row_at(at), 2);
     }
 
     #[test]

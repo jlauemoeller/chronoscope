@@ -141,6 +141,16 @@ fn unfolded_call_wrapped_at_40_keeps_the_duration_muted_styled() {
 }
 
 #[test]
+fn unfolded_call_keeps_a_long_duration_in_one_piece_at_40() {
+    // The last row of the description has no room for ` · 5m 2s`.
+    let turn = finished(
+        "Investigate the descriptors of the camera sensor module cluster",
+        302_000,
+    );
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &unfolded(&turn), 40)));
+}
+
+#[test]
 fn selected_folded_call_keeps_the_duration_muted_styled() {
     let turn = finished("Dump full USB descriptors", 1_200);
     let opts = Opts::default()

@@ -458,7 +458,7 @@ impl<W: Write> Generator<W> {
     fn tool_result(&mut self, call_id: &str, kind: usize) -> io::Result<()> {
         let room = self.target.saturating_sub(self.bytes) as usize;
         let large_size = self.rng.between(LARGE_MIN, LARGE_MAX);
-        let large = self.rng.chance(self.large_percent) && large_size + 1024 <= room;
+        let large = self.rng.chance(self.large_percent) && 2 * large_size + 1024 <= room;
         let size = if large {
             self.large_outputs += 1;
             large_size

@@ -17,6 +17,7 @@
 mod edit;
 mod other;
 mod read;
+mod row;
 mod search;
 mod shell;
 mod subagent;
@@ -34,7 +35,7 @@ use serde_json::Value;
 use self::timing::duration_suffix;
 use super::{
     BODY_INDENT, Rendered, SectionCtx, SectionRenderer, ellipsize, first_line, fold_marker, indent,
-    label, verbatim_lines, with_lead, word_wrap,
+    label, verbatim_lines, with_lead,
 };
 use crate::markdown::char_wrap;
 use crate::model::{ToolCall, ToolKind, ToolStatus};
@@ -101,8 +102,9 @@ pub fn body_renderer(kind: &ToolKind) -> &'static dyn ToolBodyRenderer {
 
 /// A tool call.
 ///
-/// Folded: `▶ <description>` (plus the agent type for a subagent). Unfolded:
-/// the description, then the body of the call's kind.
+/// Folded: `▶ <description>` (plus the agent type for a subagent), then ` · `
+/// and the duration of a finished call. Unfolded: the same, word-wrapped,
+/// then the body of the call's kind.
 #[derive(Debug, Clone, Copy)]
 pub struct ToolCallSection<'a>(pub &'a ToolCall);
 
@@ -152,59 +154,17 @@ impl ToolCallSection<'_> {
         let text = self.description_text();
         let agent = subagent::agent_type(self.0).map(|agent| format!(" ({agent})"));
         let duration = duration_suffix(self.0);
-        if !ctx.folded {
-            let full = format!(
-                "{text}{}{}",
-                agent.as_deref().unwrap_or_default(),
-                duration.as_deref().unwrap_or_default()
-            );
-            let rows = word_wrap(&full, ctx.width, style);
-            return match duration {
-                Some(duration) => timing::mute_tail(rows, &duration, ctx.muted()),
-                None => rows,
-            };
-        }
-        self.folded_description(ctx, style, &text, agent, duration)
-    }
-
-    /// The folded row: the description is cut first, the agent type and the
-    /// duration stay. When they leave no room for the description, the whole
-    /// row is cut instead.
-    fn folded_description(
-        &self,
-        ctx: &SectionCtx<'_>,
-        style: Style,
-        text: &str,
-        agent: Option<String>,
-        duration: Option<String>,
-    ) -> Vec<Line<'static>> {
+        let muted = style.patch(ctx.muted());
         let width = usize::from(ctx.width);
-        let width_of = |s: &Option<String>| {
-            s.as_deref()
-                .map_or(0, unicode_width::UnicodeWidthStr::width)
-        };
-        let tail_width = width_of(&agent) + width_of(&duration);
-        let first = first_line(text);
-        let description = Line::from(Span::styled(first.clone(), style));
-        if tail_width == 0 {
-            return vec![ellipsize(description, width, false)];
+        if ctx.folded {
+            let tail = row::Tail {
+                agent: agent.as_deref(),
+                duration: duration.as_deref(),
+            };
+            return vec![row::folded(&first_line(&text), tail, width, style, muted)];
         }
-        let muted = ctx.muted();
-        let mut tail = Vec::new();
-        if let Some(agent) = agent {
-            tail.push(Span::styled(agent, style));
-        }
-        if let Some(duration) = duration {
-            tail.push(Span::styled(duration, muted));
-        }
-        if tail_width + 1 >= width {
-            let mut spans = vec![Span::styled(first, style)];
-            spans.extend(tail);
-            return vec![cut_row(Line::from(spans), width)];
-        }
-        let mut line = ellipsize(description, width - tail_width, false);
-        line.spans.extend(tail);
-        vec![line]
+        let full = format!("{text}{}", agent.as_deref().unwrap_or_default());
+        row::wrapped(&full, duration.as_deref(), ctx.width, style, muted)
     }
 
     /// The description rows, and the body when the section is unfolded. The
@@ -314,25 +274,6 @@ pub struct PlainBlock {
     pub label: &'static str,
     /// The content rows.
     pub lines: Vec<String>,
-}
-
-/// `line` cut to `width` cells. The `…` takes the style of the text it
-/// replaces, not that of the last span of the line.
-fn cut_row(line: Line<'static>, width: usize) -> Line<'static> {
-    if line.width() <= width {
-        return line;
-    }
-    let mut cut = ellipsize(line, width, false);
-    if let Some(style) = cut
-        .spans
-        .len()
-        .checked_sub(2)
-        .map(|before| cut.spans[before].style)
-        && let Some(ellipsis) = cut.spans.last_mut()
-    {
-        ellipsis.style = style;
-    }
-    cut
 }
 
 /// The text of the truncation row.

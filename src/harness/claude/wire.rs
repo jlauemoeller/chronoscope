@@ -8,7 +8,9 @@
 //! counts as missing instead of failing the line.
 
 use serde::Deserialize;
+use serde::de::IgnoredAny;
 use serde_json::Value;
+use serde_json::value::RawValue;
 
 use crate::harness::shared::{lenient, lenient_object};
 
@@ -33,10 +35,10 @@ pub struct AttachmentHead {
     pub kind: Option<String>,
 }
 
-/// A JSONL line. `M` is the type of `message`; only [`read_entry`] uses
-/// another one than the default.
+/// A JSONL line. `M` is the type of `message` and `T` that of
+/// `toolUseResult`; only [`read_entry`] uses other ones than the defaults.
 #[derive(Deserialize)]
-pub struct Entry<M = Message> {
+pub struct Entry<M = Message, T = ToolUseResult> {
     /// Top-level `content` of `system` entries.
     pub content: Option<Value>,
     #[serde(rename = "commandRun")]
@@ -61,17 +63,47 @@ pub struct Entry<M = Message> {
     /// The structured result of a tool call (`tool_result` entries). Only
     /// `isAsync` is read from it; see [`ToolUseResult`].
     #[serde(rename = "toolUseResult")]
-    pub tool_use_result: Option<ToolUseResult>,
+    pub tool_use_result: Option<T>,
+}
+
+impl<T> Entry<Message, T> {
+    /// The entry with `tool_use_result` as its `toolUseResult`: the one that
+    /// was read in another way.
+    fn with_tool_use_result(self, tool_use_result: Option<ToolUseResult>) -> Entry {
+        Entry {
+            content: self.content,
+            command_run: self.command_run,
+            attachment: self.attachment,
+            is_compact_summary: self.is_compact_summary,
+            uuid: self.uuid,
+            timestamp: self.timestamp,
+            is_meta: self.is_meta,
+            origin: self.origin,
+            message: self.message,
+            effort: self.effort,
+            per_turn_effort: self.per_turn_effort,
+            api_block_index: self.api_block_index,
+            cwd: self.cwd,
+            duration_ms: self.duration_ms,
+            tool_use_result,
+        }
+    }
 }
 
 /// An entry's `toolUseResult`: an object, a string (a failed call has its
 /// error message there), or anything else.
 ///
-/// It can be very large (stdout, whole files), so it is never materialised
-/// as a `Value`: the head reads `isAsync` and skips the rest, and any other
-/// shape is skipped. An `isAsync` of another type than a boolean makes the
-/// object arm fail, so the value falls to [`Other`](Self::Other) and counts as
-/// absent instead of failing the line.
+/// It can be very large (stdout, whole files), so it is not kept as a
+/// `Value`: the head reads `isAsync` and the rest is dropped. (`untagged`
+/// buffers the value while it tries the arms, so it is read once more than a
+/// skipped field would be.) An `isAsync` of another type than a boolean makes
+/// the object arm fail, so the value falls to [`Other`](Self::Other) and
+/// counts as absent.
+///
+/// Buffering also checks the value, which skipping it does not (lone
+/// surrogate escapes, numbers out of range, invalid UTF-8, deep nesting).
+/// A value that fails there would fail the line, so [`read_entry`] reads such
+/// a line again with the field unchecked.
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum ToolUseResult {
@@ -106,7 +138,7 @@ impl<'de> Deserialize<'de> for ToolUseResultHead {
                 mut map: A,
             ) -> Result<Self::Value, A::Error> {
                 let mut is_async = None;
-                while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
+                while let Some(key) = map.next_key::<String>()? {
                     if key == "isAsync" {
                         is_async = map.next_value::<Option<bool>>()?;
                     } else {
@@ -195,26 +227,75 @@ struct MessageWithoutUsage {
 
 /// Reads a JSONL line as an [`Entry`].
 ///
-/// `usage` is kept as raw JSON text (see `lenient`), which must be valid
-/// UTF-8, so invalid UTF-8 inside it would fail the whole line although the
-/// line parses when `usage` is skipped. Such a line gets a second try.
+/// A line that does not parse gets more tries, so that every line that parses
+/// with `toolUseResult` and `usage` skipped still parses:
+/// - `toolUseResult` is checked while it is read (see [`ToolUseResult`]), so
+///   a value in it that a skipped field would not mind fails the line. The
+///   line is read again with the field kept as raw text, which is not
+///   checked, and `isAsync` is looked for in that. If even that fails
+///   (invalid UTF-8), the field counts as absent.
+/// - `usage` is kept as raw JSON text (see `lenient`), which must be valid
+///   UTF-8, so invalid UTF-8 inside it would fail the whole line although the
+///   line parses when `usage` is skipped.
 pub(crate) fn read_entry(line: &[u8]) -> Result<Entry, serde_json::Error> {
-    serde_json::from_slice(line).or_else(|err| entry_with_invalid_utf8_in_usage(line).ok_or(err))
+    serde_json::from_slice(line).or_else(|err| lenient_entry(line).ok_or(err))
 }
 
-/// The entry of a line whose only invalid UTF-8 is inside `message.usage`,
-/// read with the invalid bytes replaced by U+FFFD; `None` for any other line.
+/// The entry of a line that fails to parse because of `toolUseResult`, of
+/// invalid UTF-8 inside `message.usage`, or both; `None` for any other line.
 ///
-/// The line is first parsed with `usage` skipped, which does not check its
-/// UTF-8. That keeps a line with invalid UTF-8 anywhere else (a text block,
-/// `cwd`, ...) unparsed, as it is on `main`: only the damage inside `usage`
-/// is forgiven, and the readable token figures stay.
-fn entry_with_invalid_utf8_in_usage(line: &[u8]) -> Option<Entry> {
+/// The line is first parsed with `toolUseResult` unchecked. If that fails
+/// too, the damage is looked for in `usage`: the line is parsed with `usage`
+/// skipped as well, which does not check its UTF-8. That keeps a line with
+/// invalid UTF-8 anywhere else (a text block, `cwd`, ...) unparsed, as it is
+/// on `main`: only the damage inside `usage` is forgiven, and the readable
+/// token figures stay.
+fn lenient_entry(line: &[u8]) -> Option<Entry> {
+    if let Some(entry) = entry_with_unchecked_tool_use_result(line) {
+        return Some(entry);
+    }
     if std::str::from_utf8(line).is_ok() {
         return None;
     }
-    serde_json::from_slice::<Entry<MessageWithoutUsage>>(line).ok()?;
-    serde_json::from_str(&String::from_utf8_lossy(line)).ok()
+    serde_json::from_slice::<Entry<MessageWithoutUsage, IgnoredAny>>(line).ok()?;
+    let text = String::from_utf8_lossy(line);
+    serde_json::from_str(&text)
+        .ok()
+        .or_else(|| unchecked_str(&text))
+}
+
+/// The entry of `line`, `toolUseResult` kept as raw text (not checked) and
+/// read for `isAsync` only; absent when it cannot even be kept as text.
+fn entry_with_unchecked_tool_use_result(line: &[u8]) -> Option<Entry> {
+    if let Ok(entry) = serde_json::from_slice::<Entry<Message, Box<RawValue>>>(line) {
+        return Some(entry.with_raw_tool_use_result());
+    }
+    serde_json::from_slice::<Entry<Message, IgnoredAny>>(line)
+        .ok()
+        .map(|entry| entry.with_tool_use_result(None))
+}
+
+/// [`entry_with_unchecked_tool_use_result`] for text.
+fn unchecked_str(text: &str) -> Option<Entry> {
+    if let Ok(entry) = serde_json::from_str::<Entry<Message, Box<RawValue>>>(text) {
+        return Some(entry.with_raw_tool_use_result());
+    }
+    serde_json::from_str::<Entry<Message, IgnoredAny>>(text)
+        .ok()
+        .map(|entry| entry.with_tool_use_result(None))
+}
+
+impl Entry<Message, Box<RawValue>> {
+    /// The entry with `isAsync` read from the raw `toolUseResult`: a value
+    /// that is not an object with a boolean `isAsync` counts as absent.
+    fn with_raw_tool_use_result(self) -> Entry {
+        let head = self
+            .tool_use_result
+            .as_ref()
+            .and_then(|raw| serde_json::from_str::<ToolUseResultHead>(raw.get()).ok())
+            .map(ToolUseResult::Object);
+        self.with_tool_use_result(head)
+    }
 }
 
 #[derive(Deserialize)]

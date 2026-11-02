@@ -128,6 +128,44 @@ fn every_line_is_json_and_the_mix_is_all_there() {
 }
 
 #[test]
+fn every_generated_tool_result_carries_a_tool_use_result_that_repeats_its_output() {
+    // The budgets cover the `toolUseResult` path only if the fixture has it.
+    let tmp = tempfile::tempdir().unwrap();
+    let session = generated(tmp.path(), 2 * MIB, SEED);
+    let text = fs::read_to_string(&session.path).unwrap();
+    let (mut objects, mut strings) = (0, 0);
+    for line in text.lines() {
+        let value: serde_json::Value = serde_json::from_str(line).unwrap();
+        let Some(block) = value
+            .pointer("/message/content/0")
+            .filter(|b| b["type"] == "tool_result")
+        else {
+            continue;
+        };
+        let output = block["content"].as_str().unwrap();
+        let result = &value["toolUseResult"];
+        if block["is_error"] == true {
+            // A failed call: the error message as a string.
+            assert_eq!(result.as_str(), Some(output));
+            strings += 1;
+        } else {
+            // A call that succeeded: an object that holds the output again.
+            let map = result.as_object().expect("an object");
+            assert!(
+                map.values().any(|v| v.as_str() == Some(output)
+                    || v.pointer("/content").and_then(|c| c.as_str()) == Some(output)),
+                "the output is not repeated in {line:.200}"
+            );
+            objects += 1;
+        }
+    }
+    assert!(
+        objects > 0 && strings > 0,
+        "{objects} objects, {strings} strings"
+    );
+}
+
+#[test]
 fn the_assembler_parses_a_generated_session_without_unparsed_entries() {
     let tmp = tempfile::tempdir().unwrap();
     let session = generated(tmp.path(), 5 * MIB, SEED);

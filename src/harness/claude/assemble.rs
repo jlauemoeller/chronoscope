@@ -964,9 +964,11 @@ impl Assembler {
         } else {
             ToolStatus::Ok
         };
-        let duration = (!is_async)
-            .then(|| (ts - call.started).to_std().ok())
-            .flatten();
+        let duration = if is_async {
+            None
+        } else {
+            (ts - call.started).to_std().ok()
+        };
 
         let unchanged = matches!(
             &*self.turns[call.turn],

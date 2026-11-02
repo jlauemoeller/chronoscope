@@ -1619,8 +1619,9 @@ fn a_search_for_the_duration_of_a_subagent_finds_it_after_the_agent_type() {
     let mut t = timed_tool_turn(crate::model::ToolKind::Subagent, 340);
     assert_eq!(search(&mut t, "340ms").as_deref(), Some("1/1"));
     assert_hit_shown(&mut t, "1/1", "▼ Do it (Explore) · 340ms", "340ms");
-    // The agent type is shown, so it is searched too.
-    assert_eq!(search_with(&mut t, 2, "(Explore)").as_deref(), Some("1/1"));
+    // The agent type is shown, so it is searched too, once: the input's
+    // `subagent_type` is the same text, not a second occurrence.
+    assert_eq!(search_with(&mut t, 2, "Explore").as_deref(), Some("1/1"));
 }
 
 #[test]
