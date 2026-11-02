@@ -11,7 +11,9 @@ use super::*;
 use crate::app::layout::browser_areas;
 use crate::components::transcript::fixtures::with_id;
 use crate::components::turn_block::fixtures as blocks;
-use crate::model::{Thinking, Turn, TurnStats};
+use crate::model::{
+    ByteSource, Item, LineFormat, OutputSource, Thinking, ToolOutput, ToolResult, Turn, TurnStats,
+};
 use crate::test_support::render;
 
 /// A User turn with a prompt.
@@ -169,4 +171,51 @@ pub fn draw(sidebar: &mut TurnSidebar, width: u16, height: u16) -> Buffer {
 
 pub fn shared(turns: &[Turn]) -> Vec<Arc<Turn>> {
     turns.iter().cloned().map(Arc::new).collect()
+}
+
+/// An Assistant turn `id` whose only tool call has a lazy result: its
+/// output is stored as a reference to a transcript line, so reading it
+/// moves both `text_calls` and `source_reads`.
+pub fn lazy_output_turn(id: &str) -> Turn {
+    let text = "alpha\nbeta\ngamma";
+    let line = serde_json::json!({"message": {"content": [
+        {"type": "tool_result", "tool_use_id": "c1", "content": text}
+    ]}})
+    .to_string();
+    let range = 0..line.len() as u64;
+    let output = ToolOutput::lazy(
+        text.lines().count(),
+        text.len(),
+        OutputSource {
+            bytes: ByteSource::Memory(Arc::from(line.into_bytes())),
+            range,
+            format: LineFormat::Claude,
+            call_id: "c1".to_owned(),
+        },
+    );
+    let mut turn = with_id(
+        blocks::assistant(
+            None,
+            vec![blocks::tool(
+                "c1",
+                "Print the log",
+                serde_json::json!({"command": "cat /var/log/build.log"}),
+                None,
+                crate::model::ToolStatus::Ok,
+            )],
+            None,
+        ),
+        id,
+    );
+    let Turn::Assistant(assistant) = &mut turn else {
+        unreachable!()
+    };
+    let Item::ToolCall(call) = &mut assistant.items[0] else {
+        unreachable!()
+    };
+    call.result = Some(ToolResult {
+        output,
+        is_error: false,
+    });
+    turn
 }

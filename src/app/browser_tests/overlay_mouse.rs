@@ -50,12 +50,33 @@ fn wheel_outside(rig: &mut Rig, kind: MouseEventKind) {
     rig.app.update(at(kind, 0, 0));
 }
 
+/// The first assistant turn of the fixture, with a thinking text so long that
+/// its folded summary row runs to the right edge of the transcript at any
+/// width. The turns sidebar hides the transcript's left edge behind the
+/// overlays, so a press has to land on the text at the right.
+fn long_thinking_turn() -> Arc<Turn> {
+    let mut turn = (*turns()[1]).clone();
+    let Turn::Assistant(assistant) = &mut turn else {
+        panic!("the second fixture turn is an assistant turn");
+    };
+    for item in &mut assistant.items {
+        if let crate::model::Item::Thinking { thinking, .. } = item {
+            *thinking = crate::model::Thinking::Text("pondering ".repeat(60));
+        }
+    }
+    Arc::new(turn)
+}
+
 /// The screen position of a `▶ Thinking:` summary row of the transcript at
-/// the right edge of the screen (three columns in from its last), which a
-/// centred overlay does not cover: the turns sidebar is at the left edge, so
-/// the transcript has nothing to show outside an overlay there. Call it
-/// before the overlay opens: the overlay hides rows.
+/// the right edge of the screen (five columns in from the transcript's last, the
+/// last one inside a block's content),
+/// which a centred overlay does not cover. The row is made to run that far
+/// first. Call it before the overlay opens: the overlay hides rows.
 fn summary_point(rig: &mut Rig, width: u16, height: u16) -> (u16, u16) {
+    rig.app.update(session_msg(
+        &rig.app,
+        ModelUpdate::Updated(vec![long_thinking_turn()]),
+    ));
     let area = rig.app.routing().area(Id::Transcript).unwrap();
     let screen = screen_text(rig, width, height);
     let row = screen
@@ -66,7 +87,25 @@ fn summary_point(rig: &mut Rig, width: u16, height: u16) -> (u16, u16) {
         .find(|(_, row)| row.contains("▶ Thinking:"))
         .map(|(row, _)| u16::try_from(row).unwrap())
         .expect("a folded thinking section is on screen");
-    (area.right() - 3, row)
+    (area.right() - 5, row)
+}
+
+/// The control for the tests below: with no overlay open, a press at
+/// [`summary_point`] does toggle the summary row, so "toggled nothing" with an
+/// overlay open means the overlay took the press.
+#[test]
+fn a_press_at_the_summary_point_toggles_the_fold_when_no_overlay_is_open() {
+    for (width, height) in [(120, 40), (200, 50)] {
+        let mut rig = rig_with(theme("default"), width, height);
+        rig.open_loaded();
+        let point = summary_point(&mut rig, width, height);
+        let before = presentation(&rig);
+        assert!(screen_text(&mut rig, width, height).contains("▶ Thinking:"));
+        rig.app.update(at(PRESS, point.0, point.1));
+        assert_ne!(presentation(&rig), before, "{width}x{height}");
+        let text = screen_text(&mut rig, width, height);
+        assert!(text.contains("▼ Thinking"), "{width}x{height}: unfolded");
+    }
 }
 
 /// Asserts that `point` is outside the overlay `id`, and on the transcript.

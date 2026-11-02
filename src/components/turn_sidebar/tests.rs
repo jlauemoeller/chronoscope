@@ -15,7 +15,7 @@ use crate::components::transcript::Transcript;
 use crate::components::transcript::fixtures::{arc, long_output_turn, transcript_of, with_id};
 use crate::components::turn_block::block_work;
 use crate::components::turn_block::fixtures as blocks;
-use crate::model::{Thinking, Turn, TurnId, text_calls};
+use crate::model::{Item, Thinking, Turn, TurnId, source_reads, text_calls};
 use crate::test_support::buffer_to_text;
 use crate::theme::{Role, Theme, Token, builtin};
 
@@ -387,21 +387,52 @@ fn rows_built_from_a_transcript_match_those_built_from_its_turns() {
 #[test]
 fn building_rows_neither_lays_out_nor_renders_nor_reads_output() {
     let mut turns = wireframe();
-    turns.push(with_id(long_output_turn(1434).as_ref().clone(), "big"));
+    // Large results are stored by reference to a transcript line; reading one
+    // moves both counters (checked below).
+    turns.push(lazy_output_turn("big"));
+    turns.push(with_id(long_output_turn(1434).as_ref().clone(), "long"));
     let transcript = transcript_of(shared(&turns), 100, 30);
-    let (work, texts) = (block_work(), text_calls());
+    let (work, texts, reads) = (block_work(), text_calls(), source_reads());
     let value = transcript.query(TURN_ROWS_ATTR).unwrap().into_attr();
     let rows: TurnRows = payload_from_value(&value).unwrap();
-    assert_eq!(rows.entry_count(), 7);
+    assert_eq!(rows.entry_count(), 8);
     let mut sidebar = TurnSidebar::new(builtin::default_theme());
     sidebar.attr(TURN_ROWS_ATTR, value);
     sidebar.attr(
         MODEL_UPDATE_ATTR,
-        update(updated(vec![assistant("a1", 99)])),
+        update(updated(vec![assistant("a1", 99), lazy_output_turn("big")])),
     );
     draw(&mut sidebar, 30, 20);
+    // `turn_stop` renders the block: it goes through `sections_of`,
+    // `section_rows` and `TurnBlock::layout`, which `block_work` counts. So
+    // `block_work` unchanged also shows that `turn_stop` was not reached.
     assert_eq!(block_work(), work, "a block was laid out or rendered");
     assert_eq!(text_calls(), texts, "an output was materialised");
+    assert_eq!(source_reads(), reads, "the transcript was read again");
+}
+
+#[test]
+fn the_counters_of_the_test_above_move_when_work_is_done() {
+    // A control: the same fixtures do move the counters when a block is
+    // laid out and an output is read.
+    let turns = vec![lazy_output_turn("big")];
+    let mut transcript = transcript_of(shared(&turns), 100, 30);
+    let (work, texts, reads) = (block_work(), text_calls(), source_reads());
+    transcript.attr(
+        crate::components::VIEWPORT_ATTR,
+        crate::components::viewport_value(ratatui::layout::Size::new(90, 30)),
+    );
+    assert!(block_work() > work, "laying out is counted");
+    let Turn::Assistant(assistant) = &turns[0] else {
+        unreachable!()
+    };
+    let Some(Item::ToolCall(call)) = assistant.items.first() else {
+        unreachable!()
+    };
+    let output = &call.result.as_ref().unwrap().output;
+    let _ = output.text();
+    assert!(text_calls() > texts, "reading the output is counted");
+    assert!(source_reads() > reads, "re-reading the line is counted");
 }
 
 #[test]
