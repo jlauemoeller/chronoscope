@@ -8,7 +8,7 @@
 | 004-tool-call-durations | Complete |
 | 005-opencode-error-notices | Complete |
 | 006-claude-stop-notices | Complete |
-| 007-details-overlay | Planned |
+| 007-details-overlay | In progress |
 | 008-claude-detail-sources | Planned |
 | 009-opencode-detail-sources | Planned |
 | 010-turn-sidebar-pane | Planned |
