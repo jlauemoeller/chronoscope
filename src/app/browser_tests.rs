@@ -441,7 +441,13 @@ const SELECTOR_IDS: [Id; 6] = [
     Id::WorkingDir,
     Id::HelpLine,
 ];
-const BROWSER_IDS: [Id; 3] = [Id::BrowserHeader, Id::Transcript, Id::BrowserHelpLine];
+const BROWSER_IDS: [Id; 5] = [
+    Id::BrowserHeader,
+    Id::TurnSidebar,
+    Id::SidebarGap,
+    Id::Transcript,
+    Id::BrowserHelpLine,
+];
 
 // -- opening a session
 

@@ -1,0 +1,13 @@
+---
+source: src/components/background_fill.rs
+expression: "buffer_to_styled(&draw(builtin::default_theme().with_transparent_background(true)))"
+---
+     
+     
+     
+     
+--- styles (fg/bg/modifiers) ---
+0: 0..5 Reset/Reset/NONE
+1: 0..5 Reset/Reset/NONE
+2: 0..5 Reset/Reset/NONE
+3: 0..5 Reset/Reset/NONE

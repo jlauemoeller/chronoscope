@@ -71,8 +71,10 @@ impl AppComponent<Msg, UserEvent> for BackgroundFill {
 mod tests {
     use ratatui::style::Color;
 
+    use tuirealm::event::{Key, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
     use super::*;
-    use crate::test_support::render;
+    use crate::test_support::{buffer_to_styled, render};
     use crate::theme::builtin;
 
     fn draw(theme: Theme) -> ratatui::buffer::Buffer {
@@ -109,5 +111,34 @@ mod tests {
         fill.attr(THEME_ATTR, theme_value(&other));
         let value = fill.query(THEME_ATTR).unwrap().into_attr();
         assert_eq!(theme_from_value(&value), Some(other));
+    }
+
+    #[test]
+    fn the_fill_in_the_default_theme() {
+        insta::assert_snapshot!(buffer_to_styled(&draw(builtin::default_theme())));
+    }
+
+    #[test]
+    fn the_fill_in_a_transparent_theme() {
+        insta::assert_snapshot!(buffer_to_styled(&draw(
+            builtin::default_theme().with_transparent_background(true)
+        )));
+    }
+
+    #[test]
+    fn it_ignores_events_and_commands() {
+        let mut fill = BackgroundFill::new(builtin::default_theme());
+        let key = Event::Keyboard(KeyEvent::new(Key::Char('j'), KeyModifiers::NONE));
+        let mouse = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            modifiers: KeyModifiers::NONE,
+            column: 1,
+            row: 1,
+        });
+        for event in [Event::Tick, key, mouse] {
+            assert_eq!(fill.on(&event), None);
+        }
+        assert_eq!(fill.perform(Cmd::None), CmdResult::Invalid(Cmd::None));
+        assert_eq!(fill.state(), State::None);
     }
 }

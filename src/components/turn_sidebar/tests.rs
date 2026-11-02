@@ -804,6 +804,9 @@ fn a_selected_turn_that_is_not_in_new_rows_is_deselected() {
     sidebar.attr(SELECTED_ATTR, selected_value(Some(1)));
     sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&[user("other")])));
     assert_eq!(sidebar.selected_entry(), None);
+    // Rows that hold the turn again do not bring the selection back.
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&wireframe())));
+    assert_eq!(sidebar.selected_entry(), None);
     sidebar.attr(MODEL_UPDATE_ATTR, update(ModelUpdate::Reset));
     assert_eq!(kinds(sidebar.rows()), ["Start", "|", "End"]);
 }
@@ -815,6 +818,9 @@ fn a_selected_turn_that_loses_its_entry_is_deselected() {
         MODEL_UPDATE_ATTR,
         update(updated(vec![redacted_only("a1")])),
     );
+    assert_eq!(sidebar.selected_entry(), None);
+    // The entry comes back; the selection does not.
+    sidebar.attr(MODEL_UPDATE_ATTR, update(updated(vec![assistant("a1", 9)])));
     assert_eq!(sidebar.selected_entry(), None);
 }
 
