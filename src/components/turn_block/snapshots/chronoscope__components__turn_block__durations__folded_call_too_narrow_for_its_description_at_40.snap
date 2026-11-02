@@ -4,6 +4,6 @@ expression: "buffer_to_text(&draw(&turn, &Opts::default(), 40))"
 ---
 ╭─ Assistant ── claude-opus-5.5 @ h… ──╮
 │                                      │
-│ ▶ A description much too … · 340ms   │
+│ ▶ Investigate the descrip… · 340ms   │
 │                                      │
 ╰──────────────────────────────────────╯

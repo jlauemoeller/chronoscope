@@ -1527,13 +1527,13 @@ fn a_repeated_context_line_of_an_edit_lands_on_its_own_hunk() {
 
 // ---- The duration after a tool description ----
 
-/// A transcript of one Shell call described "Do it" that took 1.2 s, with 80
-/// lines of output of which the 70th reads `Do it later`: taller than the
+/// A transcript of one Shell call described "Do it" that took 1.2 s, with 300
+/// lines of output of which the 250th reads `Do it later`: taller than the
 /// viewport once the search unfolds it.
 fn timed_tool_turn(kind: crate::model::ToolKind, millis: u64) -> Transcript {
-    let output: String = (1..=80)
+    let output: String = (1..=300)
         .map(|n| {
-            if n == 70 {
+            if n == 250 {
                 "Do it later\n".to_owned()
             } else {
                 format!("line {n}\n")
@@ -1558,9 +1558,12 @@ fn timed_tool_turn(kind: crate::model::ToolKind, millis: u64) -> Transcript {
 #[test]
 fn a_hit_in_a_description_with_a_duration_lands_on_its_row_with_the_right_cells() {
     let mut t = timed_tool_turn(crate::model::ToolKind::Shell, 1_200);
-    // `Do it` is in the description and in the 70th line of the output.
+    // `Do it` is in the description and in the 250th line of the output.
     assert_eq!(search(&mut t, "Do it").as_deref(), Some("1/2"));
     assert_hit_shown(&mut t, "1/2", "▼ Do it · 1.2s", "Do");
+    // The description row was found at once: the output (cut at 200 lines)
+    // was not expanded to look for it.
+    assert!(!t.content.folds.is_expanded(&tool()));
     // Only the query is highlighted, not the duration after it.
     // (Runs of cells are split at the blanks.)
     let marked = highlighted(&mut t);

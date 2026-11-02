@@ -44,9 +44,9 @@ fn subagent(millis: Option<u64>) -> Turn {
     let item = tool_of(
         ToolKind::Subagent,
         "c1",
-        "Explore the repository (story-writer)",
+        "Explore the repository",
         json!({
-            "subagent_type": "Explore",
+            "subagent_type": "story-writer",
             "description": "Explore the repository",
             "prompt": "List the crates.",
         }),
@@ -123,7 +123,7 @@ fn unfolded_subagent_with_a_duration_at_120() {
 
 #[test]
 fn folded_call_too_narrow_for_its_description_at_40() {
-    let turn = finished("A description much too long for this narrow row", 340);
+    let turn = finished("Investigate the descriptors of the camera", 340);
     insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 40)));
 }
 
@@ -135,7 +135,7 @@ fn folded_subagent_too_narrow_for_its_description_at_40() {
 
 #[test]
 fn unfolded_call_wrapped_at_40_keeps_the_duration_muted_styled() {
-    let turn = finished("A description much too long for this narrow row", 340);
+    let turn = finished("Investigate the descriptors of the camera", 340);
     let opts = unfolded(&turn).themed(distinct_theme());
     insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &opts, 40)));
 }
@@ -165,7 +165,7 @@ fn a_subagent_shows_the_duration_after_the_agent_type() {
     let turn = subagent(Some(302_000));
     let row = description_row(&turn, &Opts::default(), 100);
     assert!(
-        row.contains("Explore the repository (story-writer) (Explore) · 5m 2s "),
+        row.contains("Explore the repository (story-writer) · 5m 2s "),
         "{row}"
     );
 }
@@ -197,7 +197,7 @@ fn a_call_without_a_known_duration_shows_no_duration_and_no_separator() {
     let turn = subagent(None);
     let row = description_row(&turn, &Opts::default(), 100);
     assert!(!row.contains('·'), "{row}");
-    assert!(row.contains("(Explore) "), "{row}");
+    assert!(row.contains("(story-writer) "), "{row}");
 }
 
 #[test]
@@ -221,26 +221,31 @@ fn a_failed_call_with_a_duration_shows_it() {
 
 #[test]
 fn the_narrow_row_cuts_the_description_and_keeps_the_duration() {
-    let turn = finished("A description much too long for this narrow row", 340);
+    let turn = finished("Investigate the descriptors of the camera", 340);
     let row = description_row(&turn, &Opts::default(), 40);
     assert!(row.contains("… · 340ms "), "{row}");
-    assert!(row.starts_with("│ ▶ A description"), "{row}");
+    assert!(row.starts_with("│ ▶ Investigate"), "{row}");
 }
 
 #[test]
 fn the_narrow_subagent_row_cuts_the_description_and_keeps_both_suffixes() {
     let turn = subagent(Some(302_000));
     let row = description_row(&turn, &Opts::default(), 40);
-    assert!(row.contains("… (Explore) · 5m 2s "), "{row}");
+    assert!(row.contains("… (story-writer) · 5m 2s "), "{row}");
 }
 
 #[test]
 fn a_row_that_leaves_no_room_for_the_description_is_cut_as_a_whole() {
-    // 18 cells of text: the suffixes alone take 17 of them.
+    // The agent type and the duration alone take 23 cells, and the text is
+    // 18 wide: no room for the description, so the existing fallback applies.
     let turn = subagent(Some(302_000));
     let row = description_row(&turn, &Opts::default(), 26);
-    assert!(row.contains('…'), "{row}");
-    assert!(!row.contains("5m 2s"), "{row}");
+    assert!(row.contains("Explore the r"), "{row}");
+    assert!(row.contains("…"), "{row}");
+    assert!(
+        !row.contains("5m 2s") && !row.contains("(story-writer)"),
+        "{row}"
+    );
 }
 
 /// The foreground of the cell at `column` of row `row`.
@@ -293,8 +298,8 @@ fn the_duration_is_muted_and_the_description_keeps_its_token() {
         let dot = column_of(&buffer, row, "·");
         assert_eq!(fg(&buffer, dot, row), muted, "the separator is muted");
         // The agent type is drawn like the description.
-        if text.contains("(Explore)") && width >= 100 {
-            let agent = column_of(&buffer, row, "(Explore)");
+        if text.contains("(story-writer)") && width >= 100 {
+            let agent = column_of(&buffer, row, "(story-writer)");
             assert_eq!(fg(&buffer, agent, row), description);
         }
         let start = column_of(&buffer, 2, "Explore");
@@ -326,7 +331,7 @@ fn the_displayed_copy_of_a_subagent_has_the_duration_after_the_agent_type() {
     let turn = subagent(Some(302_000));
     assert_eq!(
         shown(&turn, true, Some(40)),
-        "Explore the repository (story-writer) (Explore) · 5m 2s"
+        "Explore the repository (story-writer) · 5m 2s"
     );
 }
 
