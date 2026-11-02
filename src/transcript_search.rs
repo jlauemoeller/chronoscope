@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::components::turn_block::renderers::{ToolCallSection, format_stats};
+use crate::components::turn_block::renderers::{ToolCallSection, format_stats, without_controls};
 use crate::components::turn_block::{Section, SectionContent, SectionId, derive_sections};
 use crate::model::{InjectedEntry, ToolCall, ToolKind, Turn};
 
@@ -272,12 +272,23 @@ pub fn search(query: &SearchQuery, corpus: &SearchCorpus) -> Vec<Match> {
 ///   an output that cannot be read is left out).
 /// - System content: each entry's kind and text.
 /// - The model-change note and the stats footer as they are drawn.
+/// - A notice: its text.
 pub fn section_text<'a>(section: &Section<'a>) -> Cow<'a, str> {
     match section.content {
         SectionContent::Prompt(text)
         | SectionContent::Text(text)
         | SectionContent::Thinking(text)
         | SectionContent::Compaction(text) => Cow::Borrowed(text),
+        // As drawn: control characters other than line feeds are spaces, and
+        // trailing whitespace is not shown.
+        SectionContent::Notice(_, text) => {
+            let text = text.trim_end();
+            if text.chars().any(|c| c != '\n' && c.is_control()) {
+                Cow::Owned(without_controls(text))
+            } else {
+                Cow::Borrowed(text)
+            }
+        }
         SectionContent::ModelChange(model) => Cow::Owned(format!("model → {model}")),
         SectionContent::Stats(stats) => Cow::Owned(format_stats(stats)),
         SectionContent::System(entries) => Cow::Owned(system_text(entries)),

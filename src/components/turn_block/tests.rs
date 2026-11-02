@@ -1515,3 +1515,98 @@ fn the_open_transcript_hint_follows_the_remapped_open_subagent_key() {
         "o to open transcript"
     );
 }
+
+// ---- Notices ----
+
+#[test]
+fn a_notice_is_a_section_of_its_own_kind_in_the_turns_order() {
+    use crate::model::NoticeLevel;
+    let turn = assistant(
+        None,
+        vec![
+            text("t1", "Hello."),
+            notice("n1", NoticeLevel::Error, "boom"),
+            text("t2", "After."),
+        ],
+        Some(stats()),
+    );
+    assert_eq!(
+        kinds(&turn, true),
+        [
+            SectionKind::AssistantText,
+            SectionKind::Notice,
+            SectionKind::AssistantText,
+            SectionKind::Stats
+        ]
+    );
+}
+
+#[test]
+fn a_notice_cannot_fold_and_is_never_folded() {
+    use crate::model::NoticeLevel;
+    assert!(!SectionKind::Notice.foldable());
+    assert!(!SectionKind::Notice.default_folded());
+    let turn = assistant(None, vec![notice("n1", NoticeLevel::Error, "boom")], None);
+    let section = derive_sections(&turn, true).remove(0);
+    let mut folds = FoldState::new();
+    assert!(!folds.is_folded(&section));
+    folds.set_folded(section.id.clone(), true);
+    assert!(!folds.is_folded(&section));
+}
+
+#[test]
+fn a_notice_is_saved_as_error_or_notice() {
+    use crate::model::NoticeLevel;
+    let turn = assistant(
+        None,
+        vec![
+            notice("n1", NoticeLevel::Error, "boom"),
+            notice("n2", NoticeLevel::Warning, "aborted"),
+        ],
+        None,
+    );
+    let words: Vec<&str> = derive_sections(&turn, true)
+        .iter()
+        .map(Section::file_kind)
+        .collect();
+    assert_eq!(words, ["error", "notice"]);
+    assert_eq!(
+        super::plain::file_kind(&turn, &item_id(&turn, "n2").clone()),
+        Some("notice")
+    );
+}
+
+#[test]
+fn a_notice_without_text_is_not_a_section() {
+    use crate::model::NoticeLevel;
+    let turn = assistant(None, vec![notice("n1", NoticeLevel::Error, "  \n")], None);
+    assert!(derive_sections(&turn, true).is_empty());
+}
+
+#[test]
+fn a_notice_uses_the_level_style_two_spaces_in_and_wraps_to_the_text_width() {
+    use crate::model::NoticeLevel;
+    use crate::theme::Token;
+    let theme = theme();
+    let ctx = SectionCtx::new(&theme, 12, false);
+    let lines =
+        super::renderers::NoticeSection(NoticeLevel::Error, "alpha beta gamma delta").lines(&ctx);
+    let rows: Vec<String> = lines.iter().map(ToString::to_string).collect();
+    assert_eq!(rows, ["  alpha beta", "  gamma delta"]);
+    let error = theme.style(Token::ErrorOutput).fg;
+    assert!(
+        lines
+            .iter()
+            .flat_map(|l| &l.spans)
+            .all(|s| s.style.fg == error)
+    );
+    let muted = SectionCtx::new(&theme, 12, false).muted().fg;
+    let warning = super::renderers::NoticeSection(NoticeLevel::Warning, "aborted").lines(&ctx);
+    assert!(
+        warning
+            .iter()
+            .flat_map(|l| &l.spans)
+            .all(|s| s.style.fg == muted)
+    );
+    assert_ne!(error, muted);
+}

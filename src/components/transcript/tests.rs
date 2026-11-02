@@ -18,6 +18,7 @@ mod copy;
 mod follow;
 pub(super) mod keys;
 mod mouse;
+mod notice;
 mod property;
 mod save;
 mod search;

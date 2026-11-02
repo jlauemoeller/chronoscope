@@ -34,4 +34,6 @@ mod durations;
 #[cfg(test)]
 pub(crate) mod fixtures;
 #[cfg(test)]
+mod notice_snapshots;
+#[cfg(test)]
 mod snapshots;

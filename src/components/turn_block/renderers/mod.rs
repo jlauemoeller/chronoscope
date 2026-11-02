@@ -24,7 +24,7 @@ use crate::theme::{Role, Theme};
 pub use compaction::CompactionSection;
 pub use stats::{StatsSection, format_stats, format_tokens};
 pub use system::SystemSection;
-pub use text::{AssistantTextSection, ModelChangeSection};
+pub use text::{AssistantTextSection, ModelChangeSection, NoticeSection};
 pub use thinking::ThinkingSection;
 pub use tool::{Block, Body, PENDING, PlainBlock, PlainTool, ToolBodyRenderer, ToolCallSection};
 pub use user::UserPromptSection;
@@ -123,6 +123,7 @@ pub fn render_section(section: &Section<'_>, ctx: &SectionCtx<'_>) -> Rendered {
             return ToolCallSection(call).render(ctx);
         }
         SectionContent::ModelChange(model) => ModelChangeSection(model).lines(ctx),
+        SectionContent::Notice(level, text) => NoticeSection(level, text).lines(ctx),
         SectionContent::Stats(stats) => StatsSection(stats).lines(ctx),
         SectionContent::Compaction(summary) => CompactionSection(summary).lines(ctx),
         SectionContent::System(entries) => SystemSection(entries).lines(ctx),
@@ -223,13 +224,34 @@ pub(crate) fn ellipsize(line: Line<'static>, width: usize, always: bool) -> Line
 /// broken. Control characters become spaces, and a blank `text` gives one
 /// empty line.
 pub(crate) fn word_wrap(text: &str, width: u16, style: Style) -> Vec<Line<'static>> {
-    let text: String = text
-        .chars()
-        .map(|c| if c != '\n' && c.is_control() { ' ' } else { c })
-        .collect();
-    textwrap::wrap(&text, usize::from(width.max(1)))
+    wrap_with(
+        text,
+        textwrap::Options::new(usize::from(width.max(1))),
+        style,
+    )
+}
+
+/// Like [`word_wrap`], but a word is never split at a hyphen, so that a
+/// searched phrase such as `non-empty` stays on one row.
+pub(crate) fn word_wrap_unhyphenated(text: &str, width: u16, style: Style) -> Vec<Line<'static>> {
+    let options = textwrap::Options::new(usize::from(width.max(1)))
+        .word_splitter(textwrap::WordSplitter::NoHyphenation);
+    wrap_with(text, options, style)
+}
+
+fn wrap_with(text: &str, options: textwrap::Options<'_>, style: Style) -> Vec<Line<'static>> {
+    let text = without_controls(text);
+    textwrap::wrap(&text, options)
         .into_iter()
         .map(|line| Line::from(Span::styled(line.into_owned(), style)))
+        .collect()
+}
+
+/// `text` with every control character other than a line feed replaced by a
+/// space, as the rows draw it.
+pub(crate) fn without_controls(text: &str) -> String {
+    text.chars()
+        .map(|c| if c != '\n' && c.is_control() { ' ' } else { c })
         .collect()
 }
 

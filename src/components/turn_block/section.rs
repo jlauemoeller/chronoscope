@@ -5,7 +5,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::model::{InjectedEntry, Item, ItemId, Thinking, ToolCall, Turn, TurnId, TurnStats};
+use crate::model::{
+    InjectedEntry, Item, ItemId, NoticeLevel, Thinking, ToolCall, Turn, TurnId, TurnStats,
+};
 
 /// Which part of a turn a section shows.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -72,6 +74,8 @@ pub enum SectionKind {
     ToolCall,
     /// The `model → …` note.
     ModelChange,
+    /// An error or warning about how the turn ended.
+    Notice,
     /// The turn stats footer.
     Stats,
     /// A compaction summary.
@@ -85,7 +89,10 @@ impl SectionKind {
     pub fn foldable(self) -> bool {
         !matches!(
             self,
-            SectionKind::AssistantText | SectionKind::ModelChange | SectionKind::Stats
+            SectionKind::AssistantText
+                | SectionKind::ModelChange
+                | SectionKind::Notice
+                | SectionKind::Stats
         )
     }
 
@@ -108,6 +115,8 @@ pub enum SectionContent<'a> {
     Tool(&'a ToolCall),
     /// The model the turn switched to.
     ModelChange(&'a str),
+    /// An error or warning, with its text.
+    Notice(NoticeLevel, &'a str),
     /// The footer statistics.
     Stats(&'a TurnStats),
     /// The compaction summary.
@@ -127,7 +136,8 @@ pub struct Section<'a> {
 
 impl Section<'_> {
     /// The word for the section in the name of a saved file: `user`,
-    /// `assistant` (also the `model → …` note), `thinking`, the tool's kind
+    /// `assistant` (also the `model → …` note), `error` or `notice` (a
+    /// notice of level `Error` or `Warning`), `thinking`, the tool's kind
     /// (`shell`, `read`, `write`, `edit`, `grep`, `glob`, `webfetch`,
     /// `websearch`, `subagent`, or `tool` for any other), `system`,
     /// `compaction` or `stats`.
@@ -136,6 +146,8 @@ impl Section<'_> {
         match self.content {
             SectionContent::Prompt(_) => "user",
             SectionContent::Text(_) | SectionContent::ModelChange(_) => "assistant",
+            SectionContent::Notice(NoticeLevel::Error, _) => "error",
+            SectionContent::Notice(NoticeLevel::Warning, _) => "notice",
             SectionContent::Thinking(_) => "thinking",
             SectionContent::Tool(call) => match call.tool {
                 ToolKind::Shell => "shell",
@@ -163,6 +175,7 @@ impl Section<'_> {
             SectionContent::Thinking(_) => SectionKind::Thinking,
             SectionContent::Tool(_) => SectionKind::ToolCall,
             SectionContent::ModelChange(_) => SectionKind::ModelChange,
+            SectionContent::Notice(..) => SectionKind::Notice,
             SectionContent::Stats(_) => SectionKind::Stats,
             SectionContent::Compaction(_) => SectionKind::Compaction,
             SectionContent::System(_) => SectionKind::System,
@@ -249,6 +262,9 @@ fn item_content(item: &Item, show_system: bool) -> Option<SectionContent<'_>> {
         } => None,
         Item::ToolCall(call) => Some(SectionContent::Tool(call)),
         Item::ModelChange { model, .. } => Some(SectionContent::ModelChange(model)),
+        Item::Notice { level, text, .. } => {
+            (!text.trim().is_empty()).then_some(SectionContent::Notice(*level, text))
+        }
     }
 }
 

@@ -100,6 +100,14 @@ pub fn text(id: &str, text: &str) -> Item {
     }
 }
 
+pub fn notice(id: &str, level: crate::model::NoticeLevel, text: &str) -> Item {
+    Item::Notice {
+        id: ItemId::from(id),
+        level,
+        text: text.to_owned(),
+    }
+}
+
 pub fn thinking(id: &str, thinking: Thinking) -> Item {
     Item::Thinking {
         id: ItemId::from(id),

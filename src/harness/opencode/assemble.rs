@@ -34,8 +34,8 @@ use serde_json::Value;
 use super::tools::{describe, tool_kind};
 use crate::harness::shared::{lenient, lenient_object};
 use crate::model::{
-    AssistantTurn, InjectedEntry, Item, ItemId, ModelUpdate, Thinking, TokenUsage, ToolCall,
-    ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnStats, UserTurn,
+    AssistantTurn, InjectedEntry, Item, ItemId, ModelUpdate, NoticeLevel, Thinking, TokenUsage,
+    ToolCall, ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnStats, UserTurn,
 };
 
 /// The variant that means "no particular effort".
@@ -134,6 +134,79 @@ struct AssistantData {
     cost: Option<f64>,
     #[serde(default, deserialize_with = "lenient_object")]
     tokens: Option<Tokens>,
+    /// How the message ended. Absent, or of an unexpected type, is normal.
+    #[serde(default, deserialize_with = "lenient")]
+    finish: Option<String>,
+    #[serde(default, deserialize_with = "lenient_error")]
+    error: Option<RowError>,
+}
+
+/// The `error` of an assistant row: `type` and `message` of an object, or a
+/// plain string, which counts as the message.
+#[derive(Deserialize)]
+struct RowError {
+    #[serde(default, rename = "type", deserialize_with = "lenient")]
+    kind: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
+    message: Option<String>,
+}
+
+/// `deserialize_with` helper: an object is read as a [`RowError`], a string is
+/// the message; any other value counts as missing.
+fn lenient_error<'de, D>(deserializer: D) -> Result<Option<RowError>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Box::<serde_json::value::RawValue>::deserialize(deserializer)?;
+    let raw = raw.get();
+    Ok(if raw.starts_with('{') {
+        serde_json::from_str(raw).ok()
+    } else if raw.starts_with('"') {
+        serde_json::from_str(raw).ok().map(|message| RowError {
+            kind: None,
+            message: Some(message),
+        })
+    } else {
+        None
+    })
+}
+
+/// The notice for how an assistant row ended (SPEC cycle 2 §4.2); `None` for
+/// a normal ending.
+fn ending_notice(row: &Row, data: &AssistantData) -> Option<Item> {
+    let part = |value: Option<&str>| {
+        value
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_owned)
+    };
+    let finish = part(data.finish.as_deref())?;
+    let (level, text) = match finish.as_str() {
+        "stop" | "tool-calls" => return None,
+        "error" => {
+            let error = data.error.as_ref();
+            let kind = part(error.and_then(|e| e.kind.as_deref()));
+            let message = part(error.and_then(|e| e.message.as_deref()));
+            match (kind, message) {
+                (Some(kind), message) if kind == "aborted" => (
+                    NoticeLevel::Warning,
+                    match message {
+                        Some(message) => format!("{kind}: {message}"),
+                        None => kind,
+                    },
+                ),
+                (Some(kind), Some(message)) => (NoticeLevel::Error, format!("{kind}: {message}")),
+                (Some(only), None) | (None, Some(only)) => (NoticeLevel::Error, only),
+                (None, None) => (NoticeLevel::Error, "error".to_owned()),
+            }
+        }
+        other => (NoticeLevel::Warning, format!("stopped: {other}")),
+    };
+    Some(Item::Notice {
+        id: ItemId::from(format!("notice:{}", row.id)),
+        level,
+        text,
+    })
 }
 
 /// What one assistant row contributes to its turn's stats.
@@ -502,6 +575,7 @@ impl Assembler {
             .enumerate()
             .filter_map(|(i, part)| self.part_item(part, row, i))
             .collect();
+        let notice = ending_notice(row, &data);
         b.contribute(
             &row.id,
             Contribution {
@@ -534,6 +608,10 @@ impl Assembler {
             for item in items {
                 upsert(turn, b, item);
             }
+            match notice {
+                Some(item) => upsert(turn, b, item),
+                None => remove(turn, b, &ItemId::from(format!("notice:{}", row.id))),
+            }
             turn.stats = Some(b.stats());
         }
     }
@@ -549,9 +627,11 @@ impl Assembler {
     /// Feeds a row that was fed before and has changed in place (OpenCode
     /// updates a streaming message's `data` and `time_updated`). The turn the
     /// row went into is rebuilt from its new content: items keep their ids
-    /// and positions (parts that are new are added at the end of the turn), a
-    /// replaced tool part keeps its place, and the turn's stats count the row
-    /// once. Rows that were not fed before are ignored: feed those with
+    /// and positions (parts that are new are added at the end of the turn,
+    /// after the items of later rows, and so is a notice the row gains now),
+    /// a replaced tool part keeps its place, and the turn's stats count the
+    /// row once. A row that now ends normally loses its notice, which shifts
+    /// the items after it. Rows that were not fed before are ignored: feed those with
     /// [`push_row`](Self::push_row), in `seq` order.
     pub fn replace_row(&mut self, row: &Row) {
         let Some(&idx) = self.row_turn.get(&row.id) else {
@@ -743,6 +823,20 @@ fn upsert(turn: &mut AssistantTurn, b: &mut Builder, item: Item) {
     } else {
         b.index.insert(item.id().clone(), turn.items.len());
         turn.items.push(item);
+    }
+}
+
+/// Removes the item with the given id, if the turn has it. The positions of
+/// the items after it change, so the index is rebuilt.
+fn remove(turn: &mut AssistantTurn, b: &mut Builder, id: &ItemId) {
+    if let Some(pos) = b.index.remove(id) {
+        turn.items.remove(pos);
+        b.index = turn
+            .items
+            .iter()
+            .enumerate()
+            .map(|(pos, item)| (item.id().clone(), pos))
+            .collect();
     }
 }
 

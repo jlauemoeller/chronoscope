@@ -380,3 +380,19 @@ fn a_pending_call_or_one_without_a_duration_has_no_duration_text() {
         assert!(run(" · ", &corpus).is_empty());
     }
 }
+
+#[test]
+fn a_notice_is_searched_by_its_text() {
+    use crate::model::NoticeLevel;
+    let turn = blocks::assistant(
+        None,
+        vec![blocks::notice(
+            "n1",
+            NoticeLevel::Warning,
+            "aborted: Step interrupted",
+        )],
+        None,
+    );
+    let sections = crate::components::turn_block::derive_sections(&turn, true);
+    assert_eq!(section_text(&sections[0]), "aborted: Step interrupted");
+}

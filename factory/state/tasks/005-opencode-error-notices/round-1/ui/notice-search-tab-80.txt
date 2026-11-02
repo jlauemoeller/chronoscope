@@ -1,0 +1,14 @@
+Text with a tab: alpha<TAB>beta and more. Block width 80. Query typed with a space, then with a tab.
+Notices highlight a match the counter does not count (0/0). The folded tool description shares the
+pattern; assistant text, thinking and tool output do not.
+
+notice             q="alpha beta" pos=Some("0/0") highlights=["\"alpha beta\""]
+notice             q="alpha\tbeta" pos=Some("1/1") highlights=[]
+text               q="alpha beta" pos=Some("0/0") highlights=[]
+text               q="alpha\tbeta" pos=Some("1/1") highlights=[]
+thinking-open      q="alpha beta" pos=Some("0/0") highlights=[]
+thinking-open      q="alpha\tbeta" pos=Some("1/1") highlights=[]
+tool-desc-folded   q="alpha beta" pos=Some("0/0") highlights=["\"alpha beta\""]
+tool-desc-folded   q="alpha\tbeta" pos=Some("1/1") highlights=[]
+tool-output-open   q="alpha beta" pos=Some("0/0") highlights=[]
+tool-output-open   q="alpha\tbeta" pos=Some("1/1") highlights=[]

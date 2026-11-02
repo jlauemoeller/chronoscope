@@ -405,6 +405,7 @@ impl Transcript {
             | SectionContent::Compaction(_) => true,
             SectionContent::Tool(call) => matches!(call.tool, ToolKind::Subagent),
             SectionContent::ModelChange(_)
+            | SectionContent::Notice(..)
             | SectionContent::Stats(_)
             | SectionContent::System(_) => false,
         };
