@@ -3,7 +3,7 @@
 | Task | Status |
 |------|--------|
 | 001-shared-duration-format | Complete |
-| 002-turn-token-usage | Planned |
+| 002-turn-token-usage | In progress |
 | 003-claude-turn-stats | Planned |
 | 004-tool-call-durations | Planned |
 | 005-opencode-error-notices | Planned |
