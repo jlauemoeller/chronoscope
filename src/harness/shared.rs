@@ -2,6 +2,35 @@
 //! description.
 
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
+
+/// `deserialize_with` helper (together with `#[serde(default)]`): a value of
+/// an unexpected JSON type counts as missing instead of failing the whole
+/// line or row.
+pub fn lenient<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(T::deserialize(value).ok())
+}
+
+/// Like [`lenient`] for a struct: only a JSON object is read (serde would
+/// also read a struct from an array).
+pub fn lenient_object<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let value = Value::deserialize(deserializer)?;
+    if value.is_object() {
+        Ok(T::deserialize(value).ok())
+    } else {
+        Ok(None)
+    }
+}
 
 /// Title of a session with neither an `ai-title` nor a prompt.
 pub const UNTITLED: &str = "(untitled)";

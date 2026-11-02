@@ -30,8 +30,9 @@ hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
   - a pending call (`mcp__docs__search`, no result);
   - a model change within a turn (`claude-opus-5-5` to `claude-sonnet-5-5`);
   - `effort` and `perTurnEffort`;
-  - `turn_duration` footers, with large cache-token counts in `usage` that
-    must not be summed;
+  - `turn_duration` footers, with large cache-token counts in `usage` (50k
+    cache writes and 90k cache reads per line), which the footer counts once
+    per message: cache writes go into `tokens`, cache reads into `cached`;
   - a `task-notification` user entry that must not start a turn.
 
 ## claude/injected.jsonl

@@ -12,7 +12,8 @@ use super::*;
 use crate::config::Config;
 use crate::harness::Harness;
 use crate::model::{
-    HarnessId, Item, ModelUpdate, ProjectId, SessionId, SessionSummary, ToolKind, ToolStatus, Turn,
+    HarnessId, Item, ModelUpdate, ProjectId, SessionId, SessionSummary, TokenUsage, ToolKind,
+    ToolStatus, Turn,
 };
 
 fn at(day: u32, h: u32, m: u32, s: u32) -> DateTime<Utc> {
@@ -605,11 +606,18 @@ fn injected_rows_after_the_last_row_go_into_the_current_turn() {
 fn the_stats_footer_sums_duration_messages_tokens_and_cost() {
     let db = TempDb::new();
     let turns = load_turns(&harness(&db), "ses_main");
-    // Two rows: 09:00:03 .. 09:00:20, 1000+100 and 2000+200 tokens.
+    // Two rows: 09:00:03 .. 09:00:20, 1000+100 and 2000+200 input+output tokens.
     let stats = assistant(&turns[1]).stats.clone().unwrap();
     assert_eq!(stats.duration, Duration::from_secs(17));
     assert_eq!(stats.message_count, 2);
-    assert_eq!(stats.tokens, Some(3300));
+    assert_eq!(
+        stats.tokens,
+        Some(TokenUsage {
+            input: 3000,
+            output: 300,
+            ..TokenUsage::default()
+        })
+    );
     assert!(
         (stats.cost.unwrap() - 0.03).abs() < 1e-9,
         "{:?}",
@@ -619,7 +627,14 @@ fn the_stats_footer_sums_duration_messages_tokens_and_cost() {
     let stats = assistant(&turns[3]).stats.clone().unwrap();
     assert_eq!(stats.duration, Duration::from_secs(39));
     assert_eq!(stats.message_count, 2);
-    assert_eq!(stats.tokens, Some(880));
+    assert_eq!(
+        stats.tokens,
+        Some(TokenUsage {
+            input: 800,
+            output: 80,
+            ..TokenUsage::default()
+        })
+    );
     assert!(
         (stats.cost.unwrap() - 0.008).abs() < 1e-9,
         "{:?}",

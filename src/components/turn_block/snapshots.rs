@@ -192,6 +192,36 @@ fn assistant_title_without_effort_at_80() {
     insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 80)));
 }
 
+// ---- Token usage in the footer ----
+
+fn footer_turn(stats: crate::model::TurnStats) -> crate::model::Turn {
+    assistant(Some("high"), vec![text("t1", "All done.")], Some(stats))
+}
+
+#[test]
+fn footer_with_cached_at_80() {
+    let turn = footer_turn(stats_with_cache(359_400_000, None));
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 80)));
+}
+
+#[test]
+fn footer_with_cached_at_120() {
+    let turn = footer_turn(stats_with_cache(359_400_000, None));
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 120)));
+}
+
+#[test]
+fn footer_with_cached_and_cost_at_80() {
+    let turn = footer_turn(stats_with_cache(359_400_000, Some(0.42)));
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 80)));
+}
+
+#[test]
+fn footer_with_cached_and_cost_at_120() {
+    let turn = footer_turn(stats_with_cache(359_400_000, Some(0.42)));
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 120)));
+}
+
 // ---- Task 019: per-tool bodies ----
 
 use crate::model::ToolKind;

@@ -9,8 +9,8 @@ use serde_json::json;
 
 use super::*;
 use crate::model::{
-    AssistantTurn, CompactionTurn, InjectedEntry, Item, ItemId, Thinking, ToolCall, ToolKind,
-    ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnStats, UserTurn,
+    AssistantTurn, CompactionTurn, InjectedEntry, Item, ItemId, Thinking, TokenUsage, ToolCall,
+    ToolKind, ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnStats, UserTurn,
 };
 use crate::test_support::buffer_to_text;
 use crate::theme::{Role, Theme, Token, TokenOverride, builtin};
@@ -144,9 +144,23 @@ pub fn stats() -> TurnStats {
     TurnStats {
         duration: Duration::from_millis(302_646),
         message_count: 112,
-        tokens: Some(45_213),
+        tokens: Some(TokenUsage {
+            input: 5_213,
+            output: 40_000,
+            ..TokenUsage::default()
+        }),
         cost: None,
     }
+}
+
+/// [`stats`] with `cache_read` tokens read from the cache, and `cost`.
+pub fn stats_with_cache(cache_read: u64, cost: Option<f64>) -> TurnStats {
+    let mut stats = stats();
+    if let Some(usage) = &mut stats.tokens {
+        usage.cache_read = cache_read;
+    }
+    stats.cost = cost;
+    stats
 }
 
 pub const SCRATCH: &str =

@@ -332,6 +332,43 @@ pub struct CompactionTurn {
     pub summary: String,
 }
 
+/// Token counts of one message, or summed over the messages of a turn.
+///
+/// `output` includes `reasoning` on every harness; `reasoning` is only an
+/// "of which" figure and is never added to a total.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TokenUsage {
+    /// Input tokens that were neither read from nor written to the cache.
+    pub input: u64,
+    /// Output tokens, reasoning included.
+    pub output: u64,
+    /// Tokens read from the prompt cache.
+    pub cache_read: u64,
+    /// Tokens written to the prompt cache.
+    pub cache_write: u64,
+    /// Of `output`, the tokens spent on reasoning.
+    pub reasoning: u64,
+}
+
+impl TokenUsage {
+    /// The footer's `tokens` figure: input + output + cache writes. Cache
+    /// reads are shown apart and reasoning is already part of `output`.
+    pub fn total(&self) -> u64 {
+        self.input
+            .saturating_add(self.output)
+            .saturating_add(self.cache_write)
+    }
+
+    /// Adds `other` field by field (saturating).
+    pub fn accumulate(&mut self, other: &TokenUsage) {
+        self.input = self.input.saturating_add(other.input);
+        self.output = self.output.saturating_add(other.output);
+        self.cache_read = self.cache_read.saturating_add(other.cache_read);
+        self.cache_write = self.cache_write.saturating_add(other.cache_write);
+        self.reasoning = self.reasoning.saturating_add(other.reasoning);
+    }
+}
+
 /// Footer statistics of an Assistant turn.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TurnStats {
@@ -339,8 +376,9 @@ pub struct TurnStats {
     pub duration: Duration,
     /// Number of messages in the turn, as reported by the harness.
     pub message_count: usize,
-    /// Input plus output tokens, counting each message once.
-    pub tokens: Option<u64>,
+    /// Token usage summed over the turn's messages, counting each message
+    /// once. `None` when no usage is known.
+    pub tokens: Option<TokenUsage>,
     /// Cost in US dollars, when known (never for Claude).
     pub cost: Option<f64>,
 }

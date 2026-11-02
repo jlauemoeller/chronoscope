@@ -8,6 +8,8 @@
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::harness::shared::{lenient, lenient_object};
+
 /// The few fields used to classify a line before (maybe) parsing it fully.
 /// Everything else on the line is skipped without being materialised.
 #[derive(Deserialize)]
@@ -112,6 +114,7 @@ pub struct Message {
     pub id: Option<String>,
     pub model: Option<String>,
     pub content: Option<Content>,
+    #[serde(default, deserialize_with = "lenient_object")]
     pub usage: Option<Usage>,
 }
 
@@ -123,10 +126,27 @@ pub enum Content {
     Other(serde::de::IgnoredAny),
 }
 
+/// Token counts of a message. A value of an unexpected JSON type counts as
+/// missing, so it never turns a parsed line into an unparsed one.
 #[derive(Deserialize)]
 pub struct Usage {
+    #[serde(default, deserialize_with = "lenient")]
     pub input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "lenient")]
     pub output_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub cache_read_input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub cache_creation_input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "lenient_object")]
+    pub output_tokens_details: Option<OutputDetails>,
+}
+
+#[derive(Deserialize)]
+pub struct OutputDetails {
+    /// Already part of `output_tokens`.
+    #[serde(default, deserialize_with = "lenient")]
+    pub thinking_tokens: Option<u64>,
 }
 
 #[derive(Deserialize, Default)]

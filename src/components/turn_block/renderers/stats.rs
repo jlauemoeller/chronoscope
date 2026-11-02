@@ -19,8 +19,10 @@ pub fn format_tokens(tokens: u64) -> String {
     format!("{}.{}M", millions / 10, millions % 10)
 }
 
-/// The footer text: `<duration> · <n> messages · <tokens> tokens`, with
-/// ` · $<cost>` when the cost is known. Unknown parts are left out.
+/// The footer text: `<duration> · <n> messages · <tokens> tokens ·
+/// <cached> cached`, with ` · $<cost>` last when the cost is known. Unknown
+/// parts are left out, and `cached` is hidden when no tokens were read from
+/// the cache.
 pub fn format_stats(stats: &TurnStats) -> String {
     let mut parts = vec![format_duration(stats.duration)];
     if stats.message_count > 0 {
@@ -31,9 +33,13 @@ pub fn format_stats(stats: &TurnStats) -> String {
         };
         parts.push(format!("{} {unit}", stats.message_count));
     }
-    if let Some(tokens) = stats.tokens {
+    if let Some(usage) = &stats.tokens {
+        let tokens = usage.total();
         let unit = if tokens == 1 { "token" } else { "tokens" };
         parts.push(format!("{} {unit}", format_tokens(tokens)));
+        if usage.cache_read > 0 {
+            parts.push(format!("{} cached", format_tokens(usage.cache_read)));
+        }
     }
     if let Some(cost) = stats.cost {
         parts.push(format!("${cost:.2}"));
