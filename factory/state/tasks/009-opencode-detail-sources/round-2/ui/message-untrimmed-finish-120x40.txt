@@ -1,0 +1,24 @@
+OpenCode text section, details overlay at 120x40, default theme, rendered through the App in a scratch crate.
+Only the overlay is shown.
+
+Row: {"finish":" error ","error":{},...}. The notice for this row treats the finish as `error` (it trims),
+but the finish row keeps the spaces, so its value starts one column right of the others.
+
+=== spaced finish @ 120x40 [selected Some("SectionId { turn: TurnId(\"r39\"), key: Item(ItemId(\"r39:0\")) }") found=true overlay_open=true]
+╭─ Details ──────────────────────────────╮
+│                                        │
+│  Turn                                  │
+│                                        │
+│    model         m                     │
+│    start         2026-10-28 09:10:10Z  │
+│    duration      0s                    │
+│    messages      1                     │
+│                                        │
+│  Message                               │
+│                                        │
+│    row id        r39                   │
+│    time.created  2026-10-28 09:10:10Z  │
+│    finish         error                │
+│    error         error                 │
+│                                        │
+╰────────────────────────────────────────╯
