@@ -34,12 +34,16 @@ use crate::model::{
 /// A group whose line cannot be read (the file is gone, the range is past its
 /// end, the line is not JSON) is `unavailable` and holds what could be read.
 pub fn section_details(source: &SectionSource) -> Vec<SourceGroup> {
-    let line = read_line(&source.refs.line);
+    // A section read from a database is not this harness's.
+    let Some(refs) = source.refs.lines() else {
+        return Vec::new();
+    };
+    let line = read_line(&refs.line);
     let mut groups = Vec::new();
     match source.kind {
         SourceKind::Message => groups.push(message_group(line.as_ref())),
         SourceKind::ToolCall => {
-            let result = source.refs.result.as_ref().map(read_line);
+            let result = refs.result.as_ref().map(read_line);
             groups.push(tool_group(line.as_ref(), result.as_ref()));
         }
         SourceKind::Prompt => groups.push(prompt_group(line.as_ref())),

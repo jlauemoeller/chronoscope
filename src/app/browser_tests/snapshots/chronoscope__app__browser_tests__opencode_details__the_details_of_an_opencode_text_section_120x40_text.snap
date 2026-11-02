@@ -1,0 +1,44 @@
+---
+source: src/app/browser_tests/opencode_details.rs
+expression: "screen(120, 40)"
+---
+╭─ Project Alpha App ─────────────────────────────────────────────────────────────────────────────────────── ses_main ─╮
+│                                                                                                                      │
+│ /home/user/alpha                                                                                                     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────────╭─ Details ────────────────────────────────╮────────────── 2026-10-28 09:00:01Z ─╮
+│                                     │                                          │                                     │
+│ ▶ synthetic: <system-reminder>Note: │  Turn                                    │ystem-reminder>                      │
+│                                     │                                          │                                     │
+│ ▶ system: Instructions updated: core│    model           acme/coder-1          │                                     │
+│                                     │    effort          high                  │                                     │
+│ ▶ Add a settings screen with a dark │    start           2026-10-28 09:00:03Z  │                                     │
+│                                     │    duration        17s                   │                                     │
+╰─────────────────────────────────────│    messages        2                     │─────────────────────────────────────╯
+╭─ Assistant ── acme/coder-1 @ high ──│    input tokens    3.0k                  │────────────── 2026-10-28 09:00:03Z ─╮
+│                                     │    output tokens   300                   │                                     │
+│ ▶ Thinking: I should look at the exi│    cost            $0.03                 │                                     │
+│                                     │    provider        acme                  │                                     │
+▒   Let me look at the repo layout.   │    agent           build                 │                                     │
+│                                     │                                          │                                     │
+│ ▶ Read src/main.rs · 1.0s           │  Message                                 │                                     │
+│                                     │                                          │                                     │
+│ ▶ List the sources · 2.0s           │    row id          msg_main_04           │                                     │
+│                                     │    time.created    2026-10-28 09:00:03Z  │                                     │
+│ ▶ shell · 4.0s                      │    time.streamed   2026-10-28 09:00:09Z  │                                     │
+│                                     │    time.completed  2026-10-28 09:00:09Z  │                                     │
+│ ▶ Write src/scratch.txt · 1.0s      │    finish          stop                  │                                     │
+│                                     │    rawFinish       stop                  │                                     │
+│   17s · 2 messages · 3.3k tokens · $│                                          │                                     │
+│                                     │  Environment                             │                                     │
+╰─────────────────────────────────────│                                          │─────────────────────────────────────╯
+╭─ User ──────────────────────────────│    snapshot.start  4a1c9e07d3b2          │────────────── 2026-10-28 09:05:00Z ─╮
+│                                     │    snapshot.end    7b2d5f3a91c4          │                                     │
+│ ▶ Now delegate the review.          │                                          │                                     │
+│                                     ╰──────────────────────────────────────────╯                                     │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── acme/coder-1 ─────────────────────────────────────────────────────────────────── 2026-10-28 09:05:01Z ─╮
+│                                                                                                                      │
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

@@ -15,7 +15,7 @@ use super::super::selector_tests::{press as press_in_selector, project_rows, sty
 pub(super) struct OpenCodeRig {
     pub(super) rig: Rig,
     pub(super) harness: Arc<OpenCodeHarness>,
-    _db: TempDb,
+    pub(super) db: TempDb,
 }
 
 /// An app with a Claude tab (the fixed fixture index) and an OpenCode tab
@@ -64,7 +64,7 @@ pub(super) fn two_tabs() -> OpenCodeRig {
             clock,
         },
         harness,
-        _db: db,
+        db,
     }
 }
 
@@ -105,7 +105,7 @@ fn presentation(app: &App) -> Presentation {
 
 impl OpenCodeRig {
     /// Opens `session` and waits until it is loaded.
-    fn open(&mut self, session: &str) {
+    pub(super) fn open(&mut self, session: &str) {
         self.rig
             .app
             .update(Msg::OpenSession(HarnessId::OpenCode, id(session)));
@@ -115,17 +115,22 @@ impl OpenCodeRig {
 
     /// Selects the section of tool call `call`, from the top.
     fn select_call(&mut self, call: &str) {
+        self.select_item(call);
+    }
+
+    /// Selects the section of item `item`, from the top.
+    pub(super) fn select_item(&mut self, item: &str) {
         self.rig.press(Key::Char('g'));
         self.rig.settle();
         for _ in 0..30 {
             let selected = presentation(&self.rig.app).selected;
-            if selected.is_some_and(|s| s.key == SectionKey::Item(ItemId::from(call))) {
+            if selected.is_some_and(|s| s.key == SectionKey::Item(ItemId::from(item))) {
                 return;
             }
             self.rig.press(Key::Down);
             self.rig.settle();
         }
-        panic!("never selected {call}");
+        panic!("never selected {item}");
     }
 }
 

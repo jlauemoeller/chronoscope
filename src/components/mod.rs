@@ -29,6 +29,8 @@ pub use browser_header::{
     BREADCRUMB_ATTR, BrowserHeader, HEADER_HEIGHT, LIVE_ATTR, PARSE_WARNINGS_ATTR, SESSION_ID_ATTR,
     parse_warning_note,
 };
+#[cfg(test)]
+pub(crate) use details_overlay::section_details;
 pub use details_overlay::{
     DESIRED_SIZE_ATTR, DetailsContent, DetailsGroup, DetailsOverlay, DetailsRequest, DetailsRow,
     MAX_WIDTH_ATTR, compose, max_width_value, section_source,

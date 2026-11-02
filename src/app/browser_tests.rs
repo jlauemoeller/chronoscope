@@ -1308,6 +1308,7 @@ mod launch;
 mod live;
 mod mouse;
 mod opencode;
+mod opencode_details;
 mod overlay_mouse;
 mod resume;
 mod save;

@@ -1,0 +1,46 @@
+OpenCode text section, details overlay at 120x40, default theme, rendered through the App in a scratch crate.
+Only the overlay is shown. Row data is given before each render.
+
+Row: {"finish":"stop","error":{},...}. No notice is shown for this row.
+The Message group shows "error  error"; the row should be left out.
+
+=== empty-error @ 120x40 [selected Some("Item(ItemId(\"x13:0\"))") found=true overlay_open=true]
+╭─ Details ──────────────────────────────╮
+│                                        │
+│  Turn                                  │
+│                                        │
+│    model         m                     │
+│    start         2026-10-28 09:06:41Z  │
+│    duration      0s                    │
+│    messages      1                     │
+│                                        │
+│  Message                               │
+│                                        │
+│    row id        x13                   │
+│    time.created  2026-10-28 09:06:41Z  │
+│    finish        stop                  │
+│    error         error                 │
+│                                        │
+╰────────────────────────────────────────╯
+
+Row: {"finish":"stop","error":{"type":5,"message":true},...}. No notice is shown for this row.
+Both parts are of an unexpected JSON type. The Message group shows "error  error"; the row should be left out.
+
+=== typed-error-stop @ 120x40 [selected Some("SectionId { turn: TurnId(\"x15\"), key: Item(ItemId(\"x15:0\")) }") found=true overlay_open=true]
+╭─ Details ──────────────────────────────╮
+│                                        │
+│  Turn                                  │
+│                                        │
+│    model         m                     │
+│    start         2026-10-28 09:08:21Z  │
+│    duration      0s                    │
+│    messages      1                     │
+│                                        │
+│  Message                               │
+│                                        │
+│    row id        x15                   │
+│    time.created  2026-10-28 09:08:21Z  │
+│    finish        stop                  │
+│    error         error                 │
+│                                        │
+╰────────────────────────────────────────╯

@@ -12,10 +12,22 @@ use chronoscope::components::turn_block::{SectionId, SectionKey};
 use chronoscope::harness::Harness;
 use chronoscope::harness::claude::{Assembler, ClaudeHarness};
 use chronoscope::model::{
-    AssistantTurn, ByteSource, Item, ItemId, SectionSource, SessionId, SourceGroup,
-    SourceGroupKind, SourceKey, SourceKind, SourceRef, SourceValue, ToolCallId, ToolStatus, Turn,
+    AssistantTurn, ByteSource, Item, ItemId, LineRefs, SectionRefs, SectionSource, SessionId,
+    SourceGroup, SourceGroupKind, SourceKey, SourceKind, SourceRef, SourceValue, ToolCallId,
+    ToolStatus, Turn,
 };
 use serde_json::{Value, json};
+
+/// A Claude section's lines.
+trait Lines {
+    fn lines(&self) -> &LineRefs;
+}
+
+impl Lines for SectionSource {
+    fn lines(&self) -> &LineRefs {
+        self.refs.lines().expect("lines of a transcript")
+    }
+}
 
 fn harness() -> ClaudeHarness {
     ClaudeHarness::with_data_dir(PathBuf::from("/nonexistent"), BTreeMap::new())
@@ -295,11 +307,18 @@ fn a_tool_calls_start_is_from_its_call_and_the_rest_from_its_result() {
         .sources
         .get(&SourceKey::Item(ItemId::from("c1")))
         .unwrap()
+        .lines()
+        .unwrap()
         .result
+        .clone()
         .unwrap();
     assert_ne!(
         result.range,
-        t.item("c1", SourceKind::ToolCall).refs.line.range
+        t.item("c1", SourceKind::ToolCall)
+            .lines()
+            .line
+            .range
+            .clone()
     );
 }
 
@@ -944,13 +963,13 @@ fn a_range_past_the_end_of_the_file_is_unavailable() {
     // Also for an in-memory transcript.
     let past = SectionSource {
         kind: SourceKind::Other,
-        refs: chronoscope::model::SectionRefs {
+        refs: SectionRefs::Lines(LineRefs {
             line: SourceRef {
                 bytes: ByteSource::Memory(Arc::from(&b"{}"[..])),
                 range: 10..20,
             },
             result: None,
-        },
+        }),
     };
     assert_eq!(unavailable(&read(&past)), [SourceGroupKind::Environment]);
 }
@@ -969,13 +988,13 @@ fn a_line_that_does_not_parse_is_unavailable() {
     // A line that is JSON but not an object is not a transcript line.
     let array = SectionSource {
         kind: SourceKind::Prompt,
-        refs: chronoscope::model::SectionRefs {
+        refs: SectionRefs::Lines(LineRefs {
             line: SourceRef {
                 bytes: ByteSource::Memory(Arc::from(&b"[1,2]"[..])),
                 range: 0..5,
             },
             result: None,
-        },
+        }),
     };
     assert_eq!(
         unavailable(&read(&array)),
@@ -987,7 +1006,7 @@ fn a_line_that_does_not_parse_is_unavailable() {
 fn a_result_line_that_fails_leaves_start_and_marks_the_tool_call_unavailable() {
     let t = full();
     let source = t.item("c1", SourceKind::ToolCall);
-    let result = source.refs.result.clone().expect("a result line");
+    let result = source.lines().result.clone().expect("a result line");
     // Break only the result line.
     let mut bytes = fs::read(&t.path).unwrap();
     let range =
@@ -1016,7 +1035,7 @@ fn a_call_line_that_fails_marks_the_tool_call_unavailable() {
     let t = full();
     let source = t.item("c1", SourceKind::ToolCall);
     let mut bytes = fs::read(&t.path).unwrap();
-    bytes[usize::try_from(source.refs.line.range.start).unwrap()] = b'(';
+    bytes[usize::try_from(source.lines().line.range.start).unwrap()] = b'(';
     fs::write(&t.path, bytes).unwrap();
     let groups = read(&source);
     let call = group(&groups, SourceGroupKind::ToolCall).unwrap();
@@ -1033,7 +1052,7 @@ fn a_call_without_a_result_yet_is_not_unavailable() {
     };
     assert_eq!(call.status, ToolStatus::Pending);
     let source = t.item("c1", SourceKind::ToolCall);
-    assert!(source.refs.result.is_none());
+    assert!(source.lines().result.is_none());
     let groups = read(&source);
     let call = group(&groups, SourceGroupKind::ToolCall).unwrap();
     assert_eq!(call.lead, ["start=2026-01-01T00:00:02+00:00"]);
@@ -1052,7 +1071,7 @@ fn a_result_that_arrives_later_is_referenced_by_the_same_call() {
     let before = asm.turns()[1]
         .sources()
         .get(&SourceKey::Item(ItemId::from("c1")));
-    assert!(before.unwrap().result.is_none());
+    assert!(before.unwrap().lines().unwrap().result.is_none());
     let line = result_line(json!({"isAsync": false})).to_string();
     text.extend_from_slice(line.as_bytes());
     text.push(b'\n');
@@ -1063,7 +1082,7 @@ fn a_result_that_arrives_later_is_referenced_by_the_same_call() {
         .sources()
         .get(&SourceKey::Item(ItemId::from("c1")))
         .unwrap();
-    assert!(after.result.is_some());
+    assert!(after.lines().unwrap().result.is_some());
 }
 
 #[test]
@@ -1085,8 +1104,11 @@ fn a_later_line_of_a_message_updates_the_turn_even_when_nothing_visible_changes(
             .sources()
             .get(&SourceKey::Item(ItemId::from("m1:0")))
             .unwrap()
+            .lines()
+            .unwrap()
             .line
             .range
+            .clone()
     };
     let before = text_range(&asm);
     let updates = asm.push_chunk(second.as_bytes());
@@ -1159,10 +1181,13 @@ fn a_subagent_transcript_reads_its_own_file() {
     };
     let (p, c) = (source(&parent_turns), source(&child_turns));
     assert_eq!(
-        p.refs.line.bytes,
+        p.lines().line.bytes.clone(),
         ByteSource::File(Arc::new(parent.clone()))
     );
-    assert_eq!(c.refs.line.bytes, ByteSource::File(Arc::new(child.clone())));
+    assert_eq!(
+        c.lines().line.bytes,
+        ByteSource::File(Arc::new(child.clone()))
+    );
     let branch = |source: &SectionSource| {
         group(&read(source), SourceGroupKind::Environment)
             .unwrap()
@@ -1198,8 +1223,11 @@ fn a_loaded_subagent_names_its_own_file() {
                 _ => None,
             })
             .expect("a section with a source")
+            .lines()
+            .unwrap()
             .line
-            .bytes;
+            .bytes
+            .clone();
         match bytes {
             ByteSource::File(path) => path.as_ref().clone(),
             other => panic!("{other:?}"),

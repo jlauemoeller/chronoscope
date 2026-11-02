@@ -21,7 +21,8 @@ use crate::config::Config;
 use crate::harness::shared::{SubagentInfo, UNTITLED, truncate_title};
 use crate::harness::{Harness, Result, WatchHandle, resume};
 use crate::model::{
-    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary, ToolCallId,
+    HarnessId, ModelUpdate, Project, ProjectId, SectionSource, SessionId, SessionStats,
+    SessionSummary, SourceGroup, ToolCallId,
 };
 
 /// The default resume command template: `{id}` stands for the session id.
@@ -304,6 +305,12 @@ impl Harness for OpenCodeHarness {
 
     fn resume_command(&self, session: &SessionSummary) -> Option<Command> {
         resume::build(&self.resume_command, session)
+    }
+
+    /// Reads the section's rows with
+    /// [`details::section_details`](super::details::section_details).
+    fn section_details(&self, source: &SectionSource) -> Vec<SourceGroup> {
+        super::details::section_details(&self.db_path, source)
     }
 }
 
