@@ -77,7 +77,8 @@ pub fn topmost_overlay(layout: &ScreenLayout) -> Option<(Id, Rect)> {
 /// if no component is there.
 ///
 /// Components are drawn in `layout`'s order, so the last one that contains
-/// the point is on top. Components under the topmost overlay are not
+/// the point is on top. [`Id::SidebarGap`] only paints, so it is never found.
+/// Components under the topmost overlay are not
 /// candidates, even where the overlay does not cover them.
 pub fn hit_test(layout: &ScreenLayout, column: u16, row: u16) -> Option<(Id, Rect)> {
     let areas = layout.areas();
@@ -88,7 +89,7 @@ pub fn hit_test(layout: &ScreenLayout, column: u16, row: u16) -> Option<(Id, Rec
     areas[first..]
         .iter()
         .rev()
-        .find(|(_, area)| area.contains((column, row).into()))
+        .find(|(id, area)| *id != Id::SidebarGap && area.contains((column, row).into()))
         .copied()
 }
 

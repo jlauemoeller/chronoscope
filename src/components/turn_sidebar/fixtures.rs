@@ -117,15 +117,16 @@ pub fn long_session(turns: usize) -> Vec<Turn> {
         .collect()
 }
 
-/// The widest durations the format gives.
+/// Durations from the widest (`9999h 59m`, 9 cells) down to `0s`, widest
+/// first so that they are on screen in a short pane.
 pub fn widest_durations() -> Vec<Turn> {
     let secs = [
-        0,
-        59,
-        59 * 60 + 59,
+        9_999 * 3600 + 59 * 60,
         100 * 3600 + 30 * 60,
         26 * 3600 + 30 * 60,
-        9_999 * 3600,
+        59 * 60 + 59,
+        59,
+        0,
     ];
     secs.iter()
         .enumerate()

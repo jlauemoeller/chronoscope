@@ -9,15 +9,7 @@ expression: buffer_to_styled(&buffer)
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant         0s  │
-│  │                         │
-│  ●   User                  │
-│  │                         │
-│  ●   Assistant        59s  │
-│  │                         │
-│  ●   User                  │
-│  │                         │
-│  ●   Assistant    59m 59s  │
+│  >   Assistant  9999h 59m  │
 │  │                         │
 │  ●   User                  │
 │  │                         │
@@ -25,11 +17,19 @@ expression: buffer_to_styled(&buffer)
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  >   Assistant    26h 30m  │
+│  ●   Assistant    26h 30m  │
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant   9999h 0m  │
+│  ●   Assistant    59m 59s  │
+│  │                         │
+│  ●   User                  │
+│  │                         │
+│  ●   Assistant        59s  │
+│  │                         │
+│  ●   User                  │
+│  │                         │
+│  ●   Assistant         0s  │
 │  │                         │
 │  ●   End                   │
 │                            │
@@ -43,7 +43,7 @@ expression: buffer_to_styled(&buffer)
 4: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 5: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 6: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
-7: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
+7: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 White/Reset/NONE | 4..27 Reset/Reset/REVERSED | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 8: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 9: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 10: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
@@ -59,7 +59,7 @@ expression: buffer_to_styled(&buffer)
 20: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 21: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 22: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
-23: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 White/Reset/NONE | 4..27 Reset/Reset/REVERSED | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
+23: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 24: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 25: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE
 26: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE

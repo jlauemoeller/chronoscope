@@ -67,11 +67,12 @@ fn long_thinking_turn() -> Arc<Turn> {
     Arc::new(turn)
 }
 
-/// The screen position of a `▶ Thinking:` summary row of the transcript at
-/// the right edge of the screen (five columns in from the transcript's last, the
-/// last one inside a block's content),
-/// which a centred overlay does not cover. The row is made to run that far
-/// first. Call it before the overlay opens: the overlay hides rows.
+/// The screen position of a `▶ Thinking:` summary row, for a press that no
+/// centred overlay covers: five columns in from the transcript's last, the
+/// last column inside a block's content. First it sends an `Updated` turn
+/// whose thinking is long enough for the folded row to run that far, because
+/// the turns sidebar hides the transcript's left edge behind the overlays.
+/// Call it before the overlay opens: the overlay hides rows.
 fn summary_point(rig: &mut Rig, width: u16, height: u16) -> (u16, u16) {
     rig.app.update(session_msg(
         &rig.app,

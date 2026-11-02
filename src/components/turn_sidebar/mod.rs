@@ -16,6 +16,8 @@
 //! lays out and renders nothing but its own rows, and draws only the rows it
 //! shows.
 //!
+//! The pane paints its own area only; the column after it is `SidebarGap`'s.
+//!
 //! The pane cannot take focus yet: it handles no keys and no mouse.
 
 mod line;
@@ -40,14 +42,13 @@ use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
-pub use self::line::Look;
+use self::line::Look;
 pub use self::rows::{Entry, EntryKind, Row, TurnRows, entry_for};
 use super::list_pane::{ListCursor, border_role, titled_block};
 use super::{
     MODEL_UPDATE_ATTR, SELECTED_ATTR, THEME_ATTR, VISIBLE_ROWS_ATTR, payload_from_value,
     payload_value, selected_from_value, selected_value, theme_from_value, theme_value,
 };
-use crate::app::layout::SIDEBAR_GAP;
 use crate::app::{Msg, UserEvent};
 use crate::model::{ModelUpdate, TurnId};
 use crate::theme::{Role, Theme};
@@ -70,7 +71,7 @@ const ROWS_ABOVE_LIST: u16 = 3;
 const PANE_CHROME_ROWS: u16 = 4;
 
 /// How many list rows a pane of `pane_height` rows shows.
-pub fn list_rows(pane_height: u16) -> usize {
+pub fn sidebar_list_rows(pane_height: u16) -> usize {
     usize::from(pane_height.saturating_sub(PANE_CHROME_ROWS))
 }
 
@@ -121,7 +122,7 @@ impl TurnSidebar {
     /// entry that does not exist selects nothing.
     #[must_use]
     pub fn with_selected(mut self, entry: Option<usize>) -> Self {
-        self.select_entry(entry);
+        self.select(entry);
         self
     }
 
@@ -146,7 +147,7 @@ impl TurnSidebar {
 
     /// The first list row drawn in a pane of `pane_height` rows.
     pub fn offset(&self, pane_height: u16) -> usize {
-        self.cursor.offset_for(list_rows(pane_height))
+        self.cursor.offset_for(sidebar_list_rows(pane_height))
     }
 
     fn set_rows(&mut self, rows: TurnRows) {
@@ -157,10 +158,6 @@ impl TurnSidebar {
     /// Selects the entry `entry` (`None`: nothing). An entry that does not
     /// exist selects nothing. The same as setting [`SELECTED_ATTR`].
     pub fn select(&mut self, entry: Option<usize>) {
-        self.select_entry(entry);
-    }
-
-    fn select_entry(&mut self, entry: Option<usize>) {
         self.selected = entry
             .and_then(|e| self.rows.entry(e))
             .map(|(id, _)| id.clone());
@@ -201,21 +198,19 @@ impl TurnSidebar {
         }
     }
 
-    /// Paints the background of the pane and of the gap after it, so that no
-    /// column between the pane and the transcript is left unpainted.
+    /// Paints the background of the pane (not of the gap after it: that is
+    /// [`Id::SidebarGap`](crate::app::Id::SidebarGap)'s).
     fn paint_background(&self, frame: &mut Frame, area: Rect) {
         if self.theme.transparent_background() {
             return;
         }
-        let wide = Rect::new(area.x, area.y, area.width + SIDEBAR_GAP, area.height)
-            .intersection(frame.area());
         let style = Style::new().bg(self.theme.role(Role::Background));
-        frame.render_widget(Block::new().style(style), wide);
+        frame.render_widget(Block::new().style(style), area);
     }
 
     /// Draws the rows the pane shows, from its fourth row.
     fn draw_rows(&self, frame: &mut Frame, area: Rect) {
-        let shown = list_rows(area.height);
+        let shown = sidebar_list_rows(area.height);
         let first = self.cursor.offset_for(shown);
         let last = self.rows.row_count().min(first + shown);
         let width = usize::from(area.width);
@@ -283,7 +278,7 @@ impl Component for TurnSidebar {
             }
         } else if attr == SELECTED_ATTR {
             if let Some(selected) = selected_from_value(&value) {
-                self.select_entry(selected);
+                self.select(selected);
             }
         } else if attr == VISIBLE_ROWS_ATTR {
             if let AttrValue::Length(rows) = value {

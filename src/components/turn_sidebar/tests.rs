@@ -560,7 +560,7 @@ fn a_duration_ends_at_the_right_margin_in_the_shared_format() {
     }
     assert_eq!(
         seen,
-        ["0s", "59s", "59m 59s", "100h 30m", "26h 30m", "9999h 0m"]
+        ["9999h 59m", "100h 30m", "26h 30m", "59m 59s", "59s", "0s"]
     );
 }
 
@@ -734,14 +734,39 @@ fn only_the_selected_row_changes_with_the_selection() {
 }
 
 #[test]
-fn the_background_is_painted_over_the_pane_and_the_gap_unless_transparent() {
+fn the_background_is_painted_over_the_pane_and_only_the_pane() {
     let mut sidebar = sidebar(&wireframe());
+    // A frame one column wider than the pane: the column after it is the
+    // gap's, which `SidebarGap` paints, not the pane.
     let buffer = crate::test_support::render(31, 20, |frame| {
         sidebar.view(frame, ratatui::layout::Rect::new(0, 0, 30, 20));
     });
     let background = theme().role(Role::Background);
-    assert_eq!(buffer[(15, 10)].bg, background);
-    assert_eq!(buffer[(30, 10)].bg, background, "the gap column");
+    for (x, y) in [(1, 1), (15, 10), (28, 18), (29, 10)] {
+        assert_eq!(buffer[(x, y)].bg, background, "({x}, {y})");
+    }
+    for y in [0, 10, 19] {
+        assert_eq!(buffer[(30, y)].bg, Color::Reset, "the gap column, row {y}");
+    }
+}
+
+#[test]
+fn a_transparent_theme_leaves_the_pane_unpainted() {
+    let transparent = theme().with_transparent_background(true);
+    let mut sidebar = TurnSidebar::new(transparent).with_rows(rows_of(&wireframe()));
+    let buffer = draw(&mut sidebar, 30, 20);
+    for (x, y) in [(1, 1), (15, 10), (28, 18), (5, 5), (10, 13)] {
+        assert_eq!(buffer[(x, y)].bg, Color::Reset, "({x}, {y})");
+    }
+    // The text is still drawn, and a band is still inverted.
+    assert_eq!(row_text(&buffer, 5), "│  ●   User                  │");
+    let mut selected = TurnSidebar::new(theme().with_transparent_background(true))
+        .with_rows(rows_of(&wireframe()))
+        .with_selected(Some(0))
+        .focused(true);
+    let buffer = draw(&mut selected, 30, 20);
+    assert_eq!(modifier(&buffer, 10, 5), Modifier::REVERSED);
+    assert_eq!(buffer[(10, 5)].bg, Color::Reset);
 }
 
 // -- attributes
@@ -767,10 +792,8 @@ fn the_selection_is_an_entry_and_pushing_it_produces_no_message() {
 fn the_selection_stays_on_its_turn_when_turns_are_inserted_before_it() {
     let mut sidebar = sidebar(&[user("u1"), assistant("a1", 5), user("u2")]);
     sidebar.attr(SELECTED_ATTR, selected_value(Some(2)));
-    // `a0` is at the start; the selected turn is entry 3 now.
-    sidebar.attr(MODEL_UPDATE_ATTR, update(updated(vec![user("u1")])));
-    let mut rows = rows_of(&[user("x0"), user("u1"), assistant("a1", 5), user("u2")]);
-    rows.apply(&ModelUpdate::Loaded);
+    // `x0` is now first; the selected turn, `u2`, is entry 3.
+    let rows = rows_of(&[user("x0"), user("u1"), assistant("a1", 5), user("u2")]);
     sidebar.attr(TURN_ROWS_ATTR, payload_value(rows));
     assert_eq!(sidebar.selected_entry(), Some(3));
 }
@@ -874,9 +897,9 @@ fn start_and_end_scroll_with_the_list() {
     sidebar.attr(SELECTED_ATTR, selected_value(Some(last_entry)));
     let end = draw(&mut sidebar, 30, 20);
     assert!(!(0..20).any(|y| row_text(&end, y).contains("Start")));
-    // The least scrolling shows the last entry on the last row; End is a
-    // connector and a row further.
-    assert!(row_text(&end, 18).contains('>') || row_text(&end, 18).contains("Compaction"));
+    // The least scrolling shows the last entry (a Compaction, selected) on the
+    // last row; End is a blank row and a row further.
+    assert_eq!(row_text(&end, 18), "│  >══ Compaction ═════════  │");
 }
 
 #[test]
@@ -933,18 +956,15 @@ fn a_tiny_area_draws_without_panicking() {
 }
 
 #[test]
-fn thinking_alone_is_not_a_section() {
-    // A guard for the fixtures: redacted thinking is no section, text is.
-    let readable = with_stats(
-        crate::components::transcript::fixtures::with_id(
-            blocks::assistant(
-                None,
-                vec![blocks::thinking("th", Thinking::Text("hm".into()))],
-                None,
-            ),
-            "a1",
+fn readable_thinking_is_a_section_and_redacted_thinking_is_not() {
+    let readable = crate::components::transcript::fixtures::with_id(
+        blocks::assistant(
+            None,
+            vec![blocks::thinking("th", Thinking::Text("hm".into()))],
+            None,
         ),
-        1,
+        "a1",
     );
     assert!(entry_for(&readable).is_some());
+    assert_eq!(entry_for(&redacted_only("a1")), None);
 }

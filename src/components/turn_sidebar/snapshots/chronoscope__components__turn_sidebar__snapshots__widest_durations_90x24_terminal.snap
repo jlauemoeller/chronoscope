@@ -9,15 +9,15 @@ expression: buffer_to_styled(&buffer)
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant         0s  │
+│  ●   Assistant  9999h 59m  │
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant        59s  │
+│  ●   Assistant   100h 30m  │
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant    59m 59s  │
+│  ●   Assistant    26h 30m  │
 ╰────────────────────────────╯
 --- styles (fg/bg/modifiers) ---
 0: 0..2 DarkGray/Reset/NONE | 2..14 Reset/Reset/NONE | 14..30 DarkGray/Reset/NONE

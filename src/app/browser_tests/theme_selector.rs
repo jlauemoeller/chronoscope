@@ -31,6 +31,7 @@ fn every_id_is_themed_but_the_global_events() {
             | Id::HelpLine
             | Id::BrowserHeader
             | Id::TurnSidebar
+            | Id::SidebarGap
             | Id::Transcript
             | Id::Subagent(_)
             | Id::BrowserHelpLine

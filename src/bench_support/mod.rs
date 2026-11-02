@@ -297,7 +297,7 @@ impl SidebarScenario {
         let next = entries / 2;
         sidebar.attr(
             crate::components::VISIBLE_ROWS_ATTR,
-            tuirealm::props::AttrValue::Length(crate::components::list_rows(size.height)),
+            tuirealm::props::AttrValue::Length(crate::components::sidebar_list_rows(size.height)),
         );
         sidebar.select(Some(next));
         let terminal =
@@ -316,13 +316,6 @@ impl SidebarScenario {
         let entries = self.sidebar.rows().entry_count().max(1);
         self.next = (self.next + 1) % entries;
         self.sidebar.select(Some(self.next));
-        self.draw();
-        start.elapsed()
-    }
-
-    /// Draws the sidebar once; returns how long it took.
-    pub fn draw_once(&mut self) -> Duration {
-        let start = Instant::now();
         self.draw();
         start.elapsed()
     }

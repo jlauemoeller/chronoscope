@@ -24,11 +24,11 @@ fn snapshot_state(state: &str, make: impl Fn(Theme) -> TurnSidebar, scroll_to_en
         for (name, theme) in themes() {
             let mut sidebar = make(theme);
             let area = pane_area(width, height);
-            sidebar.cursor.set_visible(list_rows(area.height));
+            sidebar.cursor.set_visible(sidebar_list_rows(area.height));
             if scroll_to_end {
                 let rows = sidebar.rows().row_count();
                 for _ in 0..rows {
-                    sidebar.cursor.scroll(true, list_rows(area.height));
+                    sidebar.cursor.scroll(true, sidebar_list_rows(area.height));
                 }
             }
             let buffer = draw(&mut sidebar, area.width, area.height);
@@ -153,7 +153,7 @@ fn the_widest_duration_selected_in_the_focused_pane() {
         |t| {
             TurnSidebar::new(t)
                 .with_rows(rows_of(&widest_durations()))
-                .with_selected(Some(9))
+                .with_selected(Some(1))
                 .focused(true)
         },
         false,

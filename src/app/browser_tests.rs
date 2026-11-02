@@ -1136,7 +1136,8 @@ fn a_transparent_theme_leaves_the_browser_unpainted() {
     let mut rig = rig_with(theme, 120, 40);
     rig.open_loaded();
     let buffer = screen_buffer(&mut rig, 120, 40);
-    for (x, y) in [(60, 1), (60, 6), (60, 38), (119, 39)] {
+    // Samples include a cell of the turns sidebar and one of the gap after it.
+    for (x, y) in [(60, 1), (60, 6), (60, 38), (119, 39), (10, 10), (30, 10)] {
         assert_eq!(buffer[(x, y)].bg, ratatui::style::Color::Reset, "{x},{y}");
     }
 }

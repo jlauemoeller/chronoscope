@@ -11,7 +11,7 @@ use super::*;
 use crate::components::transcript::fixtures::{arc, reply};
 use crate::components::{
     EntryKind, PRESENTATION_ATTR, SELECTED_ATTR, THEME_ATTR, TURN_ROWS_ATTR, TurnRows,
-    VISIBLE_ROWS_ATTR, list_rows, selected_from_value, theme_from_value,
+    VISIBLE_ROWS_ATTR, selected_from_value, sidebar_list_rows, theme_from_value,
 };
 
 fn transcript_viewport(app: &App) -> Size {
@@ -43,7 +43,8 @@ fn entry_kinds(app: &App) -> Vec<EntryKind> {
         .collect()
 }
 
-/// The first 30 columns of the screen, row by row from `from` to `to`.
+/// The first 30 columns (the pane) of each screen row from row 5 to the row
+/// above the help line's blank row.
 fn pane_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
     screen_text(rig, width, height)
         .lines()
@@ -146,9 +147,9 @@ fn the_sidebar_is_told_how_many_list_rows_its_pane_shows() {
     };
     // A 33-row pane: the border, two blank rows, the list, the border.
     assert_eq!(rows(&rig), 29);
-    assert_eq!(rows(&rig), list_rows(33));
+    assert_eq!(rows(&rig), sidebar_list_rows(33));
     resize(&mut rig, 100, 24);
-    assert_eq!(rows(&rig), list_rows(17));
+    assert_eq!(rows(&rig), sidebar_list_rows(17));
 }
 
 #[test]
@@ -335,9 +336,22 @@ fn reset_clears_the_rows() {
 }
 
 #[test]
-fn the_rows_of_the_transcript_and_the_sidebar_agree_after_a_live_session() {
+fn the_rows_of_the_transcript_and_the_sidebar_agree_after_live_updates() {
     let mut rig = rig();
     rig.open_loaded();
+    // A new turn, a known id appended again, and an update gaining a
+    // duration, as a live session sends them.
+    let mut done = reply("t9", "A late reply.");
+    if let Turn::Assistant(assistant) = &mut done {
+        assistant.stats = Some(crate::components::turn_block::fixtures::stats());
+    }
+    for update in [
+        ModelUpdate::Appended(vec![arc(reply("t9", "A late reply."))]),
+        ModelUpdate::Appended(vec![turns()[1].clone(), arc(reply("t10", "Another."))]),
+        ModelUpdate::Updated(vec![arc(done)]),
+    ] {
+        rig.app.update(session_msg(&rig.app, update));
+    }
     let from_transcript: TurnRows = payload_from_value(
         &rig.app
             .application()
@@ -347,6 +361,7 @@ fn the_rows_of_the_transcript_and_the_sidebar_agree_after_a_live_session() {
             .into_attr(),
     )
     .unwrap();
+    assert_eq!(from_transcript.turn_count(), turns().len() + 2);
     assert_eq!(sidebar_rows(&rig.app), from_transcript);
 }
 

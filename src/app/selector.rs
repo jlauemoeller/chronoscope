@@ -1146,7 +1146,7 @@ impl App {
         self.set_attr(
             Id::TurnSidebar,
             VISIBLE_ROWS_ATTR,
-            AttrValue::Length(crate::components::list_rows(sidebar.height)),
+            AttrValue::Length(crate::components::sidebar_list_rows(sidebar.height)),
         );
     }
 }

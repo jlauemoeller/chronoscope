@@ -113,6 +113,9 @@ pub enum Id {
     /// The turns and compaction events of the transcript on top, in a pane
     /// to the left of it.
     TurnSidebar,
+    /// The column between the turns sidebar and the transcript: paints its
+    /// background, takes no mouse.
+    SidebarGap,
     /// The open session's turns.
     Transcript,
     /// The turns of the subagent opened at this depth (1 for the first, 2 for

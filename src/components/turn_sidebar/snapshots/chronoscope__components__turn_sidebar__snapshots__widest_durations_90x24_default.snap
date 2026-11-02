@@ -9,15 +9,15 @@ expression: buffer_to_styled(&buffer)
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant         0s  │
+│  ●   Assistant  9999h 59m  │
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant        59s  │
+│  ●   Assistant   100h 30m  │
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant    59m 59s  │
+│  ●   Assistant    26h 30m  │
 ╰────────────────────────────╯
 --- styles (fg/bg/modifiers) ---
 0: 0..2 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 2..14 Rgb(250, 250, 250)/Rgb(10, 10, 10)/NONE | 14..30 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE

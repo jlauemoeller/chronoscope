@@ -23,10 +23,10 @@ use super::session_port::{SessionUpdate, forward_to};
 use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
-    BREADCRUMB_ATTR, BrowserHeader, EMPTY_SESSION, EmptyState, HINTS_ATTR, HelpLine, LIVE_ATTR,
-    MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR, PARSE_WARNINGS_ATTR,
-    SESSION_ID_ATTR, STATUS_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, TURN_ROWS_ATTR,
-    Transcript, TurnSidebar, hints_value, payload_value, status_value,
+    BREADCRUMB_ATTR, BackgroundFill, BrowserHeader, EMPTY_SESSION, EmptyState, HINTS_ATTR,
+    HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR,
+    PARSE_WARNINGS_ATTR, SESSION_ID_ATTR, STATUS_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR,
+    TURN_ROWS_ATTR, Transcript, TurnSidebar, hints_value, payload_value, status_value,
 };
 use crate::harness::WatchHandle;
 use crate::keymap::{Action, Context};
@@ -34,9 +34,10 @@ use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary, ToolCallId
 use crate::theme::Role;
 
 /// The browser's components, in drawing order.
-const BROWSER_IDS: [Id; 5] = [
+const BROWSER_IDS: [Id; 6] = [
     Id::BrowserHeader,
     Id::TurnSidebar,
+    Id::SidebarGap,
     Id::Transcript,
     Id::BrowserHelpLine,
     Id::EmptySession,
@@ -446,10 +447,13 @@ impl App {
         .inset(HELP_LINE_INSET);
         let empty = EmptyState::new(EMPTY_SESSION, self.theme.clone());
         let sidebar = TurnSidebar::new(self.theme.clone());
+        let gap = BackgroundFill::new(self.theme.clone());
         self.application
             .mount(Id::BrowserHeader, Box::new(header), Vec::new())?;
         self.application
             .mount(Id::TurnSidebar, Box::new(sidebar), Vec::new())?;
+        self.application
+            .mount(Id::SidebarGap, Box::new(gap), Vec::new())?;
         self.application
             .mount(Id::Transcript, Box::new(transcript), Vec::new())?;
         self.application

@@ -9,15 +9,7 @@ expression: buffer_to_styled(&buffer)
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant         0s  │
-│  │                         │
-│  ●   User                  │
-│  │                         │
-│  ●   Assistant        59s  │
-│  │                         │
-│  ●   User                  │
-│  │                         │
-│  ●   Assistant    59m 59s  │
+│  ●   Assistant  9999h 59m  │
 │  │                         │
 │  ●   User                  │
 │  │                         │
@@ -29,7 +21,15 @@ expression: buffer_to_styled(&buffer)
 │  │                         │
 │  ●   User                  │
 │  │                         │
-│  ●   Assistant   9999h 0m  │
+│  ●   Assistant    59m 59s  │
+│  │                         │
+│  ●   User                  │
+│  │                         │
+│  ●   Assistant        59s  │
+│  │                         │
+│  ●   User                  │
+│  │                         │
+│  ●   Assistant         0s  │
 │  │                         │
 │  ●   End                   │
 │                            │

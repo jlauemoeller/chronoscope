@@ -178,6 +178,7 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
         areas.push((Id::BrowserHeader, browser.header));
         if let Some(sidebar) = browser.sidebar.filter(|_| !input.session_empty) {
             areas.push((Id::TurnSidebar, sidebar));
+            areas.extend(browser.sidebar_gap.map(|gap| (Id::SidebarGap, gap)));
         }
         areas.extend([(body, body_area), (help, browser.help_line)]);
     }
@@ -222,6 +223,10 @@ pub struct BrowserAreas {
     /// as tall as the transcript. `None` on a screen narrower than
     /// [`SIDEBAR_MIN_SCREEN_WIDTH`].
     pub sidebar: Option<Rect>,
+    /// The [`SIDEBAR_GAP`] columns between the sidebar and the transcript, as
+    /// tall as both. They belong to no pane: [`Id::SidebarGap`] only paints
+    /// their background, and the mouse router finds nothing there.
+    pub sidebar_gap: Option<Rect>,
     /// The whole body: from the row under the header to the row above the
     /// help line's blank separator row, full width. The empty-session message
     /// takes it.
@@ -247,18 +252,25 @@ pub fn browser_areas(area: Rect) -> BrowserAreas {
     let help_height = BROWSER_HELP_HEIGHT.min(area.height - header_height);
     let body_height = area.height - header_height - help_height;
     let body = Rect::new(area.x, area.y + header_height, area.width, body_height);
-    let (sidebar, transcript) = if area.width >= SIDEBAR_MIN_SCREEN_WIDTH {
+    let (sidebar, sidebar_gap, transcript) = if area.width >= SIDEBAR_MIN_SCREEN_WIDTH {
         let taken = SIDEBAR_WIDTH + SIDEBAR_GAP;
         (
             Some(Rect::new(body.x, body.y, SIDEBAR_WIDTH, body.height)),
+            Some(Rect::new(
+                body.x + SIDEBAR_WIDTH,
+                body.y,
+                SIDEBAR_GAP,
+                body.height,
+            )),
             Rect::new(body.x + taken, body.y, body.width - taken, body.height),
         )
     } else {
-        (None, body)
+        (None, None, body)
     };
     BrowserAreas {
         header: Rect::new(area.x, area.y, area.width, header_height),
         sidebar,
+        sidebar_gap,
         body,
         transcript,
         help_line: Rect::new(area.x, area.bottom() - help_height, area.width, help_height),
@@ -569,6 +581,7 @@ mod tests {
             [
                 Id::BrowserHeader,
                 Id::TurnSidebar,
+                Id::SidebarGap,
                 Id::Transcript,
                 Id::BrowserHelpLine
             ]
@@ -662,6 +675,14 @@ mod tests {
     }
 
     #[test]
+    fn the_gap_is_its_own_area_between_the_sidebar_and_the_transcript() {
+        let l = browser(120, 40, false);
+        assert_eq!(l.area(Id::SidebarGap), Some(Rect::new(30, 5, 1, 33)));
+        assert_eq!(browser(89, 40, false).area(Id::SidebarGap), None);
+        assert_eq!(browser(120, 40, true).area(Id::SidebarGap), None);
+    }
+
+    #[test]
     fn the_sidebar_is_drawn_after_the_header_and_before_the_transcript() {
         let ids: Vec<Id> = browser(120, 40, false)
             .areas()
@@ -673,6 +694,7 @@ mod tests {
             [
                 Id::BrowserHeader,
                 Id::TurnSidebar,
+                Id::SidebarGap,
                 Id::Transcript,
                 Id::BrowserHelpLine
             ]
@@ -695,8 +717,10 @@ mod tests {
         assert_eq!(areas.transcript, Rect::new(31, 5, 89, 33));
         assert_eq!(areas.body, Rect::new(0, 5, 120, 33));
         assert_eq!(areas.sidebar, Some(Rect::new(0, 5, 30, 33)));
+        assert_eq!(areas.sidebar_gap, Some(Rect::new(30, 5, 1, 33)));
         let narrow = browser_areas(Rect::new(0, 0, 89, 40));
         assert_eq!(narrow.sidebar, None);
+        assert_eq!(narrow.sidebar_gap, None);
         assert_eq!(narrow.transcript, narrow.body);
     }
 
@@ -759,6 +783,7 @@ mod tests {
             [
                 Id::BrowserHeader,
                 Id::TurnSidebar,
+                Id::SidebarGap,
                 Id::Transcript,
                 Id::BrowserHelpLine,
                 Id::SelectorFrame,

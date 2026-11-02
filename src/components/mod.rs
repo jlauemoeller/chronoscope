@@ -2,6 +2,7 @@
 //! built from plain data and the theme, and rendered into a `TestBackend`
 //! frame without an `Application`.
 
+mod background_fill;
 mod browser_header;
 mod details_overlay;
 mod empty_state;
@@ -26,6 +27,7 @@ use tuirealm::props::{AttrValue, Attribute, PropPayload};
 
 use crate::theme::Theme;
 
+pub use background_fill::BackgroundFill;
 pub use browser_header::{
     BREADCRUMB_ATTR, BrowserHeader, HEADER_HEIGHT, LIVE_ATTR, PARSE_WARNINGS_ATTR, SESSION_ID_ATTR,
     parse_warning_note,
@@ -70,8 +72,8 @@ pub use turn_block::{
     TurnBlock, derive_sections, emphasize,
 };
 pub use turn_sidebar::{
-    DEFAULT_KEY_LABEL, Entry, EntryKind, KEY_LABEL_ATTR, Look, Row, TURN_ROWS_ATTR, TurnRows,
-    TurnSidebar, entry_for, list_rows,
+    DEFAULT_KEY_LABEL, Entry, EntryKind, KEY_LABEL_ATTR, Row, TURN_ROWS_ATTR, TurnRows,
+    TurnSidebar, entry_for, sidebar_list_rows,
 };
 pub use working_dir::{CWD_ATTR, WorkingDir};
 
