@@ -11,7 +11,7 @@
 | 007-details-overlay | Complete |
 | 008-claude-detail-sources | Complete |
 | 009-opencode-detail-sources | Complete |
-| 010-turn-sidebar-pane | Planned |
+| 010-turn-sidebar-pane | In progress |
 | 011-sidebar-follows-transcript | Planned |
 | 012-turn-sidebar-keys | Planned |
 | 013-turn-sidebar-mouse | Planned |
