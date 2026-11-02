@@ -216,6 +216,69 @@ pub fn build_harnesses_with_home(config: &Config, home: &Path) -> Vec<Arc<dyn Ha
 }
 
 #[cfg(test)]
+mod default_details_tests {
+    use std::process::Command;
+
+    use super::*;
+    use crate::model::{ByteSource, SectionRefs, SourceKind, SourceRef};
+
+    /// A harness that implements only what the trait requires, as the Codex
+    /// and Pi adapters would.
+    struct Stub;
+
+    impl Harness for Stub {
+        fn id(&self) -> HarnessId {
+            HarnessId::Codex
+        }
+        fn available(&self) -> bool {
+            true
+        }
+        fn refresh(&self) -> Result<()> {
+            Ok(())
+        }
+        fn watch_paths(&self) -> Vec<PathBuf> {
+            Vec::new()
+        }
+        fn projects(&self) -> Result<Vec<Project>> {
+            Ok(Vec::new())
+        }
+        fn sessions(&self, _: &ProjectId) -> Result<Vec<SessionSummary>> {
+            Ok(Vec::new())
+        }
+        fn stats(&self, _: &SessionSummary) -> Result<SessionStats> {
+            anyhow::bail!("not used")
+        }
+        fn stats_key(&self, _: &SessionSummary) -> String {
+            String::new()
+        }
+        fn load(&self, _: &SessionId, _: Sender<ModelUpdate>) -> Result<WatchHandle> {
+            anyhow::bail!("not used")
+        }
+        fn subagent(&self, _: &SessionId, _: &ToolCallId) -> Option<SessionId> {
+            None
+        }
+        fn resume_command(&self, _: &SessionSummary) -> Option<Command> {
+            None
+        }
+    }
+
+    #[test]
+    fn a_harness_provides_no_section_details_by_default() {
+        let source = SectionSource {
+            kind: SourceKind::Message,
+            refs: SectionRefs {
+                line: SourceRef {
+                    bytes: ByteSource::Memory(Arc::from(&b"{}"[..])),
+                    range: 0..2,
+                },
+                result: None,
+            },
+        };
+        assert!(Stub.section_details(&source).is_empty());
+    }
+}
+
+#[cfg(test)]
 mod registered_tests {
     use super::*;
 

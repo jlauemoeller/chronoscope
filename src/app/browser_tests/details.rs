@@ -34,7 +34,7 @@ fn at(kind: MouseEventKind, column: u16, row: u16) -> Msg {
     })
 }
 
-fn open(app: &App) -> bool {
+pub(super) fn open(app: &App) -> bool {
     app.application().mounted(&Id::DetailsOverlay)
 }
 
@@ -66,7 +66,7 @@ fn presentation(app: &App) -> Presentation {
 }
 
 /// The rows of the overlay as the app draws them at `width` x `height`.
-fn overlay_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
+pub(super) fn overlay_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
     let area = rig.app.routing().area(Id::DetailsOverlay).unwrap();
     screen_text(rig, width, height)
         .lines()
@@ -83,25 +83,25 @@ fn overlay_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
 
 impl Rig {
     /// Presses the details key and waits until the overlay is up.
-    fn open_details(&mut self) {
+    pub(super) fn open_details(&mut self) {
         self.press(Key::Char('i'));
         self.pump_until(open);
     }
 
-    fn close_details_by(&mut self, code: Key) {
+    pub(super) fn close_details_by(&mut self, code: Key) {
         self.press(code);
         self.pump_until(|app| !open(app));
     }
 
     /// Moves the selection down `n` sections.
-    fn down(&self, n: usize) {
+    pub(super) fn down(&self, n: usize) {
         for _ in 0..n {
             self.press(Key::Char('j'));
         }
     }
 
     /// Opens the BRIO session with `turns`, fully loaded.
-    fn open_with(&mut self, turns: Vec<Arc<Turn>>) {
+    pub(super) fn open_with(&mut self, turns: Vec<Arc<Turn>>) {
         self.harness.script(
             BRIO_SESSION,
             vec![

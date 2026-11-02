@@ -101,6 +101,39 @@ is taken over the whole load into a `Transcript`, above what the process held
 before the load. It includes the worker's `Assembler` and the transcript, which
 share the turns through `Arc`.
 
+## Details sources (task 008)
+
+The details overlay reads what Claude records about a section (permission
+decision, `stop_reason`, cache writes, `gitBranch`, ...) from the transcript
+line when it opens. Turns keep only a reference to the line for that: one
+`ByteSource` per turn and, per section, a byte range (two for a tool call, one
+for its call and one for its result), in a side table on the turn. The assembler
+reads none of these fields, so a line with detail fields of any type or size
+assembles as before (`tests/claude_details.rs`).
+
+What it costs, measured on this machine against `main` with the same two
+fixtures (the numbers above are from an older revision of the generator, so
+compare with these):
+
+| budget (100 MiB)  | main, mixed | now, mixed | main, dense | now, dense |
+|-------------------|-------------|------------|-------------|------------|
+| first content     | 2.1 ms      | 2.6 ms     | 1.8 ms      | 1.5 ms     |
+| full parse        | 140 ms      | 141 ms     | 403 ms      | 297 ms     |
+| slowest frame     | 4.8 ms      | 3.2 ms     | 1.7 ms      | 0.95 ms    |
+| peak heap         | 22.2 MiB    | 22.4 MiB   | 58.0 MiB    | 62.7 MiB   |
+| heap after load   | 9.2 MiB     | 9.4 MiB    | 55.6 MiB    | 60.0 MiB   |
+
+The references add about 4 MiB (8%) to the dense session, which has 6 856 turns
+and 18 892 tool calls (0.63x the file at peak, against the 3x budget), and
+nothing visible to the mixed one. Parse time and frames are within the noise
+of the run.
+
+Opening the overlay re-reads the section's line, and a tool call's result line.
+The budget test prints a reference line for the worst case, the tool call with
+the largest result (a 2 MB line): reading its details took 1.2 ms. The
+dense session's largest result (3 KB) took 0.1 ms. It runs on the UI thread,
+like unfolding a large output, and is far under a frame.
+
 ## Running them
 
 Benchmarks (criterion; each prints its time and keeps a report under

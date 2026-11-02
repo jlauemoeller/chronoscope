@@ -50,7 +50,12 @@ pub fn section_details(source: &SectionSource) -> Vec<SourceGroup> {
 /// Reads and parses a line; `None` when it cannot be done.
 fn read_line(source: &SourceRef) -> Option<Line> {
     let bytes = source.read().ok()?;
-    serde_json::from_slice(&bytes).ok()
+    let mut json = serde_json::Deserializer::from_slice(&bytes);
+    // Only an object is a transcript line (a derived struct would also be
+    // read from an array).
+    let line = pick_object::<_, Line>(&mut json).ok()??;
+    json.end().ok()?;
+    Some(line)
 }
 
 /// A group made of `rows`; `unavailable` when the line was not read.
@@ -598,5 +603,73 @@ impl<'de> Deserialize<'de> for Member {
         }
 
         d.deserialize_any(V)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(json: &str) -> Option<Line> {
+        let mut de = serde_json::Deserializer::from_str(json);
+        let line = pick_object::<_, Line>(&mut de).ok()??;
+        de.end().ok()?;
+        Some(line)
+    }
+
+    #[test]
+    fn tool_use_result_is_a_typed_head_and_not_a_value() {
+        // The field's type is the head: a result of any size is never
+        // materialised as a `serde_json::Value` (or buffered by `untagged`).
+        let line = parse(r#"{"toolUseResult":{"isAsync":true,"stdout":"x"}}"#).unwrap();
+        let _: &Option<ResultHead> = &line.tool_use_result;
+        assert_eq!(line.tool_use_result.unwrap().is_async, Some(true));
+    }
+
+    #[test]
+    fn tool_use_result_of_another_type_than_an_object_counts_as_missing() {
+        for raw in [r#""Error: boom""#, "[true]", "true", "7", "null", "{}"] {
+            let line = parse(&format!(r#"{{"toolUseResult":{raw}}}"#)).unwrap();
+            let is_async = line.tool_use_result.and_then(|r| r.is_async);
+            assert_eq!(is_async, None, "{raw}");
+        }
+    }
+
+    #[test]
+    fn a_big_tool_use_result_and_message_content_do_not_get_in_the_way() {
+        let big = "z".repeat(1 << 20);
+        let line = parse(&format!(
+            r#"{{"message":{{"id":"m","content":[{{"type":"text","text":"{big}"}}]}},
+                "toolUseResult":{{"stdout":"{big}","isAsync":false}},"cwd":"/p"}}"#
+        ))
+        .unwrap();
+        assert_eq!(line.cwd.as_deref(), Some("/p"));
+        assert_eq!(line.message.unwrap().id.as_deref(), Some("m"));
+        assert_eq!(line.tool_use_result.unwrap().is_async, Some(false));
+    }
+
+    #[test]
+    fn only_a_json_object_is_a_line() {
+        for raw in ["[1,2]", "1", r#""x""#, "null", "{} {}", "{"] {
+            assert!(parse(raw).is_none(), "{raw}");
+        }
+        assert!(parse("{}").is_some());
+    }
+
+    #[test]
+    fn a_permission_decision_is_text_or_its_scalar_members() {
+        let text = |raw: &str| {
+            parse(&format!(r#"{{"permissionDecision":{raw}}}"#))
+                .unwrap()
+                .permission_decision
+        };
+        assert_eq!(text(r#""allow""#).as_deref(), Some("allow"));
+        assert_eq!(
+            text(r#"{"decision":"accept","n":2,"on":true,"nested":{"a":1},"list":[1]}"#).as_deref(),
+            Some("decision=accept, n=2, on=true")
+        );
+        for raw in ["{}", "5", "true", "null", "[1]", r#"{"a":{"b":1}}"#] {
+            assert_eq!(text(raw), None, "{raw}");
+        }
     }
 }

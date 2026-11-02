@@ -21,7 +21,8 @@ use chronoscope::bench_support::{
 };
 use chronoscope::components::Transcript;
 use chronoscope::components::turn_block::{SectionId, SectionKey};
-use chronoscope::model::{Item, Turn};
+use chronoscope::harness::Harness;
+use chronoscope::model::{Item, SectionSource, SourceKey, SourceKind, Turn};
 use ratatui::layout::Size;
 use tuirealm::command::Cmd;
 use tuirealm::component::Component;
@@ -80,6 +81,48 @@ fn worst_unfold(transcript: &mut Transcript) -> Option<(usize, Duration)> {
         }
     }
     worst
+}
+
+/// The time to read the details of the tool call with the largest result, as
+/// the details overlay does when it opens: the harness re-reads the call's
+/// line and the result's line (up to 2 MB) and picks a few fields out of
+/// them. Reported, not asserted. Returns the result's size and the time.
+fn details_of_largest_result(
+    transcript: &Transcript,
+    harness: &dyn Harness,
+) -> Option<(usize, Duration)> {
+    let mut largest: Option<(usize, SectionSource)> = None;
+    for index in 0..transcript.turn_count() {
+        let turn = transcript.turn(index)?;
+        let Turn::Assistant(assistant) = turn.as_ref() else {
+            continue;
+        };
+        for item in &assistant.items {
+            let Item::ToolCall(call) = item else { continue };
+            let Some(result) = &call.result else { continue };
+            let size = result.output.byte_len();
+            if largest
+                .as_ref()
+                .is_some_and(|(biggest, _)| *biggest >= size)
+            {
+                continue;
+            }
+            if let Some(refs) = assistant.sources.get(&SourceKey::Item(call.id.clone())) {
+                let kind = SourceKind::ToolCall;
+                largest = Some((size, SectionSource { kind, refs }));
+            }
+        }
+    }
+    let (size, source) = largest?;
+    let start = Instant::now();
+    let groups = harness.section_details(&source);
+    let took = start.elapsed();
+    assert!(!groups.is_empty());
+    assert!(
+        groups.iter().all(|g| !g.unavailable),
+        "the largest result's lines could be read"
+    );
+    Some((size, took))
 }
 
 /// The time `Enter` takes on the `... N more lines` row of the scenario's
@@ -200,6 +243,12 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
     if let Some((bytes, took)) = worst_unfold(&mut scenario.transcript) {
         println!(
             "reference: unfolding the slowest large output ({bytes} bytes) took {:.1} ms",
+            ms(took)
+        );
+    }
+    if let Some((bytes, took)) = details_of_largest_result(&scenario.transcript, &harness) {
+        println!(
+            "reference: reading the details of the largest tool result ({bytes} bytes) took {:.1} ms",
             ms(took)
         );
     }
