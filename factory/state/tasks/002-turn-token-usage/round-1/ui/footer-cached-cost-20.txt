@@ -1,0 +1,13 @@
+Assistant block, footer with cached and cost, block width 20 (TestBackend, default theme).
+╭─ Assistant ──────╮
+│                  │
+│   All done.      │
+│                  │
+│   5m 2s · 112    │
+│   messages ·     │
+│   45.2k tokens   │
+│   · 359.4M       │
+│   cached ·       │
+│   $0.42          │
+│                  │
+╰──────────────────╯
