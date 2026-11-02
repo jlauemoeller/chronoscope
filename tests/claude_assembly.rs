@@ -1161,8 +1161,35 @@ fn usage_fields_of_an_unexpected_type_count_as_missing_and_keep_the_line_parsed(
 
 #[test]
 fn a_turn_without_any_usage_has_no_token_figures() {
-    let lines = [assistant_line("msg_a", 1, "null")];
-    let (tokens, unparsed, _) = footer_tokens(&lines);
+    // An explicit `null`, and a line with no `usage` key at all.
+    let absent = assistant_line("msg_b", 2, "null").replace(r#","usage":null"#, "");
+    assert!(!absent.contains("usage"), "{absent}");
+    let lines = [assistant_line("msg_a", 1, "null"), absent];
+    let (tokens, unparsed, text_items) = footer_tokens(&lines);
     assert_eq!(unparsed, 0);
+    assert_eq!(text_items, 2);
     assert_eq!(tokens, None);
+}
+
+#[test]
+fn an_out_of_range_number_in_usage_keeps_the_line_parsed() {
+    // `1e400` does not fit an `f64`; as a new field and as an unknown field
+    // nested in `usage` it counts as missing and fails nothing.
+    for usage in [
+        r#"{"output_tokens":7,"cache_read_input_tokens":1e400}"#,
+        r#"{"output_tokens":7,"server_tool_use":{"web_search_requests":1e400}}"#,
+        r#"{"output_tokens":7,"output_tokens_details":{"thinking_tokens":1e400}}"#,
+    ] {
+        let (tokens, unparsed, text_items) = footer_tokens(&[assistant_line("msg_a", 1, usage)]);
+        assert_eq!(unparsed, 0, "usage {usage}");
+        assert_eq!(text_items, 1, "usage {usage}");
+        assert_eq!(
+            tokens,
+            Some(TokenUsage {
+                output: 7,
+                ..TokenUsage::default()
+            }),
+            "usage {usage}"
+        );
+    }
 }

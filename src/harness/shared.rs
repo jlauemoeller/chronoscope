@@ -3,30 +3,35 @@
 
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::value::RawValue;
 
 /// `deserialize_with` helper (together with `#[serde(default)]`): a value of
-/// an unexpected JSON type counts as missing instead of failing the whole
-/// line or row.
-pub fn lenient<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+/// an unexpected JSON type, or one that does not fit `T` (a number out of
+/// range, say), counts as missing instead of failing the whole line or row.
+///
+/// The value is kept as raw JSON text rather than read into a
+/// `serde_json::Value`, which would itself reject an out-of-range number
+/// anywhere inside it. This needs a `serde_json` deserializer, which is what
+/// both adapters use.
+pub(crate) fn lenient<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: DeserializeOwned,
 {
-    let value = Value::deserialize(deserializer)?;
-    Ok(T::deserialize(value).ok())
+    let raw = Box::<RawValue>::deserialize(deserializer)?;
+    Ok(serde_json::from_str(raw.get()).ok())
 }
 
 /// Like [`lenient`] for a struct: only a JSON object is read (serde would
 /// also read a struct from an array).
-pub fn lenient_object<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+pub(crate) fn lenient_object<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: DeserializeOwned,
 {
-    let value = Value::deserialize(deserializer)?;
-    if value.is_object() {
-        Ok(T::deserialize(value).ok())
+    let raw = Box::<RawValue>::deserialize(deserializer)?;
+    if raw.get().starts_with('{') {
+        Ok(serde_json::from_str(raw.get()).ok())
     } else {
         Ok(None)
     }

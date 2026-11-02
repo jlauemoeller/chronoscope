@@ -217,6 +217,12 @@ fn footer_with_cached_and_cost_at_80() {
 }
 
 #[test]
+fn footer_with_cached_and_cost_at_80_styled() {
+    let turn = footer_turn(stats_with_cache(359_400_000, Some(0.42)));
+    insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &Opts::default(), 80)));
+}
+
+#[test]
 fn footer_with_cached_and_cost_at_120() {
     let turn = footer_turn(stats_with_cache(359_400_000, Some(0.42)));
     insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 120)));

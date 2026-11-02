@@ -832,6 +832,157 @@ mod replace_tests {
             .collect()
     }
 
+    #[test]
+    fn a_streamed_row_replaced_in_place_equals_a_fresh_assembly_of_the_final_rows() {
+        let rows = [
+            user("u1", 1, "go"),
+            assistant("a1", 2, "first", "completed", 5),
+            assistant("a2", 3, "second", "pending", 1),
+        ];
+        let mut asm = Assembler::new();
+        for row in &rows {
+            asm.push_row(row);
+        }
+        asm.finish();
+        let _ = asm.take_updates();
+
+        let grown = assistant("a2", 3, "second, longer", "completed", 40);
+        asm.replace_row(&grown);
+        let updates = asm.take_updates();
+        assert_eq!(updated_ids(&updates), ["a1"], "{updates:?}");
+        assert_eq!(updates.len(), 1);
+
+        let expected = assemble(&[rows[0].clone(), rows[1].clone(), grown]);
+        assert_eq!(asm.turns(), expected.as_slice());
+        let Turn::Assistant(turn) = &*asm.turns()[1] else {
+            panic!("an assistant turn")
+        };
+        // The replaced row counts once: two rows, 10 + 10 input and 5 + 40
+        // output tokens.
+        let stats = turn.stats.as_ref().unwrap();
+        assert_eq!(stats.message_count, 2);
+        assert_eq!(
+            stats.tokens,
+            Some(TokenUsage {
+                input: 20,
+                output: 45,
+                ..TokenUsage::default()
+            })
+        );
+        assert_eq!(stats.cost, Some(1.0));
+        // The items keep their ids: the pending tool call is now complete.
+        let ids: Vec<&str> = turn.items.iter().map(|i| i.id().as_str()).collect();
+        assert_eq!(ids, ["a1:0", "call-a1", "a2:0", "call-a2"]);
+    }
+
+    #[test]
+    fn rows_pushed_after_a_replacement_still_extend_the_current_turn() {
+        let mut asm = Assembler::new();
+        asm.push_row(&user("u1", 1, "go"));
+        asm.push_row(&assistant("a1", 2, "x", "pending", 1));
+        asm.finish();
+        let _ = asm.take_updates();
+        asm.replace_row(&assistant("a1", 2, "xy", "completed", 2));
+        asm.push_row(&assistant("a2", 3, "z", "completed", 3));
+        asm.push_row(&user("u2", 4, "again"));
+        asm.finish();
+        let expected = assemble(&[
+            user("u1", 1, "go"),
+            assistant("a1", 2, "xy", "completed", 2),
+            assistant("a2", 3, "z", "completed", 3),
+            user("u2", 4, "again"),
+        ]);
+        assert_eq!(asm.turns(), expected.as_slice());
+    }
+
+    #[test]
+    fn a_row_of_an_earlier_turn_can_be_replaced_after_a_later_turn_began() {
+        let rows = [
+            user("u1", 1, "go"),
+            assistant("a1", 2, "old", "pending", 1),
+            user("u2", 3, "next"),
+            assistant("a2", 4, "new", "completed", 2),
+        ];
+        let mut asm = Assembler::new();
+        for row in &rows {
+            asm.push_row(row);
+        }
+        asm.finish();
+        let _ = asm.take_updates();
+
+        let late = assistant("a1", 2, "old, finished", "completed", 9);
+        asm.replace_row(&late);
+        let updates = asm.take_updates();
+        assert_eq!(updated_ids(&updates), ["a1"], "{updates:?}");
+        let expected = assemble(&[
+            rows[0].clone(),
+            late.clone(),
+            rows[2].clone(),
+            rows[3].clone(),
+        ]);
+        assert_eq!(asm.turns(), expected.as_slice());
+
+        // And again, and the current turn is still extended afterwards.
+        let later = assistant("a1", 2, "old, finished twice", "completed", 9);
+        asm.replace_row(&later);
+        asm.push_row(&assistant("a3", 5, "more", "completed", 1));
+        asm.finish();
+        let expected = assemble(&[
+            rows[0].clone(),
+            later,
+            rows[2].clone(),
+            rows[3].clone(),
+            assistant("a3", 5, "more", "completed", 1),
+        ]);
+        assert_eq!(asm.turns(), expected.as_slice());
+    }
+
+    #[test]
+    fn a_user_row_replaced_changes_its_text_and_keeps_its_id() {
+        let mut asm = Assembler::new();
+        asm.push_row(&user("u1", 1, "draft"));
+        asm.finish();
+        let _ = asm.take_updates();
+        asm.replace_row(&user("u1", 1, "final"));
+        let updates = asm.take_updates();
+        assert_eq!(updated_ids(&updates), ["u1"]);
+        let Turn::User(turn) = &*asm.turns()[0] else {
+            panic!("a user turn")
+        };
+        assert_eq!(turn.text, "final");
+        assert_eq!(asm.turns().len(), 1);
+    }
+
+    #[test]
+    fn a_row_that_was_never_fed_is_not_replaced() {
+        let mut asm = Assembler::new();
+        asm.push_row(&user("u1", 1, "hi"));
+        asm.finish();
+        let _ = asm.take_updates();
+        asm.replace_row(&assistant("a9", 9, "ghost", "completed", 1));
+        assert!(asm.take_updates().is_empty());
+        assert_eq!(asm.turns().len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+
+    fn user(id: &str, seq: i64, text: &str) -> Row {
+        Row {
+            id: id.to_owned(),
+            kind: "user".to_owned(),
+            seq,
+            created: 1_000 * seq,
+            updated: 1_000 * seq,
+            data: format!(
+                r#"{{"time":{{"created":{}}},"text":"{text}"}}"#,
+                1_000 * seq
+            ),
+        }
+    }
+
     /// An assistant row with one text part and the raw `tokens` JSON.
     fn assistant_with_tokens(id: &str, seq: i64, tokens: &str) -> Row {
         Row {
@@ -966,140 +1117,36 @@ mod replace_tests {
 
     #[test]
     fn rows_without_tokens_leave_the_token_figures_unknown() {
-        let asm = assembler_with(&[assistant_with_tokens("a1", 2, "null")]);
+        // An explicit `null`, and a row with no `tokens` key at all.
+        let mut absent = assistant_with_tokens("a2", 3, "null");
+        absent.data = absent.data.replace(r#","tokens":null"#, "");
+        assert!(!absent.data.contains("tokens"), "{}", absent.data);
+        let asm = assembler_with(&[assistant_with_tokens("a1", 2, "null"), absent]);
         assert_eq!(asm.unparsed_count(), 0);
         assert_eq!(turn_tokens(&asm), None);
     }
 
     #[test]
-    fn a_streamed_row_replaced_in_place_equals_a_fresh_assembly_of_the_final_rows() {
-        let rows = [
-            user("u1", 1, "go"),
-            assistant("a1", 2, "first", "completed", 5),
-            assistant("a2", 3, "second", "pending", 1),
-        ];
-        let mut asm = Assembler::new();
-        for row in &rows {
-            asm.push_row(row);
-        }
-        asm.finish();
-        let _ = asm.take_updates();
-
-        let grown = assistant("a2", 3, "second, longer", "completed", 40);
-        asm.replace_row(&grown);
-        let updates = asm.take_updates();
-        assert_eq!(updated_ids(&updates), ["a1"], "{updates:?}");
-        assert_eq!(updates.len(), 1);
-
-        let expected = assemble(&[rows[0].clone(), rows[1].clone(), grown]);
-        assert_eq!(asm.turns(), expected.as_slice());
+    fn an_out_of_range_number_in_tokens_keeps_the_row_parsed() {
+        // `1e400` does not fit an `f64`; as a new field, as an unknown field
+        // and nested in `cache` it counts as missing and fails nothing.
+        let asm = assembler_with(&[
+            assistant_with_tokens("a1", 2, r#"{"output":7,"cache":{"read":1e400,"write":3}}"#),
+            assistant_with_tokens("a2", 3, r#"{"output":5,"unknown":1e400}"#),
+            assistant_with_tokens("a3", 4, r#"{"input":1e400,"reasoning":1e400}"#),
+        ]);
+        assert_eq!(asm.unparsed_count(), 0);
         let Turn::Assistant(turn) = &*asm.turns()[1] else {
             panic!("an assistant turn")
         };
-        // The replaced row counts once: two rows, 10 + 10 input and 5 + 40
-        // output tokens.
-        let stats = turn.stats.as_ref().unwrap();
-        assert_eq!(stats.message_count, 2);
+        assert_eq!(turn.items.len(), 3, "{:?}", turn.items);
         assert_eq!(
-            stats.tokens,
+            turn_tokens(&asm),
             Some(TokenUsage {
-                input: 20,
-                output: 45,
+                output: 12,
+                cache_write: 3,
                 ..TokenUsage::default()
             })
         );
-        assert_eq!(stats.cost, Some(1.0));
-        // The items keep their ids: the pending tool call is now complete.
-        let ids: Vec<&str> = turn.items.iter().map(|i| i.id().as_str()).collect();
-        assert_eq!(ids, ["a1:0", "call-a1", "a2:0", "call-a2"]);
-    }
-
-    #[test]
-    fn rows_pushed_after_a_replacement_still_extend_the_current_turn() {
-        let mut asm = Assembler::new();
-        asm.push_row(&user("u1", 1, "go"));
-        asm.push_row(&assistant("a1", 2, "x", "pending", 1));
-        asm.finish();
-        let _ = asm.take_updates();
-        asm.replace_row(&assistant("a1", 2, "xy", "completed", 2));
-        asm.push_row(&assistant("a2", 3, "z", "completed", 3));
-        asm.push_row(&user("u2", 4, "again"));
-        asm.finish();
-        let expected = assemble(&[
-            user("u1", 1, "go"),
-            assistant("a1", 2, "xy", "completed", 2),
-            assistant("a2", 3, "z", "completed", 3),
-            user("u2", 4, "again"),
-        ]);
-        assert_eq!(asm.turns(), expected.as_slice());
-    }
-
-    #[test]
-    fn a_row_of_an_earlier_turn_can_be_replaced_after_a_later_turn_began() {
-        let rows = [
-            user("u1", 1, "go"),
-            assistant("a1", 2, "old", "pending", 1),
-            user("u2", 3, "next"),
-            assistant("a2", 4, "new", "completed", 2),
-        ];
-        let mut asm = Assembler::new();
-        for row in &rows {
-            asm.push_row(row);
-        }
-        asm.finish();
-        let _ = asm.take_updates();
-
-        let late = assistant("a1", 2, "old, finished", "completed", 9);
-        asm.replace_row(&late);
-        let updates = asm.take_updates();
-        assert_eq!(updated_ids(&updates), ["a1"], "{updates:?}");
-        let expected = assemble(&[
-            rows[0].clone(),
-            late.clone(),
-            rows[2].clone(),
-            rows[3].clone(),
-        ]);
-        assert_eq!(asm.turns(), expected.as_slice());
-
-        // And again, and the current turn is still extended afterwards.
-        let later = assistant("a1", 2, "old, finished twice", "completed", 9);
-        asm.replace_row(&later);
-        asm.push_row(&assistant("a3", 5, "more", "completed", 1));
-        asm.finish();
-        let expected = assemble(&[
-            rows[0].clone(),
-            later,
-            rows[2].clone(),
-            rows[3].clone(),
-            assistant("a3", 5, "more", "completed", 1),
-        ]);
-        assert_eq!(asm.turns(), expected.as_slice());
-    }
-
-    #[test]
-    fn a_user_row_replaced_changes_its_text_and_keeps_its_id() {
-        let mut asm = Assembler::new();
-        asm.push_row(&user("u1", 1, "draft"));
-        asm.finish();
-        let _ = asm.take_updates();
-        asm.replace_row(&user("u1", 1, "final"));
-        let updates = asm.take_updates();
-        assert_eq!(updated_ids(&updates), ["u1"]);
-        let Turn::User(turn) = &*asm.turns()[0] else {
-            panic!("a user turn")
-        };
-        assert_eq!(turn.text, "final");
-        assert_eq!(asm.turns().len(), 1);
-    }
-
-    #[test]
-    fn a_row_that_was_never_fed_is_not_replaced() {
-        let mut asm = Assembler::new();
-        asm.push_row(&user("u1", 1, "hi"));
-        asm.finish();
-        let _ = asm.take_updates();
-        asm.replace_row(&assistant("a9", 9, "ghost", "completed", 1));
-        assert!(asm.take_updates().is_empty());
-        assert_eq!(asm.turns().len(), 1);
     }
 }

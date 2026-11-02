@@ -1280,6 +1280,49 @@ fn stats_footer_and_model_note_wrap_at_word_boundaries() {
 }
 
 #[test]
+fn a_wrapped_footer_row_never_starts_with_the_separator() {
+    let theme = theme();
+    let stats = stats_with_cache(359_400_000, Some(0.42));
+    let lines = StatsSection(&stats).lines(&ctx(&theme, 58, false));
+    assert_eq!(
+        lines_text(&lines),
+        [
+            "  5m 2s · 112 messages · 45.2k tokens · 359.4M cached ·",
+            "  $0.42"
+        ]
+    );
+    let lines = StatsSection(&stats).lines(&ctx(&theme, 14, false));
+    assert_eq!(
+        lines_text(&lines),
+        [
+            "  5m 2s · 112",
+            "  messages ·",
+            "  45.2k tokens ·",
+            "  359.4M",
+            "  cached · $0.42"
+        ]
+    );
+    // At any width that holds the longest part with its separator
+    // (`messages ·`), no row starts with the separator, and the rows read as
+    // the footer text once joined.
+    for width in 10..=70 {
+        let lines = StatsSection(&stats).lines(&ctx(&theme, width, false));
+        let rows = lines_text(&lines);
+        assert!(
+            rows.iter().all(|r| !r.trim_start().starts_with('·')),
+            "{rows:?}"
+        );
+        let joined = rows
+            .iter()
+            .map(|r| r.trim())
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("  ", " ");
+        assert_eq!(joined, format_stats(&stats), "width {width}");
+    }
+}
+
+#[test]
 fn token_counts_near_u64_max_do_not_overflow() {
     assert!(format_tokens(u64::MAX).ends_with('M'));
 }

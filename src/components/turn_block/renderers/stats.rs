@@ -53,7 +53,21 @@ pub struct StatsSection<'a>(pub &'a TurnStats);
 
 impl SectionRenderer for StatsSection<'_> {
     fn lines(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {
-        let text = format_stats(self.0);
-        with_lead(word_wrap(&text, ctx.width, ctx.muted()), "  ", ctx.muted())
+        // A row never starts with the separator: it stays at the end of the
+        // row, glued to the part before it by a no-break space that is put
+        // back to a plain space once the rows are made. `format_stats` is
+        // unchanged, because search matches against its text.
+        let text = format_stats(self.0).replace(" · ", "\u{a0}· ");
+        let lines = word_wrap(&text, ctx.width, ctx.muted())
+            .into_iter()
+            .map(|line| {
+                let spans = line.spans.into_iter().map(|mut span| {
+                    span.content = span.content.replace('\u{a0}', " ").into();
+                    span
+                });
+                Line::from(spans.collect::<Vec<_>>())
+            })
+            .collect();
+        with_lead(lines, "  ", ctx.muted())
     }
 }
