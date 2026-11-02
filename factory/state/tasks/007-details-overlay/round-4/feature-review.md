@@ -1,0 +1,33 @@
+VERDICT: PASS
+
+## Summary
+Round 4 does what the approver's note asks and nothing else: only `content.rs` and `browser_tests/details.rs` changed under `src`, values are measured and cut by grapheme with the buffer's own `cell_width`, and the size at opening now has a test. That closes the round-3 must-fix findings (the lost end of a value, and the untested opening height). All gates pass, and every acceptance criterion is implemented and covered by a test that fails when the behaviour is broken.
+
+## Acceptance criteria
+- [x] Keymap tests and the action table include `details`; help content lists it from the active keymap — `src/keymap/defaults.rs`, `EXPECTED` in `src/keymap/tests.rs`, `the_details_key_is_remappable_and_resolves_to_the_action`, `help_overlay::content::tests::the_sections_group_lists_the_details_key_from_the_active_keymap`.
+- [x] Component snapshots cover every kind at both sizes and themes, including content taller than the screen — `details_overlay::snapshots::every_kind_of_section_at_both_sizes_in_both_themes` (36 files), `content_taller_than_the_screen_at_80x24_scrolled_to_the_top_and_to_the_end` (4 files).
+- [x] `App::update` tests cover opening, closing with both keys, focus returning, a `More` row and no selection — `browser_tests::details::{the_details_key_opens_the_overlay_for_the_selected_section_and_gives_it_the_focus, esc_closes_the_overlay_and_returns_the_focus_to_the_transcript, the_details_key_closes_it_too_and_does_not_reopen_it, a_more_row_opens_the_details_of_its_tool_call, with_no_selection_the_key_does_nothing}`. The size at opening is now covered by `a_wider_screen_gives_the_overlay_the_width_its_rows_want`, which reads the rect (76 x 14) before anything draws. Removing the `more_parent` mapping in a scratch copy fails three tests.
+- [x] A remapped `details` key opens and closes the overlay, and the help overlay shows the remapped key — `a_remapped_details_key_opens_and_closes_the_overlay`, `a_details_key_bound_to_a_chord_opens_and_closes_the_overlay`, `a_details_chord_that_ends_in_an_overlay_key_opens_and_closes_the_overlay`, `chords_with_overlay_keys_open_and_close_the_overlay_with_the_same_keys`, `the_help_overlay_shows_the_remapped_details_key`.
+- [x] A test shows the overlay is a snapshot — `what_it_shows_does_not_change_when_the_turn_does`, with a control that a reopened overlay shows the new value.
+- [x] A test shows copy, save and export exclude the content and their keys do nothing while it is open — `copy_save_and_export_do_nothing_while_it_is_open`, `transcript::tests::details::the_content_is_not_part_of_copy_save_or_export`.
+- [x] Mouse tests cover the wheel, a left press outside, focus return, and nothing under the overlay getting events — `the_wheel_scrolls_the_overlay_and_a_press_outside_closes_it`, `nothing_under_the_overlay_gets_the_mouse`, `mouse_tests::nothing_under_an_overlay_is_a_target`. Removing the overlay from `OVERLAYS` in a scratch copy fails three tests.
+- [x] A test shows `q`, `t`, `?` and `Ctrl-o` do nothing while it is open and `Ctrl-c` quits — `the_global_keys_do_nothing_while_it_is_open`, `ctrl_c_quits_from_the_overlay`. Removing the overlay from `key_clause` in a scratch copy fails the first.
+- [x] Row tests cover group order, an empty group, a missing field, no `cost`, and Turn group presence — `details_overlay::rows::tests`, `content::tests::a_group_without_rows_is_left_out`, `transcript::tests::details::the_groups_follow_the_kind_of_the_section`.
+- [x] `HelpOverlay` and `DetailsOverlay` share one frame and scrolling implementation, and the help snapshots differ only by the new row — `src/components/overlay_frame.rs`. The help snapshots were compared against main in round 3, and no `.snap` file has changed since.
+- [x] The README's browser table has the `details` row, and `tests/release_docs.rs` passes — `README.md`, `readme_keybindings_match_the_default_keymap`.
+- [x] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` pass — rerun here with `INSTA_UPDATE=no`: 2776 passed, 0 failed, 2 ignored.
+- [x] `cargo test --release -- --ignored budgets --nocapture` stays within budget — rerun here: first content worst 2.6 ms, full parse worst 427.8 ms, frames worst 5.51 ms, memory peak 0.58x.
+- [x] Snapshot changes are limited to the new overlay snapshots and the help snapshots that gain the row — `git diff main...HEAD` adds 44 and modifies 5. The round-4 commit changes no `.snap` file, and there are no `.snap.new` files.
+
+Approver's round-4 requests, checked in the code:
+- `drawn_graphemes`, `columns`, `char_wrap` and the imports in `content.rs` match the note. `cell_width` and the control-character filter match what `ratatui-core` 0.1.2 does in `CellWidth` and `Span::styled_graphemes`.
+- `a_grapheme_is_measured_as_it_is_drawn`, `a_value_is_drawn_to_its_end_however_its_graphemes_are_measured` and the at-opening assertions are present as written, and `turn_with_model` is split out.
+- All three temporary edits, rerun in a scratch copy, fail the named tests: per-`char` measuring fails the two new tests, `g.width()` fails the app test, and `desired_size(u16::MAX)` fails `a_wider_screen_gives_the_overlay_the_width_its_rows_want`.
+- The all-spaces value, `src/markdown/wrap.rs`, `open_details` and the chord handling are unchanged, as the note says.
+
+Further probe in the scratch copy: 28 kinds of grapheme (keycaps, ZWJ, flags, skin tones, tag sequences, combining marks, zero-width and bidi characters, Hangul jamo, Thai, Devanagari, Arabic, kana, C1 controls, non-breaking and ideographic spaces), repeated 1 to 90 times with `END` after them, at 60x20, 80x24, 120x40 and 200x60. In all of them `END` is drawn, no indicator shows when there is room, and the rect at opening equals the rect after a resize to the same size.
+
+Focus return: replacing `close_overlay` with a bare `umount` in `close_details` in the scratch copy fails no test, but this is not a test gap. The edit does not change the focus: tuirealm's `View::umount` blurs the focused component and gives the focus to the last one on its own stack, and `Rig::focus` reads that real focus through `application().focus()`.
+
+## Findings
+1. [nit] `overlay_rows` (`src/app/browser_tests/details.rs:69`) cuts each row to `area.width` characters, not columns, so it drops the end of a row when graphemes have more characters than columns. A keycap (3 characters, 2 columns) with `END` after it fails there although `END` is drawn. The current tests are not affected, because the sign and the halfwidth pair have as many characters as columns. Change: cut the row at its right border instead of with `.take(area.width)`, or say in the helper's doc comment that it only holds for such values.
