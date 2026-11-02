@@ -22,7 +22,7 @@ use super::section::{Section, SectionContent};
 use crate::theme::{Role, Theme};
 
 pub use compaction::CompactionSection;
-pub use stats::{StatsSection, format_duration, format_stats, format_tokens};
+pub use stats::{StatsSection, format_stats, format_tokens};
 pub use system::SystemSection;
 pub use text::{AssistantTextSection, ModelChangeSection};
 pub use thinking::ThinkingSection;

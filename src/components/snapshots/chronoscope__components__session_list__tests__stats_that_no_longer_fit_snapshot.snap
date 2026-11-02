@@ -1,0 +1,25 @@
+---
+source: src/components/session_list.rs
+expression: "buffer_to_styled(&draw_sized(&mut l, 55))"
+---
+╭─ Sessions in BRIO ──────────────────────────────────╮
+│                                                     │
+│  > 2026-10-30 11:40Z    Fix the flaky login test    │
+│    2026-10-30 11:40Z    Fix the f…  12 turns · 59s  │
+│                                                     │
+│                                                     │
+│                                                     │
+│                                                     │
+│                                                     │
+╰─────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Rgb(207, 207, 207)/Reset/NONE | 2..20 Rgb(250, 250, 250)/Reset/NONE | 20..55 Rgb(207, 207, 207)/Reset/NONE
+1: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..54 Reset/Reset/NONE | 54..55 Rgb(207, 207, 207)/Reset/NONE
+2: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Rgb(229, 229, 229)/Reset/NONE | 4..52 Rgb(250, 250, 250)/Reset/REVERSED | 52..54 Reset/Reset/NONE | 54..55 Rgb(207, 207, 207)/Reset/NONE
+3: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..5 Reset/Reset/NONE | 5..36 Rgb(161, 161, 161)/Reset/NONE | 36..38 Reset/Reset/NONE | 38..52 Rgb(161, 161, 161)/Reset/NONE | 52..54 Reset/Reset/NONE | 54..55 Rgb(207, 207, 207)/Reset/NONE
+4: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..54 Reset/Reset/NONE | 54..55 Rgb(207, 207, 207)/Reset/NONE
+5: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..54 Reset/Reset/NONE | 54..55 Rgb(207, 207, 207)/Reset/NONE
+6: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..54 Reset/Reset/NONE | 54..55 Rgb(207, 207, 207)/Reset/NONE
+7: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..54 Reset/Reset/NONE | 54..55 Rgb(207, 207, 207)/Reset/NONE
+8: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..54 Reset/Reset/NONE | 54..55 Rgb(207, 207, 207)/Reset/NONE
+9: 0..55 Rgb(207, 207, 207)/Reset/NONE

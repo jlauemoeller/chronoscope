@@ -1,7 +1,6 @@
 //! The Sessions pane of the session selector (SPEC §4.1, §7.3, §8.2).
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use ratatui::Frame;
 use ratatui::layout::{Margin, Rect};
@@ -19,6 +18,7 @@ use super::list_pane::{
 };
 use super::{THEME_ATTR, payload_from_value, payload_value, truncate_with_ellipsis};
 use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
+use crate::duration::format_duration;
 use crate::keymap::Keymap;
 use crate::model::{HarnessId, SessionId, SessionStats};
 use crate::theme::Theme;
@@ -95,17 +95,6 @@ pub struct SessionStatsUpdate {
 /// The sessions that are active; every other row shows no marker.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ActiveSessions(pub Vec<SessionId>);
-
-/// How long a session ran, as shown in its row: `45s` under a minute, `12m`
-/// under an hour, and `1h 05m` from then on.
-pub fn format_duration(duration: Duration) -> String {
-    let secs = duration.as_secs();
-    match secs {
-        0..=59 => format!("{secs}s"),
-        60..=3599 => format!("{}m", secs / 60),
-        _ => format!("{}h {:02}m", secs / 3600, secs % 3600 / 60),
-    }
-}
 
 /// The stats of a row: `<n> turns · <duration>`, or `1 turn · <duration>`.
 pub fn format_stats(stats: &SessionStats) -> String {
@@ -440,6 +429,7 @@ mod tests {
     use crate::model::HarnessId;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
     use crate::theme::{Role, builtin};
+    use std::time::Duration;
     use tuirealm::event::{Key, KeyEvent, KeyModifiers};
     use tuirealm::state::StateValue;
 
@@ -509,26 +499,23 @@ mod tests {
     // -- formatting
 
     #[test]
-    fn durations_use_seconds_minutes_and_hours() {
-        let d = |secs| format_duration(Duration::from_secs(secs));
-        assert_eq!(d(0), "0s");
-        assert_eq!(d(45), "45s");
-        assert_eq!(d(59), "59s");
-        assert_eq!(d(60), "1m");
-        assert_eq!(d(12 * 60), "12m");
-        assert_eq!(d(12 * 60 + 59), "12m");
-        assert_eq!(d(59 * 60 + 59), "59m");
-        assert_eq!(d(3600), "1h 00m");
-        assert_eq!(d(3600 + 5 * 60), "1h 05m");
-        assert_eq!(d(26 * 3600 + 30 * 60 + 12), "26h 30m");
+    fn stats_read_turns_and_duration() {
+        assert_eq!(format_stats(&stats(12, 720)), "12 turns · 12m 0s");
+        assert_eq!(format_stats(&stats(1, 45)), "1 turn · 45s");
+        assert_eq!(format_stats(&stats(0, 0)), "0 turns · 0s");
+        assert_eq!(format_stats(&stats(12, 59 * 60 + 59)), "12 turns · 59m 59s");
+        assert_eq!(format_stats(&stats(23, 3900)), "23 turns · 1h 5m");
     }
 
     #[test]
-    fn stats_read_turns_and_duration() {
-        assert_eq!(format_stats(&stats(12, 720)), "12 turns · 12m");
-        assert_eq!(format_stats(&stats(1, 45)), "1 turn · 45s");
-        assert_eq!(format_stats(&stats(0, 0)), "0 turns · 0s");
-        assert_eq!(format_stats(&stats(23, 3900)), "23 turns · 1h 05m");
+    fn the_stats_use_the_shared_duration_format() {
+        let duration = Duration::from_millis(59 * 60_000 + 59_900);
+        let stats = SessionStats { turns: 3, duration };
+        assert_eq!(
+            format_stats(&stats),
+            format!("3 turns · {}", format_duration(duration))
+        );
+        assert_eq!(format_stats(&stats), "3 turns · 59m 59s");
     }
 
     #[test]
@@ -549,6 +536,33 @@ mod tests {
         let parts = row_parts(&r, 44);
         assert_eq!(parts.stats, None, "9 cells would remain");
         assert_eq!(parts.left[3].1.width(), 44 - 21);
+    }
+
+    #[test]
+    fn seconds_under_an_hour_can_push_the_stats_out() {
+        // Prefix 21 + 2 for the gap. In the old format the stats of this row
+        // were `12 turns · 59m` (14 wide), leaving exactly 10 cells at a
+        // text width of 47. The new `12 turns · 59m 59s` is 18 wide.
+        let r = row(
+            "a",
+            "Fix the flaky login test",
+            false,
+            Some(stats(12, 59 * 60 + 59)),
+        );
+        let parts = row_parts(&r, 47);
+        assert_eq!(parts.stats, None, "6 cells would remain");
+        assert_eq!(parts.left[3].1, "Fix the flaky login test");
+
+        let parts = row_parts(&r, 51);
+        assert_eq!(parts.stats.as_deref(), Some("12 turns · 59m 59s"));
+        assert_eq!(parts.left[3].1, "Fix the f…");
+
+        // The same row with the old stats text would still have fitted.
+        let old = row_parts(
+            &row("a", "Fix the flaky login test", false, Some(stats(12, 59))),
+            47,
+        );
+        assert_eq!(old.stats.as_deref(), Some("12 turns · 59s"));
     }
 
     #[test]
@@ -590,6 +604,23 @@ mod tests {
     fn rows_with_stats_snapshot() {
         let mut l = list(sample(true), Some(0), true);
         insta::assert_snapshot!(buffer_to_styled(&draw_sized(&mut l, 60)));
+    }
+
+    #[test]
+    fn stats_that_no_longer_fit_snapshot() {
+        // A 55 column pane has 47 columns for the row: the title fits next
+        // to `12 turns · 59m` but not next to `12 turns · 59m 59s`.
+        let rows = vec![
+            row(
+                "a",
+                "Fix the flaky login test",
+                false,
+                Some(stats(12, 59 * 60 + 59)),
+            ),
+            row("b", "Fix the flaky login test", false, Some(stats(12, 59))),
+        ];
+        let mut l = list(rows, Some(0), true);
+        insta::assert_snapshot!(buffer_to_styled(&draw_sized(&mut l, 55)));
     }
 
     #[test]

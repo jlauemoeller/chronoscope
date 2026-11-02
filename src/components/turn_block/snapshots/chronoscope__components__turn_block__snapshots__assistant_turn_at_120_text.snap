@@ -31,6 +31,6 @@ expression: "buffer_to_text(&draw(&turn, &opts, 120))"
 │                                                                                                                      │
 │   model → claude-sonnet-5.5                                                                                          │
 │                                                                                                                      │
-│   5m 02s · 112 messages · 45.2k tokens                                                                               │
+│   5m 2s · 112 messages · 45.2k tokens                                                                                │
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

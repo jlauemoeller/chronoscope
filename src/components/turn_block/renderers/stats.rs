@@ -1,22 +1,10 @@
 //! The turn stats footer.
 
-use std::time::Duration;
-
 use ratatui::text::Line;
 
 use super::{SectionCtx, SectionRenderer, with_lead, word_wrap};
+use crate::duration::format_duration;
 use crate::model::TurnStats;
-
-/// The duration of a turn: `12s`, `5m 02s` or `1h 05m`. Sub-second parts are
-/// dropped.
-pub fn format_duration(duration: Duration) -> String {
-    let secs = duration.as_secs();
-    match secs {
-        0..=59 => format!("{secs}s"),
-        60..=3599 => format!("{}m {:02}s", secs / 60, secs % 60),
-        _ => format!("{}h {:02}m", secs / 3600, secs % 3600 / 60),
-    }
-}
 
 /// A token count: `950`, `45.2k` or `1.2M`.
 pub fn format_tokens(tokens: u64) -> String {

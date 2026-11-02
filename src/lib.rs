@@ -9,6 +9,7 @@ pub mod cli;
 pub mod clipboard;
 pub mod components;
 pub mod config;
+pub mod duration;
 pub mod harness;
 pub mod index;
 pub mod keymap;

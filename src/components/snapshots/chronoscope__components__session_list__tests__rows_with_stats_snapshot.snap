@@ -4,9 +4,9 @@ expression: "buffer_to_styled(&draw_sized(&mut l, 60))"
 ---
 ╭─ Sessions in BRIO ───────────────────────────────────────╮
 │                                                          │
-│  > 2026-10-30 11:40Z  ● Fix the fla…  23 turns · 1h 05m  │
+│  > 2026-10-30 11:40Z  ● Fix the flak…  23 turns · 1h 5m  │
 │    2026-10-30 11:40Z    Refactor the ind…  1 turn · 45s  │
-│    2026-10-30 11:40Z    (untitled)       12 turns · 12m  │
+│    2026-10-30 11:40Z    (untitled)    12 turns · 12m 0s  │
 │                                                          │
 │                                                          │
 │                                                          │
@@ -17,7 +17,7 @@ expression: "buffer_to_styled(&draw_sized(&mut l, 60))"
 1: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
 2: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Rgb(229, 229, 229)/Reset/NONE | 4..57 Rgb(250, 250, 250)/Reset/REVERSED | 57..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
 3: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..5 Reset/Reset/NONE | 5..43 Rgb(161, 161, 161)/Reset/NONE | 43..45 Reset/Reset/NONE | 45..57 Rgb(161, 161, 161)/Reset/NONE | 57..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
-4: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..5 Reset/Reset/NONE | 5..36 Rgb(161, 161, 161)/Reset/NONE | 36..43 Reset/Reset/NONE | 43..57 Rgb(161, 161, 161)/Reset/NONE | 57..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
+4: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..5 Reset/Reset/NONE | 5..36 Rgb(161, 161, 161)/Reset/NONE | 36..40 Reset/Reset/NONE | 40..57 Rgb(161, 161, 161)/Reset/NONE | 57..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
 5: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
 6: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE
 7: 0..1 Rgb(207, 207, 207)/Reset/NONE | 1..59 Reset/Reset/NONE | 59..60 Rgb(207, 207, 207)/Reset/NONE

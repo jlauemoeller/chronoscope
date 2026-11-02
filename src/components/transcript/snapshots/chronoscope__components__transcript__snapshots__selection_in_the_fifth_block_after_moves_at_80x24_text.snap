@@ -2,7 +2,7 @@
 source: src/components/transcript/snapshots.rs
 expression: "text_at(&mut t, 80, 24)"
 ---
-│   5m 02s · 112 messages · 45.2k tokens                                       │
+│   5m 2s · 112 messages · 45.2k tokens                                        │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
@@ -18,7 +18,7 @@ expression: "text_at(&mut t, 80, 24)"
 │                                                                              │
 │ ▶ Read the UVC descriptor dump                                               │
 │                                                                              │
-│   5m 02s · 112 messages · 45.2k tokens                                       │
+│   5m 2s · 112 messages · 45.2k tokens                                        │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Compaction ────────────────────────────────────────── 2026-10-21 09:00:00Z ─╮
