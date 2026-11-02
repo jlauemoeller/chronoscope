@@ -200,9 +200,16 @@ fn the_sidebar_comes_when_the_first_turns_do_and_the_viewport_was_already_narrow
 fn scrolling_the_transcript_does_not_move_the_pane() {
     let mut rig = rig();
     rig.open_loaded();
-    // The marker follows the selection: compare the pane without it.
+    // The marker follows the selection: compare the pane without its column.
     let unmarked = |rows: Vec<String>| -> Vec<String> {
-        rows.into_iter().map(|row| row.replace('>', "●")).collect()
+        rows.into_iter()
+            .map(|row| {
+                row.chars()
+                    .enumerate()
+                    .map(|(at, c)| if at == 3 { ' ' } else { c })
+                    .collect()
+            })
+            .collect()
     };
     let before = unmarked(pane_rows(&mut rig, 120, 40));
     assert!(before.iter().any(|row| row.contains("Start")));

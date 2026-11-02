@@ -23,8 +23,8 @@ use super::session_port::{SessionUpdate, forward_to};
 use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
-    BREADCRUMB_ATTR, BackgroundFill, BrowserHeader, EMPTY_SESSION, EmptyState, HINTS_ATTR,
-    HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR,
+    BREADCRUMB_ATTR, BackgroundFill, BrowserHeader, COVER_ATTR, EMPTY_SESSION, EmptyState,
+    HINTS_ATTR, HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR,
     PARSE_WARNINGS_ATTR, SELECTED_SECTION_ATTR, SELECTED_TURN_ATTR, SESSION_ID_ATTR, STATUS_ATTR,
     SectionId, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, TURN_ROWS_ATTR, Transcript,
     TurnSidebar, hints_value, payload_from_value, payload_value, status_value,
@@ -94,6 +94,17 @@ struct Level {
     view: LoadView,
 }
 
+/// What was last pushed to the turns sidebar as the transcript's selection.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(super) enum SidebarSection {
+    /// Nothing since the rows were set (or since the session was opened):
+    /// the next sync pushes.
+    #[default]
+    NotPushed,
+    /// The transcript's selected section at the last sync.
+    Pushed(Option<SectionId>),
+}
+
 /// The browser's domain state. The turns are not part of it: the
 /// `Transcript`s own them.
 ///
@@ -115,10 +126,9 @@ pub(super) struct BrowserState {
     /// The save or export waiting for its path or for an overwrite to be
     /// confirmed.
     pub(super) write: Option<super::save::PendingWrite>,
-    /// The transcript's selected section as of the last time it was pushed
-    /// to the turns sidebar (the outer `None`: not pushed since the rows
-    /// were set, so the next sync pushes).
-    sidebar_section: Option<Option<SectionId>>,
+    /// The transcript's selected section as of the last push to the turns
+    /// sidebar.
+    sidebar_section: SidebarSection,
 }
 
 impl Deref for BrowserState {
@@ -553,7 +563,7 @@ impl App {
         });
         self.show_top_in_header();
         self.refresh_status();
-        self.push_sidebar_rows();
+        self.push_sidebar_rows(true);
         self.push_viewports();
         self.request_redraw(RedrawRequest::Dirty);
     }
@@ -612,7 +622,7 @@ impl App {
         self.sync_new_sections();
         self.refresh_session_empty();
         self.refresh_live();
-        self.push_sidebar_rows();
+        self.push_sidebar_rows(false);
         self.push_viewports();
         self.request_redraw(RedrawRequest::Dirty);
     }
@@ -832,11 +842,18 @@ impl App {
 
     /// Replaces the sidebar's rows by those of the transcript on top: one
     /// pass over its turns, asked of the transcript that owns them. Done when
-    /// the transcript on top changes (a subagent opened or closed).
-    fn push_sidebar_rows(&mut self) {
+    /// the transcript on top changes (a subagent opened, `covering`, or
+    /// closed). The pane remembers its selection and scroll offset for the
+    /// transcript it covers and brings them back with its rows, so going
+    /// back shows the pane as it was.
+    fn push_sidebar_rows(&mut self, covering: bool) {
+        self.set_attr(Id::TurnSidebar, COVER_ATTR, AttrValue::Flag(covering));
         // The rows come first and the selection after them: the sidebar
         // lost its selection with the old rows, so the next sync pushes it.
-        self.browser.sidebar_section = None;
+        // (A defence: a section of the transcript now on top never equals
+        // the one last pushed from another, but rows replaced mean the
+        // sidebar knows nothing of it.)
+        self.browser.sidebar_section = SidebarSection::NotPushed;
         let rows = self
             .application
             .query(&self.top_transcript(), TURN_ROWS_ATTR)
@@ -880,7 +897,8 @@ impl App {
             .flatten()
             .map(tuirealm::props::QueryResult::into_attr)
             .and_then(|value| payload_from_value::<SectionId>(&value));
-        if self.browser.sidebar_section.as_ref() == Some(&selected) {
+        if matches!(&self.browser.sidebar_section, SidebarSection::Pushed(last) if *last == selected)
+        {
             return;
         }
         if let Some(section) = &selected {
@@ -890,7 +908,7 @@ impl App {
                 payload_value(section.turn.clone()),
             );
         }
-        self.browser.sidebar_section = Some(selected);
+        self.browser.sidebar_section = SidebarSection::Pushed(selected);
     }
 
     /// Remembers the progress of the initial load and shows it.

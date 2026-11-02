@@ -1029,3 +1029,56 @@ fn selecting_a_turn_scrolls_the_list_by_the_least_needed() {
     sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u0")));
     assert_eq!(sidebar.offset(13), 2, "row 2 is the first visible row");
 }
+
+#[test]
+fn rows_set_after_an_uncover_bring_back_the_selection_and_offset_of_the_covered_pane() {
+    let turns: Vec<_> = (0..30).map(|i| user(&format!("u{i}"))).collect();
+    let mut sidebar = TurnSidebar::new(theme());
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(9));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u10")));
+    // Row 22 is the last visible row: the offset is 14.
+    assert_eq!(sidebar.offset(13), 14);
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u7")));
+    assert_eq!(sidebar.offset(13), 14, "row 16: still visible");
+    // A transcript of two turns covers it.
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(true));
+    sidebar.attr(
+        TURN_ROWS_ATTR,
+        payload_value(rows_of(&[user("s1"), assistant("s2", 1)])),
+    );
+    assert_eq!(sidebar.selected_entry(), None);
+    assert_eq!(sidebar.offset(13), 0);
+    // It is closed: the parent's rows, as they are now, with its pane.
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(false));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
+    assert_eq!(sidebar.selected_entry(), Some(7));
+    assert_eq!(sidebar.offset(13), 14);
+}
+
+#[test]
+fn a_restored_selection_scrolls_the_least_needed_and_covers_nest() {
+    let turns: Vec<_> = (0..30).map(|i| user(&format!("u{i}"))).collect();
+    let mut sidebar = TurnSidebar::new(theme());
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(9));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u10")));
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(true));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns[..5])));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u3")));
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(true));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns[..2])));
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(false));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns[..5])));
+    assert_eq!(sidebar.selected_entry(), Some(3));
+    // The pane shrank meanwhile: three rows fewer are visible.
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(false));
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(5));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
+    assert_eq!(sidebar.selected_entry(), Some(10));
+    assert_eq!(
+        sidebar.offset(9),
+        18,
+        "row 22 on the last of 5 visible rows"
+    );
+}

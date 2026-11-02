@@ -101,6 +101,15 @@ impl ListCursor {
         self.reveal();
     }
 
+    /// Like [`set`](Self::set), starting from the first visible row `offset`
+    /// (as an earlier [`offset`](Self::offset) of the same list): it scrolls
+    /// only as far as needed from there, so a list that comes back is shown
+    /// as it was left.
+    pub fn restore(&mut self, len: usize, selected: Option<usize>, offset: usize) {
+        self.offset = offset;
+        self.set(len, selected);
+    }
+
     /// Sets the selection, keeping the rows.
     pub fn select(&mut self, selected: Option<usize>) {
         self.set(self.len, selected);

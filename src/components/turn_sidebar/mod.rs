@@ -10,7 +10,9 @@
 //! transcript that was opened or closed), [`MODEL_UPDATE_ATTR`] (the
 //! `Appended`, `Updated` and `Reset` updates the transcript gets), the
 //! selection ([`SELECTED_ATTR`], an entry, or [`SELECTED_TURN_ATTR`], a turn;
-//! pushing either produces no message) and [`VISIBLE_ROWS_ATTR`] (set from the layout, never from `view`).
+//! pushing either produces no message), [`COVER_ATTR`] (a transcript is
+//! opened over the one the rows are of, or closed again) and
+//! [`VISIBLE_ROWS_ATTR`] (set from the layout, never from `view`).
 //!
 //! The component keeps no turns, only the [`TurnRows`] built from them. It
 //! lays out and renders nothing but its own rows, and draws only the rows it
@@ -60,6 +62,11 @@ pub const TURN_ROWS_ATTR: Attribute = Attribute::Custom("turn_rows");
 /// The turn to select (a [`TurnId`] payload). A turn without an entry leaves
 /// the selection as it is. Setting it produces no message.
 pub const SELECTED_TURN_ATTR: Attribute = Attribute::Custom("selected_turn");
+/// A flag that says a transcript is opened over the one whose rows the pane
+/// shows (`true`; the pane remembers its selection and scroll offset), or
+/// that it was closed (`false`; the next rows set bring the remembered
+/// selection and offset back, so the pane is as it was left).
+pub const COVER_ATTR: Attribute = Attribute::Custom("sidebar_cover");
 /// The label of the key that focuses the pane, shown in its title (a
 /// string).
 pub const KEY_LABEL_ATTR: Attribute = Attribute::Custom("sidebar_key");
@@ -78,6 +85,13 @@ pub fn sidebar_list_rows(pane_height: u16) -> usize {
     usize::from(pane_height.saturating_sub(PANE_CHROME_ROWS))
 }
 
+/// What the pane remembers of the rows of a transcript that is covered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Covered {
+    selected: Option<TurnId>,
+    offset: usize,
+}
+
 /// The turns sidebar.
 #[derive(Debug, Clone)]
 pub struct TurnSidebar {
@@ -90,6 +104,12 @@ pub struct TurnSidebar {
     /// The scroll offset over the rows of the list; its selection is the row
     /// of the selected entry.
     cursor: ListCursor,
+    /// The selection and offset of each transcript a later one covers,
+    /// outermost first.
+    covered: Vec<Covered>,
+    /// What the next rows set bring back: the pane of a transcript that was
+    /// uncovered.
+    restore: Option<Covered>,
 }
 
 impl TurnSidebar {
@@ -102,6 +122,8 @@ impl TurnSidebar {
             rows: TurnRows::default(),
             selected: None,
             cursor: ListCursor::default(),
+            covered: Vec::new(),
+            restore: None,
         };
         sidebar.sync();
         sidebar
@@ -155,7 +177,26 @@ impl TurnSidebar {
 
     fn set_rows(&mut self, rows: TurnRows) {
         self.rows = rows;
-        self.sync();
+        match self.restore.take() {
+            Some(saved) => {
+                self.selected = saved.selected;
+                self.sync_from(Some(saved.offset));
+            }
+            None => self.sync(),
+        }
+    }
+
+    /// Remembers (`covered`) or recalls the selection and offset of the rows
+    /// that a transcript opened over (or closed again) leaves.
+    fn cover(&mut self, covered: bool) {
+        if covered {
+            self.covered.push(Covered {
+                selected: self.selected.clone(),
+                offset: self.cursor.offset(),
+            });
+        } else {
+            self.restore = self.covered.pop();
+        }
     }
 
     /// Selects the entry `entry` (`None`: nothing). An entry that does not
@@ -190,6 +231,12 @@ impl TurnSidebar {
     /// entry any more is deselected, and the offset moves the least that
     /// keeps the selected row visible.
     fn sync(&mut self) {
+        self.sync_from(None);
+    }
+
+    /// [`sync`](Self::sync), starting from the first visible row `offset`
+    /// when given.
+    fn sync_from(&mut self, offset: Option<usize>) {
         let row = self
             .selected
             .as_ref()
@@ -198,7 +245,10 @@ impl TurnSidebar {
         if row.is_none() {
             self.selected = None;
         }
-        self.cursor.set(self.rows.row_count(), row);
+        match offset {
+            Some(offset) => self.cursor.restore(self.rows.row_count(), row, offset),
+            None => self.cursor.set(self.rows.row_count(), row),
+        }
     }
 
     /// How the row `index` looks.
@@ -297,6 +347,10 @@ impl Component for TurnSidebar {
         } else if attr == SELECTED_TURN_ATTR {
             if let Some(id) = payload_from_value::<TurnId>(&value) {
                 self.select_turn(&id);
+            }
+        } else if attr == COVER_ATTR {
+            if let AttrValue::Flag(covered) = value {
+                self.cover(covered);
             }
         } else if attr == VISIBLE_ROWS_ATTR {
             if let AttrValue::Length(rows) = value {
