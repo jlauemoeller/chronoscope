@@ -104,7 +104,7 @@ pub trait Harness: Send + Sync {
     ///
     /// The default provides nothing, and the overlay then shows only what
     /// the model knows, with no `unavailable` row. The Codex and Pi adapters
-    /// inherit it, and so does OpenCode until it reads its rows.
+    /// inherit it.
     fn section_details(&self, _source: &SectionSource) -> Vec<SourceGroup> {
         Vec::new()
     }
@@ -219,7 +219,7 @@ mod default_details_tests {
     use std::process::Command;
 
     use super::*;
-    use crate::model::{ByteSource, SectionRefs, SourceKind, SourceRef};
+    use crate::model::{ByteSource, LineRefs, SectionRefs, SourceKind, SourceRef};
 
     /// A harness that implements only what the trait requires, as the Codex
     /// and Pi adapters would.
@@ -265,13 +265,13 @@ mod default_details_tests {
     fn a_harness_provides_no_section_details_by_default() {
         let source = SectionSource {
             kind: SourceKind::Message,
-            refs: SectionRefs {
+            refs: SectionRefs::Lines(LineRefs {
                 line: SourceRef {
                     bytes: ByteSource::Memory(Arc::from(&b"{}"[..])),
                     range: 0..2,
                 },
                 result: None,
-            },
+            }),
         };
         assert!(Stub.section_details(&source).is_empty());
     }

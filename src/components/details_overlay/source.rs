@@ -65,17 +65,18 @@ pub fn section_source(turn: &Turn, id: &SectionId) -> Option<SectionSource> {
 /// Environment).
 ///
 /// Within a group: the harness's leading rows (a tool call's `start`), the
-/// model's rows, the harness's other rows, then one muted `unavailable` row
-/// when the harness could not read its source. No field appears twice: a row
-/// of the model gives way to a row of the harness with the same label (a
-/// prompt's `timestamp`). A group with no rows is left out.
+/// model's rows, the harness's other rows (the Turn group's `provider` and
+/// `agent` follow `cost`), then one muted `unavailable` row when the harness
+/// could not read its source. No field appears twice: a row of the model
+/// gives way to a row of the harness with the same label, or that stands in
+/// for it (a prompt's `timestamp`). A group with no rows is left out.
 pub fn compose(
     model: DetailsContent,
     read: &[SourceGroup],
     formatter: &TimestampFormatter,
 ) -> DetailsContent {
     let groups = [
-        (TURN, None),
+        (TURN, Some(SourceGroupKind::Turn)),
         (MESSAGE, Some(SourceGroupKind::Message)),
         (TOOL_CALL, Some(SourceGroupKind::ToolCall)),
         (PROMPT, Some(SourceGroupKind::Prompt)),
@@ -105,14 +106,16 @@ fn merge(
             .map(|row| DetailsRow::new(row.label.clone(), format_value(&row.value, formatter)))
             .collect()
     };
-    let read_labels = || read.lead.iter().chain(&read.rows).map(|r| r.label.as_str());
+    let read_rows = || read.lead.iter().chain(&read.rows);
     let mut out = rows(&read.lead);
     if let Some(known) = known {
         out.extend(
             known
                 .rows
                 .iter()
-                .filter(|row| !read_labels().any(|label| label == row.label))
+                .filter(|row| {
+                    !read_rows().any(|r| r.label == row.label || r.replaces == Some(&row.label))
+                })
                 .cloned(),
         );
     }
@@ -360,6 +363,47 @@ mod tests {
     }
 
     #[test]
+    fn a_row_that_stands_in_for_the_models_replaces_it_whatever_its_label() {
+        let turn = user("Hello", Vec::new());
+        let id = key_id(&turn, SectionKey::Prompt);
+        let time = SourceValue::Time(crate::components::turn_block::fixtures::ts(
+            "2026-10-21T08:35:20Z",
+        ));
+        let read = [group(
+            SourceGroupKind::Prompt,
+            vec![],
+            vec![SourceRow::replacing("time.created", "timestamp", time)],
+        )];
+        let content = compose_for(&turn, &id, &read);
+        assert_eq!(
+            rows(&content, "Prompt"),
+            [("time.created", "2026-10-21 08:35:20Z")]
+        );
+    }
+
+    #[test]
+    fn the_turn_groups_read_rows_follow_the_models() {
+        let turn = call_turn();
+        let id = item_id(&turn, "t1");
+        let read = [group(
+            SourceGroupKind::Turn,
+            vec![],
+            vec![text_row("provider", "acme"), text_row("agent", "build")],
+        )];
+        let content = compose_for(&turn, &id, &read);
+        let turn_rows = rows(&content, "Turn");
+        let last_two = &turn_rows[turn_rows.len() - 2..];
+        assert_eq!(last_two, [("provider", "acme"), ("agent", "build")]);
+        assert_eq!(turn_rows[0].0, "model");
+        // Unreadable: the model's rows, then the muted row.
+        let read = [SourceGroup::unavailable(SourceGroupKind::Turn)];
+        let content = compose_for(&turn, &id, &read);
+        let turn_rows = rows(&content, "Turn");
+        assert_eq!(turn_rows.last(), Some(&("unavailable", "")));
+        assert_eq!(turn_rows[0].0, "model");
+    }
+
+    #[test]
     fn a_compaction_shows_its_timestamp_then_what_its_source_provides() {
         let turn = compaction("Summary");
         let id = key_id(&turn, SectionKey::Summary);
@@ -463,9 +507,9 @@ mod tests {
             key: SectionKey::Item(crate::model::ItemId::from(item)),
         };
         let call = section_source(&turns[1], &id("c1")).unwrap();
-        assert!(call.refs.result.is_some());
+        assert!(call.refs.lines().unwrap().result.is_some());
         let text = section_source(&turns[1], &id("m1:0")).unwrap();
-        assert!(text.refs.result.is_none());
+        assert!(text.refs.lines().unwrap().result.is_none());
     }
 
     #[test]

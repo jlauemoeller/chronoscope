@@ -7,6 +7,9 @@
 
 pub mod assemble;
 pub mod db;
+mod details;
+#[cfg(test)]
+mod details_tests;
 mod discovery;
 mod follow;
 mod load;

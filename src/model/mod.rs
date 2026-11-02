@@ -20,8 +20,8 @@ pub use output::{ByteSource, LineFormat, OutputSource, ToolOutput, ToolOutputErr
 #[cfg(test)]
 pub(crate) use output::{source_reads, text_calls};
 pub use sources::{
-    SectionRefs, SectionSource, SourceGroup, SourceGroupKind, SourceKey, SourceKind, SourceRef,
-    SourceRow, SourceValue, TurnSources,
+    LineRefs, RowRef, RowRefs, SectionRefs, SectionSource, SourceGroup, SourceGroupKind, SourceKey,
+    SourceKind, SourceRef, SourceRow, SourceValue, TurnSources,
 };
 
 /// Tool results longer than this many bytes are stored lazily (SPEC §9.2).

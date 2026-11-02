@@ -38,6 +38,10 @@ use crate::model::{
     ToolCall, ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnSources, TurnStats, UserTurn,
 };
 
+/// What the id of an injected item starts with; the rest is the id of the
+/// first row it was made from.
+const INJECTED_PREFIX: &str = "injected:";
+
 /// The variant that means "no particular effort".
 const DEFAULT_VARIANT: &str = "default";
 
@@ -144,7 +148,7 @@ struct AssistantData {
 /// The `error` of an assistant row: `type` and `message` of an object, or a
 /// plain string, which counts as the message.
 #[derive(Deserialize)]
-struct RowError {
+pub(super) struct RowError {
     #[serde(default, rename = "type", deserialize_with = "lenient")]
     kind: Option<String>,
     #[serde(default, deserialize_with = "lenient")]
@@ -153,7 +157,7 @@ struct RowError {
 
 /// `deserialize_with` helper: an object is read as a [`RowError`], a string is
 /// the message; any other value counts as missing.
-fn lenient_error<'de, D>(deserializer: D) -> Result<Option<RowError>, D::Error>
+pub(super) fn lenient_error<'de, D>(deserializer: D) -> Result<Option<RowError>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -171,35 +175,42 @@ where
     })
 }
 
+/// A part of an error or a finish, trimmed; `None` when nothing is left.
+fn trimmed(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned)
+}
+
+/// The level and text of an `error` of an assistant row (SPEC cycle 2 §4.2):
+/// `aborted` is a warning, anything else an error, and the text is
+/// `<type>: <message>` with whichever parts exist. Shared by the notice and
+/// by the details overlay's `error` row, so that they say the same.
+pub(super) fn error_text(error: Option<&RowError>) -> (NoticeLevel, String) {
+    let kind = trimmed(error.and_then(|e| e.kind.as_deref()));
+    let message = trimmed(error.and_then(|e| e.message.as_deref()));
+    match (kind, message) {
+        (Some(kind), message) if kind == "aborted" => (
+            NoticeLevel::Warning,
+            match message {
+                Some(message) => format!("{kind}: {message}"),
+                None => kind,
+            },
+        ),
+        (Some(kind), Some(message)) => (NoticeLevel::Error, format!("{kind}: {message}")),
+        (Some(only), None) | (None, Some(only)) => (NoticeLevel::Error, only),
+        (None, None) => (NoticeLevel::Error, "error".to_owned()),
+    }
+}
+
 /// The notice for how an assistant row ended (SPEC cycle 2 §4.2); `None` for
 /// a normal ending.
 fn ending_notice(row: &Row, data: &AssistantData) -> Option<Item> {
-    let part = |value: Option<&str>| {
-        value
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .map(str::to_owned)
-    };
-    let finish = part(data.finish.as_deref())?;
+    let finish = trimmed(data.finish.as_deref())?;
     let (level, text) = match finish.as_str() {
         "stop" | "tool-calls" => return None,
-        "error" => {
-            let error = data.error.as_ref();
-            let kind = part(error.and_then(|e| e.kind.as_deref()));
-            let message = part(error.and_then(|e| e.message.as_deref()));
-            match (kind, message) {
-                (Some(kind), message) if kind == "aborted" => (
-                    NoticeLevel::Warning,
-                    match message {
-                        Some(message) => format!("{kind}: {message}"),
-                        None => kind,
-                    },
-                ),
-                (Some(kind), Some(message)) => (NoticeLevel::Error, format!("{kind}: {message}")),
-                (Some(only), None) | (None, Some(only)) => (NoticeLevel::Error, only),
-                (None, None) => (NoticeLevel::Error, "error".to_owned()),
-            }
-        }
+        "error" => error_text(data.error.as_ref()),
         other => (NoticeLevel::Warning, format!("stopped: {other}")),
     };
     Some(Item::Notice {
@@ -464,15 +475,20 @@ impl Assembler {
         self.row_turn
             .insert(id.as_str().to_owned(), self.turns.len());
         self.user_flushed = false;
-        let items = take_held(&mut self.held, &mut self.held_key)
+        let items: Vec<Item> = take_held(&mut self.held, &mut self.held_key)
             .into_iter()
             .collect();
+        let mut sources = TurnSources::default();
+        sources.set_own_row(id.as_str());
+        for item in &items {
+            note_item(&mut sources, item, id.as_str());
+        }
         self.turns.push(Arc::new(Turn::User(UserTurn {
             id,
             timestamp,
             text: text.unwrap_or_default(),
             items,
-            sources: TurnSources::default(),
+            sources,
         })));
     }
 
@@ -494,7 +510,7 @@ impl Assembler {
                         Item::Injected { entries: more, .. },
                     ) => entries.extend(more),
                     (_, item) => {
-                        upsert(turn, b, item);
+                        upsert(turn, b, item, "");
                     }
                 }
                 self.dirty.insert(b.idx);
@@ -510,7 +526,10 @@ impl Assembler {
                 {
                     entries.extend(more);
                 }
-                (_, item) => turn.items.push(item),
+                (_, item) => {
+                    note_item(&mut turn.sources, &item, "");
+                    turn.items.push(item);
+                }
             }
             self.user_flushed = true;
             self.dirty.insert(last);
@@ -528,6 +547,8 @@ impl Assembler {
             Some(b) => b,
             None => {
                 let idx = self.turns.len();
+                let mut sources = TurnSources::default();
+                sources.set_turn_row(&row.id);
                 self.turns.push(Arc::new(Turn::Assistant(AssistantTurn {
                     id: TurnId::from(row.id.as_str()),
                     timestamp: millis(created),
@@ -535,7 +556,7 @@ impl Assembler {
                     effort: None,
                     items: Vec::new(),
                     stats: None,
-                    sources: TurnSources::default(),
+                    sources,
                 })));
                 Builder::new(idx, &model)
             }
@@ -590,7 +611,7 @@ impl Assembler {
 
         if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[b.idx]) {
             if let Some(item) = held_item {
-                upsert(turn, b, item);
+                upsert(turn, b, item, &row.id);
             }
             if turn.effort.is_none() && effort.is_some() {
                 turn.effort = effort;
@@ -603,15 +624,17 @@ impl Assembler {
                         id: ItemId::from(format!("model:{}", row.id)),
                         model: model.clone(),
                     };
-                    upsert(turn, b, item);
+                    upsert(turn, b, item, &row.id);
                 }
                 b.last_model = model;
             }
             for item in items {
-                upsert(turn, b, item);
+                upsert(turn, b, item, &row.id);
             }
             match notice {
-                Some(item) => upsert(turn, b, item),
+                Some(item) => {
+                    upsert(turn, b, item, &row.id);
+                }
                 None => remove(turn, b, &ItemId::from(format!("notice:{}", row.id))),
             }
             turn.stats = Some(b.stats());
@@ -812,20 +835,33 @@ fn take_held(held: &mut Vec<InjectedEntry>, key: &mut Option<String>) -> Option<
     }
     let key = key.take().unwrap_or_default();
     Some(Item::Injected {
-        id: ItemId::from(format!("injected:{key}")),
+        id: ItemId::from(format!("{INJECTED_PREFIX}{key}")),
         entries: std::mem::take(held),
     })
 }
 
 /// Inserts `item` or replaces the item with the same id in place (a repeated
-/// tool part keeps its position).
-fn upsert(turn: &mut AssistantTurn, b: &mut Builder, item: Item) {
+/// tool part keeps its position). An item that is new is recorded in the
+/// turn's sources as read from `row` (see [`note_item`]).
+fn upsert(turn: &mut AssistantTurn, b: &mut Builder, item: Item, row: &str) {
     if let Some(&pos) = b.index.get(item.id()) {
         turn.items[pos] = item;
     } else {
+        note_item(&mut turn.sources, &item, row);
         b.index.insert(item.id().clone(), turn.items.len());
         turn.items.push(item);
     }
+}
+
+/// Records where `item` was read from: the `row`, except for injected
+/// entries, which are identified by their first row (`injected:<row>`). A
+/// tool call is a part of the row.
+fn note_item(sources: &mut TurnSources, item: &Item, row: &str) {
+    let row = match item {
+        Item::Injected { id, .. } => id.as_str().strip_prefix(INJECTED_PREFIX).unwrap_or(row),
+        _ => row,
+    };
+    sources.add_row_item(item.id(), row, matches!(item, Item::ToolCall(_)));
 }
 
 /// Removes the item with the given id, if the turn has it. The positions of
@@ -833,6 +869,7 @@ fn upsert(turn: &mut AssistantTurn, b: &mut Builder, item: Item) {
 fn remove(turn: &mut AssistantTurn, b: &mut Builder, id: &ItemId) {
     if let Some(pos) = b.index.remove(id) {
         turn.items.remove(pos);
+        turn.sources.remove_item(id);
         b.index = turn
             .items
             .iter()
