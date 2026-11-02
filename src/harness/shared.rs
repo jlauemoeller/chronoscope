@@ -13,6 +13,14 @@ use serde_json::value::RawValue;
 /// `serde_json::Value`, which would itself reject an out-of-range number
 /// anywhere inside it. This needs a `serde_json` deserializer, which is what
 /// both adapters use.
+///
+/// Two limits:
+/// - A `RawValue` must be valid UTF-8, so invalid UTF-8 inside the value
+///   still fails the parse of the whole line. The Claude adapter handles
+///   that case in `read_entry` (`harness/claude/wire.rs`); OpenCode rows are
+///   `String`s already.
+/// - A duplicate key inside the value makes the whole value count as
+///   missing.
 pub(crate) fn lenient<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: serde::Deserializer<'de>,

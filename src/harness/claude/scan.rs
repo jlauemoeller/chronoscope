@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::inject::queued_prompt_text;
-use super::wire::Entry;
+use super::wire::read_entry;
 
 /// The first prompt is kept up to this many characters; the list only needs
 /// its first line.
@@ -105,13 +105,11 @@ fn is_queued_command(attachment: Option<&Value>) -> bool {
 }
 
 fn prompt_of_user(line: &[u8]) -> Option<String> {
-    serde_json::from_slice::<Entry>(line)
-        .ok()?
-        .human_prompt_text()
+    read_entry(line).ok()?.human_prompt_text()
 }
 
 fn prompt_of_queued(line: &[u8]) -> Option<String> {
-    let entry = serde_json::from_slice::<Entry>(line).ok()?;
+    let entry = read_entry(line).ok()?;
     queued_prompt_text(entry.attachment.as_ref()?, entry.origin.as_ref())
 }
 
@@ -164,6 +162,13 @@ mod tests {
         ));
         assert_eq!(s.ai_title.as_deref(), Some("kept"));
         assert_eq!(s.cwd, None);
+    }
+
+    #[test]
+    fn a_prompt_is_found_on_a_line_with_invalid_utf8_in_usage() {
+        let bytes = b"{\"type\":\"user\",\"origin\":{\"kind\":\"human\"},\"message\":{\"content\":\"real\",\"usage\":{\"service_tier\":\"\xff\"}}}\n";
+        let s = scan_reader(&bytes[..]).unwrap();
+        assert_eq!(s.first_prompt.as_deref(), Some("real"));
     }
 
     #[test]

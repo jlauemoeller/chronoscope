@@ -53,10 +53,11 @@ pub struct StatsSection<'a>(pub &'a TurnStats);
 
 impl SectionRenderer for StatsSection<'_> {
     fn lines(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {
-        // A row never starts with the separator: it stays at the end of the
-        // row, glued to the part before it by a no-break space that is put
-        // back to a plain space once the rows are made. `format_stats` is
-        // unchanged, because search matches against its text.
+        // When a part and its separator fit on a row, a row never starts
+        // with the separator: it stays at the end of the row, glued to the
+        // part before it by a no-break space that is put back to a plain
+        // space once the rows are made. `format_stats` is unchanged, because
+        // search matches against its text.
         let text = format_stats(self.0).replace(" · ", "\u{a0}· ");
         let lines = word_wrap(&text, ctx.width, ctx.muted())
             .into_iter()

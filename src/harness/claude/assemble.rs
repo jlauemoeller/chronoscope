@@ -19,7 +19,7 @@ use super::inject::{
     version_newer,
 };
 use super::tools::{describe, tool_kind};
-use super::wire::{Block, Content, Entry, Head, Usage, content_text, result_text};
+use super::wire::{Block, Content, Entry, Head, Usage, content_text, read_entry, result_text};
 use crate::model::{
     AssistantTurn, ByteSource, CompactionTurn, InjectedEntry, Item, ItemId, LineFormat,
     ModelUpdate, OutputSource, Thinking, TokenUsage, ToolCall, ToolOutput, ToolResult, ToolStatus,
@@ -399,7 +399,7 @@ impl Assembler {
     /// Parses a conversation line in full, noting the session cwd. A failure
     /// counts the line as unparsed.
     fn parse_entry(&mut self, line: &[u8]) -> Option<Entry> {
-        let entry = match serde_json::from_slice::<Entry>(line) {
+        let entry = match read_entry(line) {
             Ok(entry) => entry,
             Err(err) => {
                 self.skip_unparsed(&format!("unreadable entry: {err}"));

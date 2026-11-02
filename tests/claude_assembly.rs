@@ -1193,3 +1193,87 @@ fn an_out_of_range_number_in_usage_keeps_the_line_parsed() {
         );
     }
 }
+
+// ---- Invalid UTF-8 in a line ----
+
+/// An assistant line (message `msg_a`, one text block with `text`) with the
+/// raw `usage` bytes and `top_level` fields (each ending in a comma) before
+/// `message`.
+fn raw_assistant_line(text: &[u8], usage: &[u8], top_level: &[u8]) -> Vec<u8> {
+    let mut line =
+        br#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","#.to_vec();
+    line.extend_from_slice(top_level);
+    line.extend_from_slice(
+        br#""message":{"id":"msg_a","model":"x","content":[{"type":"text","text":""#,
+    );
+    line.extend_from_slice(text);
+    line.extend_from_slice(br#""}],"usage":"#);
+    line.extend_from_slice(usage);
+    line.extend_from_slice(b"}}");
+    line
+}
+
+/// Feeds the user line, then `line` (as bytes), then the footer; returns
+/// `unparsed_count`, the number of text items and the turn's tokens.
+fn feed_raw(line: &[u8]) -> (usize, usize, Option<TokenUsage>) {
+    let mut asm = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(&b""[..])));
+    push(&mut asm, USER_LINE);
+    asm.push_line(line, 0..line.len() as u64);
+    push(&mut asm, FOOTER_LINE);
+    asm.finish();
+    let unparsed = asm.unparsed_count();
+    let turns = asm.turns();
+    match turns.get(1).map(|t| assistant(t)) {
+        Some(a) => (
+            unparsed,
+            a.items
+                .iter()
+                .filter(|i| matches!(i, Item::Text { .. }))
+                .count(),
+            a.stats.as_ref().and_then(|s| s.tokens),
+        ),
+        None => (unparsed, 0, None),
+    }
+}
+
+fn only_output(n: u64) -> Option<TokenUsage> {
+    Some(TokenUsage {
+        output: n,
+        ..TokenUsage::default()
+    })
+}
+
+#[test]
+fn invalid_utf8_inside_usage_keeps_the_line_parsed() {
+    for usage in [
+        &b"{\"output_tokens\":7,\"service_tier\":\"\xff\"}"[..],
+        b"{\"output_tokens\":7,\"x\":{\"y\":[\"a\xc3\"]}}",
+        b"{\"output_tokens\":7,\"cache_read_input_tokens\":\"\xff\"}",
+        b"{\"output_tokens\":7,\"output_tokens_details\":{\"x\":\"\xc3\"}}",
+        b"{\"output_tokens\":7,\"\xff\":1}",
+    ] {
+        let line = raw_assistant_line(b"hi", usage, b"");
+        let (unparsed, texts, tokens) = feed_raw(&line);
+        let shown = String::from_utf8_lossy(usage).into_owned();
+        assert_eq!(unparsed, 0, "usage {shown}");
+        assert_eq!(texts, 1, "usage {shown}");
+        assert_eq!(tokens.map(|t| t.output), Some(7), "usage {shown}");
+    }
+}
+
+#[test]
+fn invalid_utf8_outside_usage_keeps_its_outcome() {
+    let clean: &[u8] = b"{\"output_tokens\":7}";
+    // In the text of the block: unparsed.
+    let line = raw_assistant_line(b"a\xffb", clean, b"");
+    assert_eq!(feed_raw(&line), (1, 0, None));
+    // In a known top-level string: unparsed.
+    let line = raw_assistant_line(b"hi", clean, b"\"cwd\":\"\xff\",");
+    assert_eq!(feed_raw(&line), (1, 0, None));
+    // In an unknown top-level field: parsed, as before.
+    let line = raw_assistant_line(b"hi", clean, b"\"zzz\":\"\xff\",");
+    assert_eq!(feed_raw(&line), (0, 1, only_output(7)));
+    // In the text and in `usage` together: unparsed.
+    let line = raw_assistant_line(b"a\xffb", b"{\"service_tier\":\"\xff\"}", b"");
+    assert_eq!(feed_raw(&line), (1, 0, None));
+}
