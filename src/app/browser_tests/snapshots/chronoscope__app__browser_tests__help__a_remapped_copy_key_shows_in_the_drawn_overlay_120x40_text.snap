@@ -12,7 +12,7 @@ expression: text
 │                       │    [                                 Previous turn                   │a USB. It works fine   │
 │  ●   Start            │    ]                                 Next turn                       │ss settings that…      │
 │  │                    │    Ctrl-u                            Scroll half a page up           │                       │
-│  ●   User             │    Ctrl-d                            Scroll half a page down         │───────────────────────╯
+│  >   User             │    Ctrl-d                            Scroll half a page down         │───────────────────────╯
 │  │                    │    PgUp                              Scroll a page up                │ 2026-10-21 08:35:18Z ─╮
 │  ●   Assistant      5m│    PgDn                              Scroll a page down              │                       │
 │  │                    │    g / Home                          Jump to start                   │                       │

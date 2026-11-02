@@ -12,7 +12,7 @@ expression: "screen_text(&mut rig, 120, 40)"
 │                            │ ▒ ▶ Write a short story                                                                 │
 │  ●   Start                 │ │                                                                                       │
 │  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  ●   User                  │ ╭─ Assistant ── claude-sonnet-5-5 ─────────────────────────────── 2026-04-01 10:01:10Z ─╮
+│  >   User                  │ ╭─ Assistant ── claude-sonnet-5-5 ─────────────────────────────── 2026-04-01 10:01:10Z ─╮
 │  │                         │ │                                                                                       │
 │  ●   Assistant             │ │   Once upon a time.                                                                   │
 │  │                         │ │                                                                                       │

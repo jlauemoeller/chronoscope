@@ -741,6 +741,8 @@ impl App {
             Msg::Session { generation, update } => self.session_update(generation, &update),
             Msg::Mouse(event) => self.mouse(event),
         }
+        // Any message may have moved the transcript's selection.
+        self.sync_sidebar_selection();
         // Any message may have changed the screen, an overlay or the prompt.
         self.refresh_routing();
     }

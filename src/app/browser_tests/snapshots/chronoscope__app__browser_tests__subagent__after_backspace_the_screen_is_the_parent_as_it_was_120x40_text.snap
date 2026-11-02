@@ -28,7 +28,7 @@ expression: after
 │  │                         │ │   I will ask the story writer.                                                        │
 │  ●   Assistant             │ │                                                                                       │
 │  │                         │ ▒ ▼ Ask story-writer (story-writer)                                                     │
-│  ●   Assistant             │ ▒                                                                                       │
+│  >   Assistant             │ ▒                                                                                       │
 │  │                         │ ▒   Prompt:                                                                             │
 │  ●   End                   │ ▒                                                                                       │
 │                            │ ▒      Write a short story                                                              │

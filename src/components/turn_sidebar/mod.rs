@@ -9,8 +9,8 @@
 //! the pane, shown in the title), [`TURN_ROWS_ATTR`] (the [`TurnRows`] of a
 //! transcript that was opened or closed), [`MODEL_UPDATE_ATTR`] (the
 //! `Appended`, `Updated` and `Reset` updates the transcript gets), the
-//! selection ([`SELECTED_ATTR`], an entry; pushing it produces no message)
-//! and [`VISIBLE_ROWS_ATTR`] (set from the layout, never from `view`).
+//! selection ([`SELECTED_ATTR`], an entry, or [`SELECTED_TURN_ATTR`], a turn;
+//! pushing either produces no message) and [`VISIBLE_ROWS_ATTR`] (set from the layout, never from `view`).
 //!
 //! The component keeps no turns, only the [`TurnRows`] built from them. It
 //! lays out and renders nothing but its own rows, and draws only the rows it
@@ -57,6 +57,9 @@ use crate::theme::{Role, Theme};
 /// sidebar replaces its rows; querying a `Transcript` builds them in one pass
 /// over its turns.
 pub const TURN_ROWS_ATTR: Attribute = Attribute::Custom("turn_rows");
+/// The turn to select (a [`TurnId`] payload). A turn without an entry leaves
+/// the selection as it is. Setting it produces no message.
+pub const SELECTED_TURN_ATTR: Attribute = Attribute::Custom("selected_turn");
 /// The label of the key that focuses the pane, shown in its title (a
 /// string).
 pub const KEY_LABEL_ATTR: Attribute = Attribute::Custom("sidebar_key");
@@ -162,6 +165,17 @@ impl TurnSidebar {
             .and_then(|e| self.rows.entry(e))
             .map(|(id, _)| id.clone());
         self.sync();
+    }
+
+    /// Selects the turn `id`, when it has an entry. A turn without one (a
+    /// system section in a turn of system content only) leaves the selection
+    /// where it is: it neither clears nor jumps. The same as setting
+    /// [`SELECTED_TURN_ATTR`].
+    pub fn select_turn(&mut self, id: &TurnId) {
+        if self.rows.entry_index(id).is_some() {
+            self.selected = Some(id.clone());
+            self.sync();
+        }
     }
 
     /// Applies a model update: `Appended`, `Updated` and `Reset` change the
@@ -279,6 +293,10 @@ impl Component for TurnSidebar {
         } else if attr == SELECTED_ATTR {
             if let Some(selected) = selected_from_value(&value) {
                 self.select(selected);
+            }
+        } else if attr == SELECTED_TURN_ATTR {
+            if let Some(id) = payload_from_value::<TurnId>(&value) {
+                self.select_turn(&id);
             }
         } else if attr == VISIBLE_ROWS_ATTR {
             if let AttrValue::Length(rows) = value {

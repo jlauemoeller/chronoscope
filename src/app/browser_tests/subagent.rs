@@ -177,7 +177,7 @@ impl Rig {
     }
 
     /// Backspace, and the wait until the transcript at `depth` is on top.
-    fn back_to(&mut self, depth: usize) {
+    pub(super) fn back_to(&mut self, depth: usize) {
         self.press(Key::Backspace);
         self.pump_until(|app| app.subagent_depth() == depth);
         self.settle();

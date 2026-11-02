@@ -12,7 +12,7 @@ expression: text
 │                            │ ▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
 │  ●   Start                 │ ▒   - both camera and microphone - but I don't have a way to access settings that…      │
 │  │                         │ │                                                                                       │
-│  ●   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  >   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
 │  │                         │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  ●   Assistant      5m 2s  │ │                                                                                       │
 │  │                         │ │   I'll start by looking at what the camera exposes over USB:                          │

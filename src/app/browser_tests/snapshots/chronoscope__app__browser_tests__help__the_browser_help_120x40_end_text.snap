@@ -12,7 +12,7 @@ expression: text
 │                       │    + / =                             Unfold all sections             │a USB. It works fine   │
 │  ●   Start            │    s                                 Show or hide system content     │ss settings that…      │
 │  │                    │    y                                 Copy section as displayed       │                       │
-│  ●   User             │    Y                                 Copy full section               │───────────────────────╯
+│  >   User             │    Y                                 Copy full section               │───────────────────────╯
 │  │                    │    w / Ctrl-s                        Save section as displayed       │ 2026-10-21 08:35:18Z ─╮
 │  ●   Assistant      5m│    W                                 Save full section               │                       │
 │  │                    │    i                                 Show section details            │                       │

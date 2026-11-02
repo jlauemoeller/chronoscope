@@ -12,7 +12,7 @@ expression: text
 │                            │ ▒ ▶ I have a Logitech BRIO web ca│    Up / k                            Previous section                │icrophone - but I don't have a way to access settings that     │
 │  ●   Start                 │ ▒   would have been available on │    Down / j                          Next section                    │t the vanilla USB profiles. Can you help me investigate wha…   │
 │  │                         │ │                                │    [                                 Previous turn                   │                                                               │
-│  ●   User                  │ ╰────────────────────────────────│    ]                                 Next turn                       │───────────────────────────────────────────────────────────────╯
+│  >   User                  │ ╰────────────────────────────────│    ]                                 Next turn                       │───────────────────────────────────────────────────────────────╯
 │  │                         │ ╭─ Assistant ── claude-opus-5.5 @│    Ctrl-u                            Scroll half a page up           │──────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  ●   Assistant      5m 2s  │ │                                │    Ctrl-d                            Scroll half a page down         │                                                               │
 │  │                         │ │   I'll start by looking at what│    PgUp                              Scroll a page up                │                                                               │

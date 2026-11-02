@@ -14,7 +14,7 @@ expression: "screen(120, 40)"
 │  │                         │ │ ▶ sys│    model           acme/coder-1          │ce                                   │
 │  ●   User                  │ │      │    effort          high                  │                                     │
 │  │                         │ │ ▶ Add│    start           2026-10-28 09:00:03Z  │                                     │
-│  ●   Assistant        17s  │ │      │    duration        17s                   │                                     │
+│  >   Assistant        17s  │ │      │    duration        17s                   │                                     │
 │  │                         │ ╰──────│    messages        2                     │─────────────────────────────────────╯
 │  ●   User                  │ ╭─ Assi│    input tokens    3.0k                  │────────────── 2026-10-28 09:00:03Z ─╮
 │  │                         │ │      │    output tokens   300                   │                                     │
