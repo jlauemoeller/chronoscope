@@ -58,8 +58,6 @@ pub struct Entry<M = Message> {
     pub cwd: Option<String>,
     #[serde(rename = "durationMs")]
     pub duration_ms: Option<u64>,
-    #[serde(rename = "messageCount")]
-    pub message_count: Option<u64>,
 }
 
 impl Entry {

@@ -10,6 +10,7 @@ use std::io::{self, Read};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
@@ -40,6 +41,15 @@ struct Builder {
     last_model: String,
     /// Message ids seen in this turn.
     messages: HashSet<String>,
+    /// How many of those messages are not `<synthetic>`: the turn's message
+    /// count.
+    counted: usize,
+    /// When the turn started: the timestamp of the prompt, else of the first
+    /// assistant entry. `None` when that entry has no usable timestamp.
+    start: Option<DateTime<Utc>>,
+    /// The duration set by the turn's latest `turn_duration` entry. The turn
+    /// has a footer once this is set.
+    duration: Option<Duration>,
     /// Latest token usage per message id.
     usage: HashMap<String, TokenUsage>,
     /// Without `apiBlockIndex`: the next block number per message id.
@@ -52,6 +62,16 @@ struct Builder {
 }
 
 impl Builder {
+    /// The turn's footer, once a `turn_duration` entry has set the duration.
+    fn stats(&self) -> Option<TurnStats> {
+        Some(TurnStats {
+            duration: self.duration?,
+            message_count: self.counted,
+            tokens: self.tokens(),
+            cost: None,
+        })
+    }
+
     /// The usage summed over the turn's messages, each counted once.
     fn tokens(&self) -> Option<TokenUsage> {
         if self.usage.is_empty() {
@@ -119,6 +139,9 @@ pub struct Assembler {
     user_flushed: bool,
     /// Index of a Compaction turn still waiting for its summary entry.
     compaction_pending: Option<usize>,
+    /// The usable timestamp of the prompt that started the turn about to
+    /// begin; taken by its first assistant entry, dropped by a compaction.
+    prompt_ts: Option<DateTime<Utc>>,
     /// The `version` last compared against the newest known one.
     last_version: Option<String>,
     /// Whether the newer-version warning has been logged.
@@ -149,6 +172,7 @@ impl Assembler {
             logged_kinds: HashSet::new(),
             user_flushed: false,
             compaction_pending: None,
+            prompt_ts: None,
             last_version: None,
             warned_version: false,
         }
@@ -460,11 +484,7 @@ impl Assembler {
     }
 
     fn timestamp(&mut self, entry: &Entry) -> DateTime<Utc> {
-        let parsed = entry
-            .timestamp
-            .as_deref()
-            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-            .map(|t| t.with_timezone(&Utc));
+        let parsed = usable_timestamp(entry);
         if let Some(ts) = parsed {
             self.first_ts.get_or_insert(ts);
             self.last_ts = Some(ts);
@@ -502,7 +522,7 @@ impl Assembler {
         };
         if let Some(text) = queued {
             let id = entry_id(entry.uuid.as_deref(), range);
-            self.start_user_turn(id, ts, text);
+            self.start_user_turn(id, ts, usable_timestamp(entry), text);
         } else {
             let text = attachment_text(kind, attachment);
             self.hold(kind, ts, text, entry.uuid.as_deref(), range);
@@ -510,8 +530,17 @@ impl Assembler {
     }
 
     /// Starts a User turn; held injected entries become its first item.
-    fn start_user_turn(&mut self, id: TurnId, timestamp: DateTime<Utc>, text: String) {
+    /// `usable` is the prompt's own timestamp, when it has one: the start of
+    /// the Assistant turn that follows.
+    fn start_user_turn(
+        &mut self,
+        id: TurnId,
+        timestamp: DateTime<Utc>,
+        usable: Option<DateTime<Utc>>,
+        text: String,
+    ) {
         self.cur = None;
+        self.prompt_ts = usable;
         self.user_flushed = false;
         self.compaction_pending = None;
         let items = take_held(&mut self.held, &mut self.held_key)
@@ -600,6 +629,7 @@ impl Assembler {
     fn on_compact_boundary(&mut self, entry: &Entry, ts: DateTime<Utc>, range: &Range<u64>) {
         self.flush_current();
         self.cur = None;
+        self.prompt_ts = None;
         self.compaction_pending = Some(self.turns.len());
         self.turns.push(Arc::new(Turn::Compaction(CompactionTurn {
             id: entry_id(entry.uuid.as_deref(), range),
@@ -626,6 +656,7 @@ impl Assembler {
             // A summary without a boundary: still a compaction.
             self.flush_current();
             self.cur = None;
+            self.prompt_ts = None;
             self.turns.push(Arc::new(Turn::Compaction(CompactionTurn {
                 id: entry_id(entry.uuid.as_deref(), range),
                 timestamp: ts,
@@ -668,11 +699,12 @@ impl Assembler {
             return;
         };
         let id = entry_id(entry.uuid.as_deref(), range);
-        self.start_user_turn(id, ts, text);
+        self.start_user_turn(id, ts, usable_timestamp(&entry), text);
     }
 
     fn on_assistant(&mut self, entry: Entry, ts: DateTime<Utc>, range: &Range<u64>) {
         let effort = entry.effort();
+        let usable = usable_timestamp(&entry);
         let Some(message) = entry.message else {
             return;
         };
@@ -712,6 +744,9 @@ impl Assembler {
                         String::new()
                     },
                     messages: HashSet::new(),
+                    counted: 0,
+                    start: self.prompt_ts.take().or(usable),
+                    duration: None,
                     usage: HashMap::new(),
                     next_block: HashMap::new(),
                     last_block: HashMap::new(),
@@ -731,6 +766,9 @@ impl Assembler {
                 changed = true;
             }
             if b.messages.insert(msg_id.clone()) {
+                if model != SYNTHETIC_MODEL {
+                    b.counted += 1;
+                }
                 let real = is_real_model(&model);
                 if real && !is_real_model(&turn.model) {
                     // The turn started with a placeholder message: the first
@@ -838,12 +876,14 @@ impl Assembler {
 
             if let Some(usage) = &message.usage {
                 b.usage.insert(msg_id, token_usage(usage));
-                if let Some(stats) = &mut turn.stats {
-                    let total = b.tokens();
-                    if stats.tokens != total {
-                        stats.tokens = total;
-                        changed = true;
-                    }
+            }
+            // Once the turn has a footer, its count and tokens follow later
+            // messages.
+            if turn.stats.is_some() {
+                let stats = b.stats();
+                if turn.stats != stats {
+                    turn.stats = stats;
+                    changed = true;
                 }
             }
         }
@@ -856,26 +896,30 @@ impl Assembler {
         }
     }
 
+    /// A `turn_duration` entry sets the turn's duration (the last entry
+    /// wins; entries are never summed): wall-clock time from the turn's start
+    /// to the entry's timestamp, or the entry's own `durationMs` when either
+    /// end has no usable timestamp or the span would be negative.
     fn on_turn_duration(&mut self, entry: &Entry) {
         self.flush_current();
         self.compaction_pending = None;
-        let (Some(b), Some(ms)) = (&self.cur, entry.duration_ms) else {
+        let Some(b) = self.cur.as_mut() else {
             return;
         };
-        let stats = TurnStats {
-            duration: std::time::Duration::from_millis(ms),
-            message_count: entry
-                .message_count
-                .and_then(|n| usize::try_from(n).ok())
-                .unwrap_or_default(),
-            tokens: b.tokens(),
-            cost: None,
+        let span = match (b.start, usable_timestamp(entry)) {
+            (Some(start), Some(end)) => (end - start).to_std().ok(),
+            _ => None,
         };
+        let Some(duration) = span.or(entry.duration_ms.map(Duration::from_millis)) else {
+            return;
+        };
+        b.duration = Some(duration);
+        let stats = b.stats();
         let idx = b.idx;
         if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[idx])
-            && turn.stats.as_ref() != Some(&stats)
+            && turn.stats != stats
         {
-            turn.stats = Some(stats);
+            turn.stats = stats;
             self.dirty.insert(idx);
         }
     }
@@ -959,6 +1003,15 @@ fn take_held(held: &mut Vec<InjectedEntry>, key: &mut Option<String>) -> Option<
         id: ItemId::from(format!("injected:{key}")),
         entries: std::mem::take(held),
     })
+}
+
+/// The entry's own `timestamp`, when it parses.
+fn usable_timestamp(entry: &Entry) -> Option<DateTime<Utc>> {
+    entry
+        .timestamp
+        .as_deref()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|t| t.with_timezone(&Utc))
 }
 
 fn is_real_model(model: &str) -> bool {

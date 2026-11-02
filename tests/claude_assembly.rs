@@ -627,12 +627,15 @@ fn effort_prefers_effort_over_per_turn_effort() {
 fn turn_duration_becomes_the_stats_footer() {
     let turns = fixture_turns();
     let stats = assistant(&turns[1]).stats.as_ref().unwrap();
+    // From the prompt (08:00:00) to the footer (08:00:30); the footer's
+    // running total of 9 is not read, the turn has messages A, B and C.
     assert_eq!(stats.duration, Duration::from_secs(30));
-    assert_eq!(stats.message_count, 9);
+    assert_eq!(stats.message_count, 3);
     assert_eq!(stats.cost, None);
     let stats = assistant(&turns[3]).stats.as_ref().unwrap();
+    // Messages D and E; the footer's 3 is a running total.
     assert_eq!(stats.duration, Duration::from_secs(10));
-    assert_eq!(stats.message_count, 3);
+    assert_eq!(stats.message_count, 2);
     assert!(assistant(&turns[5]).stats.is_none());
 }
 
@@ -946,7 +949,10 @@ fn turn_duration_after_the_turn_is_an_update() {
     match &updates[..] {
         [ModelUpdate::Updated(t)] => {
             let stats = assistant(&t[0]).stats.as_ref().unwrap();
-            assert_eq!(stats.duration, Duration::from_secs(4));
+            // From the prompt at 00:00:00 to the footer at 00:00:06, not the
+            // footer's `durationMs` of 4000.
+            assert_eq!(stats.duration, Duration::from_secs(6));
+            assert_eq!(stats.message_count, 1);
             assert_eq!(stats.tokens, None, "no usage recorded in these lines");
         }
         other => panic!("expected one Updated, got {other:?}"),
@@ -1276,4 +1282,388 @@ fn invalid_utf8_outside_usage_keeps_its_outcome() {
     // In the text and in `usage` together: unparsed.
     let line = raw_assistant_line(b"a\xffb", b"{\"service_tier\":\"\xff\"}", b"");
     assert_eq!(feed_raw(&line), (1, 0, None));
+}
+
+// ------------------------------------------------- message count, duration
+
+fn human(ts: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"u-{ts}","origin":{{"kind":"human"}},"timestamp":"{ts}","message":{{"role":"user","content":"go"}}}}"#
+    )
+}
+
+fn reply(id: &str, ts: &str, model: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"a-{id}","timestamp":"{ts}","message":{{"id":"{id}","model":"{model}","content":[{{"type":"text","text":"text {id}"}}]}}}}"#
+    )
+}
+
+fn footer(ts: Option<&str>, duration_ms: Option<u64>, count: &str) -> String {
+    let ts = ts.map_or(String::new(), |t| format!(r#","timestamp":"{t}""#));
+    let ms = duration_ms.map_or(String::new(), |m| format!(r#","durationMs":{m}"#));
+    format!(r#"{{"type":"system","subtype":"turn_duration"{ms},"messageCount":{count}{ts}}}"#)
+}
+
+fn queued(uuid: &str, ts: &str, origin: &str) -> String {
+    format!(
+        r#"{{"type":"attachment","uuid":"{uuid}","timestamp":"{ts}","attachment":{{"type":"queued_command","prompt":"queued text"{origin}}}}}"#
+    )
+}
+
+const COMPACT_BOUNDARY: &str = r#"{"type":"system","subtype":"compact_boundary","uuid":"b1","timestamp":"2026-01-01T00:05:00Z"}"#;
+const COMPACT_SUMMARY: &str = r#"{"type":"user","uuid":"s1","timestamp":"2026-01-01T00:05:01Z","isCompactSummary":true,"message":{"role":"user","content":"summary"}}"#;
+
+/// The stats of the last Assistant turn of `lines`.
+fn last_stats(lines: &[String]) -> chronoscope::model::TurnStats {
+    let turns = assembled(lines).turns().to_vec();
+    let turn = turns
+        .iter()
+        .rev()
+        .find_map(|t| match &**t {
+            Turn::Assistant(a) => Some(a.clone()),
+            _ => None,
+        })
+        .expect("an Assistant turn");
+    turn.stats.expect("a footer")
+}
+
+#[test]
+fn several_footers_give_wall_clock_time_and_the_count_is_per_turn() {
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        reply("m1", "2026-01-01T00:00:01Z", "x"),
+        footer(Some("2026-01-01T00:00:05Z"), Some(4000), "4124"),
+        reply("m2", "2026-01-01T00:00:10Z", "x"),
+        footer(Some("2026-01-01T00:00:20Z"), Some(2000), "4126"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(20), "not 4 s + 2 s");
+    assert_eq!(stats.message_count, 2, "not 4126");
+}
+
+#[test]
+fn the_spec_example_runs_six_minutes_and_fifty_one_seconds() {
+    let stats = last_stats(&[
+        human("2026-01-01T07:18:45Z"),
+        reply("m1", "2026-01-01T07:18:50Z", "x"),
+        footer(Some("2026-01-01T07:19:10Z"), Some(20_000), "10"),
+        reply("m2", "2026-01-01T07:25:00Z", "x"),
+        footer(Some("2026-01-01T07:25:36Z"), Some(16_000), "12"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(6 * 60 + 51));
+}
+
+#[test]
+fn a_turn_after_a_compaction_starts_at_its_first_assistant_entry() {
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        reply("m0", "2026-01-01T00:00:01Z", "x"),
+        COMPACT_BOUNDARY.to_owned(),
+        COMPACT_SUMMARY.to_owned(),
+        reply("m1", "2026-01-01T00:10:00Z", "x"),
+        footer(Some("2026-01-01T00:10:30Z"), Some(1000), "7"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(30));
+    assert_eq!(stats.message_count, 1);
+}
+
+#[test]
+fn a_compaction_ends_the_association_with_the_prompt() {
+    // The prompt is followed by a compaction before any assistant entry.
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        COMPACT_BOUNDARY.to_owned(),
+        COMPACT_SUMMARY.to_owned(),
+        reply("m1", "2026-01-01T00:10:00Z", "x"),
+        footer(Some("2026-01-01T00:10:30Z"), Some(1000), "7"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(30));
+}
+
+#[test]
+fn a_transcript_starting_with_an_assistant_entry_starts_at_that_entry() {
+    let stats = last_stats(&[
+        reply("m1", "2026-01-01T00:00:10Z", "x"),
+        reply("m2", "2026-01-01T00:00:12Z", "x"),
+        footer(Some("2026-01-01T00:00:40Z"), Some(1000), "7"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(30));
+    assert_eq!(stats.message_count, 2);
+}
+
+#[test]
+fn a_prompt_without_a_usable_timestamp_falls_back_to_the_first_assistant_entry() {
+    let prompt = r#"{"type":"user","uuid":"u","origin":{"kind":"human"},"timestamp":"not a time","message":{"role":"user","content":"go"}}"#;
+    let stats = last_stats(&[
+        prompt.to_owned(),
+        reply("m1", "2026-01-01T00:00:10Z", "x"),
+        footer(Some("2026-01-01T00:00:40Z"), Some(1000), "7"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(30));
+}
+
+#[test]
+fn a_footer_without_a_usable_timestamp_uses_its_duration_ms() {
+    for ts in [None, Some("garbage")] {
+        let stats = last_stats(&[
+            human("2026-01-01T00:00:00Z"),
+            reply("m1", "2026-01-01T00:00:01Z", "x"),
+            footer(ts, Some(16_000), "7"),
+        ]);
+        assert_eq!(stats.duration, Duration::from_secs(16), "{ts:?}");
+    }
+}
+
+#[test]
+fn a_start_without_a_usable_timestamp_uses_the_duration_ms() {
+    let no_ts_prompt = r#"{"type":"user","uuid":"u","origin":{"kind":"human"},"message":{"role":"user","content":"go"}}"#;
+    let no_ts_reply = r#"{"type":"assistant","uuid":"a1","message":{"id":"m1","model":"x","content":[{"type":"text","text":"t"}]}}"#;
+    let stats = last_stats(&[
+        no_ts_prompt.to_owned(),
+        no_ts_reply.to_owned(),
+        footer(Some("2026-01-01T00:00:40Z"), Some(16_000), "7"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(16));
+}
+
+#[test]
+fn an_end_before_the_start_falls_back_to_the_duration_ms() {
+    let stats = last_stats(&[
+        human("2026-01-01T00:01:00Z"),
+        reply("m1", "2026-01-01T00:01:01Z", "x"),
+        footer(Some("2026-01-01T00:00:30Z"), Some(9000), "7"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(9));
+}
+
+#[test]
+fn a_footer_with_neither_a_span_nor_a_duration_ms_sets_no_stats() {
+    let asm = assembled(&[
+        human("2026-01-01T00:00:00Z"),
+        reply("m1", "2026-01-01T00:00:01Z", "x"),
+        footer(None, None, "7"),
+    ]);
+    assert!(assistant(&asm.turns()[1]).stats.is_none());
+}
+
+#[test]
+fn a_footer_needs_no_duration_ms_when_the_timestamps_give_a_span() {
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        reply("m1", "2026-01-01T00:00:01Z", "x"),
+        footer(Some("2026-01-01T00:00:08Z"), None, "7"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(8));
+}
+
+#[test]
+fn there_is_no_footer_before_a_turn_duration_entry() {
+    let asm = assembled(&[
+        human("2026-01-01T00:00:00Z"),
+        reply("m1", "2026-01-01T00:00:01Z", "x"),
+        reply("m2", "2026-01-01T00:00:02Z", "x"),
+    ]);
+    assert!(assistant(&asm.turns()[1]).stats.is_none());
+}
+
+#[test]
+fn a_non_human_queued_command_neither_starts_a_turn_nor_resets_the_start() {
+    for origin in [r#","origin":{"kind":"task-notification"}"#, ""] {
+        let asm = assembled(&[
+            human("2026-01-01T00:00:00Z"),
+            reply("m1", "2026-01-01T00:00:01Z", "x"),
+            queued("q1", "2026-01-01T00:03:00Z", origin),
+            reply("m2", "2026-01-01T00:03:05Z", "x"),
+            footer(Some("2026-01-01T00:04:00Z"), Some(16_000), "50"),
+        ]);
+        let turns = asm.turns();
+        assert_eq!(
+            turns.len(),
+            2,
+            "origin {origin:?}: still one Assistant turn"
+        );
+        let stats = assistant(&turns[1]).stats.as_ref().unwrap();
+        assert_eq!(
+            stats.duration,
+            Duration::from_secs(240),
+            "origin {origin:?}"
+        );
+        assert_eq!(stats.message_count, 2);
+    }
+}
+
+#[test]
+fn a_human_queued_command_is_the_start_of_the_assistant_turn_after_it() {
+    let asm = assembled(&[
+        human("2026-01-01T00:00:00Z"),
+        reply("m1", "2026-01-01T00:00:01Z", "x"),
+        footer(Some("2026-01-01T00:00:10Z"), Some(1000), "5"),
+        queued(
+            "q1",
+            "2026-01-01T00:02:00Z",
+            r#","origin":{"kind":"human"}"#,
+        ),
+        reply("m2", "2026-01-01T00:02:03Z", "x"),
+        footer(Some("2026-01-01T00:02:30Z"), Some(1000), "6"),
+    ]);
+    let turns = asm.turns();
+    assert_eq!(turns.len(), 4);
+    let first = assistant(&turns[1]).stats.as_ref().unwrap();
+    assert_eq!(first.duration, Duration::from_secs(10));
+    let second = assistant(&turns[3]).stats.as_ref().unwrap();
+    assert_eq!(second.duration, Duration::from_secs(30));
+    assert_eq!(second.message_count, 1);
+}
+
+#[test]
+fn synthetic_messages_are_left_out_of_the_count() {
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        reply("m1", "2026-01-01T00:00:01Z", "x"),
+        reply("m2", "2026-01-01T00:00:02Z", "<synthetic>"),
+        reply("m3", "2026-01-01T00:00:03Z", "x"),
+        footer(Some("2026-01-01T00:00:05Z"), Some(1000), "3"),
+    ]);
+    assert_eq!(stats.message_count, 2);
+}
+
+#[test]
+fn a_turn_of_only_synthetic_messages_has_a_count_of_zero() {
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        reply("m1", "2026-01-01T00:00:01Z", "<synthetic>"),
+        footer(Some("2026-01-01T00:00:05Z"), Some(1000), "9"),
+    ]);
+    assert_eq!(stats.message_count, 0);
+}
+
+#[test]
+fn a_message_sent_in_several_lines_counts_once() {
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        assistant_line("msg_a", 1, "{}"),
+        assistant_line("msg_a", 2, "{}"),
+        footer(Some("2026-01-01T00:00:05Z"), Some(1000), "9"),
+    ]);
+    assert_eq!(stats.message_count, 1);
+}
+
+#[test]
+fn messages_without_an_id_are_counted_by_uuid_then_line() {
+    let no_id = |uuid: &str| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"2026-01-01T00:00:01Z","message":{{"model":"x","content":[{{"type":"text","text":"t"}}]}}}}"#
+        )
+    };
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        no_id("a1"),
+        no_id("a1"),
+        no_id("a2"),
+        footer(Some("2026-01-01T00:00:05Z"), Some(1000), "9"),
+    ]);
+    assert_eq!(stats.message_count, 2);
+}
+
+fn late_message_lines() -> Vec<String> {
+    vec![
+        human("2026-01-01T00:00:00Z"),
+        reply("m1", "2026-01-01T00:00:01Z", "x"),
+        footer(Some("2026-01-01T00:00:05Z"), Some(4000), "100"),
+        reply("m2", "2026-01-01T00:00:06Z", "x"),
+    ]
+}
+
+#[test]
+fn a_message_after_a_footer_updates_the_count() {
+    let lines = late_message_lines();
+    let mut asm = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(&b""[..])));
+    for line in &lines[..3] {
+        push(&mut asm, line);
+    }
+    assert_eq!(
+        assistant(&asm.turns()[1])
+            .stats
+            .as_ref()
+            .unwrap()
+            .message_count,
+        1
+    );
+    let updates = push(&mut asm, &lines[3]);
+    match &updates[..] {
+        [ModelUpdate::Updated(t)] => {
+            let stats = assistant(&t[0]).stats.as_ref().unwrap();
+            assert_eq!(stats.message_count, 2);
+            assert_eq!(stats.duration, Duration::from_secs(5));
+        }
+        other => panic!("expected one Updated, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_synthetic_message_after_a_footer_leaves_the_count_alone() {
+    let mut lines = late_message_lines();
+    lines.pop();
+    lines.push(reply("m2", "2026-01-01T00:00:06Z", "<synthetic>"));
+    assert_eq!(last_stats(&lines).message_count, 1);
+}
+
+#[test]
+fn a_late_message_gives_the_same_turns_by_chunk_and_line_by_line() {
+    let lines = late_message_lines();
+    let text = lines.join("\n") + "\n";
+
+    let mut by_chunk = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(
+        text.as_bytes(),
+    )));
+    let first_len = lines[..3].iter().map(|l| l.len() + 1).sum::<usize>();
+    by_chunk.push_chunk(&text.as_bytes()[..first_len]);
+    let updates = by_chunk.push_chunk(&text.as_bytes()[first_len..]);
+    assert!(
+        matches!(&updates[..], [ModelUpdate::Updated(t)] if
+            assistant(&t[0]).stats.as_ref().unwrap().message_count == 2),
+        "{updates:?}"
+    );
+
+    let mut by_line = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(
+        text.as_bytes(),
+    )));
+    let mut offset = 0;
+    let mut last = Vec::new();
+    for line in &lines {
+        let end = offset + line.len() as u64;
+        last = by_line.push_line(line.as_bytes(), offset..end);
+        offset = end + 1;
+    }
+    assert!(
+        matches!(&last[..], [ModelUpdate::Updated(t)] if
+            assistant(&t[0]).stats.as_ref().unwrap().message_count == 2),
+        "{last:?}"
+    );
+
+    let whole = assemble_str(&text);
+    for turns in [by_chunk.turns(), by_line.turns()] {
+        assert_eq!(turns.len(), whole.len());
+        for (a, b) in turns.iter().zip(&whole) {
+            assert_eq!(a, b);
+        }
+    }
+    assert_eq!(
+        assistant(&whole[1]).stats.as_ref().unwrap().message_count,
+        2
+    );
+}
+
+#[test]
+fn a_message_count_of_the_wrong_type_does_not_fail_the_line() {
+    for count in [r#""many""#, "[1]", r#"{"n":1}"#, "-3", "1.5", "null"] {
+        let asm = assembled(&[
+            human("2026-01-01T00:00:00Z"),
+            reply("m1", "2026-01-01T00:00:01Z", "x"),
+            footer(Some("2026-01-01T00:00:05Z"), Some(4000), count),
+        ]);
+        assert_eq!(asm.unparsed_count(), 0, "messageCount {count}");
+        let stats = assistant(&asm.turns()[1]).stats.as_ref().unwrap();
+        assert_eq!(stats.duration, Duration::from_secs(5));
+        assert_eq!(stats.message_count, 1);
+    }
 }
