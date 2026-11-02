@@ -508,6 +508,83 @@ fn a_value_of_an_unexpected_json_type_is_left_out_without_unavailable() {
 }
 
 #[test]
+fn a_value_of_an_unexpected_json_type_leaves_out_that_field_alone() {
+    const ROW_TIME: [&str; 3] = ["time.created", "time.streamed", "time.completed"];
+    let message = |missing: &str| -> Vec<&str> {
+        let mut all = vec!["row id"];
+        all.extend(ROW_TIME);
+        all.extend(["finish", "rawFinish", "error"]);
+        all.into_iter().filter(|l| *l != missing).collect()
+    };
+    for (from, to, missing) in [
+        (
+            r#""created":1700000001000,"streamed""#,
+            r#""created":"soon","streamed""#,
+            "time.created",
+        ),
+        (
+            r#""streamed":1700000003000"#,
+            r#""streamed":1.5"#,
+            "time.streamed",
+        ),
+        (
+            r#""completed":1700000004000"#,
+            r#""completed":[1]"#,
+            "time.completed",
+        ),
+    ] {
+        let fx = full();
+        let turns = fx.turns();
+        fx.set_data("a1", &FULL.replace(from, to));
+        let content = fx.content_of(&turns, 1, SectionKey::Item(ItemId::from("a1:0")));
+        assert_eq!(labels(&content, "Message"), message(missing), "{to}");
+    }
+    for (from, to, left) in [
+        (r#""start":"aaa111""#, r#""start":false"#, "snapshot.end"),
+        (r#""end":"bbb222""#, r#""end":7"#, "snapshot.start"),
+    ] {
+        let fx = full();
+        let turns = fx.turns();
+        fx.set_data("a1", &FULL.replace(from, to));
+        let content = fx.content_of(&turns, 1, SectionKey::Item(ItemId::from("a1:0")));
+        assert_eq!(labels(&content, "Environment"), [left], "{to}");
+    }
+    // A `model` that is not an object.
+    let fx = full();
+    let turns = fx.turns();
+    fx.set_data(
+        "a1",
+        &FULL.replace(
+            r#""model":{"id":"acme/coder-1","providerID":"acme","variant":"high"}"#,
+            r#""model":"x""#,
+        ),
+    );
+    let content = fx.content_of(&turns, 1, SectionKey::Item(ItemId::from("a1:0")));
+    assert!(!labels(&content, "Turn").contains(&"provider"));
+    assert!(labels(&content, "Turn").contains(&"agent"));
+    assert!(!has_unavailable(&content, "Turn"));
+    // A tool part's `time` that is not an object leaves out `start` alone.
+    let fx = full();
+    let turns = fx.turns();
+    fx.set_data(
+        "a1",
+        &FULL.replace(
+            r#""time":{"created":1700000001500,"ran":1700000001600,"completed":1700000002500}"#,
+            r#""time":"x""#,
+        ),
+    );
+    let content = fx.content_of(&turns, 1, SectionKey::Item(ItemId::from("call-1")));
+    assert_eq!(labels(&content, "Tool call"), ["duration", "status"]);
+    // A tool part's `id` of another type: named by its position, as assembled.
+    let data = FULL.replace(r#""id":"call-1""#, r#""id":5"#);
+    let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", &data)]);
+    assert_eq!(
+        labels(&fx.item(1, "a1:2"), "Tool call"),
+        ["start", "duration", "status"]
+    );
+}
+
+#[test]
 fn a_time_that_is_out_of_range_is_left_out() {
     let data =
         r#"{"time":{"created":9223372036854775807},"content":[{"type":"text","text":"hi"}]}"#;
@@ -681,6 +758,46 @@ fn a_row_that_was_deleted_makes_its_groups_unavailable() {
         rows(&content, "Tool call").unwrap(),
         [("duration", "1s"), ("status", "ok"), ("unavailable", "")]
     );
+}
+
+#[test]
+fn a_deleted_row_makes_only_the_groups_read_from_it_unavailable() {
+    let first = r#"{"agent":"build","model":{"id":"m","providerID":"first"},"content":[{"type":"text","text":"one"}]}"#;
+    let second =
+        r#"{"finish":"stop","snapshot":{"start":"s"},"content":[{"type":"text","text":"two"}]}"#;
+    let fx = || {
+        Fx::new(&[
+            ("u1", "user", USER),
+            ("a1", "assistant", first),
+            ("a2", "assistant", second),
+        ])
+    };
+    // The turn's first row is gone: Turn only.
+    let gone = fx();
+    let turns = gone.turns();
+    gone.delete("a1");
+    let content = gone.content_of(&turns, 1, SectionKey::Item(ItemId::from("a2:0")));
+    assert!(has_unavailable(&content, "Turn"));
+    assert_eq!(
+        rows(&content, "Message").unwrap(),
+        [("row id", "a2"), ("finish", "stop")]
+    );
+    assert_eq!(
+        rows(&content, "Environment").unwrap(),
+        [("snapshot.start", "s")]
+    );
+    // The section's own row is gone: Message and Environment only.
+    let gone = fx();
+    let turns = gone.turns();
+    gone.delete("a2");
+    let content = gone.content_of(&turns, 1, SectionKey::Item(ItemId::from("a2:0")));
+    assert!(!has_unavailable(&content, "Turn"));
+    assert!(
+        rows(&content, "Turn")
+            .unwrap()
+            .contains(&("provider", "first"))
+    );
+    assert_unavailable(&content, &["Message", "Environment"]);
 }
 
 #[test]
@@ -1029,6 +1146,28 @@ fn an_error_that_says_nothing_is_no_row_unless_the_notice_says_error() {
     );
 }
 
+#[test]
+fn an_error_missing_or_of_the_wrong_type_is_no_row_though_the_notice_says_error() {
+    for error in ["", r#""error":7,"#, r#""error":null,"#, r#""error":[1],"#] {
+        let data =
+            format!(r#"{{"finish":"error",{error}"content":[{{"type":"text","text":"x"}}]}}"#);
+        let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", &data)]);
+        let turns = fx.turns();
+        let Turn::Assistant(turn) = &*turns[1] else {
+            panic!()
+        };
+        assert!(
+            turn.items.iter().any(
+                |i| matches!(i, Item::Notice { level: NoticeLevel::Error, text, .. } if text == "error")
+            ),
+            "{data}"
+        );
+        let content = fx.item(1, "a1:0");
+        assert_eq!(labels(&content, "Message"), ["row id", "finish"], "{data}");
+        assert!(!has_unavailable(&content, "Message"), "{data}");
+    }
+}
+
 // -- which part a tool call is read from
 
 const ONE_SECOND: (i64, i64) = (1_700_000_001_000, 1_700_000_002_000);
@@ -1139,6 +1278,8 @@ fn reading_details_in_wal_mode_leaves_the_database_file_untouched() {
         key: SectionKey::Item(ItemId::from("call-1")),
     };
     let source = section_source(&turns[1], &id).unwrap();
-    assert!(!section_details(&fx.db.path, &source).is_empty());
+    let groups = section_details(&fx.db.path, &source);
+    assert!(!groups.is_empty());
+    assert!(groups.iter().all(|g| !g.unavailable), "{groups:?}");
     assert_eq!(std::fs::read(&fx.db.path).unwrap(), before);
 }

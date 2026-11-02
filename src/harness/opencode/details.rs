@@ -159,8 +159,9 @@ fn message_group(row: Option<&Row>) -> SourceGroup {
         rows.time("time.completed", time.and_then(|t| t.completed));
         rows.text("finish", head.finish.as_deref());
         rows.text("rawFinish", head.raw_finish.as_deref());
-        // The text of the notice for the same row. An error that says
-        // nothing is a row only where the notice says `error` for it.
+        // The text of the notice for the same row. An `error` that says
+        // nothing is a row only where the notice says `error` for it. One that
+        // is missing, or not an object or string, is left out even then.
         let ended_in_error = head.finish.as_deref().map(str::trim) == Some("error");
         let error = head
             .error
