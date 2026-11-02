@@ -31,11 +31,11 @@ nits if the diff changes UI anyway) and stop.
 - Render the views yourself, to check states and sizes the snapshots may
   not cover (small terminals, long text, empty lists, the sizes in the `UI`
   section):
-  - Create a throwaway crate **outside the repo**, at
-    `${TMPDIR:-/tmp}/factory-ui-<task-id>/`, with a path dependency on the
-    project (and the same `ratatui` version the project uses).
+  - Create a throwaway crate **outside the repo**, in your own directory
+    (see "Scratch work"), with a path dependency on the project (and the
+    same `ratatui` version the project uses).
   - Give it its own target directory: run cargo there with
-    `CARGO_TARGET_DIR=${TMPDIR:-/tmp}/factory-ui-<task-id>/target`.
+    `CARGO_TARGET_DIR` set to a `target` folder inside your directory.
   - Render the views with Ratatui's `TestBackend` at fixed sizes and print
     the buffers (including styles where colours matter).
   - Never add code, files or dependencies to the repo.
@@ -62,6 +62,19 @@ otherwise. A PASS review still lists its nits. Never raise a nit to must-fix
 to force another round, or lower a must-fix to let the work pass. Mark
 security findings with the word **Security** so the Approver can prioritise
 them.
+
+## Scratch work
+
+The session scratchpad and `$TMPDIR` are shared with other agents running at
+the same time. Before any work outside the repo, create your own directory
+inside the scratchpad (or `${TMPDIR:-/tmp}` if you have none) with
+`mktemp -d`, named `ui-reviewer-<task-id>-<round-id>.XXXXXX`. Shell state
+doesn't persist between commands, so use its full path each time.
+
+- Put all exports, copies, probes, backups and the throwaway crate there, and
+  set `CARGO_TARGET_DIR` to a `target` folder inside it.
+- Never use, overwrite or delete a path you didn't create in this run.
+- Delete your directory when you finish.
 
 ## Write
 

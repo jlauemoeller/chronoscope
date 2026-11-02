@@ -220,9 +220,9 @@ The agent roles are:
   `factory/state/tasks/<task-id>/task.md`. It inspects the Builder's `insta`
   snapshots. Any tests it runs in the repo run with `INSTA_UPDATE=no`. It
   also renders views itself:
-  - It creates a throwaway crate in a scratch directory outside the repo
-    (for example `$TMPDIR/factory-ui-<task-id>/`). The crate has a path
-    dependency on the project and its own `CARGO_TARGET_DIR`.
+  - It creates a throwaway crate outside the repo, in its own scratch
+    directory (see "Rules"). The crate has a path dependency on the project
+    and its own `CARGO_TARGET_DIR`.
   - It renders the views with Ratatui's `TestBackend` at fixed sizes.
   - It never adds code to the repo.
 
@@ -532,6 +532,14 @@ factory/state/board.json
   tests against the acceptance criteria in
   `factory/state/tasks/<task-id>/task.md`.
 - The factory never pushes changes to an origin. Only the human user pushes.
+- Agents never share scratch space. The session scratchpad and `$TMPDIR` are
+  shared by agents running at the same time, so the definition of every agent
+  that can work outside the repo (Builder, reviewers, Approver) tells it to:
+  create its own directory with `mktemp -d`, named
+  `<role>-<task-id>-<round-id>.XXXXXX`, before any such work; keep all exports,
+  copies, probes and backups there, with `CARGO_TARGET_DIR` set to a `target`
+  folder inside it; never use, overwrite or delete a path it didn't create in
+  this run; and delete its directory when it finishes.
 - Wait for all reviews: a review round is done only when every reviewer's
   file exists in the round directory. Never resume the builder mid-round.
 - Spawn the builder with a name (`builder-<task-id>`) and resume that same
