@@ -171,7 +171,7 @@ fn section_markdown(
                 unfolded_tool(call, section, settings)
             }
         }
-        SectionContent::ModelChange(_) | SectionContent::Stats(_) => {
+        SectionContent::ModelChange(_) | SectionContent::Notice(..) | SectionContent::Stats(_) => {
             let text = displayed_text(
                 turn,
                 &section.id,
@@ -181,7 +181,18 @@ fn section_markdown(
                 settings.open_key,
                 None,
             )?;
-            format!("_{text}_")
+            // One emphasis per line: a blank line inside a notice would end
+            // a single one.
+            text.split('\n')
+                .map(|line| {
+                    if line.is_empty() {
+                        String::new()
+                    } else {
+                        format!("_{line}_")
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
         }
         SectionContent::Compaction(summary_text) => {
             if folded {

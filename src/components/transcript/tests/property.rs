@@ -26,6 +26,8 @@ enum ItemSpec {
     },
     Injected(String),
     Model,
+    /// An error (`true`) or a warning notice.
+    Notice(bool, String),
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +97,7 @@ fn item() -> impl Strategy<Value = ItemSpec> {
             ),
         text().prop_map(ItemSpec::Injected),
         Just(ItemSpec::Model),
+        (any::<bool>(), text()).prop_map(|(error, t)| ItemSpec::Notice(error, t)),
     ]
 }
 
@@ -139,6 +142,15 @@ fn build_item(n: usize, spec: &ItemSpec) -> crate::model::Item {
             id: crate::model::ItemId::from(id.as_str()),
             model: "claude-sonnet-5.5".to_owned(),
         },
+        ItemSpec::Notice(error, t) => blocks::notice(
+            &id,
+            if *error {
+                crate::model::NoticeLevel::Error
+            } else {
+                crate::model::NoticeLevel::Warning
+            },
+            t,
+        ),
     }
 }
 

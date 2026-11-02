@@ -24,7 +24,7 @@ use crate::theme::{Role, Theme};
 pub use compaction::CompactionSection;
 pub use stats::{StatsSection, format_stats, format_tokens};
 pub use system::SystemSection;
-pub use text::{AssistantTextSection, ModelChangeSection};
+pub use text::{AssistantTextSection, ModelChangeSection, NoticeSection};
 pub use thinking::ThinkingSection;
 pub use tool::{Block, Body, PENDING, PlainBlock, PlainTool, ToolBodyRenderer, ToolCallSection};
 pub use user::UserPromptSection;
@@ -123,6 +123,7 @@ pub fn render_section(section: &Section<'_>, ctx: &SectionCtx<'_>) -> Rendered {
             return ToolCallSection(call).render(ctx);
         }
         SectionContent::ModelChange(model) => ModelChangeSection(model).lines(ctx),
+        SectionContent::Notice(level, text) => NoticeSection(level, text).lines(ctx),
         SectionContent::Stats(stats) => StatsSection(stats).lines(ctx),
         SectionContent::Compaction(summary) => CompactionSection(summary).lines(ctx),
         SectionContent::System(entries) => SystemSection(entries).lines(ctx),

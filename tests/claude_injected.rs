@@ -120,6 +120,7 @@ fn item_names(items: &[Item]) -> Vec<&'static str> {
             Item::Thinking { .. } => "thinking",
             Item::ToolCall(_) => "tool",
             Item::ModelChange { .. } => "model",
+            Item::Notice { .. } => "notice",
         })
         .collect()
 }

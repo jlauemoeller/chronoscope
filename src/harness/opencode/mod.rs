@@ -11,6 +11,8 @@ mod discovery;
 mod follow;
 mod load;
 mod location;
+#[cfg(test)]
+mod notice_tests;
 mod subagent;
 #[cfg(test)]
 pub(crate) mod testing;

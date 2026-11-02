@@ -440,6 +440,25 @@ pub enum Item {
         /// The model from this point on.
         model: String,
     },
+    /// An abnormal ending of a message: an error, an interruption or a stop
+    /// that is not the end of the work.
+    Notice {
+        /// Stable id, `notice:<message or row id>`.
+        id: ItemId,
+        /// How serious it is.
+        level: NoticeLevel,
+        /// What went wrong, as plain text.
+        text: String,
+    },
+}
+
+/// How serious an [`Item::Notice`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoticeLevel {
+    /// Something failed.
+    Error,
+    /// The turn stopped or was interrupted.
+    Warning,
 }
 
 impl Item {
@@ -449,7 +468,8 @@ impl Item {
             Item::Text { id, .. }
             | Item::Injected { id, .. }
             | Item::Thinking { id, .. }
-            | Item::ModelChange { id, .. } => id,
+            | Item::ModelChange { id, .. }
+            | Item::Notice { id, .. } => id,
             Item::ToolCall(call) => &call.id,
         }
     }

@@ -586,6 +586,32 @@ fn a_model_change_inside_a_turn_adds_a_note() {
 }
 
 #[test]
+fn an_assistant_row_that_ended_in_error_loads_with_its_notice() {
+    let db = TempDb::new();
+    db.exec(
+        r#"INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data) VALUES
+        ('msg_main_90', 'ses_main', 'user', 90, 1793179000000, 1793179000000, '{"time":{"created":1793179000000},"text":"One more"}'),
+        ('msg_main_91', 'ses_main', 'assistant', 91, 1793179001000, 1793179001000, '{"time":{"created":1793179001000,"completed":1793179002000},"model":{"id":"acme/coder-1"},"content":[],"finish":"error","error":{"type":"provider.transport","message":"connection reset"}}');"#,
+    );
+    let turns = load_turns(&harness(&db), "ses_main");
+    let last = assistant(turns.last().unwrap());
+    assert_eq!(
+        last.items,
+        [Item::Notice {
+            id: "notice:msg_main_91".into(),
+            level: crate::model::NoticeLevel::Error,
+            text: "provider.transport: connection reset".to_owned(),
+        }]
+    );
+    // The rows of the fixture end normally: no other turn has a notice.
+    let others = turns[..turns.len() - 1].iter().filter(|t| match &***t {
+        Turn::Assistant(a) => a.items.iter().any(|i| matches!(i, Item::Notice { .. })),
+        _ => false,
+    });
+    assert_eq!(others.count(), 0);
+}
+
+#[test]
 fn injected_rows_after_the_last_row_go_into_the_current_turn() {
     let db = TempDb::new();
     let turns = load_turns(&harness(&db), "ses_main");

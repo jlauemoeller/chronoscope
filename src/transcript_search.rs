@@ -272,12 +272,14 @@ pub fn search(query: &SearchQuery, corpus: &SearchCorpus) -> Vec<Match> {
 ///   an output that cannot be read is left out).
 /// - System content: each entry's kind and text.
 /// - The model-change note and the stats footer as they are drawn.
+/// - A notice: its text.
 pub fn section_text<'a>(section: &Section<'a>) -> Cow<'a, str> {
     match section.content {
         SectionContent::Prompt(text)
         | SectionContent::Text(text)
         | SectionContent::Thinking(text)
-        | SectionContent::Compaction(text) => Cow::Borrowed(text),
+        | SectionContent::Compaction(text)
+        | SectionContent::Notice(_, text) => Cow::Borrowed(text),
         SectionContent::ModelChange(model) => Cow::Owned(format!("model → {model}")),
         SectionContent::Stats(stats) => Cow::Owned(format_stats(stats)),
         SectionContent::System(entries) => Cow::Owned(system_text(entries)),
