@@ -30,7 +30,8 @@ pub use browser_header::{
     parse_warning_note,
 };
 pub use details_overlay::{
-    DetailsContent, DetailsGroup, DetailsOverlay, DetailsRow, section_details,
+    DESIRED_SIZE_ATTR, DetailsContent, DetailsGroup, DetailsOverlay, DetailsRow, MAX_WIDTH_ATTR,
+    max_width_value,
 };
 pub use empty_state::{EMPTY_SESSION, EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};
@@ -44,9 +45,7 @@ pub use list_pane::{
     ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
     selected_value, visible_rows,
 };
-pub use overlay_frame::{
-    FrameKey, INTERIOR_ATTR, OverlayFrame, interior_from_value, interior_of, interior_value,
-};
+pub use overlay_frame::{INTERIOR_ATTR, interior_of, interior_value};
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
 pub use prompt::{Prompt, PromptMode, tail_fitting};
 pub use selector_frame::SelectorFrame;

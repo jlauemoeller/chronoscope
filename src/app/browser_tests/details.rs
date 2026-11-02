@@ -321,13 +321,24 @@ fn with_no_selection_the_key_does_nothing() {
     assert_eq!(rig.focus(), Some(Id::Transcript));
 }
 
+fn some_details() -> crate::components::DetailsContent {
+    use crate::components::{DetailsContent, DetailsGroup, DetailsRow};
+    DetailsContent::new(vec![DetailsGroup::new(
+        "Other",
+        vec![DetailsRow::new("label", "an other value")],
+    )])
+}
+
 #[test]
-fn an_open_request_while_open_or_over_another_overlay_changes_nothing() {
+fn an_open_request_while_it_is_open_changes_nothing() {
     let mut rig = rig();
     rig.open_loaded();
     rig.open_details();
     let before = overlay_rows(&mut rig, 120, 40);
-    rig.down(0);
+    rig.app.update(Msg::OpenDetails(some_details()));
+    assert_eq!(overlay_rows(&mut rig, 120, 40), before);
+    assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
+    // The other overlays do not open over it either.
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
     rig.app.update(Msg::OpenThemeSelector);
     assert!(!rig.app.application().mounted(&Id::HelpOverlay));
@@ -340,12 +351,29 @@ fn an_open_request_while_open_or_over_another_overlay_changes_nothing() {
     // A close without an overlay is harmless.
     rig.app.update(Msg::CloseDetails);
     assert_eq!(rig.focus(), Some(Id::Transcript));
-    // And the help overlay refuses to open over it the other way round.
+}
+
+#[test]
+fn it_does_not_open_over_the_help_overlay_the_theme_selector_or_a_prompt() {
+    let mut rig = rig();
+    rig.open_loaded();
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
-    let content = crate::components::DetailsContent::default();
-    rig.app.update(Msg::OpenDetails(content));
+    rig.app.update(Msg::OpenDetails(some_details()));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
+    rig.app.update(Msg::CloseHelp);
+
+    rig.app.update(Msg::OpenThemeSelector);
+    rig.app.update(Msg::OpenDetails(some_details()));
+    assert!(!open(&rig.app));
+    assert_eq!(rig.focus(), Some(Id::ThemeSelector));
+    rig.app.update(Msg::CancelTheme);
+
+    rig.press(Key::Char('/'));
+    rig.pump_until(|app| app.application().mounted(&Id::Prompt));
+    rig.app.update(Msg::OpenDetails(some_details()));
+    assert!(!open(&rig.app));
+    assert_eq!(rig.focus(), Some(Id::Prompt));
 }
 
 #[test]
@@ -417,6 +445,30 @@ fn the_help_overlay_lists_the_default_details_key() {
     assert!(row.contains("│    i  "), "{row}");
 }
 
+#[test]
+fn a_details_key_bound_to_a_chord_opens_and_closes_the_overlay() {
+    let mut rig = rig_with_keymap(keymap_with("browser", "details", "z i"));
+    rig.open_loaded();
+    // A lone `z` or `i` does nothing.
+    rig.press(Key::Char('i'));
+    rig.press(Key::Char('z'));
+    rig.press(Key::Char('j'));
+    rig.settle();
+    assert!(!open(&rig.app));
+    rig.press(Key::Char('z'));
+    rig.press(Key::Char('i'));
+    rig.pump_until(open);
+    assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
+    // The chord closes it; its second key alone does not.
+    rig.press(Key::Char('i'));
+    rig.settle();
+    assert!(open(&rig.app));
+    rig.press(Key::Char('z'));
+    rig.press(Key::Char('i'));
+    rig.pump_until(|app| !open(app));
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+}
+
 // -- a snapshot
 
 #[test]
@@ -447,6 +499,102 @@ fn what_it_shows_does_not_change_when_the_turn_does() {
     assert!(after.iter().any(|row| row.contains("10m 0s")), "{after:?}");
 }
 
+// -- resizing
+
+/// An Assistant turn whose model name is 110 columns wide, so its details
+/// are wider than a small screen and wrap there.
+fn long_model_turn() -> Arc<Turn> {
+    let mut turn = (*arc(with_id(
+        blocks::assistant(
+            None,
+            vec![blocks::text("x1", "Hello")],
+            Some(blocks::stats()),
+        ),
+        "a1",
+    )))
+    .clone();
+    let Turn::Assistant(assistant) = &mut turn else {
+        unreachable!()
+    };
+    assistant.model = format!("claude-{}", "m".repeat(103));
+    Arc::new(turn)
+}
+
+fn rect_of(rig: &Rig) -> ratatui::layout::Rect {
+    rig.app.routing().area(Id::DetailsOverlay).unwrap()
+}
+
+fn open_long_model_at(width: u16, height: u16) -> Rig {
+    let mut rig = rig_with(theme("default"), width, height);
+    rig.open_with(vec![long_model_turn()]);
+    rig.open_details();
+    rig
+}
+
+#[test]
+fn a_wider_screen_gives_the_overlay_the_width_its_rows_want() {
+    let mut rig = open_long_model_at(80, 24);
+    // Capped by the screen: 76 columns, the model wrapped.
+    assert_eq!(rect_of(&rig).width, 76);
+    let narrow = overlay_rows(&mut rig, 80, 24).join("\n");
+    assert!(!narrow.contains(&"m".repeat(103)), "{narrow}");
+    // 13 (`output tokens`) + 2 + 110 + 8 columns want.
+    rig.app.update(Msg::Resized(200, 50));
+    let wide = rect_of(&rig);
+    assert_eq!(wide.width, 133);
+    let rows = overlay_rows(&mut rig, 200, 50).join("\n");
+    assert!(
+        rows.contains(&format!("claude-{}", "m".repeat(103))),
+        "{rows}"
+    );
+    // A press near the new right edge is inside the overlay, not outside it.
+    rig.app
+        .update(at(PRESS, wide.right() - 2, wide.y + wide.height / 2));
+    assert!(open(&rig.app));
+    assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
+    // The interior follows the rect.
+    assert_eq!(
+        interior(&rig.app),
+        Size::new(wide.width - 2, wide.height - 2)
+    );
+}
+
+#[test]
+fn a_narrower_screen_makes_the_overlay_as_high_as_the_wrapped_rows() {
+    let mut rig = open_long_model_at(200, 50);
+    let wide = rect_of(&rig);
+    assert_eq!(wide.width, 133);
+    rig.app.update(Msg::Resized(100, 40));
+    let narrow = rect_of(&rig);
+    assert_eq!(narrow.width, 96);
+    // The wrapped model takes two rows: the rect is taller than it was, and
+    // everything fits, so nothing scrolls and no `more` shows.
+    assert_eq!(narrow.height, wide.height + 1);
+    let rows = overlay_rows(&mut rig, 100, 40).join("\n");
+    assert!(!rows.contains("more"), "{rows}");
+    assert_eq!(interior(&rig.app).height, wide.height - 1);
+    // A press just outside the new rect closes it: routing follows the rect.
+    rig.app
+        .update(at(PRESS, narrow.right(), narrow.y + narrow.height / 2));
+    assert!(!open(&rig.app));
+}
+
+#[test]
+fn it_does_not_open_on_a_screen_that_is_too_small_to_show_it() {
+    let mut rig = rig();
+    rig.open_loaded();
+    rig.app.update(Msg::Resized(50, 15));
+    rig.press(Key::Char('i'));
+    let seen = rig.settle();
+    assert!(!open(&rig.app), "{seen:?}");
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    rig.app.update(Msg::OpenDetails(some_details()));
+    assert!(!open(&rig.app));
+    // Grown, the key works.
+    rig.app.update(Msg::Resized(120, 40));
+    rig.open_details();
+}
+
 // -- copy, save and export
 
 #[test]
@@ -473,7 +621,7 @@ fn copy_save_and_export_do_nothing_while_it_is_open() {
         (Key::Char('y'), KeyModifiers::NONE),
         (Key::Char('Y'), KeyModifiers::SHIFT),
         (Key::Char('w'), KeyModifiers::NONE),
-        (Key::Char('w'), KeyModifiers::CONTROL),
+        (Key::Char('s'), KeyModifiers::CONTROL),
         (Key::Char('W'), KeyModifiers::SHIFT),
         (Key::Char('e'), KeyModifiers::NONE),
         (Key::Char('e'), KeyModifiers::CONTROL),
@@ -619,14 +767,21 @@ fn the_wheel_scrolls_the_overlay_and_a_press_outside_closes_it() {
     rig.app.update(at(PRESS, inside.0, inside.1));
     assert!(open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
-    // The wheel outside is ignored.
-    rig.app.update(at(WHEEL_DOWN, 0, 0));
-    assert_eq!(offset(&rig.app), 1);
-    assert_eq!(presentation(&rig.app), transcript);
-    // A press outside closes it and returns the focus.
-    assert!(!area.contains((0, 0).into()));
-    rig.app.update(at(PRESS, 0, 0));
+    // The wheel outside is ignored, over the header and over the transcript.
+    let covered = rig.app.routing().area(Id::Transcript).unwrap();
+    let on_transcript = (covered.x + 1, covered.y + 2);
+    assert!(covered.contains(on_transcript.into()));
+    assert!(!area.contains(on_transcript.into()));
+    for point in [(0, 0), on_transcript] {
+        rig.app.update(at(WHEEL_DOWN, point.0, point.1));
+        assert_eq!(offset(&rig.app), 1);
+        assert_eq!(presentation(&rig.app), transcript);
+    }
+    // A press outside closes it and returns the focus; it does not reach the
+    // transcript under the pointer.
+    rig.app.update(at(PRESS, on_transcript.0, on_transcript.1));
     assert!(!open(&rig.app));
+    assert_eq!(presentation(&rig.app), transcript);
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert_eq!(rig.app.screen(), Screen::Browser);
 }

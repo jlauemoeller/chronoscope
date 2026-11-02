@@ -215,9 +215,9 @@ impl App {
 
     /// A press or a wheel step outside the topmost overlay `overlay`. The
     /// wheel is ignored. A left press closes the overlay with the message
-    /// `Esc` gives: `CloseHelp`, `CloseDetails`, `CancelTheme` (which gives the previous
-    /// theme back) and, for the selector over a session, `CloseSelector` (which
-    /// also ends the search whose prompt is open). At startup there is
+    /// `Esc` gives: `CloseHelp`, `CloseDetails`, `CancelTheme` (which gives
+    /// the previous theme back) and, for the selector over a session,
+    /// `CloseSelector` (which also ends the search whose prompt is open). At startup there is
     /// nothing to return to (closing would quit), and the resume
     /// confirmation is modal, so nothing happens then.
     fn outside_overlay(&mut self, overlay: Id, kind: MouseEventKind) {

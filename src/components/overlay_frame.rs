@@ -16,7 +16,7 @@ use tuirealm::event::{KeyEvent, MouseEventKind};
 use tuirealm::props::{AttrValue, Attribute};
 
 use super::list_pane::titled_block;
-use super::{payload_from_value, payload_value};
+use super::payload_value;
 use crate::app::RoutedMouse;
 use crate::keymap::{Action, Context, Keymap};
 use crate::theme::{Role, Theme};
@@ -228,9 +228,4 @@ pub fn interior_of(overlay: Rect) -> Size {
         overlay.width.saturating_sub(2),
         overlay.height.saturating_sub(2),
     )
-}
-
-/// The payload helper for tests and the `App`.
-pub fn interior_from_value(value: &AttrValue) -> Option<Size> {
-    payload_from_value::<Size>(value)
 }

@@ -137,9 +137,9 @@ pub fn too_small(area: Rect) -> bool {
 /// takes the browser's help line.
 ///
 /// The help overlay and the details overlay, when `input` has one, come after
-/// the screen (see [`help_overlay_rect`]). The toast, when `input` has one, comes last (on
-/// top) in the bottom-right corner of the screen, except on the too-small
-/// screen.
+/// the screen (see [`help_overlay_rect`]). The toast, when `input` has one,
+/// comes last (on top) in the bottom-right corner of the screen, except on the
+/// too-small screen.
 pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
     if too_small(area) {
         return ScreenLayout {
@@ -293,11 +293,19 @@ fn selector_help_line(overlay: Rect) -> Rect {
     }
 }
 
-/// The help overlay and the theme selector: `wanted` (its widest entry and its content, with the
-/// border) but at most the screen less two columns either side and one row
+/// The columns an overlay leaves free on a screen: two either side.
+pub const OVERLAY_MARGIN_COLUMNS: u16 = 4;
+
+/// The most columns an overlay can be wide on a screen `screen_width` wide.
+pub fn overlay_max_width(screen_width: u16) -> u16 {
+    screen_width.saturating_sub(OVERLAY_MARGIN_COLUMNS)
+}
+
+/// The help overlay, the details overlay and the theme selector: `wanted`
+/// (its widest entry and its content, with the border) but at most the screen less two columns either side and one row
 /// above and below, and centred.
 pub fn help_overlay_rect(area: Rect, wanted: Size) -> Rect {
-    let width = wanted.width.min(area.width.saturating_sub(4));
+    let width = wanted.width.min(overlay_max_width(area.width));
     let height = wanted.height.min(area.height.saturating_sub(2));
     Rect {
         x: area.x + (area.width - width) / 2,

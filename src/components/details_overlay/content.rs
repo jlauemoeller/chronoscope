@@ -113,11 +113,6 @@ impl DetailsContent {
         &self.groups
     }
 
-    /// Whether there is nothing to show.
-    pub fn is_empty(&self) -> bool {
-        self.groups.is_empty()
-    }
-
     /// The width of the label column: the widest label of all groups, so the
     /// values start in one column.
     fn label_width(&self) -> usize {
@@ -166,8 +161,8 @@ impl DetailsContent {
             laid.push(Laid::Blank);
             for row in &group.rows {
                 let mut label = Some(row.label.as_str());
-                for line in row.value.split('\n') {
-                    for text in char_wrap(line, value_width) {
+                for line in display_lines(&row.value) {
+                    for text in char_wrap(&line, value_width) {
                         laid.push(Laid::Row {
                             label: label.take(),
                             text,
@@ -238,9 +233,23 @@ impl DetailsContent {
     }
 }
 
+/// The lines of a value: a tab is a space (it has no width and would not be
+/// drawn), a carriage return is dropped, and newlines at the end are not
+/// rows. A value always has at least one line.
+fn display_lines(value: &str) -> Vec<String> {
+    let value = value.replace('\t', " ").replace('\r', "");
+    value
+        .trim_end_matches('\n')
+        .split('\n')
+        .map(str::to_owned)
+        .collect()
+}
+
 /// `text` cut into pieces at most `width` columns wide, at any character
 /// (paths and long tokens are never hidden, SPEC §5.5). Always at least one
-/// piece. A character wider than `width` gets a piece of its own.
+/// piece. A character wider than `width` gets a piece of its own. A space
+/// the cut falls on is dropped, so a piece never starts with it and the
+/// text stays under the value column.
 fn char_wrap(text: &str, width: usize) -> Vec<String> {
     let mut pieces = Vec::new();
     let mut current = String::new();
@@ -250,6 +259,9 @@ fn char_wrap(text: &str, width: usize) -> Vec<String> {
         if used + cols > width && !current.is_empty() {
             pieces.push(std::mem::take(&mut current));
             used = 0;
+            if ch == ' ' {
+                continue;
+            }
         }
         current.push(ch);
         used += cols;
@@ -289,7 +301,11 @@ mod tests {
         ]);
         assert_eq!(content.groups().len(), 1);
         assert_eq!(content.groups()[0].title, "Tool call");
-        assert!(DetailsContent::new(vec![DetailsGroup::new("Turn", Vec::new())]).is_empty());
+        assert!(
+            DetailsContent::new(vec![DetailsGroup::new("Turn", Vec::new())])
+                .groups()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -423,6 +439,44 @@ mod tests {
         let texts: Vec<String> = content.lines(&theme, 40).iter().map(text).collect();
         assert_eq!(texts[3], "    error  one");
         assert_eq!(texts[4], "           two");
+    }
+
+    #[test]
+    fn a_space_the_cut_falls_on_does_not_start_the_next_row() {
+        assert_eq!(char_wrap("abcd efgh", 4), ["abcd", "efgh"]);
+        assert_eq!(char_wrap("abc defg", 4), ["abc ", "defg"]);
+        // Only that one space: later ones are kept.
+        assert_eq!(char_wrap("abcd  efg", 4), ["abcd", " efg"]);
+    }
+
+    #[test]
+    fn a_wrapped_value_with_spaces_loses_only_the_spaces_at_the_cuts() {
+        let theme = builtin::default_theme();
+        let content = DetailsContent::new(vec![DetailsGroup::new(
+            "G",
+            vec![row("k", "one two three four five six")],
+        )]);
+        let texts: Vec<String> = content.lines(&theme, 15).iter().map(text).collect();
+        // Every continuation row starts at the value column.
+        for line in &texts[4..texts.len() - 1] {
+            assert!(line.starts_with("       "), "{line:?}");
+            assert!(!line[7..].starts_with(' '), "{line:?}");
+        }
+    }
+
+    #[test]
+    fn a_tab_is_a_space_and_trailing_newlines_are_not_rows() {
+        let theme = builtin::default_theme();
+        let content = DetailsContent::new(vec![DetailsGroup::new(
+            "G",
+            vec![row("a", "x\ty\tz"), row("b", "end\n\n"), row("c", "p\r\nq")],
+        )]);
+        let texts: Vec<String> = content.lines(&theme, 40).iter().map(text).collect();
+        assert_eq!(
+            texts[3..7],
+            ["    a  x y z", "    b  end", "    c  p", "       q"]
+        );
+        assert_eq!(texts[7], "");
     }
 
     #[test]

@@ -222,7 +222,7 @@ fn overlay(
 ) -> (DetailsOverlay, Rect) {
     let mut overlay = DetailsOverlay::new(content, theme, Keymap::default());
     let screen = Rect::new(0, 0, width, height);
-    let wanted = overlay.desired_size(width.saturating_sub(4));
+    let wanted = overlay.desired_size(crate::app::layout::overlay_max_width(width));
     let area = help_overlay_rect(screen, wanted);
     overlay.attr(
         INTERIOR_ATTR,

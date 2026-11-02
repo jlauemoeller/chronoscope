@@ -48,7 +48,8 @@ pub(super) const THEMED: [Id; 16] = [
 impl App {
     /// Mounts the theme selector with the cursor on the active theme and
     /// gives it the focus, remembering the active theme for `Esc`. Does
-    /// nothing when it, the help overlay, the details overlay or a prompt is open.
+    /// nothing when it, the help overlay, the details overlay or a prompt is
+    /// open.
     pub(super) fn open_theme_selector(&mut self) {
         let busy = [
             Id::ThemeSelector,

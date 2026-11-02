@@ -31,7 +31,7 @@ expression: "draw(&mut overlay, area, width, height)"
   │    finish              error                                                                                     │  
   │    rawFinish           stop_sequence                                                                             │  
   │    error               APIError: 529 overloaded_error: Overloaded. The model is receiving more requests than it  │  
-  │                         can serve right now, retry later.                                                        │  
+  │                        can serve right now, retry later.                                                         │  
   │                                                                                                                  │  
   │  Environment                                                                                                     │  
   │                                                                                                                  │  

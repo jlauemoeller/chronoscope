@@ -9,7 +9,7 @@ use super::redraw::RedrawRequest;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
     HELP_CONTEXT_ATTR, HelpContent, HelpContext, HelpOverlay, INTERIOR_ATTR, context_value,
-    interior_value,
+    interior_of, interior_value,
 };
 
 impl App {
@@ -34,7 +34,7 @@ impl App {
     }
 
     /// Mounts the help overlay for `context` and gives it the focus. Does
-    /// nothing when it is open already.
+    /// nothing when it or the details overlay is open already.
     pub(super) fn open_help(&mut self, context: HelpContext) {
         if self.application.mounted(&Id::HelpOverlay)
             || self.application.mounted(&Id::DetailsOverlay)
@@ -89,10 +89,10 @@ impl App {
         let Some(overlay) = layout(&self.layout_input(), area).area(Id::HelpOverlay) else {
             return;
         };
-        let interior = ratatui::layout::Size::new(
-            overlay.width.saturating_sub(2),
-            overlay.height.saturating_sub(2),
+        self.set_attr(
+            Id::HelpOverlay,
+            INTERIOR_ATTR,
+            interior_value(interior_of(overlay)),
         );
-        self.set_attr(Id::HelpOverlay, INTERIOR_ATTR, interior_value(interior));
     }
 }

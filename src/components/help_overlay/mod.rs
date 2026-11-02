@@ -98,7 +98,7 @@ impl Component for HelpOverlay {
 }
 
 impl HelpOverlay {
-    /// The wheel scrolls [`WHEEL_ROWS`] rows; clicks do nothing (the `App`
+    /// The wheel scrolls [`WHEEL_ROWS`](super::overlay_frame::WHEEL_ROWS) rows; clicks do nothing (the `App`
     /// closes the overlay for one outside it).
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         self.frame

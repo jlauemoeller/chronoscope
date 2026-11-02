@@ -6,22 +6,22 @@
 use ratatui::layout::Rect;
 use tuirealm::component::AppComponent;
 
-use super::layout::layout;
+use super::layout::{layout, overlay_max_width, too_small};
 use super::redraw::RedrawRequest;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
-    DetailsContent, DetailsOverlay, INTERIOR_ATTR, interior_of, interior_value,
+    DESIRED_SIZE_ATTR, DetailsContent, DetailsOverlay, INTERIOR_ATTR, MAX_WIDTH_ATTR, interior_of,
+    interior_value, max_width_value, payload_from_value,
 };
-
-/// The columns of the screen the overlay leaves free: two either side (see
-/// `help_overlay_rect`).
-const SCREEN_MARGIN: u16 = 4;
 
 impl App {
     /// Mounts the details overlay for `content` and gives it the focus. Does
     /// nothing when it, the help overlay, the theme selector or a prompt is
-    /// open.
+    /// open, or when the screen is too small to show it.
     pub(super) fn open_details(&mut self, content: DetailsContent) {
+        if too_small(Rect::new(0, 0, self.size.0, self.size.1)) {
+            return;
+        }
         let busy = [
             Id::DetailsOverlay,
             Id::HelpOverlay,
@@ -34,13 +34,15 @@ impl App {
         let overlay = DetailsOverlay::new(content, self.theme.clone(), self.keymap.clone());
         // Wrapped at the width the screen leaves it, the content is as high
         // as it will be drawn.
-        let wanted = overlay.desired_size(self.size.0.saturating_sub(SCREEN_MARGIN));
+        let wanted = overlay.desired_size(overlay_max_width(self.size.0));
         let component: Box<dyn AppComponent<Msg, UserEvent>> = Box::new(overlay);
         if let Err(err) = self.open_overlay(Id::DetailsOverlay, component) {
             log::error!("could not mount the details overlay: {err}");
             return;
         }
         self.details_size = Some(wanted);
+        self.refresh_details_size();
+        self.refresh_routing();
         self.push_details_interior();
         self.request_redraw(RedrawRequest::Dirty);
     }
@@ -62,6 +64,31 @@ impl App {
             && let Err(err) = self.application.umount(&Id::DetailsOverlay)
         {
             log::warn!("could not unmount the details overlay: {err}");
+        }
+    }
+
+    /// Asks the details overlay for the size it wants at the current screen
+    /// width: as wide as its widest row, but at most the screen less the
+    /// margin, and as high as its content wrapped at that width. Called when
+    /// the size changes, before the routing layout is refreshed, so that the
+    /// overlay follows the screen it is on.
+    pub(super) fn refresh_details_size(&mut self) {
+        if self.details_size.is_none() {
+            return;
+        }
+        self.set_attr(
+            Id::DetailsOverlay,
+            MAX_WIDTH_ATTR,
+            max_width_value(overlay_max_width(self.size.0)),
+        );
+        let wanted = self
+            .application
+            .query(&Id::DetailsOverlay, DESIRED_SIZE_ATTR)
+            .ok()
+            .flatten()
+            .and_then(|value| payload_from_value(&value.into_attr()));
+        if wanted.is_some() {
+            self.details_size = wanted;
         }
     }
 
