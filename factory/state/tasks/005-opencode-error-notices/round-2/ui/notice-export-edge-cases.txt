@@ -1,0 +1,36 @@
+Exported notice lines (`e` and `E` give the same), and what a CommonMark parser
+(pulldown-cmark, the project's markdown dependency) makes of them.
+
+Ok, the round-1 cases:
+  notice text:  bad_param: value_with_underscores
+  exported:     _bad\_param: value\_with\_underscores_
+  parsed:       <em>bad_param: value_with_underscores</em>
+
+  notice text:  one\n\ttabbed
+  exported:     _one_\n _tabbed_
+  parsed:       <em>one</em>\n<em>tabbed</em>
+
+Issue, a line that ends in a backslash: the closing delimiter is escaped.
+  notice text:  path C:\temp\
+  exported:     _path C:\temp\_
+  parsed:       _path C:\temp_              (no emphasis, underscores literal)
+
+Issue, a backslash before an underscore: the escape is cancelled.
+  notice text:  a\_b
+  exported:     _a\\_b_
+  parsed:       _a\<em>b</em>
+
+Issue, an underscore in backticks: code spans do not process escapes.
+  notice text:  use `foo_bar` now
+  exported:     _use `foo\_bar` now_
+  parsed:       <em>use <code>foo\_bar</code> now</em>      (backslash added to the text)
+
+Issue, HTML-like text: passed through as raw HTML, which a markdown viewer hides.
+  notice text:  got <think> tag
+  exported:     _got <think> tag_
+  parsed:       <em>got <think> tag</em>
+
+Issue, a line indented four or more spaces after a blank line: a code block.
+  notice text:  para\n\n    code-like
+  exported:     _para_\n\n    _code-like_
+  parsed:       <em>para</em>, then <pre><code>_code-like_</code></pre>
