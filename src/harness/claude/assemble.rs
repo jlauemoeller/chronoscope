@@ -23,8 +23,8 @@ use super::tools::{describe, tool_kind};
 use super::wire::{Block, Content, Entry, Head, Usage, content_text, read_entry, result_text};
 use crate::model::{
     AssistantTurn, ByteSource, CompactionTurn, InjectedEntry, Item, ItemId, LineFormat,
-    ModelUpdate, OutputSource, Thinking, TokenUsage, ToolCall, ToolOutput, ToolResult, ToolStatus,
-    Turn, TurnId, TurnStats, UserTurn,
+    ModelUpdate, NoticeLevel, OutputSource, Thinking, TokenUsage, ToolCall, ToolOutput, ToolResult,
+    ToolStatus, Turn, TurnId, TurnStats, UserTurn,
 };
 
 /// Placeholder model name Claude Code writes for locally generated messages;
@@ -59,6 +59,15 @@ struct Builder {
     /// Signatures of redacted thinking blocks (to tell re-sends from
     /// distinct blocks when there is no `apiBlockIndex`).
     signatures: HashMap<ItemId, String>,
+    /// The last non-null `stop_reason` per message id, within this turn: a
+    /// message id that continues after a human prompt starts over.
+    stop: HashMap<String, String>,
+    /// Message ids flagged as API errors on any of their lines.
+    api_errors: HashSet<String>,
+    /// The text blocks of flagged messages, by message id and block number
+    /// (`apiBlockIndex` plus position, else the next free number), so that a
+    /// line sent again replaces its blocks instead of adding them.
+    error_text: HashMap<String, BTreeMap<usize, String>>,
 }
 
 impl Builder {
@@ -712,9 +721,12 @@ impl Assembler {
             .is_none()
             .then(|| usable_timestamp(&entry))
             .flatten();
+        let api_error_line = entry.is_api_error();
         let Some(message) = entry.message else {
             return;
         };
+        // An empty reason is no reason: it would give the notice `stopped: `.
+        let stop_reason = message.stop_reason.filter(|s| !s.is_empty());
         if let Some(content) = &message.content {
             self.check_blocks(content);
         }
@@ -758,6 +770,9 @@ impl Assembler {
                     next_block: HashMap::new(),
                     last_block: HashMap::new(),
                     signatures: HashMap::new(),
+                    stop: HashMap::new(),
+                    api_errors: HashSet::new(),
+                    error_text: HashMap::new(),
                 }
             }
         };
@@ -794,6 +809,17 @@ impl Assembler {
                 }
             }
 
+            if api_error_line && b.api_errors.insert(msg_id.clone()) {
+                // The message turns out to be an error: text already shown
+                // for it is the error's text and moves to the notice.
+                take_message_text(turn, &mut b, &mut self.calls, &msg_id, &mut changed);
+            }
+            let api_error = b.api_errors.contains(&msg_id);
+            let stop_changed = stop_reason.is_some();
+            if let Some(reason) = stop_reason {
+                b.stop.insert(msg_id.clone(), reason);
+            }
+
             let blocks = match message.content {
                 Some(Content::Blocks(blocks)) => blocks,
                 Some(Content::Text(text)) => vec![Block {
@@ -804,8 +830,20 @@ impl Assembler {
                 _ => Vec::new(),
             };
             let api_index = entry.api_block_index;
+            // The numbers given to the error blocks of this line.
+            let mut error_keys: Vec<usize> = Vec::new();
             for (i, block) in blocks.into_iter().enumerate() {
                 match block.kind.as_deref() {
+                    Some("text") if api_error => {
+                        // The error is shown as a notice instead of text.
+                        let text = block.text.unwrap_or_default();
+                        if !text.is_empty() {
+                            let blocks = b.error_text.entry(msg_id.clone()).or_default();
+                            let key = error_block_key(blocks, &error_keys, api_index, i, &text);
+                            error_keys.push(key);
+                            blocks.insert(key, text);
+                        }
+                    }
                     Some("text") => {
                         let text = block.text.unwrap_or_default();
                         if !text.is_empty() {
@@ -878,6 +916,21 @@ impl Assembler {
                     }
                     _ if block.is_result() => results.push(block),
                     _ => {}
+                }
+            }
+
+            if stop_changed || api_error {
+                let notice_id = ItemId::from(format!("notice:{msg_id}"));
+                match message_notice(&b, &msg_id) {
+                    Some((level, text)) => {
+                        let item = Item::Notice {
+                            id: notice_id,
+                            level,
+                            text,
+                        };
+                        upsert(turn, &mut b, item, &mut changed);
+                    }
+                    None => remove(turn, &mut b, &mut self.calls, &notice_id, &mut changed),
                 }
             }
 
@@ -1013,6 +1066,33 @@ fn is_known_block(kind: Option<&str>) -> bool {
     })
 }
 
+/// Stop reasons that end a message normally.
+fn is_normal_stop(reason: &str) -> bool {
+    matches!(
+        reason,
+        "end_turn" | "tool_use" | "stop_sequence" | "pause_turn"
+    )
+}
+
+/// The notice for how a message ended (SPEC cycle 2 §4.2), `None` for a
+/// normal ending. An API error is shown as an `Error` with its text, and
+/// wins over the stop reason; a flagged message without text has none. Else
+/// the last non-null `stop_reason` decides.
+fn message_notice(b: &Builder, msg_id: &str) -> Option<(NoticeLevel, String)> {
+    if b.api_errors.contains(msg_id) {
+        let text = b
+            .error_text
+            .get(msg_id)?
+            .values()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n");
+        return (!text.trim().is_empty()).then_some((NoticeLevel::Error, text));
+    }
+    let reason = b.stop.get(msg_id)?;
+    (!is_normal_stop(reason)).then(|| (NoticeLevel::Warning, format!("stopped: {reason}")))
+}
+
 /// Turns the held injected entries into one `Injected` item, identified by
 /// the first entry.
 fn take_held(held: &mut Vec<InjectedEntry>, key: &mut Option<String>) -> Option<Item> {
@@ -1098,6 +1178,108 @@ fn upsert(turn: &mut AssistantTurn, b: &mut Builder, mut item: Item, changed: &m
         turn.items.push(item);
         *changed = true;
         pos
+    }
+}
+
+/// The number of an error text block. With `apiBlockIndex` it is that index
+/// plus the block's position. Without it, a text that equals (first) or
+/// extends a block the message already has (not one from this line) is a
+/// re-send and replaces it; any other text gets the next free number.
+fn error_block_key(
+    blocks: &BTreeMap<usize, String>,
+    taken: &[usize],
+    api_index: Option<usize>,
+    position: usize,
+    text: &str,
+) -> usize {
+    if let Some(base) = api_index {
+        return base + position;
+    }
+    let free = || blocks.iter().rev().filter(|(key, _)| !taken.contains(key));
+    free()
+        .find(|(_, old)| old.as_str() == text)
+        .or_else(|| free().find(|(_, old)| text.starts_with(old.as_str())))
+        .map(|(&key, _)| key)
+        .unwrap_or_else(|| blocks.keys().next_back().map_or(0, |last| last + 1))
+}
+
+/// Moves the text blocks the turn already shows for message `msg_id` into the
+/// message's error text, and removes them from the turn. Their ids end in the
+/// block number (`<message id>:<number>`), which stays their number there.
+fn take_message_text(
+    turn: &mut AssistantTurn,
+    b: &mut Builder,
+    calls: &mut HashMap<String, CallRef>,
+    msg_id: &str,
+    changed: &mut bool,
+) {
+    let taken: Vec<(ItemId, usize, String)> = turn
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text { id, text } => {
+                let number = id.as_str().strip_prefix(msg_id)?.strip_prefix(':')?;
+                Some((id.clone(), number.parse().ok()?, text.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    for (id, number, text) in taken {
+        b.error_text
+            .entry(msg_id.to_owned())
+            .or_default()
+            .insert(number, text);
+        remove(turn, b, calls, &id, changed);
+    }
+}
+
+/// Removes the item with the given id from the turn being built, if it has
+/// it. The items after it shift, so the positions kept in the builder's index
+/// and in `calls` (for a tool result still to come) are renewed.
+///
+/// Injected items that the removal leaves side by side collapse into the
+/// first one (consecutive injected entries are one section, SPEC §5.6).
+fn remove(
+    turn: &mut AssistantTurn,
+    b: &mut Builder,
+    calls: &mut HashMap<String, CallRef>,
+    id: &ItemId,
+    changed: &mut bool,
+) {
+    let Some(pos) = b.index.remove(id) else {
+        return;
+    };
+    turn.items.remove(pos);
+    shift_after(b, calls, pos);
+    *changed = true;
+    if pos > 0
+        && pos < turn.items.len()
+        && matches!(turn.items[pos - 1], Item::Injected { .. })
+        && matches!(turn.items[pos], Item::Injected { .. })
+        && let Item::Injected {
+            id: second,
+            entries,
+        } = turn.items.remove(pos)
+    {
+        b.index.remove(&second);
+        shift_after(b, calls, pos);
+        if let Item::Injected { entries: first, .. } = &mut turn.items[pos - 1] {
+            first.extend(entries);
+        }
+    }
+}
+
+/// Renews the positions of the items after `pos`, which an item taken out at
+/// `pos` moved up by one.
+fn shift_after(b: &mut Builder, calls: &mut HashMap<String, CallRef>, pos: usize) {
+    for at in b.index.values_mut().filter(|at| **at > pos) {
+        *at -= 1;
+    }
+    for call in calls
+        .values_mut()
+        .filter(|c| c.turn == b.idx && c.item > pos)
+    {
+        call.item -= 1;
     }
 }
 

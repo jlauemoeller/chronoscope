@@ -35,10 +35,11 @@ pub struct AttachmentHead {
     pub kind: Option<String>,
 }
 
-/// A JSONL line. `M` is the type of `message` and `T` that of
-/// `toolUseResult`; only [`read_entry`] uses other ones than the defaults.
+/// A JSONL line. `M` is the type of `message`, `T` that of `toolUseResult`
+/// and `F` that of `isApiErrorMessage`; only [`read_entry`] uses other ones
+/// than the defaults.
 #[derive(Deserialize)]
-pub struct Entry<M = Message, T = ToolUseResult> {
+pub struct Entry<M = Message, T = ToolUseResult, F = ApiErrorFlag> {
     /// Top-level `content` of `system` entries.
     pub content: Option<Value>,
     #[serde(rename = "commandRun")]
@@ -64,6 +65,24 @@ pub struct Entry<M = Message, T = ToolUseResult> {
     /// `isAsync` is read from it; see [`ToolUseResult`].
     #[serde(rename = "toolUseResult")]
     pub tool_use_result: Option<T>,
+    /// Set on the line that carries an API error as its text. A value of
+    /// another type than a boolean counts as missing.
+    #[serde(rename = "isApiErrorMessage")]
+    pub is_api_error_message: Option<F>,
+}
+
+/// An entry's `isApiErrorMessage`: `true` only for a boolean `true`; a value
+/// of another type counts as missing. Like `message.usage` it is read as raw
+/// text, so the check parse in [`read_entry`]'s retry reads the field as
+/// [`IgnoredAny`] instead, which does not check its UTF-8.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApiErrorFlag(pub bool);
+
+impl<'de> Deserialize<'de> for ApiErrorFlag {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let flag: Option<bool> = lenient(deserializer)?;
+        Ok(Self(flag == Some(true)))
+    }
 }
 
 impl<T> Entry<Message, T> {
@@ -86,6 +105,7 @@ impl<T> Entry<Message, T> {
             cwd: self.cwd,
             duration_ms: self.duration_ms,
             tool_use_result,
+            is_api_error_message: self.is_api_error_message,
         }
     }
 }
@@ -205,6 +225,15 @@ impl Entry {
         is_prompt.then(|| content_text(content))
     }
 
+    /// Whether the entry (or its message) is flagged as an API error.
+    pub fn is_api_error(&self) -> bool {
+        self.is_api_error_message == Some(ApiErrorFlag(true))
+            || self
+                .message
+                .as_ref()
+                .is_some_and(|m| m.is_api_error_message == Some(true))
+    }
+
     /// `effort`, falling back to `perTurnEffort`.
     pub fn effort(&self) -> Option<String> {
         [&self.effort, &self.per_turn_effort]
@@ -215,8 +244,14 @@ impl Entry {
     }
 }
 
-/// A [`Message`] that skips `usage`, for [`read_entry`]'s retry. Its fields
-/// are never read: parsing into it only checks the rest of the line.
+/// A [`Message`] that skips `usage`, `stop_reason` and `isApiErrorMessage`,
+/// for [`read_entry`]'s retry. Its fields are never read: parsing into it only
+/// checks the rest of the line.
+///
+/// Leaving the lenient fields out is deliberate: invalid UTF-8 inside them
+/// keeps the line parsed, as it did before they were read, so they must not
+/// be added here (the same goes for the entry's own `isApiErrorMessage`, read
+/// as `IgnoredAny` in the check parse).
 #[derive(Deserialize)]
 #[expect(dead_code, reason = "parsed only to check the line, never read")]
 struct MessageWithoutUsage {
@@ -228,28 +263,33 @@ struct MessageWithoutUsage {
 /// Reads a JSONL line as an [`Entry`].
 ///
 /// A line that does not parse gets more tries, so that every line that parses
-/// with `toolUseResult` and `usage` skipped still parses:
+/// with `toolUseResult`, `usage`, `message.stop_reason` and both
+/// `isApiErrorMessage` fields skipped still parses:
 /// - `toolUseResult` is checked while it is read (see [`ToolUseResult`]), so
 ///   a value in it that a skipped field would not mind fails the line. The
 ///   line is read again with the field kept as raw text, which is not
 ///   checked, and `isAsync` is looked for in that. If even that fails
 ///   (invalid UTF-8), the field counts as absent.
-/// - `usage` is kept as raw JSON text (see `lenient`), which must be valid
-///   UTF-8, so invalid UTF-8 inside it would fail the whole line although the
-///   line parses when `usage` is skipped.
+/// - `usage`, `message.stop_reason` and the two `isApiErrorMessage` fields are
+///   kept as raw JSON text (see `lenient`), which must be valid UTF-8, so
+///   invalid UTF-8 inside one of them would fail the whole line although the
+///   line parses when it is skipped.
 pub(crate) fn read_entry(line: &[u8]) -> Result<Entry, serde_json::Error> {
     serde_json::from_slice(line).or_else(|err| lenient_entry(line).ok_or(err))
 }
 
 /// The entry of a line that fails to parse because of `toolUseResult`, of
-/// invalid UTF-8 inside `message.usage`, or both; `None` for any other line.
+/// invalid UTF-8 inside `message.usage`, `message.stop_reason`,
+/// `message.isApiErrorMessage` or the top-level `isApiErrorMessage`, or of
+/// several of them; `None` for any other line.
 ///
 /// The line is first parsed with `toolUseResult` unchecked. If that fails
-/// too, the damage is looked for in `usage`: the line is parsed with `usage`
-/// skipped as well, which does not check its UTF-8. That keeps a line with
-/// invalid UTF-8 anywhere else (a text block, `cwd`, ...) unparsed, as it is
-/// on `main`: only the damage inside `usage` is forgiven, and the readable
-/// token figures stay.
+/// too, the damage is looked for in the other fields: the line is parsed with
+/// `usage`, `stop_reason` and both `isApiErrorMessage` fields skipped as
+/// well, which does not check their UTF-8. That keeps a line with invalid
+/// UTF-8 anywhere else (a text block, `cwd`, ...) unparsed, as it is on
+/// `main`: only damage inside those fields is forgiven, and the readable
+/// values of the rest stay (a damaged one counts as missing or lossy).
 fn lenient_entry(line: &[u8]) -> Option<Entry> {
     if let Some(entry) = entry_with_unchecked_tool_use_result(line) {
         return Some(entry);
@@ -257,7 +297,7 @@ fn lenient_entry(line: &[u8]) -> Option<Entry> {
     if std::str::from_utf8(line).is_ok() {
         return None;
     }
-    serde_json::from_slice::<Entry<MessageWithoutUsage, IgnoredAny>>(line).ok()?;
+    serde_json::from_slice::<Entry<MessageWithoutUsage, IgnoredAny, IgnoredAny>>(line).ok()?;
     let text = String::from_utf8_lossy(line);
     serde_json::from_str(&text)
         .ok()
@@ -305,6 +345,14 @@ pub struct Message {
     pub content: Option<Content>,
     #[serde(default, deserialize_with = "lenient_object")]
     pub usage: Option<Usage>,
+    /// Why the message ended; null on most lines. A value of another type
+    /// than a string counts as missing.
+    #[serde(default, deserialize_with = "lenient")]
+    pub stop_reason: Option<String>,
+    /// `isApiErrorMessage` inside the message, which counts like the one on
+    /// the entry.
+    #[serde(rename = "isApiErrorMessage", default, deserialize_with = "lenient")]
+    pub is_api_error_message: Option<bool>,
 }
 
 #[derive(Deserialize)]
