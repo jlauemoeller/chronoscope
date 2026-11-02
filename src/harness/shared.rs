@@ -2,6 +2,48 @@
 //! description.
 
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
+use serde_json::value::RawValue;
+
+/// `deserialize_with` helper (together with `#[serde(default)]`): a value of
+/// an unexpected JSON type, or one that does not fit `T` (a number out of
+/// range, say), counts as missing instead of failing the whole line or row.
+///
+/// The value is kept as raw JSON text rather than read into a
+/// `serde_json::Value`, which would itself reject an out-of-range number
+/// anywhere inside it. This needs a `serde_json` deserializer, which is what
+/// both adapters use.
+///
+/// Two limits:
+/// - A `RawValue` must be valid UTF-8, so invalid UTF-8 inside the value
+///   still fails the parse of the whole line. The Claude adapter handles
+///   that case in `read_entry` (`harness/claude/wire.rs`); OpenCode rows are
+///   `String`s already.
+/// - A duplicate key inside the value makes the whole value count as
+///   missing.
+pub(crate) fn lenient<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let raw = Box::<RawValue>::deserialize(deserializer)?;
+    Ok(serde_json::from_str(raw.get()).ok())
+}
+
+/// Like [`lenient`] for a struct: only a JSON object is read (serde would
+/// also read a struct from an array).
+pub(crate) fn lenient_object<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let raw = Box::<RawValue>::deserialize(deserializer)?;
+    if raw.get().starts_with('{') {
+        Ok(serde_json::from_str(raw.get()).ok())
+    } else {
+        Ok(None)
+    }
+}
 
 /// Title of a session with neither an `ai-title` nor a prompt.
 pub const UNTITLED: &str = "(untitled)";

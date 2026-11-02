@@ -3,10 +3,14 @@
 //! Every field is optional and unknown fields are ignored, so added or removed
 //! fields degrade to missing data. A known field with a different JSON type
 //! (other than `null`) still fails the line (or, inside `message.content`, the
-//! whole content), which the assembler then skips.
+//! whole content), which the assembler then skips. The exception is
+//! `message.usage`, which is read leniently: a value of the wrong type there
+//! counts as missing instead of failing the line.
 
 use serde::Deserialize;
 use serde_json::Value;
+
+use crate::harness::shared::{lenient, lenient_object};
 
 /// The few fields used to classify a line before (maybe) parsing it fully.
 /// Everything else on the line is skipped without being materialised.
@@ -29,8 +33,10 @@ pub struct AttachmentHead {
     pub kind: Option<String>,
 }
 
+/// A JSONL line. `M` is the type of `message`; only [`read_entry`] uses
+/// another one than the default.
 #[derive(Deserialize)]
-pub struct Entry {
+pub struct Entry<M = Message> {
     /// Top-level `content` of `system` entries.
     pub content: Option<Value>,
     #[serde(rename = "commandRun")]
@@ -43,7 +49,7 @@ pub struct Entry {
     #[serde(rename = "isMeta")]
     pub is_meta: Option<bool>,
     pub origin: Option<Value>,
-    pub message: Option<Message>,
+    pub message: Option<M>,
     pub effort: Option<Value>,
     #[serde(rename = "perTurnEffort")]
     pub per_turn_effort: Option<Value>,
@@ -107,11 +113,46 @@ impl Entry {
     }
 }
 
+/// A [`Message`] that skips `usage`, for [`read_entry`]'s retry. Its fields
+/// are never read: parsing into it only checks the rest of the line.
+#[derive(Deserialize)]
+#[expect(dead_code, reason = "parsed only to check the line, never read")]
+struct MessageWithoutUsage {
+    id: Option<String>,
+    model: Option<String>,
+    content: Option<Content>,
+}
+
+/// Reads a JSONL line as an [`Entry`].
+///
+/// `usage` is kept as raw JSON text (see `lenient`), which must be valid
+/// UTF-8, so invalid UTF-8 inside it would fail the whole line although the
+/// line parses when `usage` is skipped. Such a line gets a second try.
+pub(crate) fn read_entry(line: &[u8]) -> Result<Entry, serde_json::Error> {
+    serde_json::from_slice(line).or_else(|err| entry_with_invalid_utf8_in_usage(line).ok_or(err))
+}
+
+/// The entry of a line whose only invalid UTF-8 is inside `message.usage`,
+/// read with the invalid bytes replaced by U+FFFD; `None` for any other line.
+///
+/// The line is first parsed with `usage` skipped, which does not check its
+/// UTF-8. That keeps a line with invalid UTF-8 anywhere else (a text block,
+/// `cwd`, ...) unparsed, as it is on `main`: only the damage inside `usage`
+/// is forgiven, and the readable token figures stay.
+fn entry_with_invalid_utf8_in_usage(line: &[u8]) -> Option<Entry> {
+    if std::str::from_utf8(line).is_ok() {
+        return None;
+    }
+    serde_json::from_slice::<Entry<MessageWithoutUsage>>(line).ok()?;
+    serde_json::from_str(&String::from_utf8_lossy(line)).ok()
+}
+
 #[derive(Deserialize)]
 pub struct Message {
     pub id: Option<String>,
     pub model: Option<String>,
     pub content: Option<Content>,
+    #[serde(default, deserialize_with = "lenient_object")]
     pub usage: Option<Usage>,
 }
 
@@ -123,10 +164,27 @@ pub enum Content {
     Other(serde::de::IgnoredAny),
 }
 
+/// Token counts of a message. A value of an unexpected JSON type counts as
+/// missing, so it never turns a parsed line into an unparsed one.
 #[derive(Deserialize)]
 pub struct Usage {
+    #[serde(default, deserialize_with = "lenient")]
     pub input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "lenient")]
     pub output_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub cache_read_input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub cache_creation_input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "lenient_object")]
+    pub output_tokens_details: Option<OutputDetails>,
+}
+
+#[derive(Deserialize)]
+pub struct OutputDetails {
+    /// Already part of `output_tokens`.
+    #[serde(default, deserialize_with = "lenient")]
+    pub thinking_tokens: Option<u64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -204,7 +262,7 @@ fn search_hit(object: &serde_json::Map<String, Value>) -> Option<String> {
 /// Used to materialise large tool outputs on demand; it applies the same
 /// flattening as the assembler.
 pub(crate) fn extract_result_text(line: &[u8], call_id: &str) -> Option<String> {
-    let entry: Entry = serde_json::from_slice(line).ok()?;
+    let entry = read_entry(line).ok()?;
     let Content::Blocks(blocks) = entry.message?.content? else {
         return None;
     };
@@ -226,5 +284,35 @@ pub(super) fn content_text(content: &Content) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
         Content::Other(_) => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An assistant line with an `advisor_tool_result` block `c1` whose
+    /// content is `content`, and the raw `usage` JSON.
+    fn advisor_line(content: &[u8], usage: &[u8]) -> Vec<u8> {
+        let mut line = br#"{"type":"assistant","message":{"id":"m","content":[{"type":"advisor_tool_result","tool_use_id":"c1","content":""#.to_vec();
+        line.extend_from_slice(content);
+        line.extend_from_slice(br#""}],"usage":"#);
+        line.extend_from_slice(usage);
+        line.extend_from_slice(b"}}");
+        line
+    }
+
+    #[test]
+    fn a_result_is_read_from_a_line_with_invalid_utf8_in_usage() {
+        let line = advisor_line(b"hello", b"{\"output_tokens\":7,\"service_tier\":\"\xff\"}");
+        // The unmodified parse fails; the retry recovers the line.
+        assert!(serde_json::from_slice::<Entry>(&line).is_err());
+        assert_eq!(extract_result_text(&line, "c1").as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn a_result_is_not_read_from_a_line_with_invalid_utf8_in_the_result() {
+        let line = advisor_line(b"hel\xfflo", br#"{"output_tokens":7}"#);
+        assert_eq!(extract_result_text(&line, "c1"), None);
     }
 }

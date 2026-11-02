@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use chronoscope::harness::claude::Assembler;
 use chronoscope::model::{
-    AssistantTurn, Item, ModelUpdate, Thinking, ToolCall, ToolKind, ToolStatus, Turn, UserTurn,
+    AssistantTurn, Item, ModelUpdate, Thinking, TokenUsage, ToolCall, ToolKind, ToolStatus, Turn,
+    UserTurn,
 };
 
 fn fixture_path() -> PathBuf {
@@ -636,18 +637,31 @@ fn turn_duration_becomes_the_stats_footer() {
 }
 
 #[test]
-fn tokens_sum_input_and_output_once_per_message_and_exclude_cache() {
+fn tokens_count_each_message_once_with_cache_reads_and_writes() {
     let turns = fixture_turns();
     // Turn 1: msg_A (10+100, sent on 5 lines), msg_B (20+200, 5 lines) and
-    // msg_C (30+50, 2 lines); the fixture carries 140k cache tokens per line.
+    // msg_C (30+50, 2 lines); every line carries 50k cache writes and 90k
+    // cache reads, counted once per message (3 messages).
     assert_eq!(
         assistant(&turns[1]).stats.as_ref().unwrap().tokens,
-        Some(410)
+        Some(TokenUsage {
+            input: 60,
+            output: 350,
+            cache_read: 270_000,
+            cache_write: 150_000,
+            reasoning: 0,
+        })
     );
     // Turn 2: msg_D (40+60) + msg_E (5+7).
     assert_eq!(
         assistant(&turns[3]).stats.as_ref().unwrap().tokens,
-        Some(112)
+        Some(TokenUsage {
+            input: 45,
+            output: 67,
+            cache_read: 180_000,
+            cache_write: 100_000,
+            reasoning: 0,
+        })
     );
 }
 
@@ -997,4 +1011,269 @@ fn model_update_apply_replaces_by_turn_id() {
     assert_eq!(assistant(&turns[1]).items.len(), 2);
     ModelUpdate::Updated(Vec::new()).apply(&mut turns);
     assert_eq!(turns.len(), 2);
+}
+
+// ---- Token usage ----
+
+const USER_LINE: &str = r#"{"type":"user","uuid":"u1","origin":{"kind":"human"},"timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"go"}}"#;
+const FOOTER_LINE: &str = r#"{"type":"system","subtype":"turn_duration","durationMs":4000,"messageCount":2,"timestamp":"2026-01-01T00:00:06Z"}"#;
+
+/// An assistant line of message `msg` with the given raw `usage` JSON.
+fn assistant_line(msg: &str, n: u32, usage: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"{msg}-{n}","timestamp":"2026-01-01T00:00:0{n}Z","apiBlockIndex":{n},"message":{{"id":"{msg}","model":"x","content":[{{"type":"text","text":"line {n}"}}],"usage":{usage}}}}}"#
+    )
+}
+
+/// Feeds `lines` and returns the assembler.
+fn assembled(lines: &[String]) -> Assembler {
+    let mut asm = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(&b""[..])));
+    for line in lines {
+        push(&mut asm, line);
+    }
+    asm.finish();
+    asm
+}
+
+fn footer_tokens(lines: &[String]) -> (Option<TokenUsage>, usize, usize) {
+    let mut all = vec![USER_LINE.to_owned()];
+    all.extend_from_slice(lines);
+    all.push(FOOTER_LINE.to_owned());
+    let asm = assembled(&all);
+    let unparsed = asm.unparsed_count();
+    let turns = asm.turns();
+    let a = assistant(&turns[1]);
+    let text_items = a
+        .items
+        .iter()
+        .filter(|i| matches!(i, Item::Text { .. }))
+        .count();
+    (a.stats.as_ref().unwrap().tokens, unparsed, text_items)
+}
+
+#[test]
+fn cache_reads_and_writes_are_summed_over_messages_each_counted_once() {
+    // msg_a is sent on two lines; the later line carries the final usage.
+    let lines = [
+        assistant_line(
+            "msg_a",
+            1,
+            r#"{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":1000,"cache_creation_input_tokens":500}"#,
+        ),
+        assistant_line(
+            "msg_a",
+            2,
+            r#"{"input_tokens":10,"output_tokens":100,"cache_read_input_tokens":1000,"cache_creation_input_tokens":500}"#,
+        ),
+        assistant_line(
+            "msg_b",
+            3,
+            r#"{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4}"#,
+        ),
+    ];
+    let (tokens, unparsed, _) = footer_tokens(&lines);
+    assert_eq!(unparsed, 0);
+    assert_eq!(
+        tokens,
+        Some(TokenUsage {
+            input: 11,
+            output: 102,
+            cache_read: 1003,
+            cache_write: 504,
+            reasoning: 0,
+        })
+    );
+    assert_eq!(tokens.unwrap().total(), 11 + 102 + 504);
+}
+
+#[test]
+fn claude_thinking_tokens_are_not_added_to_output() {
+    let lines = [assistant_line(
+        "msg_a",
+        1,
+        r#"{"input_tokens":10,"output_tokens":100,"output_tokens_details":{"thinking_tokens":60}}"#,
+    )];
+    let (tokens, unparsed, _) = footer_tokens(&lines);
+    assert_eq!(unparsed, 0);
+    let tokens = tokens.unwrap();
+    assert_eq!(tokens.output, 100, "thinking tokens are part of output");
+    assert_eq!(tokens.reasoning, 60);
+    assert_eq!(tokens.total(), 110, "reasoning is never added to a total");
+}
+
+#[test]
+fn usage_applies_to_a_footer_that_already_exists() {
+    // The footer comes first; a later line of the same turn updates it.
+    let mut asm = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(&b""[..])));
+    for line in [
+        USER_LINE.to_owned(),
+        assistant_line("msg_a", 1, r#"{"input_tokens":1,"output_tokens":2}"#),
+        FOOTER_LINE.to_owned(),
+        assistant_line(
+            "msg_a",
+            2,
+            r#"{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":9}"#,
+        ),
+    ] {
+        push(&mut asm, &line);
+    }
+    asm.finish();
+    let tokens = assistant(&asm.turns()[1]).stats.as_ref().unwrap().tokens;
+    assert_eq!(tokens.unwrap().cache_read, 9);
+}
+
+#[test]
+fn usage_fields_of_an_unexpected_type_count_as_missing_and_keep_the_line_parsed() {
+    let lines = [assistant_line(
+        "msg_a",
+        1,
+        r#"{"input_tokens":"many","output_tokens":7,"cache_read_input_tokens":[1],"cache_creation_input_tokens":{"a":1},"output_tokens_details":"bad"}"#,
+    )];
+    let (tokens, unparsed, text_items) = footer_tokens(&lines);
+    assert_eq!(unparsed, 0, "the line still parses");
+    assert_eq!(text_items, 1, "the content of the line is kept");
+    assert_eq!(
+        tokens,
+        Some(TokenUsage {
+            output: 7,
+            ..TokenUsage::default()
+        })
+    );
+
+    let lines = [assistant_line(
+        "msg_a",
+        1,
+        r#"{"input_tokens":3,"output_tokens":7,"output_tokens_details":{"thinking_tokens":"lots"}}"#,
+    )];
+    let (tokens, unparsed, _) = footer_tokens(&lines);
+    assert_eq!(unparsed, 0);
+    assert_eq!(tokens.unwrap().reasoning, 0);
+
+    // A `usage` that is not an object is missing as a whole.
+    for usage in [r#""oops""#, "[1,2]", "7", "null"] {
+        let lines = [assistant_line("msg_a", 1, usage)];
+        let (tokens, unparsed, text_items) = footer_tokens(&lines);
+        assert_eq!(unparsed, 0, "usage {usage}");
+        assert_eq!(text_items, 1, "usage {usage}");
+        assert_eq!(tokens, None, "usage {usage}");
+    }
+}
+
+#[test]
+fn a_turn_without_any_usage_has_no_token_figures() {
+    // An explicit `null`, and a line with no `usage` key at all.
+    let absent = assistant_line("msg_b", 2, "null").replace(r#","usage":null"#, "");
+    assert!(!absent.contains("usage"), "{absent}");
+    let lines = [assistant_line("msg_a", 1, "null"), absent];
+    let (tokens, unparsed, text_items) = footer_tokens(&lines);
+    assert_eq!(unparsed, 0);
+    assert_eq!(text_items, 2);
+    assert_eq!(tokens, None);
+}
+
+#[test]
+fn an_out_of_range_number_in_usage_keeps_the_line_parsed() {
+    // `1e400` does not fit an `f64`; as a new field and as an unknown field
+    // nested in `usage` it counts as missing and fails nothing.
+    for usage in [
+        r#"{"output_tokens":7,"cache_read_input_tokens":1e400}"#,
+        r#"{"output_tokens":7,"server_tool_use":{"web_search_requests":1e400}}"#,
+        r#"{"output_tokens":7,"output_tokens_details":{"thinking_tokens":1e400}}"#,
+    ] {
+        let (tokens, unparsed, text_items) = footer_tokens(&[assistant_line("msg_a", 1, usage)]);
+        assert_eq!(unparsed, 0, "usage {usage}");
+        assert_eq!(text_items, 1, "usage {usage}");
+        assert_eq!(
+            tokens,
+            Some(TokenUsage {
+                output: 7,
+                ..TokenUsage::default()
+            }),
+            "usage {usage}"
+        );
+    }
+}
+
+// ---- Invalid UTF-8 in a line ----
+
+/// An assistant line (message `msg_a`, one text block with `text`) with the
+/// raw `usage` bytes and `top_level` fields (each ending in a comma) before
+/// `message`.
+fn raw_assistant_line(text: &[u8], usage: &[u8], top_level: &[u8]) -> Vec<u8> {
+    let mut line =
+        br#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","#.to_vec();
+    line.extend_from_slice(top_level);
+    line.extend_from_slice(
+        br#""message":{"id":"msg_a","model":"x","content":[{"type":"text","text":""#,
+    );
+    line.extend_from_slice(text);
+    line.extend_from_slice(br#""}],"usage":"#);
+    line.extend_from_slice(usage);
+    line.extend_from_slice(b"}}");
+    line
+}
+
+/// Feeds the user line, then `line` (as bytes), then the footer; returns
+/// `unparsed_count`, the number of text items and the turn's tokens.
+fn feed_raw(line: &[u8]) -> (usize, usize, Option<TokenUsage>) {
+    let mut asm = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(&b""[..])));
+    push(&mut asm, USER_LINE);
+    asm.push_line(line, 0..line.len() as u64);
+    push(&mut asm, FOOTER_LINE);
+    asm.finish();
+    let unparsed = asm.unparsed_count();
+    let turns = asm.turns();
+    match turns.get(1).map(|t| assistant(t)) {
+        Some(a) => (
+            unparsed,
+            a.items
+                .iter()
+                .filter(|i| matches!(i, Item::Text { .. }))
+                .count(),
+            a.stats.as_ref().and_then(|s| s.tokens),
+        ),
+        None => (unparsed, 0, None),
+    }
+}
+
+fn only_output(n: u64) -> Option<TokenUsage> {
+    Some(TokenUsage {
+        output: n,
+        ..TokenUsage::default()
+    })
+}
+
+#[test]
+fn invalid_utf8_inside_usage_keeps_the_line_parsed() {
+    for usage in [
+        &b"{\"output_tokens\":7,\"service_tier\":\"\xff\"}"[..],
+        b"{\"output_tokens\":7,\"x\":{\"y\":[\"a\xc3\"]}}",
+        b"{\"output_tokens\":7,\"cache_read_input_tokens\":\"\xff\"}",
+        b"{\"output_tokens\":7,\"output_tokens_details\":{\"x\":\"\xc3\"}}",
+        b"{\"output_tokens\":7,\"\xff\":1}",
+    ] {
+        let line = raw_assistant_line(b"hi", usage, b"");
+        let (unparsed, texts, tokens) = feed_raw(&line);
+        let shown = String::from_utf8_lossy(usage).into_owned();
+        assert_eq!(unparsed, 0, "usage {shown}");
+        assert_eq!(texts, 1, "usage {shown}");
+        assert_eq!(tokens.map(|t| t.output), Some(7), "usage {shown}");
+    }
+}
+
+#[test]
+fn invalid_utf8_outside_usage_keeps_its_outcome() {
+    let clean: &[u8] = b"{\"output_tokens\":7}";
+    // In the text of the block: unparsed.
+    let line = raw_assistant_line(b"a\xffb", clean, b"");
+    assert_eq!(feed_raw(&line), (1, 0, None));
+    // In a known top-level string: unparsed.
+    let line = raw_assistant_line(b"hi", clean, b"\"cwd\":\"\xff\",");
+    assert_eq!(feed_raw(&line), (1, 0, None));
+    // In an unknown top-level field: parsed, as before.
+    let line = raw_assistant_line(b"hi", clean, b"\"zzz\":\"\xff\",");
+    assert_eq!(feed_raw(&line), (0, 1, only_output(7)));
+    // In the text and in `usage` together: unparsed.
+    let line = raw_assistant_line(b"a\xffb", b"{\"service_tier\":\"\xff\"}", b"");
+    assert_eq!(feed_raw(&line), (1, 0, None));
 }

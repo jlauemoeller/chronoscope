@@ -19,11 +19,11 @@ use super::inject::{
     version_newer,
 };
 use super::tools::{describe, tool_kind};
-use super::wire::{Block, Content, Entry, Head, content_text, result_text};
+use super::wire::{Block, Content, Entry, Head, Usage, content_text, read_entry, result_text};
 use crate::model::{
     AssistantTurn, ByteSource, CompactionTurn, InjectedEntry, Item, ItemId, LineFormat,
-    ModelUpdate, OutputSource, Thinking, ToolCall, ToolOutput, ToolResult, ToolStatus, Turn,
-    TurnId, TurnStats, UserTurn,
+    ModelUpdate, OutputSource, Thinking, TokenUsage, ToolCall, ToolOutput, ToolResult, ToolStatus,
+    Turn, TurnId, TurnStats, UserTurn,
 };
 
 /// Placeholder model name Claude Code writes for locally generated messages;
@@ -40,8 +40,8 @@ struct Builder {
     last_model: String,
     /// Message ids seen in this turn.
     messages: HashSet<String>,
-    /// Latest input+output tokens per message id.
-    usage: HashMap<String, u64>,
+    /// Latest token usage per message id.
+    usage: HashMap<String, TokenUsage>,
     /// Without `apiBlockIndex`: the next block number per message id.
     next_block: HashMap<String, usize>,
     /// Without `apiBlockIndex`: the most recent block of each message.
@@ -52,12 +52,33 @@ struct Builder {
 }
 
 impl Builder {
-    fn tokens(&self) -> Option<u64> {
+    /// The usage summed over the turn's messages, each counted once.
+    fn tokens(&self) -> Option<TokenUsage> {
         if self.usage.is_empty() {
-            None
-        } else {
-            Some(self.usage.values().sum())
+            return None;
         }
+        let mut sum = TokenUsage::default();
+        for usage in self.usage.values() {
+            sum.accumulate(usage);
+        }
+        Some(sum)
+    }
+}
+
+/// The model's view of a message's `usage`. A missing number counts as zero.
+/// `thinking_tokens` is already part of `output_tokens`, so it only fills
+/// `reasoning` and is not added to `output`.
+fn token_usage(usage: &Usage) -> TokenUsage {
+    TokenUsage {
+        input: usage.input_tokens.unwrap_or_default(),
+        output: usage.output_tokens.unwrap_or_default(),
+        cache_read: usage.cache_read_input_tokens.unwrap_or_default(),
+        cache_write: usage.cache_creation_input_tokens.unwrap_or_default(),
+        reasoning: usage
+            .output_tokens_details
+            .as_ref()
+            .and_then(|d| d.thinking_tokens)
+            .unwrap_or_default(),
     }
 }
 
@@ -378,7 +399,7 @@ impl Assembler {
     /// Parses a conversation line in full, noting the session cwd. A failure
     /// counts the line as unparsed.
     fn parse_entry(&mut self, line: &[u8]) -> Option<Entry> {
-        let entry = match serde_json::from_slice::<Entry>(line) {
+        let entry = match read_entry(line) {
             Ok(entry) => entry,
             Err(err) => {
                 self.skip_unparsed(&format!("unreadable entry: {err}"));
@@ -816,9 +837,7 @@ impl Assembler {
             }
 
             if let Some(usage) = &message.usage {
-                let tokens = usage.input_tokens.unwrap_or_default()
-                    + usage.output_tokens.unwrap_or_default();
-                b.usage.insert(msg_id, tokens);
+                b.usage.insert(msg_id, token_usage(usage));
                 if let Some(stats) = &mut turn.stats {
                     let total = b.tokens();
                     if stats.tokens != total {

@@ -32,9 +32,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::tools::{describe, tool_kind};
+use crate::harness::shared::{lenient, lenient_object};
 use crate::model::{
-    AssistantTurn, InjectedEntry, Item, ItemId, ModelUpdate, Thinking, ToolCall, ToolOutput,
-    ToolResult, ToolStatus, Turn, TurnId, TurnStats, UserTurn,
+    AssistantTurn, InjectedEntry, Item, ItemId, ModelUpdate, Thinking, TokenUsage, ToolCall,
+    ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnStats, UserTurn,
 };
 
 /// The variant that means "no particular effort".
@@ -85,10 +86,44 @@ struct Model {
     variant: Option<String>,
 }
 
+/// A value of an unexpected JSON type counts as missing, so it never turns a
+/// parsed row into an unparsed one.
 #[derive(Deserialize)]
 struct Tokens {
+    #[serde(default, deserialize_with = "lenient")]
     input: Option<u64>,
+    #[serde(default, deserialize_with = "lenient")]
     output: Option<u64>,
+    /// Separate from `output` in the database.
+    #[serde(default, deserialize_with = "lenient")]
+    reasoning: Option<u64>,
+    #[serde(default, deserialize_with = "lenient_object")]
+    cache: Option<CacheTokens>,
+}
+
+#[derive(Deserialize)]
+struct CacheTokens {
+    #[serde(default, deserialize_with = "lenient")]
+    read: Option<u64>,
+    #[serde(default, deserialize_with = "lenient")]
+    write: Option<u64>,
+}
+
+impl Tokens {
+    /// The model's view of the row's usage. A missing number counts as zero.
+    /// OpenCode keeps `reasoning` apart from `output`; the model's `output`
+    /// includes it.
+    fn usage(&self) -> TokenUsage {
+        let reasoning = self.reasoning.unwrap_or_default();
+        let cache = self.cache.as_ref();
+        TokenUsage {
+            input: self.input.unwrap_or_default(),
+            output: self.output.unwrap_or_default().saturating_add(reasoning),
+            cache_read: cache.and_then(|c| c.read).unwrap_or_default(),
+            cache_write: cache.and_then(|c| c.write).unwrap_or_default(),
+            reasoning,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -97,6 +132,7 @@ struct AssistantData {
     model: Option<Model>,
     content: Option<Vec<Value>>,
     cost: Option<f64>,
+    #[serde(default, deserialize_with = "lenient_object")]
     tokens: Option<Tokens>,
 }
 
@@ -105,7 +141,7 @@ struct AssistantData {
 struct Contribution {
     created: i64,
     end: i64,
-    tokens: Option<u64>,
+    tokens: Option<TokenUsage>,
     cost: Option<f64>,
 }
 
@@ -145,11 +181,14 @@ impl Builder {
     /// The turn's stats, summed over its rows in order.
     fn stats(&self) -> TurnStats {
         let shares = || self.rows.iter().map(|(_, share)| share);
-        let sum = |pick: fn(&Contribution) -> Option<u64>| {
-            shares().filter_map(pick).fold(None, |sum: Option<u64>, n| {
-                Some(sum.unwrap_or_default() + n)
-            })
-        };
+        let tokens = shares().filter_map(|share| share.tokens).fold(
+            None,
+            |sum: Option<TokenUsage>, usage| {
+                let mut sum = sum.unwrap_or_default();
+                sum.accumulate(&usage);
+                Some(sum)
+            },
+        );
         let cost = shares()
             .filter_map(|share| share.cost)
             .fold(None, |sum: Option<f64>, c| {
@@ -161,7 +200,7 @@ impl Builder {
                 shares().map(|share| share.end).max(),
             ),
             message_count: self.rows.len(),
-            tokens: sum(|share| share.tokens),
+            tokens,
             cost,
         }
     }
@@ -468,10 +507,7 @@ impl Assembler {
             Contribution {
                 created,
                 end: time.completed.or(time.streamed).unwrap_or(created),
-                tokens: data
-                    .tokens
-                    .as_ref()
-                    .map(|t| t.input.unwrap_or_default() + t.output.unwrap_or_default()),
+                tokens: data.tokens.as_ref().map(Tokens::usage),
                 cost: data.cost,
             },
         );
@@ -821,10 +857,18 @@ mod replace_tests {
         let Turn::Assistant(turn) = &*asm.turns()[1] else {
             panic!("an assistant turn")
         };
-        // The replaced row counts once: two rows, 15 + 50 tokens.
+        // The replaced row counts once: two rows, 10 + 10 input and 5 + 40
+        // output tokens.
         let stats = turn.stats.as_ref().unwrap();
         assert_eq!(stats.message_count, 2);
-        assert_eq!(stats.tokens, Some(65));
+        assert_eq!(
+            stats.tokens,
+            Some(TokenUsage {
+                input: 20,
+                output: 45,
+                ..TokenUsage::default()
+            })
+        );
         assert_eq!(stats.cost, Some(1.0));
         // The items keep their ids: the pending tool call is now complete.
         let ids: Vec<&str> = turn.items.iter().map(|i| i.id().as_str()).collect();
@@ -918,5 +962,191 @@ mod replace_tests {
         asm.replace_row(&assistant("a9", 9, "ghost", "completed", 1));
         assert!(asm.take_updates().is_empty());
         assert_eq!(asm.turns().len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+
+    fn user(id: &str, seq: i64, text: &str) -> Row {
+        Row {
+            id: id.to_owned(),
+            kind: "user".to_owned(),
+            seq,
+            created: 1_000 * seq,
+            updated: 1_000 * seq,
+            data: format!(
+                r#"{{"time":{{"created":{}}},"text":"{text}"}}"#,
+                1_000 * seq
+            ),
+        }
+    }
+
+    /// An assistant row with one text part and the raw `tokens` JSON.
+    fn assistant_with_tokens(id: &str, seq: i64, tokens: &str) -> Row {
+        Row {
+            id: id.to_owned(),
+            kind: "assistant".to_owned(),
+            seq,
+            created: 1_000 * seq,
+            updated: 1_000 * seq,
+            data: format!(
+                r#"{{"time":{{"created":{c},"completed":{c}}},"model":{{"id":"m"}},"content":[{{"type":"text","text":"hi"}}],"cost":0.5,"tokens":{tokens}}}"#,
+                c = 1_000 * seq,
+            ),
+        }
+    }
+
+    /// Assembles a user row and `rows`; returns the assembler.
+    fn assembler_with(rows: &[Row]) -> Assembler {
+        let mut asm = Assembler::new();
+        asm.push_row(&user("u1", 1, "go"));
+        for row in rows {
+            asm.push_row(row);
+        }
+        asm.finish();
+        asm
+    }
+
+    fn turn_tokens(asm: &Assembler) -> Option<TokenUsage> {
+        let Turn::Assistant(turn) = &*asm.turns()[1] else {
+            panic!("an assistant turn")
+        };
+        turn.stats.as_ref().unwrap().tokens
+    }
+
+    #[test]
+    fn cache_tokens_are_summed_over_the_rows() {
+        let asm = assembler_with(&[
+            assistant_with_tokens(
+                "a1",
+                2,
+                r#"{"input":10,"output":20,"reasoning":0,"cache":{"read":1000,"write":300}}"#,
+            ),
+            assistant_with_tokens(
+                "a2",
+                3,
+                r#"{"input":1,"output":2,"reasoning":0,"cache":{"read":5,"write":7}}"#,
+            ),
+        ]);
+        assert_eq!(
+            turn_tokens(&asm),
+            Some(TokenUsage {
+                input: 11,
+                output: 22,
+                cache_read: 1005,
+                cache_write: 307,
+                reasoning: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn opencode_reasoning_is_added_to_output_once() {
+        // One real row has reasoning 683 and output 120: the model's output
+        // is 803 and reasoning stays an "of which" figure.
+        let asm = assembler_with(&[assistant_with_tokens(
+            "a1",
+            2,
+            r#"{"input":50,"output":120,"reasoning":683,"cache":{"read":0,"write":10}}"#,
+        )]);
+        let tokens = turn_tokens(&asm).unwrap();
+        assert_eq!(tokens.output, 803);
+        assert_eq!(tokens.reasoning, 683);
+        assert_eq!(tokens.total(), 50 + 803 + 10);
+    }
+
+    #[test]
+    fn a_row_updated_in_place_replaces_its_cache_share() {
+        let mut asm = assembler_with(&[assistant_with_tokens(
+            "a1",
+            2,
+            r#"{"input":10,"output":20,"reasoning":5,"cache":{"read":100,"write":50}}"#,
+        )]);
+        asm.replace_row(&assistant_with_tokens(
+            "a1",
+            2,
+            r#"{"input":10,"output":30,"reasoning":8,"cache":{"read":120,"write":50}}"#,
+        ));
+        assert_eq!(
+            turn_tokens(&asm),
+            Some(TokenUsage {
+                input: 10,
+                output: 38,
+                cache_read: 120,
+                cache_write: 50,
+                reasoning: 8,
+            })
+        );
+    }
+
+    #[test]
+    fn token_fields_of_an_unexpected_type_count_as_missing_and_keep_the_row_parsed() {
+        let asm = assembler_with(&[
+            assistant_with_tokens(
+                "a1",
+                2,
+                r#"{"input":"ten","output":20,"reasoning":[1],"cache":{"read":"x","write":7}}"#,
+            ),
+            assistant_with_tokens("a2", 3, r#"{"input":1,"output":2,"cache":"none"}"#),
+            // A `tokens` that is not an object is missing as a whole.
+            assistant_with_tokens("a3", 4, r#""lots""#),
+        ]);
+        assert_eq!(asm.unparsed_count(), 0);
+        let Turn::Assistant(turn) = &*asm.turns()[1] else {
+            panic!("an assistant turn")
+        };
+        assert_eq!(turn.stats.as_ref().unwrap().message_count, 3);
+        assert_eq!(
+            turn.items.len(),
+            3,
+            "the text of every row is kept: {:?}",
+            turn.items
+        );
+        assert_eq!(
+            turn_tokens(&asm),
+            Some(TokenUsage {
+                input: 1,
+                output: 22,
+                cache_write: 7,
+                ..TokenUsage::default()
+            })
+        );
+    }
+
+    #[test]
+    fn rows_without_tokens_leave_the_token_figures_unknown() {
+        // An explicit `null`, and a row with no `tokens` key at all.
+        let mut absent = assistant_with_tokens("a2", 3, "null");
+        absent.data = absent.data.replace(r#","tokens":null"#, "");
+        assert!(!absent.data.contains("tokens"), "{}", absent.data);
+        let asm = assembler_with(&[assistant_with_tokens("a1", 2, "null"), absent]);
+        assert_eq!(asm.unparsed_count(), 0);
+        assert_eq!(turn_tokens(&asm), None);
+    }
+
+    #[test]
+    fn an_out_of_range_number_in_tokens_keeps_the_row_parsed() {
+        // `1e400` does not fit an `f64`; as a new field, as an unknown field
+        // and nested in `cache` it counts as missing and fails nothing.
+        let asm = assembler_with(&[
+            assistant_with_tokens("a1", 2, r#"{"output":7,"cache":{"read":1e400,"write":3}}"#),
+            assistant_with_tokens("a2", 3, r#"{"output":5,"unknown":1e400}"#),
+            assistant_with_tokens("a3", 4, r#"{"input":1e400,"reasoning":1e400}"#),
+        ]);
+        assert_eq!(asm.unparsed_count(), 0);
+        let Turn::Assistant(turn) = &*asm.turns()[1] else {
+            panic!("an assistant turn")
+        };
+        assert_eq!(turn.items.len(), 3, "{:?}", turn.items);
+        assert_eq!(
+            turn_tokens(&asm),
+            Some(TokenUsage {
+                output: 12,
+                cache_write: 3,
+                ..TokenUsage::default()
+            })
+        );
     }
 }

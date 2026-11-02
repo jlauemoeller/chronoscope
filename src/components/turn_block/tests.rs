@@ -13,7 +13,7 @@ use super::renderers::{
     ToolCallSection, UserPromptSection, format_stats, format_tokens,
 };
 use super::*;
-use crate::model::{Item, ItemId, Thinking, ToolStatus, Turn, TurnStats};
+use crate::model::{Item, ItemId, Thinking, TokenUsage, ToolStatus, Turn, TurnStats};
 use crate::test_support::buffer_to_text;
 use crate::theme::{Role, Token};
 
@@ -406,10 +406,157 @@ fn stats_footer_formats_the_spec_example() {
     let stats = TurnStats {
         duration: Duration::from_millis(302_646),
         message_count: 112,
-        tokens: Some(45_213),
+        tokens: Some(TokenUsage {
+            input: 5_213,
+            output: 40_000,
+            ..TokenUsage::default()
+        }),
         cost: None,
     };
     assert_eq!(format_stats(&stats), "5m 2s · 112 messages · 45.2k tokens");
+}
+
+#[test]
+fn the_footer_total_is_input_plus_output_plus_cache_writes() {
+    let usage = TokenUsage {
+        input: 1_000,
+        output: 2_000,
+        cache_read: 400_000,
+        cache_write: 30_000,
+        reasoning: 500,
+    };
+    // Cache reads are shown apart and reasoning is already in `output`.
+    assert_eq!(usage.total(), 33_000);
+}
+
+#[test]
+fn the_spec_example_figures_give_1_5m_tokens_and_359_0m_cached() {
+    let mut stats = stats();
+    stats.tokens = Some(TokenUsage {
+        input: 2_800,
+        output: 336_000,
+        cache_write: 1_200_000,
+        cache_read: 359_000_000,
+        reasoning: 90_000,
+    });
+    assert_eq!(
+        format_stats(&stats),
+        "5m 2s · 112 messages · 1.5M tokens · 359.0M cached"
+    );
+}
+
+#[test]
+fn stats_footer_shows_cached_after_tokens_and_hides_it_when_zero() {
+    let stats = stats_with_cache(359_400_000, None);
+    assert_eq!(
+        format_stats(&stats),
+        "5m 2s · 112 messages · 45.2k tokens · 359.4M cached"
+    );
+    assert_eq!(
+        format_stats(&stats_with_cache(0, None)),
+        "5m 2s · 112 messages · 45.2k tokens"
+    );
+    assert_eq!(
+        format_stats(&stats_with_cache(1, None)),
+        "5m 2s · 112 messages · 45.2k tokens · 1 cached"
+    );
+}
+
+#[test]
+fn stats_footer_keeps_the_cost_last_after_cached() {
+    assert_eq!(
+        format_stats(&stats_with_cache(359_400_000, Some(0.42))),
+        "5m 2s · 112 messages · 45.2k tokens · 359.4M cached · $0.42"
+    );
+    assert_eq!(
+        format_stats(&stats_with_cache(0, Some(0.42))),
+        "5m 2s · 112 messages · 45.2k tokens · $0.42"
+    );
+}
+
+#[test]
+fn a_turn_without_usage_shows_neither_tokens_nor_cached() {
+    let mut stats = stats_with_cache(359_400_000, None);
+    stats.tokens = None;
+    assert_eq!(format_stats(&stats), "5m 2s · 112 messages");
+}
+
+#[test]
+fn a_single_total_token_is_singular() {
+    let mut stats = stats();
+    stats.tokens = Some(TokenUsage {
+        output: 1,
+        ..TokenUsage::default()
+    });
+    assert_eq!(format_stats(&stats), "5m 2s · 112 messages · 1 token");
+}
+
+/// The text of the cells drawn with the `search_match` background, row by
+/// row.
+fn highlighted_rows(buf: &ratatui::buffer::Buffer, bg: Color) -> Vec<(u16, String)> {
+    let mut found = Vec::new();
+    for y in 0..buf.area.height {
+        let run: String = (0..buf.area.width)
+            .map(|x| &buf[(x, y)])
+            .filter(|cell| cell.bg == bg)
+            .map(|cell| cell.symbol())
+            .collect();
+        if !run.is_empty() {
+            found.push((y, run));
+        }
+    }
+    found
+}
+
+#[test]
+fn searching_the_cached_part_highlights_it_on_the_footer_row() {
+    let turn = assistant(
+        None,
+        vec![text("t1", "Done.")],
+        Some(stats_with_cache(359_400_000, None)),
+    );
+    let opts = Opts::default();
+    let query = crate::transcript_search::SearchQuery::new("359.4M cached").unwrap();
+
+    // The search finds the footer section...
+    let corpus =
+        crate::transcript_search::SearchCorpus::new(vec![std::sync::Arc::new(turn.clone())], true);
+    let found = crate::transcript_search::search(&query, &corpus);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].section.key, SectionKey::Footer);
+
+    // ... and the footer row shows exactly the matched text highlighted.
+    let bg = opts.theme.role(Role::Primary);
+    let buf = with_block(&turn, &opts, |block| {
+        crate::test_support::render(80, height(&turn, &opts, 80) as u16, |frame| {
+            block
+                .search(Some(&query))
+                .render(frame.area(), frame.buffer_mut());
+        })
+    });
+    let text = buffer_to_text(&buf);
+    let rows: Vec<&str> = text.lines().collect();
+    let highlighted = highlighted_rows(&buf, bg);
+    assert_eq!(highlighted.len(), 1, "{highlighted:?}");
+    let (y, run) = &highlighted[0];
+    assert_eq!(run, "359.4M cached");
+    assert!(
+        rows[usize::from(*y)].contains("45.2k tokens · 359.4M cached"),
+        "{}",
+        rows[usize::from(*y)]
+    );
+}
+
+#[test]
+fn a_cached_part_that_is_hidden_cannot_be_found() {
+    let turn = assistant(
+        None,
+        vec![text("t1", "Done.")],
+        Some(stats_with_cache(0, None)),
+    );
+    let corpus = crate::transcript_search::SearchCorpus::new(vec![std::sync::Arc::new(turn)], true);
+    let query = crate::transcript_search::SearchQuery::new("cached").unwrap();
+    assert!(crate::transcript_search::search(&query, &corpus).is_empty());
 }
 
 #[test]
@@ -1130,6 +1277,49 @@ fn stats_footer_and_model_note_wrap_at_word_boundaries() {
         lines_text(&lines),
         ["  model → claude-sonnet-5.5", "  preview mode"]
     );
+}
+
+#[test]
+fn a_wrapped_footer_row_never_starts_with_the_separator() {
+    let theme = theme();
+    let stats = stats_with_cache(359_400_000, Some(0.42));
+    let lines = StatsSection(&stats).lines(&ctx(&theme, 58, false));
+    assert_eq!(
+        lines_text(&lines),
+        [
+            "  5m 2s · 112 messages · 45.2k tokens · 359.4M cached ·",
+            "  $0.42"
+        ]
+    );
+    let lines = StatsSection(&stats).lines(&ctx(&theme, 14, false));
+    assert_eq!(
+        lines_text(&lines),
+        [
+            "  5m 2s · 112",
+            "  messages ·",
+            "  45.2k tokens ·",
+            "  359.4M",
+            "  cached · $0.42"
+        ]
+    );
+    // At any width that holds the longest part with its separator
+    // (`messages ·`), no row starts with the separator, and the rows read as
+    // the footer text once joined.
+    for width in 10..=70 {
+        let lines = StatsSection(&stats).lines(&ctx(&theme, width, false));
+        let rows = lines_text(&lines);
+        assert!(
+            rows.iter().all(|r| !r.trim_start().starts_with('·')),
+            "{rows:?}"
+        );
+        let joined = rows
+            .iter()
+            .map(|r| r.trim())
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("  ", " ");
+        assert_eq!(joined, format_stats(&stats), "width {width}");
+    }
 }
 
 #[test]
