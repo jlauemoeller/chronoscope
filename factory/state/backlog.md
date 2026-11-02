@@ -7,7 +7,7 @@
 | 003-claude-turn-stats | Complete |
 | 004-tool-call-durations | Complete |
 | 005-opencode-error-notices | Complete |
-| 006-claude-stop-notices | In progress |
+| 006-claude-stop-notices | Complete |
 | 007-details-overlay | Planned |
 | 008-claude-detail-sources | Planned |
 | 009-opencode-detail-sources | Planned |
