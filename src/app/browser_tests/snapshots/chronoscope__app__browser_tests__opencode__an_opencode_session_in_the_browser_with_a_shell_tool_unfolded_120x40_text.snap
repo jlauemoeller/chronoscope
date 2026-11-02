@@ -14,7 +14,7 @@ expression: screen
 │  │                         │ │ ▶ system: Instructions updated: core/skill-guidance                                   │
 │  ●   User                  │ │                                                                                       │
 │  │                         │ │ ▶ Add a settings screen with a dark mode toggle.                                      │
-│  ●   Assistant        17s  │ │                                                                                       │
+│  >   Assistant        17s  │ │                                                                                       │
 │  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
 │  ●   User                  │ ╭─ Assistant ── acme/coder-1 @ high ───────────────────────────── 2026-10-28 09:00:03Z ─╮
 │  │                         │ │                                                                                       │

@@ -25,7 +25,7 @@ fn transcript_viewport(app: &App) -> Size {
 }
 
 /// The rows the sidebar holds.
-fn sidebar_rows(app: &App) -> TurnRows {
+pub(super) fn sidebar_rows(app: &App) -> TurnRows {
     let value = app
         .application()
         .query(&Id::TurnSidebar, TURN_ROWS_ATTR)
@@ -36,7 +36,7 @@ fn sidebar_rows(app: &App) -> TurnRows {
 }
 
 /// The kinds of the entries the sidebar lists, in order.
-fn entry_kinds(app: &App) -> Vec<EntryKind> {
+pub(super) fn entry_kinds(app: &App) -> Vec<EntryKind> {
     let rows = sidebar_rows(app);
     (0..rows.entry_count())
         .map(|i| rows.entry(i).unwrap().1.kind)
@@ -45,7 +45,7 @@ fn entry_kinds(app: &App) -> Vec<EntryKind> {
 
 /// The first 30 columns (the pane) of each screen row from row 5 to the row
 /// above the help line's blank row.
-fn pane_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
+pub(super) fn pane_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
     screen_text(rig, width, height)
         .lines()
         .skip(5)
@@ -200,7 +200,18 @@ fn the_sidebar_comes_when_the_first_turns_do_and_the_viewport_was_already_narrow
 fn scrolling_the_transcript_does_not_move_the_pane() {
     let mut rig = rig();
     rig.open_loaded();
-    let before = pane_rows(&mut rig, 120, 40);
+    // The marker follows the selection: compare the pane without its column.
+    let unmarked = |rows: Vec<String>| -> Vec<String> {
+        rows.into_iter()
+            .map(|row| {
+                row.chars()
+                    .enumerate()
+                    .map(|(at, c)| if at == 3 { ' ' } else { c })
+                    .collect()
+            })
+            .collect()
+    };
+    let before = unmarked(pane_rows(&mut rig, 120, 40));
     assert!(before.iter().any(|row| row.contains("Start")));
     for key in [
         Key::Char('J'),
@@ -210,7 +221,11 @@ fn scrolling_the_transcript_does_not_move_the_pane() {
     ] {
         rig.press(key);
         rig.settle();
-        assert_eq!(pane_rows(&mut rig, 120, 40), before, "after {key:?}");
+        assert_eq!(
+            unmarked(pane_rows(&mut rig, 120, 40)),
+            before,
+            "after {key:?}"
+        );
     }
     let wheel = |rig: &mut Rig, kind| {
         let area = rig.app.routing().area(Id::Transcript).unwrap();
@@ -223,7 +238,7 @@ fn scrolling_the_transcript_does_not_move_the_pane() {
     };
     for _ in 0..4 {
         wheel(&mut rig, MouseEventKind::ScrollDown);
-        assert_eq!(pane_rows(&mut rig, 120, 40), before);
+        assert_eq!(unmarked(pane_rows(&mut rig, 120, 40)), before);
     }
     assert_eq!(
         rig.app.routing().area(Id::TurnSidebar),
@@ -262,7 +277,7 @@ fn it_lists_the_turns_of_the_loaded_session() {
 }
 
 #[test]
-fn there_is_no_selection_and_no_focus_in_the_running_app() {
+fn the_selection_is_the_transcripts_and_the_sidebar_has_no_focus_in_the_running_app() {
     let mut rig = rig();
     rig.open_loaded();
     let selected = rig
@@ -272,7 +287,8 @@ fn there_is_no_selection_and_no_focus_in_the_running_app() {
         .unwrap()
         .unwrap()
         .into_attr();
-    assert_eq!(selected_from_value(&selected), Some(None));
+    // The first turn: the transcript's selection starts on its first section.
+    assert_eq!(selected_from_value(&selected), Some(Some(0)));
     assert_eq!(rig.focus(), Some(Id::Transcript));
 }
 

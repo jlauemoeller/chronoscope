@@ -1,0 +1,44 @@
+---
+source: src/app/browser_tests/sidebar_follow.rs
+expression: "screen_text(&mut rig, 120, 40)"
+---
+╭─ Project BRIO ──────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                                                                                                                      │
+│ /home/user/projects/brio                                                                                             │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                            │ │                                                                                       │
+│                            │ ▒   I'll start by looking at what the camera exposes over USB:                          │
+│  ●   Start                 │ ▒                                                                                       │
+│  │                         │ ▒   • Check lsusb -v for the UVC descriptors                                            │
+│  ●   User                  │ ▒   • Look at v4l2-ctl --list-ctrls                                                     │
+│  │                         │ ▒                                                                                       │
+│  >   Assistant      5m 2s  │ ▒   Then I'll compare the results.                                                      │
+│  │                         │ │                                                                                       │
+│  ●   User                  │ │ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.                 │
+│  │                         │ │                                                                                       │
+│  ●   Assistant      5m 2s  │ │ ▶ Find the BRIO on USB and check available tools                                      │
+│                            │ │                                                                                       │
+│  ═══ Compaction ═════════  │ │ ▶ Dump full USB descriptors for the BRIO                                              │
+│                            │ │                                                                                       │
+│  ●   User                  │ │   model → claude-sonnet-5.5                                                           │
+│  │                         │ │                                                                                       │
+│  ●   Assistant             │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
+│  │                         │ │                                                                                       │
+│  ●   Assistant             │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│  ●   End                   │ │                                                                                       │
+│                            │ │ ▶ Dump the full descriptors and look for extension units.                             │
+│                            │ │                                                                                       │
+│                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│                            │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                            │ │                                                                                       │
+│                            │ │   Reading the dump now.                                                               │
+│                            │ │                                                                                       │
+│                            │ │ ▶ Thinking: Look for the Logitech XU GUIDs.                                           │
+│                            │ │                                                                                       │
+│                            │ │ ▶ Read the UVC descriptor dump                                                        │
+╰────────────────────────────╯ │                                                                                       │
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

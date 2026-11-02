@@ -926,3 +926,19 @@ fn a_clipped_block_keeps_its_styles() {
         crate::test_support::buffer_to_styled(&slice)
     );
 }
+
+#[test]
+fn the_selected_section_is_queried_and_absent_with_nothing_selected() {
+    use crate::components::SELECTED_SECTION_ATTR;
+    let mut transcript = session_transcript(80, 24);
+    let value = |t: &Transcript| {
+        t.query(SELECTED_SECTION_ATTR)
+            .map(QueryResult::into_attr)
+            .and_then(|v| payload_from_value::<SectionId>(&v))
+    };
+    assert_eq!(value(&transcript), transcript.selected().cloned());
+    assert!(value(&transcript).is_some());
+    transcript.attr(MODEL_UPDATE_ATTR, model_update_value(ModelUpdate::Reset));
+    assert_eq!(value(&transcript), None);
+    assert!(transcript.query(SELECTED_SECTION_ATTR).is_none());
+}

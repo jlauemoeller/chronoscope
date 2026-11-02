@@ -14,7 +14,7 @@ expression: text
 │  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
 │  ●   User                  │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  │                         │ │                                                                                       │
-│  ●   Assistant             │ │   It does show up over USB.                                                           │
+│  >   Assistant             │ │   It does show up over USB.                                                           │
 │  │                         │ │                                                                                       │
 │  ●   User                  │ ▒ ▼ List the devices                                                                    │
 │  │                         │ ▒                                                                                       │

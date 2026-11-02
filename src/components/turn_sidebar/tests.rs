@@ -974,3 +974,111 @@ fn readable_thinking_is_a_section_and_redacted_thinking_is_not() {
     assert!(entry_for(&readable).is_some());
     assert_eq!(entry_for(&redacted_only("a1")), None);
 }
+
+// -- selecting a turn (the sidebar follows the transcript)
+
+#[test]
+fn a_turn_with_an_entry_is_selected_through_an_attribute() {
+    let mut sidebar = sidebar(&wireframe());
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u2")));
+    assert_eq!(sidebar.selected_entry(), Some(2));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("c1")));
+    assert_eq!(sidebar.selected_entry(), Some(4));
+    assert_eq!(sidebar.state(), State::Single(StateValue::Usize(4)));
+}
+
+#[test]
+fn a_turn_without_an_entry_or_unknown_leaves_the_selection_where_it_is() {
+    let mut sidebar = sidebar(&[user("u1"), system_only("s1"), user("u2")]);
+    // Nothing selected stays nothing selected.
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("s1")));
+    assert_eq!(sidebar.selected_entry(), None);
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u2")));
+    assert_eq!(sidebar.selected_entry(), Some(1));
+    // A turn with no entry neither clears nor moves it, nor an unknown one.
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("s1")));
+    assert_eq!(sidebar.selected_entry(), Some(1));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("nope")));
+    assert_eq!(sidebar.selected_entry(), Some(1));
+    // Something that is not a turn is ignored.
+    sidebar.attr(SELECTED_TURN_ATTR, AttrValue::Flag(true));
+    assert_eq!(sidebar.selected_entry(), Some(1));
+}
+
+#[test]
+fn selecting_a_turn_scrolls_the_list_by_the_least_needed() {
+    let mut sidebar = TurnSidebar::new(theme());
+    sidebar.attr(
+        TURN_ROWS_ATTR,
+        payload_value(rows_of(
+            &(0..30).map(|i| user(&format!("u{i}"))).collect::<Vec<_>>(),
+        )),
+    );
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(9));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u0")));
+    assert_eq!(sidebar.offset(13), 0);
+    // Entry 3 is on row 8, the last visible row: no scroll yet.
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u3")));
+    assert_eq!(sidebar.offset(13), 0);
+    // Entry 4 is on row 10: the list scrolls two rows.
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u4")));
+    assert_eq!(sidebar.offset(13), 2);
+    // Back up to the first visible row: no scroll; one above it: scrolls.
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u1")));
+    assert_eq!(sidebar.offset(13), 2);
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u0")));
+    assert_eq!(sidebar.offset(13), 2, "row 2 is the first visible row");
+}
+
+#[test]
+fn rows_set_after_an_uncover_bring_back_the_selection_and_offset_of_the_covered_pane() {
+    let turns: Vec<_> = (0..30).map(|i| user(&format!("u{i}"))).collect();
+    let mut sidebar = TurnSidebar::new(theme());
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(9));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u10")));
+    // Row 22 is the last visible row: the offset is 14.
+    assert_eq!(sidebar.offset(13), 14);
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u7")));
+    assert_eq!(sidebar.offset(13), 14, "row 16: still visible");
+    // A transcript of two turns covers it.
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(true));
+    sidebar.attr(
+        TURN_ROWS_ATTR,
+        payload_value(rows_of(&[user("s1"), assistant("s2", 1)])),
+    );
+    assert_eq!(sidebar.selected_entry(), None);
+    assert_eq!(sidebar.offset(13), 0);
+    // It is closed: the parent's rows, as they are now, with its pane.
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(false));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
+    assert_eq!(sidebar.selected_entry(), Some(7));
+    assert_eq!(sidebar.offset(13), 14);
+}
+
+#[test]
+fn a_restored_selection_scrolls_the_least_needed_and_covers_nest() {
+    let turns: Vec<_> = (0..30).map(|i| user(&format!("u{i}"))).collect();
+    let mut sidebar = TurnSidebar::new(theme());
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(9));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u10")));
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(true));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns[..5])));
+    sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u3")));
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(true));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns[..2])));
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(false));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns[..5])));
+    assert_eq!(sidebar.selected_entry(), Some(3));
+    // The pane shrank meanwhile: three rows fewer are visible.
+    sidebar.attr(COVER_ATTR, AttrValue::Flag(false));
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(5));
+    sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
+    assert_eq!(sidebar.selected_entry(), Some(10));
+    assert_eq!(
+        sidebar.offset(9),
+        18,
+        "row 22 on the last of 5 visible rows"
+    );
+}

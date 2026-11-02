@@ -26,7 +26,7 @@ expression: "screen_text(&mut rig, 120, 40)"
 │  │                         │ │ ▶ Continue with the extension units.                                                  │
 │  ●   Assistant             │ │                                                                                       │
 │  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  ●   Assistant             │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  >   Assistant             │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  │                         │ │                                                                                       │
 │  ●   End                   │ │   The extension units are listed under VideoControl:                                  │
 │                            │ │                                                                                       │

@@ -46,19 +46,19 @@ impl Rig {
         self.press(Key::Char(c));
     }
 
-    fn type_text(&self, text: &str) {
+    pub(super) fn type_text(&self, text: &str) {
         text.chars().for_each(|c| self.char_key(c));
     }
 
     /// Presses `/` and waits for the prompt.
-    fn open_prompt(&mut self) {
+    pub(super) fn open_prompt(&mut self) {
         self.char_key('/');
         self.pump_until(|app| app.transcript_prompt_open());
     }
 
     /// Opens the prompt, types `query` and presses `Enter`, and waits until
     /// the search has an answer.
-    fn search(&mut self, query: &str) {
+    pub(super) fn search(&mut self, query: &str) {
         self.open_prompt();
         self.type_text(query);
         let typed = query.to_owned();

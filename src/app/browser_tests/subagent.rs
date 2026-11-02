@@ -145,11 +145,20 @@ impl Rig {
     /// The session of `parent_turns` is open, loaded, with the subagent
     /// section selected and unfolded; every agent resolves.
     fn open_with_subagent(&mut self) {
+        self.open_with_subagent_after(Vec::new());
+    }
+
+    /// Like [`open_with_subagent`](Self::open_with_subagent), with the turns
+    /// `before` ahead of those of `parent_turns`.
+    fn open_with_subagent_after(&mut self, before: Vec<Arc<Turn>>) {
         self.harness.link(BRIO_SESSION, "call-a", SUB1);
         self.harness.link(SUB1, "call-b", SUB2);
         self.harness.script(
             BRIO_SESSION,
-            loaded(parent_turns(), chrono::Duration::seconds(10)),
+            loaded(
+                before.into_iter().chain(parent_turns()).collect(),
+                chrono::Duration::seconds(10),
+            ),
         );
         self.harness
             .script(SUB1, loaded(story_turns(), chrono::Duration::seconds(5)));
@@ -177,7 +186,7 @@ impl Rig {
     }
 
     /// Backspace, and the wait until the transcript at `depth` is on top.
-    fn back_to(&mut self, depth: usize) {
+    pub(super) fn back_to(&mut self, depth: usize) {
         self.press(Key::Backspace);
         self.pump_until(|app| app.subagent_depth() == depth);
         self.settle();
@@ -189,6 +198,13 @@ impl Rig {
             depth => Id::Subagent(depth),
         }
     }
+}
+
+/// Like [`subagent_rig`], with the turns `before` ahead of the parent's.
+pub(super) fn subagent_rig_after(before: Vec<Arc<Turn>>, width: u16, height: u16) -> Rig {
+    let mut rig = rig_with(theme("default"), width, height);
+    rig.open_with_subagent_after(before);
+    rig
 }
 
 pub(super) fn subagent_rig(width: u16, height: u16) -> Rig {

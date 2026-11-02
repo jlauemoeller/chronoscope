@@ -164,6 +164,10 @@ pub const TURN_COUNT_ATTR: Attribute = Attribute::Custom("turn_count");
 pub const NEW_SECTIONS_ATTR: Attribute = Attribute::Custom("new_sections");
 /// Whether the transcript follows new content (a flag; query only).
 pub const FOLLOWING_ATTR: Attribute = Attribute::Custom("following");
+/// The selected section (a [`SectionId`] payload; query only; nothing when
+/// no section is selected). The App reads it to keep the turns sidebar on the
+/// turn that contains it.
+pub const SELECTED_SECTION_ATTR: Attribute = Attribute::Custom("selected_section");
 /// What the transcript keeps of its presentation: the scroll offset, the
 /// selected section and the fold states (a payload; query only).
 pub const PRESENTATION_ATTR: Attribute = Attribute::Custom("presentation");
@@ -560,6 +564,8 @@ impl Component for Transcript {
             AttrValue::Flag(self.following)
         } else if attr == PRESENTATION_ATTR {
             payload_value(self.presentation())
+        } else if attr == SELECTED_SECTION_ATTR {
+            payload_value(self.content.selected.clone()?)
         } else if attr == VIEWPORT_ATTR {
             payload_value(self.viewport?)
         } else if attr == SEARCH_REQUEST_ATTR {

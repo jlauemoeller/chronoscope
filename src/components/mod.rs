@@ -63,17 +63,18 @@ pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_w
 pub use transcript::{
     DIM_UNSELECTED_ATTR, FOLLOWING_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR,
     OPEN_SUBAGENT_KEY_ATTR, PRESENTATION_ATTR, Presentation, SEARCH_POSITION_ATTR,
-    SEARCH_QUERY_ATTR, SEARCH_REQUEST_ATTR, SEARCH_RESULTS_ATTR, SHOW_SYSTEM_ATTR, SearchStart,
-    TIMESTAMP_FORMATTER_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript,
-    VIEWPORT_ATTR, model_update_value, search_results_value, search_start_value, viewport_value,
+    SEARCH_QUERY_ATTR, SEARCH_REQUEST_ATTR, SEARCH_RESULTS_ATTR, SELECTED_SECTION_ATTR,
+    SHOW_SYSTEM_ATTR, SearchStart, TIMESTAMP_FORMATTER_ATTR, TRUNCATE_OUTPUT_LINES_ATTR,
+    TURN_COUNT_ATTR, Transcript, VIEWPORT_ATTR, model_update_value, search_results_value,
+    search_start_value, viewport_value,
 };
 pub use turn_block::{
     BlockLayout, FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, TitleBar,
     TurnBlock, derive_sections, emphasize,
 };
 pub use turn_sidebar::{
-    DEFAULT_KEY_LABEL, Entry, EntryKind, KEY_LABEL_ATTR, Row, TURN_ROWS_ATTR, TurnRows,
-    TurnSidebar, entry_for, sidebar_list_rows,
+    COVER_ATTR, DEFAULT_KEY_LABEL, Entry, EntryKind, KEY_LABEL_ATTR, Row, SELECTED_TURN_ATTR,
+    TURN_ROWS_ATTR, TurnRows, TurnSidebar, entry_for, sidebar_list_rows,
 };
 pub use working_dir::{CWD_ATTR, WorkingDir};
 

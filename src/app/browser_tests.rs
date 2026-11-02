@@ -1360,5 +1360,6 @@ mod resume;
 mod save;
 mod search;
 mod sidebar;
+mod sidebar_follow;
 mod subagent;
 mod theme_selector;
