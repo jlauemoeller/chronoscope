@@ -4,7 +4,7 @@
 |------|--------|
 | 001-shared-duration-format | Complete |
 | 002-turn-token-usage | Complete |
-| 003-claude-turn-stats | Planned |
+| 003-claude-turn-stats | In progress |
 | 004-tool-call-durations | Planned |
 | 005-opencode-error-notices | Planned |
 | 006-claude-stop-notices | Planned |
