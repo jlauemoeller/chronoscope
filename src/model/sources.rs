@@ -207,6 +207,15 @@ impl TurnSources {
         self.items.push((id.clone(), ItemSource::Row { row, call }));
     }
 
+    /// Sets the row of item `id`, which is in the table, to `row`: a later
+    /// row sent the item again, and the item now comes from that row.
+    pub fn set_row_item(&mut self, id: &ItemId, row: &str, call: bool) {
+        let row = self.intern(row);
+        if let Some((_, source)) = self.items.iter_mut().rfind(|(item, _)| item == id) {
+            *source = ItemSource::Row { row, call };
+        }
+    }
+
     /// Forgets item `id`, which has left the turn.
     pub fn remove_item(&mut self, id: &ItemId) {
         self.items.retain(|(item, _)| item != id);
@@ -381,8 +390,8 @@ pub struct SectionSource {
     pub refs: SectionRefs,
 }
 
-/// The groups of rows a harness can read from a source. The `Turn` group is
-/// the model's.
+/// The groups of rows a harness can read from a source. The model holds the
+/// main rows of the `Turn` group; a harness can add to them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceGroupKind {
     /// About the turn, beyond what the model knows (OpenCode's provider and
@@ -556,8 +565,43 @@ mod tests {
 
     #[test]
     fn a_table_of_lines_has_no_row_references() {
-        let t = TurnSources::new();
+        let mut t = TurnSources::new();
+        let b = bytes();
+        let (line, call) = (ItemId::from("l"), ItemId::from("c"));
+        t.add_line(&b, &line, &(0..2));
+        t.add_call(&b, &call, &(3..4));
+        t.set_own(&b, &(5..6));
+        for key in [SourceKey::Item(line), SourceKey::Item(call), SourceKey::Own] {
+            let refs = t.get(&key).unwrap();
+            assert!(refs.lines().is_some() && refs.rows().is_none(), "{key:?}");
+        }
         assert_eq!(t.get(&SourceKey::Footer), None);
+    }
+
+    #[test]
+    fn an_item_sent_again_by_another_row_follows_that_row() {
+        let mut t = TurnSources::new();
+        let id = ItemId::from("call-1");
+        t.add_row_item(&id, "a1", true);
+        t.add_row_item(&ItemId::from("x"), "a1", false);
+        let row = |t: &TurnSources| {
+            t.get(&SourceKey::Item(id.clone()))
+                .unwrap()
+                .rows()
+                .unwrap()
+                .section
+                .clone()
+                .unwrap()
+                .row
+        };
+        assert_eq!(row(&t), "a1");
+        t.set_row_item(&id, "a2", true);
+        assert_eq!(row(&t), "a2");
+        assert_eq!(t.items.len(), 2, "replaced, not added");
+        // The same row again changes nothing.
+        let before = t.clone();
+        t.set_row_item(&id, "a2", true);
+        assert_eq!(t, before);
     }
 
     #[test]

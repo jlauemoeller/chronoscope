@@ -155,6 +155,13 @@ pub(super) struct RowError {
     message: Option<String>,
 }
 
+impl RowError {
+    /// Whether the error has a `type` or a `message` that shows anything.
+    pub(super) fn has_text(&self) -> bool {
+        trimmed(self.kind.as_deref()).is_some() || trimmed(self.message.as_deref()).is_some()
+    }
+}
+
 /// `deserialize_with` helper: an object is read as a [`RowError`], a string is
 /// the message; any other value counts as missing.
 pub(super) fn lenient_error<'de, D>(deserializer: D) -> Result<Option<RowError>, D::Error>
@@ -481,7 +488,7 @@ impl Assembler {
         let mut sources = TurnSources::default();
         sources.set_own_row(id.as_str());
         for item in &items {
-            note_item(&mut sources, item, id.as_str());
+            note_item(&mut sources, item, id.as_str(), false);
         }
         self.turns.push(Arc::new(Turn::User(UserTurn {
             id,
@@ -510,6 +517,8 @@ impl Assembler {
                         Item::Injected { entries: more, .. },
                     ) => entries.extend(more),
                     (_, item) => {
+                        // Held entries are always an `Injected` item, which
+                        // names its own row; the row given is not used.
                         upsert(turn, b, item, "");
                     }
                 }
@@ -527,7 +536,8 @@ impl Assembler {
                     entries.extend(more);
                 }
                 (_, item) => {
-                    note_item(&mut turn.sources, &item, "");
+                    // An `Injected` item names its own row.
+                    note_item(&mut turn.sources, &item, "", false);
                     turn.items.push(item);
                 }
             }
@@ -841,13 +851,15 @@ fn take_held(held: &mut Vec<InjectedEntry>, key: &mut Option<String>) -> Option<
 }
 
 /// Inserts `item` or replaces the item with the same id in place (a repeated
-/// tool part keeps its position). An item that is new is recorded in the
-/// turn's sources as read from `row` (see [`note_item`]).
+/// tool part keeps its position). The turn's sources say which row the item
+/// is read from: for a new item, `row`; for a replaced one, the row it now
+/// comes from (a later row can send a tool part again). See [`note_item`].
 fn upsert(turn: &mut AssistantTurn, b: &mut Builder, item: Item, row: &str) {
     if let Some(&pos) = b.index.get(item.id()) {
+        note_item(&mut turn.sources, &item, row, true);
         turn.items[pos] = item;
     } else {
-        note_item(&mut turn.sources, &item, row);
+        note_item(&mut turn.sources, &item, row, false);
         b.index.insert(item.id().clone(), turn.items.len());
         turn.items.push(item);
     }
@@ -855,13 +867,19 @@ fn upsert(turn: &mut AssistantTurn, b: &mut Builder, item: Item, row: &str) {
 
 /// Records where `item` was read from: the `row`, except for injected
 /// entries, which are identified by their first row (`injected:<row>`). A
-/// tool call is a part of the row.
-fn note_item(sources: &mut TurnSources, item: &Item, row: &str) {
+/// tool call is a part of the row. `again`: the item is in the table already
+/// and its entry is replaced.
+fn note_item(sources: &mut TurnSources, item: &Item, row: &str, again: bool) {
     let row = match item {
         Item::Injected { id, .. } => id.as_str().strip_prefix(INJECTED_PREFIX).unwrap_or(row),
         _ => row,
     };
-    sources.add_row_item(item.id(), row, matches!(item, Item::ToolCall(_)));
+    let call = matches!(item, Item::ToolCall(_));
+    if again {
+        sources.set_row_item(item.id(), row, call);
+    } else {
+        sources.add_row_item(item.id(), row, call);
+    }
 }
 
 /// Removes the item with the given id, if the turn has it. The positions of

@@ -76,16 +76,16 @@ pub fn compose(
     formatter: &TimestampFormatter,
 ) -> DetailsContent {
     let groups = [
-        (TURN, Some(SourceGroupKind::Turn)),
-        (MESSAGE, Some(SourceGroupKind::Message)),
-        (TOOL_CALL, Some(SourceGroupKind::ToolCall)),
-        (PROMPT, Some(SourceGroupKind::Prompt)),
-        (ENVIRONMENT, Some(SourceGroupKind::Environment)),
+        (TURN, SourceGroupKind::Turn),
+        (MESSAGE, SourceGroupKind::Message),
+        (TOOL_CALL, SourceGroupKind::ToolCall),
+        (PROMPT, SourceGroupKind::Prompt),
+        (ENVIRONMENT, SourceGroupKind::Environment),
     ];
     let mut out = Vec::new();
     for (title, kind) in groups {
         let known = model.groups().iter().find(|g| g.title == title);
-        let read = kind.and_then(|kind| read.iter().find(|g| g.kind == kind));
+        let read = read.iter().find(|g| g.kind == kind);
         let group = match (known, read) {
             (known, None) => known.cloned(),
             (known, Some(read)) => Some(merge(title, known, read, formatter)),

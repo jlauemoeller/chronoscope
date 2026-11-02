@@ -308,8 +308,13 @@ fn a_tool_call_and_its_result_share_one_reference() {
         .unwrap();
     let section = text.rows().unwrap().section.clone().unwrap();
     assert_eq!((section.row.as_str(), section.part), ("a1", None));
-    // No second reference for the result: the section has no lines.
+    // No second reference for the result: the call's section has no lines.
     assert!(text.lines().is_none());
+    let call = turns[1]
+        .sources()
+        .get(&SourceKey::Item(ItemId::from("call-1")))
+        .unwrap();
+    assert!(call.lines().is_none());
 }
 
 #[test]
@@ -920,4 +925,105 @@ fn a_value_read_is_time_text_or_nothing_else() {
     assert!(matches!(kind("time.created"), SourceValue::Time(_)));
     assert!(matches!(kind("row id"), SourceValue::Text(_)));
     assert!(matches!(kind("error"), SourceValue::Text(_)));
+}
+
+#[test]
+fn a_tool_part_sent_again_by_a_later_row_is_read_from_that_row() {
+    let part = |created: i64, completed: i64| {
+        format!(
+            r#"{{"type":"tool","id":"c1","name":"shell","state":{{"status":"completed","input":{{}},"content":[]}},"time":{{"created":{created},"completed":{completed}}}}}"#
+        )
+    };
+    let first = format!(
+        r#"{{"snapshot":{{"start":"first"}},"content":[{}]}}"#,
+        part(1_700_000_001_000, 1_700_000_002_000)
+    );
+    let later = format!(
+        r#"{{"snapshot":{{"start":"later"}},"content":[{}]}}"#,
+        part(1_700_000_500_000, 1_700_000_505_000)
+    );
+    let fx = Fx::new(&[
+        ("u1", "user", USER),
+        ("a1", "assistant", &first),
+        ("a2", "assistant", &later),
+    ]);
+    let content = fx.item(1, "c1");
+    assert_eq!(
+        rows(&content, "Tool call").unwrap(),
+        [
+            ("start", "2023-11-14 22:21:40Z"),
+            ("duration", "5s"),
+            ("status", "ok")
+        ]
+    );
+    assert_eq!(
+        rows(&content, "Environment").unwrap(),
+        [("snapshot.start", "later")]
+    );
+}
+
+#[test]
+fn parts_that_are_not_objects_do_not_hide_a_tool_part_or_move_it() {
+    let fx = full();
+    let turns = fx.turns();
+    let tool = r#"{"type":"tool","id":"call-1","name":"shell","state":{"status":"completed","input":{}},"time":{"created":1700000001500,"completed":1700000002500}}"#;
+    fx.set_data(
+        "a1",
+        &format!(r#"{{"content":[5,null,"s",[1],{tool},true]}}"#),
+    );
+    let content = fx.content_of(&turns, 1, SectionKey::Item(ItemId::from("call-1")));
+    assert_eq!(
+        rows(&content, "Tool call").unwrap(),
+        [
+            ("start", "2023-11-14 22:13:21Z"),
+            ("duration", "1s"),
+            ("status", "ok")
+        ]
+    );
+    assert!(!has_unavailable(&content, "Turn"));
+    // A part without an id is found by its original position.
+    let no_id = tool.replace(r#""id":"call-1","#, "");
+    let data = format!(r#"{{"content":[5,null,{no_id}]}}"#);
+    let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", &data)]);
+    let turns = fx.turns();
+    fx.set_data("a1", &format!(r#"{{"content":["x",5,null,{no_id}]}}"#));
+    // Position 3 now: the part is no longer where the assembler saw it.
+    let content = fx.content_of(&turns, 1, SectionKey::Item(ItemId::from("a1:2")));
+    assert!(has_unavailable(&content, "Tool call"));
+    fx.set_data("a1", &data);
+    let content = fx.content_of(&turns, 1, SectionKey::Item(ItemId::from("a1:2")));
+    assert_eq!(
+        labels(&content, "Tool call"),
+        ["start", "duration", "status"]
+    );
+    assert!(!has_unavailable(&content, "Tool call"));
+}
+
+#[test]
+fn an_error_that_says_nothing_is_no_row_unless_the_notice_says_error() {
+    for error in [
+        r#"{}"#,
+        r#"{"type":5,"message":true}"#,
+        r#"{"type":"  ","message":""}"#,
+        r#""""#,
+        r#"7"#,
+        r#"null"#,
+    ] {
+        let data = format!(
+            r#"{{"finish":"stop","error":{error},"content":[{{"type":"text","text":"x"}}]}}"#
+        );
+        let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", &data)]);
+        let content = fx.item(1, "a1:0");
+        assert!(!labels(&content, "Message").contains(&"error"), "{error}");
+        assert!(!has_unavailable(&content, "Message"), "{error}");
+    }
+    // An error that says something is a row whatever the finish.
+    let data =
+        r#"{"finish":"stop","error":{"message":"late"},"content":[{"type":"text","text":"x"}]}"#;
+    let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", data)]);
+    assert!(
+        rows(&fx.item(1, "a1:0"), "Message")
+            .unwrap()
+            .contains(&("error", "late"))
+    );
 }

@@ -47,19 +47,33 @@ pub(super) fn read_groups(db: Option<&Db>, source: &SectionSource) -> Vec<Source
         return Vec::new();
     };
     let read = |row: &str| db.and_then(|db| read_row(db, row));
+    // Each distinct row is read once: the section's row is usually the
+    // turn's first one.
+    let turn_row = refs.turn.as_deref().map(read);
+    let shared = |section: &RowRef| refs.turn.as_deref() == Some(section.row.as_str());
+    let own_row = refs
+        .section
+        .as_ref()
+        .filter(|section| !shared(section))
+        .map(|section| read(&section.row));
     let mut groups = Vec::new();
-    if let Some(turn_row) = &refs.turn {
-        groups.push(turn_group(read(turn_row).as_ref()));
+    if let Some(turn_row) = &turn_row {
+        groups.push(turn_group(turn_row.as_ref()));
     }
     if let Some(section) = &refs.section {
-        let row = read(&section.row);
+        let row = if shared(section) {
+            turn_row.as_ref()
+        } else {
+            own_row.as_ref()
+        };
+        let row = row.and_then(Option::as_ref);
         match source.kind {
-            SourceKind::Message => groups.push(message_group(row.as_ref())),
-            SourceKind::ToolCall => groups.push(tool_group(row.as_ref(), section)),
-            SourceKind::Prompt => groups.push(prompt_group(row.as_ref())),
+            SourceKind::Message => groups.push(message_group(row)),
+            SourceKind::ToolCall => groups.push(tool_group(row, section)),
+            SourceKind::Prompt => groups.push(prompt_group(row)),
             SourceKind::Other => {}
         }
-        groups.push(environment_group(row.as_ref()));
+        groups.push(environment_group(row));
     }
     groups
 }
@@ -145,8 +159,14 @@ fn message_group(row: Option<&Row>) -> SourceGroup {
         rows.time("time.completed", time.and_then(|t| t.completed));
         rows.text("finish", head.finish.as_deref());
         rows.text("rawFinish", head.raw_finish.as_deref());
-        // The text of the notice for the same row.
-        let error = head.error.as_ref().map(|error| error_text(Some(error)).1);
+        // The text of the notice for the same row. An error that says
+        // nothing is a row only where the notice says `error` for it.
+        let ended_in_error = head.finish.as_deref().map(str::trim) == Some("error");
+        let error = head
+            .error
+            .as_ref()
+            .filter(|error| ended_in_error || error.has_text())
+            .map(|error| error_text(Some(error)).1);
         rows.text("error", error.as_deref());
         rows.0
     })
@@ -203,8 +223,11 @@ fn find_part(row: &Row, part: &str) -> Option<PartHead> {
     content
         .content
         .unwrap_or_default()
-        .into_iter()
+        .iter()
         .enumerate()
+        // A part that is not an object is no tool part, but it has a place.
+        .filter(|(_, raw)| raw.get().starts_with('{'))
+        .filter_map(|(index, raw)| Some((index, serde_json::from_str::<PartHead>(raw.get()).ok()?)))
         .find(
             |(index, p)| match p.id.as_deref().filter(|id| !id.is_empty()) {
                 Some(id) => id == part,
@@ -294,10 +317,11 @@ struct SnapshotHead {
     end: Option<String>,
 }
 
-/// The `content` of a row, as far as finding a tool part goes.
+/// The `content` of a row, as far as finding a tool part goes. A part that
+/// is not an object is skipped, but counts for the position of the others.
 #[derive(Deserialize)]
 struct ToolHead {
-    content: Option<Vec<PartHead>>,
+    content: Option<Vec<Box<serde_json::value::RawValue>>>,
 }
 
 /// A part of `content`. The `state` (the tool's input and output) is
