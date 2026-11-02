@@ -267,24 +267,43 @@ fn the_selection_and_the_scroll_of_the_transcript_are_unchanged_by_the_overlay()
     assert_eq!(presentation(&rig.app), before);
 }
 
+/// Whether the selected row of the screen (the one the `▒` marker is on) is
+/// the `… N more lines` row.
+fn more_row_selected(rig: &mut Rig) -> bool {
+    screen_text(rig, 120, 40)
+        .lines()
+        .any(|row| row.starts_with('▒') && row.contains("more lines"))
+}
+
 #[test]
 fn a_more_row_opens_the_details_of_its_tool_call() {
     let mut rig = rig();
     rig.open_with(vec![long_output_turn(1434)]);
-    // The only section is the folded tool call: unfold it, then down to the
-    // `… N more lines` row.
-    let mut details = Vec::new();
+    // The only section is the tool call, folded.
+    assert!(!more_row_selected(&mut rig));
     rig.open_details();
-    details.push(overlay_rows(&mut rig, 120, 40));
+    let of_call = overlay_rows(&mut rig, 120, 40);
     rig.close_details_by(Key::Esc);
+    // Unfold it, then down until the `… N more lines` row is selected
+    // (moving pages through a section taller than the screen first).
     rig.press(Key::Char('l'));
-    rig.press(Key::Char('j'));
     rig.settle();
+    let call_view = presentation(&rig.app);
+    for _ in 0..60 {
+        if more_row_selected(&mut rig) {
+            break;
+        }
+        rig.press(Key::Char('j'));
+        rig.settle();
+    }
+    assert!(more_row_selected(&mut rig), "the More row is selected");
+    assert_ne!(presentation(&rig.app), call_view, "the selection moved");
     rig.open_details();
-    details.push(overlay_rows(&mut rig, 120, 40));
-    assert_eq!(details[0], details[1]);
-    let rows = details[1].join("\n");
+    let of_more = overlay_rows(&mut rig, 120, 40);
+    assert_eq!(of_more, of_call);
+    let rows = of_more.join("\n");
     assert!(rows.contains("Tool call"), "{rows}");
+    assert!(rows.contains("status"), "{rows}");
 }
 
 #[test]

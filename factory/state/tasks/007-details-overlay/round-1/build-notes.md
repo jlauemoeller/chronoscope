@@ -32,3 +32,5 @@ STATUS: DONE
 - cargo test: pass (2754 passed, 0 failed)
 
 Notes: the fixtures of the component snapshots populate every group of the spec table from plain data (Message, Environment, OpenCode cost/provider/agent); the rows the model does not know yet are for tasks 008 and 009. Raw-field labels in those fixtures are placeholders for display only.
+
+Deliberate choice: the overlay's wanted size is fixed when it opens (the wanted width is capped by the screen width then, and the wrapped height follows from it). A resize re-announces the interior (rows and columns) and `help_overlay_rect` caps the rect, as for the help overlay, but the wanted height is not recomputed.
