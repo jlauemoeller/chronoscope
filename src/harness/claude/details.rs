@@ -12,7 +12,9 @@
 //! without building a value for it. In particular `message.content` is not
 //! read at all, and `toolUseResult` (stdout, whole files) goes through an
 //! object-or-ignored head. A field of an unexpected JSON type counts as
-//! missing and never fails the line.
+//! missing and never fails the line. A key that appears twice in an object
+//! does fail the line (the derived heads reject a duplicate), which shows
+//! `unavailable`; Claude Code does not write such lines.
 
 use std::fmt;
 use std::marker::PhantomData;
@@ -84,12 +86,12 @@ fn message_group(line: Option<&Line>) -> SourceGroup {
         let cache_miss = line
             .diagnostics
             .as_ref()
-            .and_then(|d| d.cache_miss_reason.clone())
+            .and_then(|d| d.cache_miss_reason.as_deref())
             .or_else(|| {
                 message?
                     .diagnostics
                     .as_ref()
-                    .and_then(|d| d.cache_miss_reason.clone())
+                    .and_then(|d| d.cache_miss_reason.as_deref())
             });
         let mut rows = Rows::default();
         rows.text("message.id", message.and_then(|m| m.id.as_deref()));
@@ -119,7 +121,7 @@ fn message_group(line: Option<&Line>) -> SourceGroup {
         );
         rows.count("web searches", server.and_then(|s| s.web_search_requests));
         rows.count("web fetches", server.and_then(|s| s.web_fetch_requests));
-        rows.text("diagnostics.cache_miss_reason", cache_miss.as_deref());
+        rows.text("diagnostics.cache_miss_reason", cache_miss);
         rows.0
     })
 }
@@ -193,8 +195,15 @@ impl Rows {
         }
     }
 
+    /// A text field; an empty string is no value, as for `effort` and
+    /// `stop_reason` elsewhere.
     fn text(&mut self, label: &str, value: Option<&str>) {
-        self.push(label, value.map(|v| SourceValue::Text(v.to_owned())));
+        self.push(
+            label,
+            value
+                .filter(|v| !v.is_empty())
+                .map(|v| SourceValue::Text(v.to_owned())),
+        );
     }
 
     fn bool(&mut self, label: &str, value: Option<bool>) {
@@ -213,10 +222,12 @@ impl Rows {
     fn time(&mut self, label: &str, value: Option<&str>) {
         self.push(
             label,
-            value.map(|v| match DateTime::parse_from_rfc3339(v) {
-                Ok(time) => SourceValue::Time(time.with_timezone(&Utc)),
-                Err(_) => SourceValue::Text(v.to_owned()),
-            }),
+            value
+                .filter(|v| !v.is_empty())
+                .map(|v| match DateTime::parse_from_rfc3339(v) {
+                    Ok(time) => SourceValue::Time(time.with_timezone(&Utc)),
+                    Err(_) => SourceValue::Text(v.to_owned()),
+                }),
         );
     }
 }
@@ -329,16 +340,13 @@ struct ResultHead {
 
 /// A JSON scalar that can be picked from a value of the expected type.
 trait Pick: Sized {
-    fn from_str(value: &str) -> Option<Self> {
-        let _ = value;
+    fn from_str(_value: &str) -> Option<Self> {
         None
     }
-    fn from_bool(value: bool) -> Option<Self> {
-        let _ = value;
+    fn from_bool(_value: bool) -> Option<Self> {
         None
     }
-    fn from_u64(value: u64) -> Option<Self> {
-        let _ = value;
+    fn from_u64(_value: u64) -> Option<Self> {
         None
     }
 }

@@ -7,7 +7,6 @@
 
 use std::io;
 use std::ops::Range;
-use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
@@ -94,11 +93,10 @@ impl TurnSources {
         }
     }
 
-    /// Sets the line of the prompt or the compaction. Returns whether the
-    /// table changed.
-    pub fn set_own(&mut self, bytes: &ByteSource, range: &Range<u64>) -> bool {
+    /// Sets the line of the prompt or the compaction.
+    pub fn set_own(&mut self, bytes: &ByteSource, range: &Range<u64>) {
         self.bytes_of(bytes);
-        replace(&mut self.own, range)
+        replace(&mut self.own, range);
     }
 
     /// Sets the line of the footer: the last `turn_duration` line. Returns
@@ -132,34 +130,25 @@ impl TurnSources {
         changed
     }
 
-    /// Links item `id` to message `message`, unless it is linked already.
-    /// Returns whether the table changed.
-    pub fn link_message_item(&mut self, id: &ItemId, message: usize) -> bool {
-        self.link(id, || ItemSource::Message(message)).1
+    /// Adds item `id`, which the caller knows is not in the table yet, as a
+    /// content block of message `message`. Nothing here looks the item up
+    /// (a turn can hold tens of thousands of items), so adding is constant
+    /// time. An item added again is found by its last entry.
+    pub fn add_message_item(&mut self, id: &ItemId, message: usize) {
+        self.items.push((id.clone(), ItemSource::Message(message)));
     }
 
-    /// Links item `id` to one line, unless it is linked already. Returns
-    /// whether the table changed.
-    pub fn link_line(&mut self, bytes: &ByteSource, id: &ItemId, range: &Range<u64>) -> bool {
+    /// Adds item `id`, which the caller knows is not in the table yet, with
+    /// one line.
+    pub fn add_line(&mut self, bytes: &ByteSource, id: &ItemId, range: &Range<u64>) {
         self.bytes_of(bytes);
-        self.link(id, || ItemSource::Line(range.clone())).1
+        self.items
+            .push((id.clone(), ItemSource::Line(range.clone())));
     }
 
-    /// Links the tool call `id` to the line of its call, unless it is linked
-    /// already. Returns the call's number in the table, to give to
-    /// [`set_result`](Self::set_result).
-    pub fn link_call(&mut self, bytes: &ByteSource, id: &ItemId, range: &Range<u64>) -> usize {
-        self.bytes_of(bytes);
-        self.link(id, || ItemSource::Call {
-            call: range.clone(),
-            result: None,
-        })
-        .0
-    }
-
-    /// Adds the tool call `id`, which the caller knows is not linked yet,
-    /// with the line of its call, without looking for it first (a turn can
-    /// hold thousands of calls). Returns the call's number in the table.
+    /// Adds the tool call `id`, which the caller knows is not in the table
+    /// yet, with the line of its call. Returns the call's number in the
+    /// table, to give to [`set_result`](Self::set_result).
     pub fn add_call(&mut self, bytes: &ByteSource, id: &ItemId, range: &Range<u64>) -> usize {
         self.bytes_of(bytes);
         self.items.push((
@@ -172,14 +161,6 @@ impl TurnSources {
         self.items.len() - 1
     }
 
-    fn link(&mut self, id: &ItemId, new: impl FnOnce() -> ItemSource) -> (usize, bool) {
-        if let Some(at) = self.items.iter().rposition(|(item, _)| item == id) {
-            return (at, false);
-        }
-        self.items.push((id.clone(), new()));
-        (self.items.len() - 1, true)
-    }
-
     /// Whether call number `call` already has `range` as its result line.
     pub fn has_result(&self, call: usize, range: &Range<u64>) -> bool {
         matches!(
@@ -188,13 +169,11 @@ impl TurnSources {
         )
     }
 
-    /// Sets the line of the result of call number `call`. Returns whether the
-    /// table changed.
-    pub fn set_result(&mut self, bytes: &ByteSource, call: usize, range: &Range<u64>) -> bool {
+    /// Sets the line of the result of call number `call`.
+    pub fn set_result(&mut self, bytes: &ByteSource, call: usize, range: &Range<u64>) {
         self.bytes_of(bytes);
-        match self.items.get_mut(call) {
-            Some((_, ItemSource::Call { result, .. })) => replace(result, range),
-            _ => false,
+        if let Some((_, ItemSource::Call { result, .. })) = self.items.get_mut(call) {
+            replace(result, range);
         }
     }
 
@@ -222,11 +201,6 @@ impl TurnSources {
             line: reference(line),
             result: result.map(reference),
         })
-    }
-
-    /// Whether the turn has no references at all.
-    pub fn is_empty(&self) -> bool {
-        self.bytes.is_none()
     }
 }
 
@@ -309,8 +283,6 @@ pub enum SourceValue {
     Tokens(u64),
     /// A plain count.
     Count(u64),
-    /// A span of time.
-    Duration(Duration),
 }
 
 /// One `label  value` row read from a source.
@@ -373,7 +345,7 @@ mod tests {
         let b = bytes();
         let m = t.add_message(&b, &(0..2));
         let id = ItemId::from("a");
-        assert!(t.link_message_item(&id, m));
+        t.add_message_item(&id, m);
         let line = |t: &TurnSources| t.get(&SourceKey::Item(id.clone())).unwrap().line.range;
         assert_eq!(line(&t), 0..2);
         assert!(t.note_message_line(m, &(3..5), false));
@@ -385,26 +357,27 @@ mod tests {
     }
 
     #[test]
-    fn a_call_has_two_lines_and_links_are_not_replaced() {
+    fn a_call_has_two_lines_and_the_latest_entry_of_an_item_wins() {
         let mut t = TurnSources::new();
         let b = bytes();
         let id = ItemId::from("c");
-        let at = t.link_call(&b, &id, &(0..2));
-        assert_eq!(t.link_call(&b, &id, &(5..6)), at, "linked already");
+        let at = t.add_call(&b, &id, &(0..2));
         let refs = t.get(&SourceKey::Item(id.clone())).unwrap();
         assert_eq!((refs.line.range, refs.result), (0..2, None));
         assert!(!t.has_result(at, &(3..4)));
-        assert!(t.set_result(&b, at, &(3..4)));
+        t.set_result(&b, at, &(3..4));
         assert!(t.has_result(at, &(3..4)));
-        assert!(!t.set_result(&b, at, &(3..4)));
-        let refs = t.get(&SourceKey::Item(id)).unwrap();
+        let refs = t.get(&SourceKey::Item(id.clone())).unwrap();
         assert_eq!(refs.result.unwrap().range, 3..4);
+        // An item added again (a notice that was removed and came back) is
+        // found by its last entry.
+        t.add_line(&b, &id, &(5..6));
+        assert_eq!(t.get(&SourceKey::Item(id)).unwrap().line.range, 5..6);
     }
 
     #[test]
     fn an_empty_table_has_no_references() {
         let t = TurnSources::new();
-        assert!(t.is_empty());
         assert_eq!(t.get(&SourceKey::Own), None);
         assert_eq!(t.get(&SourceKey::Footer), None);
         assert_eq!(t.get(&SourceKey::Item(ItemId::from("x"))), None);

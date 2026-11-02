@@ -564,7 +564,7 @@ impl Assembler {
         sources.set_own(&self.source, range);
         let held = take_held(&mut self.held, &mut self.held_key, &mut self.held_line);
         if let Some(held) = &held {
-            held.link(&mut sources, &self.source);
+            held.add_to(&mut sources, &self.source);
         }
         let items = held.map(|held| held.item).into_iter().collect();
         self.turns.push(Arc::new(Turn::User(UserTurn {
@@ -606,7 +606,7 @@ impl Assembler {
                     (_, item) => {
                         upsert(turn, b, item, &mut false);
                         if let Some(line) = &line {
-                            turn.sources.link_line(&self.source, &id, line);
+                            turn.sources.add_line(&self.source, &id, line);
                         }
                     }
                 }
@@ -632,7 +632,7 @@ impl Assembler {
                 (_, item) => {
                     turn.items.push(item);
                     if let Some(line) = &line {
-                        turn.sources.link_line(&self.source, &id, line);
+                        turn.sources.add_line(&self.source, &id, line);
                     }
                 }
             }
@@ -810,22 +810,20 @@ impl Assembler {
         let mut results: Vec<Block> = Vec::new();
         if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[b.idx]) {
             if let Some(held) = held_item.take() {
-                held.link(&mut turn.sources, &self.source);
+                held.add_to(&mut turn.sources, &self.source);
                 upsert(turn, &mut b, held.item, &mut changed);
             }
             if turn.effort.is_none() && effort.is_some() {
                 turn.effort = effort;
                 changed = true;
             }
-            let first_sight = !b.messages.contains_key(&msg_id);
-            let message_no = match b.messages.get(&msg_id) {
-                Some(&number) => number,
-                None => {
-                    let number = turn.sources.add_message(&self.source, range);
-                    b.messages.insert(msg_id.clone(), number);
-                    number
-                }
-            };
+            let known = b.messages.get(&msg_id).copied();
+            let first_sight = known.is_none();
+            let message_no = known.unwrap_or_else(|| {
+                let number = turn.sources.add_message(&self.source, range);
+                b.messages.insert(msg_id.clone(), number);
+                number
+            });
             if first_sight {
                 if model != SYNTHETIC_MODEL {
                     b.counted += 1;
@@ -839,7 +837,7 @@ impl Assembler {
                 } else if real && model != b.last_model {
                     let id = ItemId::from(format!("model:{msg_id}"));
                     if !b.index.contains_key(&id) {
-                        turn.sources.link_message_item(&id, message_no);
+                        turn.sources.add_message_item(&id, message_no);
                     }
                     let item = Item::ModelChange {
                         id,
@@ -903,7 +901,7 @@ impl Assembler {
                             );
                             note_block(&mut b, &msg_id, api_index, &id);
                             if !b.index.contains_key(&id) {
-                                turn.sources.link_message_item(&id, message_no);
+                                turn.sources.add_message_item(&id, message_no);
                             }
                             upsert(turn, &mut b, Item::Text { id, text }, &mut changed);
                         }
@@ -939,7 +937,7 @@ impl Assembler {
                         }
                         note_block(&mut b, &msg_id, api_index, &id);
                         if !b.index.contains_key(&id) {
-                            turn.sources.link_message_item(&id, message_no);
+                            turn.sources.add_message_item(&id, message_no);
                         }
                         upsert(turn, &mut b, Item::Thinking { id, thinking }, &mut changed);
                     }
@@ -962,8 +960,8 @@ impl Assembler {
                         // A call sent again is linked already; a new one is added without
                         // looking for it in the table, which would scan it.
                         let source = match self.calls.get(&call_id) {
-                            Some(known) => known.source,
-                            None => turn.sources.add_call(&self.source, &call.id, range),
+                            Some(known) if known.turn == b.idx => known.source,
+                            _ => turn.sources.add_call(&self.source, &call.id, range),
                         };
                         let item = upsert(turn, &mut b, Item::ToolCall(call), &mut changed);
                         self.calls.entry(call_id).or_insert(CallRef {
@@ -983,7 +981,7 @@ impl Assembler {
                 match message_notice(&b, &msg_id) {
                     Some((level, text)) => {
                         if !b.index.contains_key(&notice_id) {
-                            turn.sources.link_message_item(&notice_id, message_no);
+                            turn.sources.add_message_item(&notice_id, message_no);
                         }
                         let item = Item::Notice {
                             id: notice_id,
@@ -1189,11 +1187,11 @@ struct HeldItem {
 }
 
 impl HeldItem {
-    /// Records the line of the item in `sources`, now that it is in a turn.
-    fn link(&self, sources: &mut TurnSources, bytes: &ByteSource) -> bool {
-        match &self.line {
-            Some(line) => sources.link_line(bytes, self.item.id(), line),
-            None => false,
+    /// Records the line of the item in `sources`, now that it goes into a
+    /// turn. The item is new, so nothing is looked up.
+    fn add_to(&self, sources: &mut TurnSources, bytes: &ByteSource) {
+        if let Some(line) = &self.line {
+            sources.add_line(bytes, self.item.id(), line);
         }
     }
 }

@@ -12,7 +12,7 @@ expression: "draw(&mut overlay, area, 80, 24)"
                     │                                      │                    
                     │  Turn                                │                    
                     │                                      │                    
-                    │    model        claude-opus-5-5      │                    
+                    │    model  claude-opus-5-5            │                    
                     │                                      │                    
                     │  Message                             │                    
                     │                                      │                    
@@ -37,7 +37,7 @@ expression: "draw(&mut overlay, area, 80, 24)"
 7: 0..20 Reset/Reset/NONE | 20..21 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 21..59 Reset/Rgb(18, 18, 18)/NONE | 59..60 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 60..80 Reset/Reset/NONE
 8: 0..20 Reset/Reset/NONE | 20..21 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 21..23 Reset/Rgb(18, 18, 18)/NONE | 23..27 Rgb(250, 250, 250)/Rgb(18, 18, 18)/BOLD | 27..59 Reset/Rgb(18, 18, 18)/NONE | 59..60 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 60..80 Reset/Reset/NONE
 9: 0..20 Reset/Reset/NONE | 20..21 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 21..59 Reset/Rgb(18, 18, 18)/NONE | 59..60 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 60..80 Reset/Reset/NONE
-10: 0..20 Reset/Reset/NONE | 20..21 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 21..25 Reset/Rgb(18, 18, 18)/NONE | 25..30 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 30..38 Reset/Rgb(18, 18, 18)/NONE | 38..53 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 53..59 Reset/Rgb(18, 18, 18)/NONE | 59..60 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 60..80 Reset/Reset/NONE
+10: 0..20 Reset/Reset/NONE | 20..21 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 21..25 Reset/Rgb(18, 18, 18)/NONE | 25..30 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 30..32 Reset/Rgb(18, 18, 18)/NONE | 32..47 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 47..59 Reset/Rgb(18, 18, 18)/NONE | 59..60 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 60..80 Reset/Reset/NONE
 11: 0..20 Reset/Reset/NONE | 20..21 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 21..59 Reset/Rgb(18, 18, 18)/NONE | 59..60 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 60..80 Reset/Reset/NONE
 12: 0..20 Reset/Reset/NONE | 20..21 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 21..23 Reset/Rgb(18, 18, 18)/NONE | 23..30 Rgb(250, 250, 250)/Rgb(18, 18, 18)/BOLD | 30..59 Reset/Rgb(18, 18, 18)/NONE | 59..60 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 60..80 Reset/Reset/NONE
 13: 0..20 Reset/Reset/NONE | 20..21 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 21..59 Reset/Rgb(18, 18, 18)/NONE | 59..60 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 60..80 Reset/Reset/NONE

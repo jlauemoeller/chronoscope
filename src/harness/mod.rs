@@ -105,8 +105,7 @@ pub trait Harness: Send + Sync {
     /// The default provides nothing, and the overlay then shows only what
     /// the model knows, with no `unavailable` row. The Codex and Pi adapters
     /// inherit it, and so does OpenCode until it reads its rows.
-    fn section_details(&self, source: &SectionSource) -> Vec<SourceGroup> {
-        let _ = source;
+    fn section_details(&self, _source: &SectionSource) -> Vec<SourceGroup> {
         Vec::new()
     }
 

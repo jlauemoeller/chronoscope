@@ -7,25 +7,25 @@ expression: "screen(120, 40, 2, false)"
 │ /home/user/projects/brio                                                                                             │
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
-│                              ╭─ Details ──────────────────────────────────────────────╮                              │
-│ ▶ Is the camera on USB?      │                                                        │                              │
-│                              │  Turn                                                  │                              │
-╰──────────────────────────────│                                                        │──────────────────────────────╯
-╭─ Assistant ── claude-opus-5-5│    model               claude-opus-5-5                 │─────── 2026-10-21 08:35:18Z ─╮
-│                              │    start               2026-10-21 08:35:18Z            │                              │
-│   I'll list the USB devices. │    duration            7s                              │                              │
-│                              │    messages            1                               │                              │
-▒ ▶ List USB devices · 2.0s    │    input tokens        3                               │                              │
-│                              │    output tokens       245                             │                              │
-│   7s · 1 message · 248 tokens│                                                        │                              │
-│                              │  Tool call                                             │                              │
-╰──────────────────────────────│                                                        │──────────────────────────────╯
-                               │    start               2026-10-21 08:35:19Z            │                               
+╭─ User ───────────────────────╭─ Details ──────────────────────────────────────────────╮─────── 2026-10-21 08:35:15Z ─╮
+│                              │                                                        │                              │
+│ ▶ Is the camera on USB?      │  Turn                                                  │                              │
+│                              │                                                        │                              │
+╰──────────────────────────────│    model               claude-opus-5-5                 │──────────────────────────────╯
+╭─ Assistant ── claude-opus-5-5│    start               2026-10-21 08:35:18Z            │─────── 2026-10-21 08:35:18Z ─╮
+│                              │    duration            7s                              │                              │
+│   I'll list the USB devices. │    messages            1                               │                              │
+│                              │    input tokens        3                               │                              │
+▒ ▶ List USB devices · 2.0s    │    output tokens       245                             │                              │
+│                              │                                                        │                              │
+│   7s · 1 message · 248 tokens│  Tool call                                             │                              │
+│                              │                                                        │                              │
+╰──────────────────────────────│    start               2026-10-21 08:35:19Z            │──────────────────────────────╯
                                │    duration            2s                              │                               
                                │    status              ok                              │                               
                                │    permissionDecision  decision=accept, source=config  │                               
                                │    sandboxed           false                           │                               
+                               │    resolvedModel       claude-haiku-5-5                │                               
                                │    isAsync             false                           │                               
                                │                                                        │                               
                                │  Environment                                           │                               

@@ -255,6 +255,55 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
     failures
 }
 
+/// One Assistant turn that never ends: rounds of a text, a tool call and its
+/// result, ~85 MB in all. The references of every section go to one table,
+/// so a lookup of each new item in it (quadratic in the items of a turn) would
+/// miss the full-parse budget here, though the fixtures above, with their
+/// many short turns, would not notice.
+fn long_turn_failures() -> Vec<String> {
+    use std::fmt::Write;
+    const ROUNDS: usize = 100_000;
+    let mut text = String::from(
+        r#"{"type":"user","uuid":"u0","origin":{"kind":"human"},"timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"go"}}"#,
+    );
+    for i in 0..ROUNDS {
+        let pad = "p".repeat(120);
+        write!(
+            text,
+            concat!(
+                "\n",
+                r#"{{"type":"assistant","uuid":"a{i}","timestamp":"2026-01-01T00:00:01Z","message":{{"id":"m{i}","model":"claude-opus-5-5","stop_reason":null,"content":[{{"type":"text","text":"{pad}"}}]}}}}"#,
+                "\n",
+                r#"{{"type":"assistant","uuid":"b{i}","timestamp":"2026-01-01T00:00:02Z","message":{{"id":"m{i}","model":"claude-opus-5-5","stop_reason":"tool_use","content":[{{"type":"tool_use","id":"c{i}","name":"Bash","input":{{"command":"ls"}}}}]}}}}"#,
+                "\n",
+                r#"{{"type":"user","uuid":"r{i}","timestamp":"2026-01-01T00:00:03Z","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"c{i}","content":"ok"}}]}}}}"#,
+            ),
+            i = i,
+            pad = pad
+        )
+        .unwrap();
+    }
+    let bytes: std::sync::Arc<[u8]> = std::sync::Arc::from(text.as_bytes());
+    let size = bytes.len();
+    drop(text);
+    let start = Instant::now();
+    let asm = chronoscope::harness::claude::Assembler::from_memory(bytes);
+    let took = start.elapsed();
+    assert_eq!(asm.unparsed_count(), 0);
+    assert_eq!(asm.turns().len(), 2, "one prompt and one endless turn");
+    println!(
+        "== one endless turn: {size} bytes, {} rounds: full parse {:.1} ms (budget {:.0} ms)",
+        ROUNDS,
+        ms(took),
+        ms(FULL_PARSE)
+    );
+    let mut failures = Vec::new();
+    if took >= FULL_PARSE {
+        failures.push(format!("one endless turn: the full parse took {took:?}"));
+    }
+    failures
+}
+
 #[test]
 #[ignore = "machine dependent: cargo test --release -- --ignored budgets --nocapture"]
 fn budgets() {
@@ -263,5 +312,6 @@ fn budgets() {
     let dense = cached_fixture(&cache, FIXTURE_BYTES, SEED, 0).expect("the dense fixture");
     let mut failures = check("mixed session (5% large outputs)", &mixed);
     failures.extend(check("dense session (small entries only)", &dense));
+    failures.extend(long_turn_failures());
     assert!(failures.is_empty(), "budgets missed: {failures:#?}");
 }

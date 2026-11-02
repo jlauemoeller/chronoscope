@@ -128,6 +128,15 @@ and 18 892 tool calls (0.63x the file at peak, against the 3x budget), and
 nothing visible to the mixed one. Parse time and frames are within the noise
 of the run.
 
+One case the fixtures do not reach is a single turn with very many items
+(tool results do not end a turn, so a long unattended run is one). All the
+references of a turn's sections go to one table, which is only ever appended
+to while assembling, never searched. The budget test checks it with a turn of
+100 000 rounds of text, tool call and result (70 MB): full parse 0.66 s.
+Looking each new item up in the table first made this quadratic (tens of
+seconds), so `tests/claude_details.rs` also has a test that compares the time
+of 3 000 and 24 000 items.
+
 Opening the overlay re-reads the section's line, and a tool call's result line.
 The budget test prints a reference line for the worst case, the tool call with
 the largest result (a 2 MB line): reading its details took 1.2 ms. The

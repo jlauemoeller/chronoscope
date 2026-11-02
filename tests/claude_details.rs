@@ -7,6 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use chronoscope::components::section_source;
+use chronoscope::components::turn_block::{SectionId, SectionKey};
 use chronoscope::harness::Harness;
 use chronoscope::harness::claude::{Assembler, ClaudeHarness};
 use chronoscope::model::{
@@ -93,7 +95,6 @@ fn value(value: &SourceValue) -> String {
         SourceValue::Time(time) => time.to_rfc3339(),
         SourceValue::Tokens(n) => format!("{n} tokens"),
         SourceValue::Count(n) => n.to_string(),
-        SourceValue::Duration(d) => format!("{d:?}"),
     }
 }
 
@@ -414,6 +415,182 @@ fn a_compaction_and_a_system_section_read_their_first_line_for_the_environment()
     };
     let env = group(&read(&source), SourceGroupKind::Environment).unwrap();
     assert_eq!(env.rows[0], "gitBranch=first-hook");
+}
+
+// -- the other kinds of section of an Assistant turn
+
+fn hook(uuid: &str, branch: &str) -> Value {
+    json!({
+        "type": "attachment", "uuid": uuid, "timestamp": "2026-01-01T00:00:03Z",
+        "gitBranch": branch, "cwd": CWD,
+        "attachment": {"type": "hook_system_message", "content": "x"}
+    })
+}
+
+/// The source of item `id` of the turn at `turn`, as the details key makes
+/// it.
+fn section(t: &Transcript, turn: usize, id: &str) -> SectionSource {
+    let section = SectionId {
+        turn: t.turns[turn].id().clone(),
+        key: SectionKey::Item(ItemId::from(id)),
+    };
+    section_source(&t.turns[turn], &section).unwrap_or_else(|| panic!("no source for {id}"))
+}
+
+fn environment_branch(source: &SectionSource) -> String {
+    group(&read(source), SourceGroupKind::Environment)
+        .unwrap()
+        .rows[0]
+        .clone()
+}
+
+#[test]
+fn a_notice_reads_the_message_group_and_environment_of_the_line_that_ended_the_message() {
+    let mut ending = first_line();
+    ending["uuid"] = json!("a2");
+    ending["timestamp"] = json!("2026-01-01T00:00:03Z");
+    ending["gitBranch"] = json!("ending");
+    ending["message"]["stop_reason"] = json!("max_tokens");
+    ending["message"]["content"] = json!([]);
+    let t = transcript(&[prompt_line(), first_line(), ending]);
+    let source = section(&t, 1, "notice:m1");
+    assert_eq!(source.kind, SourceKind::Message);
+    let groups = read(&source);
+    let message = group(&groups, SourceGroupKind::Message).unwrap();
+    assert!(message.rows.contains(&"stop_reason=max_tokens".to_owned()));
+    assert!(
+        message
+            .rows
+            .contains(&"timestamp=2026-01-01T00:00:03+00:00".to_owned()),
+        "{message:?}"
+    );
+    assert_eq!(environment_branch(&source), "gitBranch=ending");
+}
+
+#[test]
+fn an_api_error_notice_reads_the_message_group_and_environment() {
+    let error = json!({
+        "type": "assistant", "uuid": "a1", "timestamp": "2026-01-01T00:00:01Z",
+        "isApiErrorMessage": true, "requestId": "req_err", "gitBranch": "error", "cwd": CWD,
+        "message": {"id": "msg_e", "model": "<synthetic>", "content": [
+            {"type": "text", "text": "API Error: 529 overloaded"}]}
+    });
+    let t = transcript(&[prompt_line(), error]);
+    let source = section(&t, 1, "notice:msg_e");
+    assert_eq!(source.kind, SourceKind::Message);
+    let groups = read(&source);
+    let message = group(&groups, SourceGroupKind::Message).unwrap();
+    assert!(message.rows.contains(&"message.id=msg_e".to_owned()));
+    assert!(message.rows.contains(&"requestId=req_err".to_owned()));
+    assert_eq!(environment_branch(&source), "gitBranch=error");
+}
+
+#[test]
+fn a_model_note_reads_the_environment_of_its_message_and_no_message_group() {
+    let mut other = first_line();
+    other["uuid"] = json!("a2");
+    other["gitBranch"] = json!("other-model");
+    other["message"]["id"] = json!("m2");
+    other["message"]["model"] = json!("claude-sonnet-5-5");
+    let t = transcript(&[prompt_line(), first_line(), other]);
+    let source = section(&t, 1, "model:m2");
+    assert_eq!(source.kind, SourceKind::Other);
+    let groups = read(&source);
+    assert!(group(&groups, SourceGroupKind::Message).is_none());
+    assert_eq!(environment_branch(&source), "gitBranch=other-model");
+}
+
+#[test]
+fn a_system_section_in_an_assistant_turn_reads_the_environment_of_its_first_line() {
+    // Flushed into the open turn by the next assistant line.
+    let mut next = first_line();
+    next["uuid"] = json!("a2");
+    next["message"]["id"] = json!("m2");
+    let t = transcript(&[
+        prompt_line(),
+        first_line(),
+        hook("h1", "mid-turn"),
+        hook("h2", "second-hook"),
+        next,
+    ]);
+    let source = section(&t, 1, "injected:h1");
+    assert_eq!(source.kind, SourceKind::Other);
+    assert_eq!(environment_branch(&source), "gitBranch=mid-turn");
+}
+
+#[test]
+fn held_entries_that_open_an_assistant_turn_read_the_environment_of_their_first_line() {
+    // After a compaction the entries stay held until the next assistant line
+    // opens a turn.
+    let boundary = json!({
+        "type": "system", "subtype": "compact_boundary", "uuid": "cb1",
+        "timestamp": "2026-01-01T00:00:01Z"
+    });
+    let summary = json!({
+        "type": "user", "uuid": "cs1", "isCompactSummary": true,
+        "timestamp": "2026-01-01T00:00:02Z", "message": {"role": "user", "content": "S"}
+    });
+    let t = transcript(&[
+        prompt_line(),
+        boundary,
+        summary,
+        hook("h1", "opening"),
+        first_line(),
+    ]);
+    let turn = t.turns.len() - 1;
+    assert!(matches!(&*t.turns[turn], Turn::Assistant(_)));
+    let source = section(&t, turn, "injected:h1");
+    assert_eq!(environment_branch(&source), "gitBranch=opening");
+}
+
+#[test]
+fn an_empty_string_is_no_value() {
+    let mut line = first_line();
+    line["version"] = json!("");
+    line["gitBranch"] = json!("");
+    line["message"]["usage"]["speed"] = json!("");
+    let t = transcript(&[prompt_line(), line]);
+    let groups = read(&t.item("m1:0", SourceKind::Message));
+    let env = group(&groups, SourceGroupKind::Environment).unwrap();
+    assert_eq!(
+        env.rows,
+        [format!("cwd={CWD}"), "entrypoint=cli".to_owned()]
+    );
+    let message = group(&groups, SourceGroupKind::Message).unwrap();
+    assert!(!message.rows.iter().any(|r| r.starts_with("speed")));
+}
+
+// -- assembly stays linear in the items of a turn
+
+/// One Assistant turn of `n` one-line text messages, assembled; the time it
+/// takes.
+fn time_long_turn(n: usize) -> std::time::Duration {
+    let mut text = prompt_line().to_string();
+    for i in 0..n {
+        let mut line = first_line();
+        line["uuid"] = json!(format!("a{i}"));
+        line["message"]["id"] = json!(format!("m{i}"));
+        text.push('\n');
+        text.push_str(&line.to_string());
+    }
+    let bytes: Arc<[u8]> = Arc::from(text.as_bytes());
+    let start = std::time::Instant::now();
+    let asm = Assembler::from_memory(bytes);
+    let took = start.elapsed();
+    assert_eq!(asm.turns().len(), 2);
+    took
+}
+
+#[test]
+fn assembling_a_long_turn_takes_time_in_proportion_to_its_items() {
+    // Looking each new item up in the references would make this quadratic:
+    // eight times the items would take sixty-four times as long.
+    let best = |n| (0..2).map(|_| time_long_turn(n)).min().unwrap();
+    let (small, large) = (best(3_000), best(24_000));
+    assert!(
+        large < small * 24,
+        "3000 items took {small:?}, 24000 took {large:?}"
+    );
 }
 
 // -- fields that are missing or of another type
@@ -873,8 +1050,7 @@ fn assembling_a_line_with_detail_fields_of_unexpected_types_and_sizes_is_cheap()
         panic!()
     };
     assert_eq!(turn.items.len(), 2);
-    // The turn holds ranges, not the values: its table is small however big
-    // the line.
+    // The turn holds a reference to the line, whatever its fields hold.
     assert!(
         turn.sources
             .get(&SourceKey::Item(ItemId::from("m1:0")))

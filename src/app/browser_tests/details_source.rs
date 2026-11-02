@@ -62,7 +62,8 @@ fn result_line() -> Value {
         "permissionDecision": {"decision": "accept", "source": "config"},
         "sandboxed": false,
         "gitBranch": "main", "cwd": CWD, "version": "2.1.100", "entrypoint": "cli",
-        "toolUseResult": {"stdout": "Bus 001 Device 004", "isAsync": false},
+        "toolUseResult": {"stdout": "Bus 001 Device 004", "isAsync": false,
+                          "resolvedModel": "claude-haiku-5-5"},
         "message": {"role": "user", "content": [
             {"type": "tool_result", "tool_use_id": "c1", "content": "Bus 001 Device 004"}]}
     })
@@ -252,6 +253,7 @@ fn a_tool_call_shows_its_start_then_the_models_rows_then_the_rest_of_its_result(
             "status",
             "permissionDecision",
             "sandboxed",
+            "resolvedModel",
             "isAsync",
             "Environment",
         ],
@@ -269,6 +271,10 @@ fn a_tool_call_shows_its_start_then_the_models_rows_then_the_rest_of_its_result(
         "decision=accept, source=config"
     );
     assert_eq!(value_in(&rows, "Tool call", "sandboxed"), "false");
+    assert_eq!(
+        value_in(&rows, "Tool call", "resolvedModel"),
+        "claude-haiku-5-5"
+    );
     assert_eq!(value_in(&rows, "Tool call", "isAsync"), "false");
 }
 
@@ -392,6 +398,22 @@ fn a_prompt_whose_source_is_gone_keeps_the_models_timestamp_then_unavailable() {
         &rows,
         &["Prompt", "timestamp", "unavailable", "Environment"],
     );
+}
+
+#[test]
+fn unavailable_has_no_label_column_so_values_start_at_the_widest_real_label() {
+    // `timestamp` is the widest label of a prompt whose file is gone; the
+    // word `unavailable` is longer but does not push the values right.
+    let mut c = claude(120, 40, &full(), true);
+    fs::remove_file(&c.path).unwrap();
+    let rows = c.details_of(0);
+    let timestamp = &rows[at(&rows, "timestamp")];
+    assert_eq!(
+        timestamp.find("2026").unwrap(),
+        "timestamp".len() + 2,
+        "{rows:#?}"
+    );
+    assert!(has(&rows, "unavailable"));
 }
 
 // -- a harness that provides nothing

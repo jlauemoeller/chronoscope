@@ -5,7 +5,6 @@ use super::content::{DetailsContent, DetailsGroup, DetailsRow};
 use super::rows::{ENVIRONMENT, MESSAGE, PROMPT, TOOL_CALL, TURN};
 use crate::components::turn_block::renderers::format_tokens;
 use crate::components::turn_block::{SectionContent, SectionId, SectionKey, derive_sections};
-use crate::duration::format_duration;
 use crate::model::{
     SectionSource, SourceGroup, SourceGroupKind, SourceKey, SourceKind, SourceRow, SourceValue,
     Turn,
@@ -125,15 +124,14 @@ fn merge(
 }
 
 /// A value as the overlay shows it: timestamps in the configured format,
-/// token counts the way tokens are shown everywhere, durations in the shared
-/// format and plain counts as they are.
+/// token counts the way tokens are shown everywhere and plain counts as they
+/// are.
 fn format_value(value: &SourceValue, formatter: &TimestampFormatter) -> String {
     match value {
         SourceValue::Text(text) => text.clone(),
         SourceValue::Time(time) => formatter.format(*time),
         SourceValue::Tokens(tokens) => format_tokens(*tokens),
         SourceValue::Count(count) => count.to_string(),
-        SourceValue::Duration(duration) => format_duration(*duration),
     }
 }
 

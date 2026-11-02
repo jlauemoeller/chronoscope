@@ -21,8 +21,8 @@ expression: "screen(80, 24, 2, false)"
 │   7s · 1 │    status              ok                              │          │
 │          │    permissionDecision  decision=accept, source=config  │          │
 ╰──────────│    sandboxed           false                           │──────────╯
+           │    resolvedModel       claude-haiku-5-5                │           
            │    isAsync             false                           │           
            │                                                        │           
-           │  Environment                                           │           
            ╰─────────────────────────────────────────────── ↓ more ─╯           
  / to search | ENTER to fold or unfold sections | y to copy current
