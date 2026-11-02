@@ -2,7 +2,7 @@
 
 | Task | Status |
 |------|--------|
-| 001-shared-duration-format | Planned |
+| 001-shared-duration-format | In progress |
 | 002-turn-token-usage | Planned |
 | 003-claude-turn-stats | Planned |
 | 004-tool-call-durations | Planned |
