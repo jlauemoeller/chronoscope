@@ -80,6 +80,19 @@ the reviewers will:
 
 Fix anything that fails the self-check before writing the notes.
 
+## Scratch work
+
+The session scratchpad and `$TMPDIR` are shared with other agents running at
+the same time. Before any work outside the repo, create your own directory
+inside the scratchpad (or `${TMPDIR:-/tmp}` if you have none) with
+`mktemp -d`, named `builder-<task-id>-<round-id>.XXXXXX`. Shell state doesn't
+persist between commands, so use its full path each time.
+
+- Put all exports, copies, probes and backups there, and set
+  `CARGO_TARGET_DIR` to a `target` folder inside it.
+- Never use, overwrite or delete a path you didn't create in this run.
+- Delete your directory when you finish.
+
 ## Build notes
 
 At the end of the round, write

@@ -61,6 +61,19 @@ least important:
 A rework note follows the higher priority where two reviews conflict, and
 says which demand it drops and why.
 
+## Scratch work
+
+The session scratchpad and `$TMPDIR` are shared with other agents. Before any
+work outside the repo, create your own directory inside the scratchpad (or
+`${TMPDIR:-/tmp}` if you have none) with `mktemp -d`, named
+`approver-<task-id>-<round-id>.XXXXXX`. Shell state doesn't persist between
+commands, so use its full path each time.
+
+- Put all exports, copies, probes and backups there, and set
+  `CARGO_TARGET_DIR` to a `target` folder inside it.
+- Never use, overwrite or delete a path you didn't create in this run.
+- Delete your directory when you finish.
+
 ## Write
 
 Write `factory/state/tasks/<task-id>/<round-id>/verdict.md`. This is the
