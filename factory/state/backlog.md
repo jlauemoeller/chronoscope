@@ -6,7 +6,7 @@
 | 002-turn-token-usage | Complete |
 | 003-claude-turn-stats | Complete |
 | 004-tool-call-durations | Complete |
-| 005-opencode-error-notices | Planned |
+| 005-opencode-error-notices | In progress |
 | 006-claude-stop-notices | Planned |
 | 007-details-overlay | Planned |
 | 008-claude-detail-sources | Planned |
