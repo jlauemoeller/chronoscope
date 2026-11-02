@@ -51,8 +51,12 @@ pub fn section_details(source: &SectionSource) -> Vec<SourceGroup> {
 
 /// Reads and parses a line; `None` when it cannot be done.
 fn read_line(source: &SourceRef) -> Option<Line> {
-    let bytes = source.read().ok()?;
-    let mut json = serde_json::Deserializer::from_slice(&bytes);
+    parse_line(&source.read().ok()?)
+}
+
+/// Parses a line; `None` unless it is one JSON object and nothing after it.
+fn parse_line(bytes: &[u8]) -> Option<Line> {
+    let mut json = serde_json::Deserializer::from_slice(bytes);
     // Only an object is a transcript line (a derived struct would also be
     // read from an array).
     let line = pick_object::<_, Line>(&mut json).ok()??;
@@ -619,10 +623,7 @@ mod tests {
     use super::*;
 
     fn parse(json: &str) -> Option<Line> {
-        let mut de = serde_json::Deserializer::from_str(json);
-        let line = pick_object::<_, Line>(&mut de).ok()??;
-        de.end().ok()?;
-        Some(line)
+        parse_line(json.as_bytes())
     }
 
     #[test]
@@ -636,7 +637,16 @@ mod tests {
 
     #[test]
     fn tool_use_result_of_another_type_than_an_object_counts_as_missing() {
-        for raw in [r#""Error: boom""#, "[true]", "true", "7", "null", "{}"] {
+        for raw in [
+            r#""Error: boom""#,
+            "[true]",
+            "true",
+            "7",
+            "-7",
+            "2.5",
+            "null",
+            "{}",
+        ] {
             let line = parse(&format!(r#"{{"toolUseResult":{raw}}}"#)).unwrap();
             let is_async = line.tool_use_result.and_then(|r| r.is_async);
             assert_eq!(is_async, None, "{raw}");
@@ -677,12 +687,18 @@ mod tests {
             Some("decision=accept, n=2, on=true")
         );
         assert_eq!(
+            text(r#"{"below":-2,"ratio":2.5,"none":null}"#).as_deref(),
+            Some("below=-2, ratio=2.5")
+        );
+        assert_eq!(
             text(r#"{"decision":"","source":"config"}"#).as_deref(),
             Some("source=config")
         );
         for raw in [
             "{}",
             "5",
+            "-5",
+            "2.5",
             "true",
             "null",
             "[1]",

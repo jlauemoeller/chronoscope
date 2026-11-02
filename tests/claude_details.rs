@@ -344,6 +344,30 @@ fn the_prompt_group_lists_its_fields() {
 }
 
 #[test]
+fn a_queued_prompt_reads_the_prompt_group_of_its_own_line() {
+    let queued = json!({
+        "type": "attachment", "uuid": "q1", "timestamp": "2026-01-01T00:00:05Z",
+        "permissionMode": "plan", "gitBranch": "queued", "cwd": CWD,
+        "attachment": {"type": "queued_command", "prompt": "Also this.", "origin": {"kind": "human"}}
+    });
+    let t = transcript(&[prompt_line(), first_line(), queued]);
+    let turn = t.turns.last().unwrap();
+    assert!(matches!(&**turn, Turn::User(_)));
+    let id = SectionId {
+        turn: turn.id().clone(),
+        key: SectionKey::Prompt,
+    };
+    let source = section_source(turn, &id).expect("a source for the prompt");
+    let groups = read(&source);
+    let prompt = group(&groups, SourceGroupKind::Prompt).unwrap();
+    assert_eq!(
+        prompt.rows,
+        ["timestamp=2026-01-01T00:00:05+00:00", "permissionMode=plan"]
+    );
+    assert_eq!(environment_branch(&source), "gitBranch=queued");
+}
+
+#[test]
 fn the_footer_reads_its_turn_duration_line_for_the_environment_only() {
     let t = full();
     let refs = t
@@ -561,6 +585,27 @@ fn a_line_after_the_stopped_line_leaves_the_message_group_on_the_stopped_line() 
 }
 
 #[test]
+fn the_latest_of_two_stopped_lines_gives_the_message_group() {
+    let mut second = call_line();
+    second["uuid"] = json!("a3");
+    second["timestamp"] = json!("2026-01-01T00:00:03Z");
+    second["gitBranch"] = json!("second-stop");
+    second["message"]["stop_reason"] = json!("end_turn");
+    second["message"]["content"] = json!([]);
+    let t = transcript(&[prompt_line(), first_line(), call_line(), second]);
+    let groups = read(&t.item("m1:0", SourceKind::Message));
+    let message = group(&groups, SourceGroupKind::Message).unwrap();
+    assert!(
+        message.rows.contains(&"stop_reason=end_turn".to_owned()),
+        "{message:?}"
+    );
+    assert_eq!(
+        group(&groups, SourceGroupKind::Environment).unwrap().rows,
+        environment("second-stop")
+    );
+}
+
+#[test]
 fn the_footer_reads_its_last_turn_duration_line() {
     let mut last = duration_line();
     last["uuid"] = json!("d2");
@@ -682,6 +727,16 @@ fn the_other_field_locations_are_read_and_the_top_of_the_line_wins() {
 }
 
 #[test]
+fn a_timestamp_that_does_not_parse_is_shown_as_written() {
+    let mut line = prompt_line();
+    line["timestamp"] = json!("yesterday");
+    let t = transcript(&[line]);
+    let groups = read(&t.prompt());
+    let prompt = group(&groups, SourceGroupKind::Prompt).unwrap();
+    assert_eq!(prompt.rows[0], "timestamp=yesterday");
+}
+
+#[test]
 fn an_empty_string_is_no_value() {
     let mut line = first_line();
     line["version"] = json!("");
@@ -779,7 +834,7 @@ fn a_field_of_an_unexpected_type_counts_as_missing_and_does_not_fail_the_line() 
     let line = json!({
         "type": "assistant", "uuid": "a1", "timestamp": "2026-01-01T00:00:01Z",
         "requestId": 7, "requestedModel": ["x"], "gitBranch": {"a": 1}, "cwd": CWD,
-        "version": true, "entrypoint": null, "diagnostics": "no",
+        "version": true, "entrypoint": null, "diagnostics": "no", "promptSource": 2.5,
         "message": {
             "id": "m1", "stop_reason": 5, "model": "x",
             "usage": {"service_tier": {"x": 1}, "speed": ["a"], "inference_geo": 3,
@@ -948,6 +1003,29 @@ fn a_result_line_that_fails_leaves_start_and_marks_the_tool_call_unavailable() {
 }
 
 #[test]
+fn a_call_line_that_fails_marks_the_tool_call_unavailable() {
+    // A call with no result yet, whose file is gone.
+    let t = transcript(&[prompt_line(), first_line(), call_line()]);
+    let source = t.item("c1", SourceKind::ToolCall);
+    fs::remove_file(&t.path).unwrap();
+    assert_eq!(
+        unavailable(&read(&source)),
+        [SourceGroupKind::ToolCall, SourceGroupKind::Environment]
+    );
+    // Only the call's line is broken: the result's rows stay.
+    let t = full();
+    let source = t.item("c1", SourceKind::ToolCall);
+    let mut bytes = fs::read(&t.path).unwrap();
+    bytes[usize::try_from(source.refs.line.range.start).unwrap()] = b'(';
+    fs::write(&t.path, bytes).unwrap();
+    let groups = read(&source);
+    let call = group(&groups, SourceGroupKind::ToolCall).unwrap();
+    assert!(call.lead.is_empty(), "{call:?}");
+    assert!(call.rows.contains(&"isAsync=true".to_owned()), "{call:?}");
+    assert!(call.unavailable);
+}
+
+#[test]
 fn a_call_without_a_result_yet_is_not_unavailable() {
     let t = transcript(&[prompt_line(), first_line(), call_line()]);
     let Item::ToolCall(call) = t.assistant().items.last().unwrap() else {
@@ -1028,6 +1106,25 @@ fn a_later_line_of_a_message_updates_the_turn_even_when_nothing_visible_changes(
     // A chunking of the same bytes ends with the same references.
     let whole = Assembler::from_memory(bytes);
     assert_eq!(whole.turns(), asm.turns());
+}
+
+#[test]
+fn a_later_footer_line_updates_the_turn_even_when_the_stats_do_not_change() {
+    let mut last = duration_line();
+    last["uuid"] = json!("d2");
+    last["gitBranch"] = json!("last-footer");
+    let first = format!("{}\n{}\n{}\n", prompt_line(), first_line(), duration_line());
+    let second = format!("{last}\n");
+    let bytes: Arc<[u8]> = Arc::from(format!("{first}{second}").as_bytes());
+    let mut asm = Assembler::new(ByteSource::Memory(bytes));
+    asm.push_chunk(first.as_bytes());
+    let updates = asm.push_chunk(second.as_bytes());
+    assert!(
+        updates
+            .iter()
+            .any(|u| matches!(u, chronoscope::model::ModelUpdate::Updated(t) if t.len() == 1)),
+        "{updates:?}"
+    );
 }
 
 // -- a subagent reads its own file
