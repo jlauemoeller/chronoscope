@@ -1182,9 +1182,9 @@ fn upsert(turn: &mut AssistantTurn, b: &mut Builder, mut item: Item, changed: &m
 }
 
 /// The number of an error text block. With `apiBlockIndex` it is that index
-/// plus the block's position. Without it, a text that equals (first) or extends a
-/// block the message already has (not one from this line) is a re-send and
-/// replaces it; any other text gets the next free number.
+/// plus the block's position. Without it, a text that equals (first) or
+/// extends a block the message already has (not one from this line) is a
+/// re-send and replaces it; any other text gets the next free number.
 fn error_block_key(
     blocks: &BTreeMap<usize, String>,
     taken: &[usize],

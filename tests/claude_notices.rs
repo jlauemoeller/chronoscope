@@ -215,6 +215,12 @@ fn a_flagged_message_without_text_has_no_notice() {
 }
 
 #[test]
+fn a_flagged_message_with_only_whitespace_has_no_notice() {
+    let items = items_of(&assemble(&[api_error_line(1, "msg_e", "null", "   ")]));
+    assert!(items.is_empty(), "{items:?}");
+}
+
+#[test]
 fn an_unflagged_message_with_error_looking_text_stays_text() {
     let items = items_of(&assemble(&[line(
         1,
@@ -626,6 +632,34 @@ fn invalid_utf8_in_a_top_level_flag_keeps_the_line_parsed() {
     assert_eq!(texts(&items), ["Fine."]);
 }
 
+#[test]
+fn invalid_utf8_in_the_flag_inside_the_message_keeps_the_line_parsed() {
+    let mut bytes = PROMPT.as_bytes().to_vec();
+    bytes.extend_from_slice(
+        b"\n{\"type\":\"assistant\",\"uuid\":\"a1\",\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":{\"id\":\"msg_1\",\"model\":\"m\",\"isApiErrorMessage\":\"x\xffy\",\"stop_reason\":null,\"content\":[{\"type\":\"text\",\"text\":\"Fine.\"}]}}\n",
+    );
+    let asm = Assembler::from_memory(Arc::from(bytes));
+    assert_eq!(asm.unparsed_count(), 0);
+    let items = items_of(&asm);
+    assert!(notices(&items).is_empty());
+    assert_eq!(texts(&items), ["Fine."]);
+}
+
+#[test]
+fn invalid_utf8_in_the_stop_reason_keeps_the_line_parsed() {
+    let mut bytes = PROMPT.as_bytes().to_vec();
+    bytes.extend_from_slice(
+        b"\n{\"type\":\"assistant\",\"uuid\":\"a1\",\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":{\"id\":\"msg_1\",\"model\":\"m\",\"stop_reason\":\"max\xff\",\"content\":[{\"type\":\"text\",\"text\":\"Fine.\"}]}}\n",
+    );
+    let asm = Assembler::from_memory(Arc::from(bytes));
+    assert_eq!(asm.unparsed_count(), 0);
+    let items = items_of(&asm);
+    assert_eq!(texts(&items), ["Fine."]);
+    let notices = notices(&items);
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].2, "stopped: max\u{FFFD}");
+}
+
 // ----------------------------------------------------------- chunking
 
 /// A transcript with every kind of notice, a removal and a late result.
@@ -837,6 +871,11 @@ fn injected_items_a_removal_leaves_side_by_side_collapse() {
     ];
     let items = items_of(&assemble(&lines));
     assert_eq!(shape(&items), ["text z", "injected 2"]);
+    let Item::Injected { entries, .. } = &items[1] else {
+        panic!("{items:?}");
+    };
+    let order: Vec<&str> = entries.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(order, ["meta 2", "meta 4"]);
 }
 
 #[test]
@@ -884,5 +923,42 @@ fn an_exact_repeat_is_preferred_over_a_shorter_block_it_extends() {
             NoticeLevel::Error,
             "API Error: x\nAPI Error".to_owned()
         )]
+    );
+}
+
+#[test]
+fn a_removal_in_a_later_turn_leaves_a_call_of_an_earlier_turn_attachable() {
+    let next_prompt = r#"{"type":"user","uuid":"u2","origin":{"kind":"human"},"timestamp":"2026-01-01T00:03:00Z","message":{"role":"user","content":"again"}}"#;
+    let lines = [
+        line(1, "a", "null", &text("one")),
+        line(2, "b", "null", &text("two")),
+        line(3, "c", "null", &tool_use("old")),
+        next_prompt.to_owned(),
+        line(4, "m", r#""max_tokens""#, &text("x")),
+        line(5, "m", r#""end_turn""#, ""),
+        result_line(6, "old"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(call_status(&items, "old"), Some(ToolStatus::Ok));
+}
+
+#[test]
+fn a_merged_injected_items_id_is_free_again() {
+    // `meta_line(4)` sent again shows a second copy. No spec rule asks for
+    // that copy; this test is about the id: it must not point at another item.
+    let lines = [
+        line(1, "z", "null", &text("z")),
+        meta_line(2),
+        line(3, "m", r#""max_tokens""#, ""),
+        meta_line(4),
+        line(5, "m", r#""end_turn""#, ""),
+        line(6, "t", "null", &text("t")),
+        meta_line(4),
+        line(7, "u", "null", &text("u")),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(
+        shape(&items),
+        ["text z", "injected 2", "text t", "injected 1", "text u"]
     );
 }
