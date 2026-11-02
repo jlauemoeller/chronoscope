@@ -656,6 +656,48 @@ mod tests {
     }
 
     #[test]
+    fn the_details_overlay_is_centred_and_drawn_after_the_screen_and_before_the_toast() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            details: Some(Size::new(60, 20)),
+            toast_text_width: Some(10),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 120, 40));
+        assert_eq!(l.area(Id::DetailsOverlay), Some(Rect::new(30, 10, 60, 20)));
+        assert_eq!(l.area(Id::HelpOverlay), None);
+        let ids: Vec<Id> = l.areas().iter().map(|(id, _)| *id).collect();
+        let at = ids.iter().position(|i| *i == Id::DetailsOverlay).unwrap();
+        assert_eq!(ids.len(), at + 2);
+        assert_eq!(ids[at + 1], Id::Toast);
+        assert!(ids[..at].contains(&Id::Transcript));
+    }
+
+    #[test]
+    fn the_details_overlay_is_capped_to_the_screen_like_the_help_overlay() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            details: Some(Size::new(150, 80)),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 80, 24));
+        assert_eq!(l.area(Id::DetailsOverlay), Some(Rect::new(2, 1, 76, 22)));
+    }
+
+    #[test]
+    fn a_too_small_screen_shows_no_details_overlay() {
+        let input = LayoutInput {
+            screen: Screen::Browser,
+            details: Some(Size::new(60, 20)),
+            ..LayoutInput::default()
+        };
+        assert_eq!(
+            layout(&input, Rect::new(0, 0, 50, 15)).area(Id::DetailsOverlay),
+            None
+        );
+    }
+
+    #[test]
     fn the_help_overlay_is_over_the_selector_too() {
         let input = LayoutInput {
             screen: Screen::Selector,

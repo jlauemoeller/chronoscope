@@ -753,6 +753,30 @@ fn help_entries_show_remapped_keys() {
 }
 
 #[test]
+fn the_details_key_is_remappable_and_resolves_to_the_action() {
+    let km = Keymap::default();
+    assert_eq!(
+        km.resolve(Browser, &seq("i").first().to_event()),
+        Some(Details)
+    );
+    let (km, warnings) = keymap("[keys.browser]\ndetails = [\"x\", \"ctrl-i\"]\n");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        km.resolve(Browser, &seq("x").first().to_event()),
+        Some(Details)
+    );
+    assert_eq!(km.resolve(Browser, &seq("i").first().to_event()), None);
+    assert_eq!(km.labels(Browser, Details).as_deref(), Some("x / Ctrl-i"));
+    let entries = km.help_entries(Browser);
+    let details = entries
+        .iter()
+        .find(|e| e.description == "Show section details")
+        .unwrap();
+    assert_eq!(details.keys, "x / Ctrl-i");
+    assert_eq!(details.group, "Sections");
+}
+
+#[test]
 fn help_entries_exist_for_every_context() {
     let km = Keymap::default();
     for ctx in Context::ALL {

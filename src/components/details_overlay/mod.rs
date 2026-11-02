@@ -143,3 +143,328 @@ impl AppComponent<Msg, UserEvent> for DetailsOverlay {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{buffer_to_text, render};
+    use crate::theme::{Role, builtin};
+    use tuirealm::event::{Key, KeyEvent, KeyModifiers, MouseEventKind};
+
+    fn content() -> DetailsContent {
+        let rows = (1..=30)
+            .map(|n| DetailsRow::new(format!("row {n}"), format!("value {n}")))
+            .collect();
+        DetailsContent::new(vec![DetailsGroup::new("Turn", rows)])
+    }
+
+    fn overlay_with(keymap: Keymap, rows: u16) -> DetailsOverlay {
+        let mut overlay = DetailsOverlay::new(content(), builtin::default_theme(), keymap);
+        overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, rows)));
+        overlay
+    }
+
+    fn overlay(rows: u16) -> DetailsOverlay {
+        overlay_with(Keymap::default(), rows)
+    }
+
+    fn press(overlay: &mut DetailsOverlay, code: Key) -> Option<Msg> {
+        overlay.on(&Event::Keyboard(KeyEvent::new(code, KeyModifiers::NONE)))
+    }
+
+    fn offset(overlay: &DetailsOverlay) -> usize {
+        match overlay.state() {
+            State::Single(StateValue::Usize(offset)) => offset,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn wheel(overlay: &mut DetailsOverlay, kind: MouseEventKind) -> Option<Msg> {
+        let mouse = RoutedMouse {
+            kind,
+            column: 5,
+            row: 4,
+            area: Size::new(60, 12),
+        };
+        overlay.on(&Event::User(UserEvent::Mouse(mouse)))
+    }
+
+    /// 30 rows, a blank row, the heading, a blank row and a blank row.
+    const ROWS: usize = 34;
+
+    #[test]
+    fn esc_and_the_details_key_close_it() {
+        let mut overlay = overlay(10);
+        assert_eq!(press(&mut overlay, Key::Esc), Some(Msg::CloseDetails));
+        assert_eq!(press(&mut overlay, Key::Char('i')), Some(Msg::CloseDetails));
+    }
+
+    #[test]
+    fn a_remapped_details_key_closes_it_and_the_default_does_not() {
+        let mut raw = crate::config::RawKeys::new();
+        raw.entry("browser".to_owned())
+            .or_default()
+            .insert("details".to_owned(), vec!["x".to_owned()]);
+        let (keymap, _) = Keymap::from_config(&raw);
+        let mut overlay = overlay_with(keymap, 10);
+        assert_eq!(press(&mut overlay, Key::Char('x')), Some(Msg::CloseDetails));
+        assert_eq!(press(&mut overlay, Key::Char('i')), None);
+    }
+
+    #[test]
+    fn the_overlay_keys_come_first() {
+        // `j` scrolls; it is not shadowed when the details key is `j`.
+        let mut raw = crate::config::RawKeys::new();
+        raw.entry("browser".to_owned())
+            .or_default()
+            .insert("details".to_owned(), vec!["j".to_owned()]);
+        let (keymap, _) = Keymap::from_config(&raw);
+        let mut overlay = overlay_with(keymap, 10);
+        assert_eq!(
+            press(&mut overlay, Key::Char('j')),
+            Some(Msg::DetailsScrolled)
+        );
+        assert_eq!(offset(&overlay), 1);
+    }
+
+    #[test]
+    fn other_keys_do_nothing() {
+        let mut overlay = overlay(10);
+        // The help key does not close it, and the keys of the transcript
+        // and the global keys are not for it.
+        for code in [
+            Key::Char('?'),
+            Key::Char('q'),
+            Key::Char('t'),
+            Key::Char('y'),
+            Key::Char('w'),
+            Key::Char('e'),
+            Key::Enter,
+            Key::Char('x'),
+        ] {
+            assert_eq!(press(&mut overlay, code), None, "{code:?}");
+        }
+        let ctrl_o = Event::Keyboard(KeyEvent::new(Key::Char('o'), KeyModifiers::CONTROL));
+        assert_eq!(overlay.on(&ctrl_o), None);
+        assert_eq!(overlay.on(&Event::Tick), None);
+        assert_eq!(offset(&overlay), 0);
+    }
+
+    #[test]
+    fn the_scroll_keys_move_by_a_row_or_a_page_and_clamp() {
+        let mut overlay = overlay(10);
+        for code in [Key::Down, Key::Char('j')] {
+            let before = offset(&overlay);
+            assert_eq!(press(&mut overlay, code), Some(Msg::DetailsScrolled));
+            assert_eq!(offset(&overlay), before + 1);
+        }
+        assert_eq!(
+            press(&mut overlay, Key::PageDown),
+            Some(Msg::DetailsScrolled)
+        );
+        assert_eq!(offset(&overlay), 12);
+        for _ in 0..5 {
+            press(&mut overlay, Key::PageDown);
+        }
+        assert_eq!(offset(&overlay), ROWS - 10, "clamped to the last page");
+        assert_eq!(press(&mut overlay, Key::Down), None, "nothing moved");
+        assert_eq!(press(&mut overlay, Key::PageUp), Some(Msg::DetailsScrolled));
+        assert_eq!(offset(&overlay), ROWS - 20);
+        for _ in 0..5 {
+            press(&mut overlay, Key::Up);
+        }
+        assert_eq!(offset(&overlay), ROWS - 25);
+        press(&mut overlay, Key::PageUp);
+        press(&mut overlay, Key::PageUp);
+        assert_eq!(offset(&overlay), 0);
+        assert_eq!(press(&mut overlay, Key::Char('k')), None);
+    }
+
+    #[test]
+    fn the_wheel_scrolls_three_rows_per_step_and_clamps() {
+        let mut overlay = overlay(10);
+        assert_eq!(
+            wheel(&mut overlay, MouseEventKind::ScrollDown),
+            Some(Msg::DetailsScrolled)
+        );
+        assert_eq!(offset(&overlay), 3);
+        for _ in 0..20 {
+            wheel(&mut overlay, MouseEventKind::ScrollDown);
+        }
+        assert_eq!(offset(&overlay), ROWS - 10);
+        assert_eq!(wheel(&mut overlay, MouseEventKind::ScrollDown), None);
+        assert_eq!(
+            wheel(&mut overlay, MouseEventKind::ScrollUp),
+            Some(Msg::DetailsScrolled)
+        );
+        assert_eq!(offset(&overlay), ROWS - 13);
+    }
+
+    #[test]
+    fn clicks_and_the_raw_mouse_event_do_nothing() {
+        let mut overlay = overlay(10);
+        for kind in [
+            MouseEventKind::Down(tuirealm::event::MouseButton::Left),
+            MouseEventKind::Up(tuirealm::event::MouseButton::Left),
+            MouseEventKind::Moved,
+        ] {
+            assert_eq!(wheel(&mut overlay, kind), None, "{kind:?}");
+        }
+        let raw = Event::Mouse(tuirealm::event::MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            modifiers: KeyModifiers::NONE,
+            column: 5,
+            row: 4,
+        });
+        assert_eq!(overlay.on(&raw), None);
+        assert_eq!(offset(&overlay), 0);
+    }
+
+    #[test]
+    fn nothing_scrolls_before_the_interior_is_announced_or_when_it_all_fits() {
+        let mut unannounced =
+            DetailsOverlay::new(content(), builtin::default_theme(), Keymap::default());
+        assert_eq!(press(&mut unannounced, Key::Down), None);
+        assert_eq!(press(&mut unannounced, Key::PageDown), None);
+        let mut fits = overlay(40);
+        assert_eq!(press(&mut fits, Key::Down), None);
+        assert_eq!(wheel(&mut fits, MouseEventKind::ScrollDown), None);
+        assert_eq!(offset(&fits), 0);
+    }
+
+    #[test]
+    fn scrolling_follows_the_rows_at_the_announced_width() {
+        // A value that wraps at a narrow interior takes more rows.
+        let long = DetailsContent::new(vec![DetailsGroup::new(
+            "Environment",
+            vec![DetailsRow::new("cwd", "x".repeat(100))],
+        )]);
+        let mut overlay = DetailsOverlay::new(long, builtin::default_theme(), Keymap::default());
+        overlay.attr(INTERIOR_ATTR, interior_value(Size::new(30, 4)));
+        // Interior 30: 30 - 6 - 5 = 19 columns, 6 rows for the value.
+        for _ in 0..20 {
+            press(&mut overlay, Key::Down);
+        }
+        assert_eq!(offset(&overlay), 1 + 2 + 6 + 1 - 4);
+        // A wide interior needs no wrap, so everything fits in 5 rows.
+        overlay.attr(INTERIOR_ATTR, interior_value(Size::new(120, 5)));
+        assert_eq!(offset(&overlay), 0);
+    }
+
+    #[test]
+    fn a_taller_interior_pulls_the_offset_back_into_range() {
+        let mut overlay = overlay(10);
+        for _ in 0..5 {
+            press(&mut overlay, Key::PageDown);
+        }
+        assert_eq!(offset(&overlay), ROWS - 10);
+        overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, 30)));
+        assert_eq!(offset(&overlay), ROWS - 30);
+        overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, 40)));
+        assert_eq!(offset(&overlay), 0);
+    }
+
+    fn drawn(overlay: &mut DetailsOverlay, rows: u16) -> Vec<String> {
+        let area = Rect::new(2, 1, 60, rows + 2);
+        let buffer = render(70, rows + 4, |frame| overlay.view(frame, area));
+        buffer_to_text(&buffer).lines().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn the_frame_is_titled_details_and_shows_where_more_is() {
+        let mut overlay = overlay(10);
+        let top = drawn(&mut overlay, 10);
+        assert!(top[1].contains("╭─ Details ─"), "{}", top[1]);
+        assert!(!top[1].contains("↑ more"), "{}", top[1]);
+        assert!(top[12].contains(" ↓ more ─╯"), "{}", top[12]);
+        press(&mut overlay, Key::PageDown);
+        let middle = drawn(&mut overlay, 10);
+        assert!(middle[1].contains(" ↑ more ─╮"), "{}", middle[1]);
+        assert!(middle[12].contains(" ↓ more ─╯"), "{}", middle[12]);
+        for _ in 0..5 {
+            press(&mut overlay, Key::PageDown);
+        }
+        let end = drawn(&mut overlay, 10);
+        assert!(end[1].contains(" ↑ more ─╮"), "{}", end[1]);
+        assert!(!end[12].contains("↓ more"), "{}", end[12]);
+    }
+
+    #[test]
+    fn a_tall_enough_overlay_shows_no_indicator() {
+        let mut overlay = overlay(40);
+        let rows = drawn(&mut overlay, 40);
+        assert!(rows.iter().all(|r| !r.contains("more")));
+    }
+
+    #[test]
+    fn the_rows_are_drawn_from_the_offset() {
+        let mut overlay = overlay(10);
+        assert!(drawn(&mut overlay, 10)[5].contains("row 1 "));
+        press(&mut overlay, Key::PageDown);
+        assert!(drawn(&mut overlay, 10)[2].contains("row 8 "));
+    }
+
+    #[test]
+    fn the_colours_come_from_the_theme() {
+        let theme = builtin::default_theme();
+        let mut overlay = overlay(40);
+        let area = Rect::new(2, 1, 60, 42);
+        let buffer = render(70, 44, |frame| overlay.view(frame, area));
+        assert_eq!(buffer[(2, 1)].fg, theme.role(Role::Ring));
+        assert_eq!(buffer[(2, 1)].bg, theme.role(Role::Surface));
+        assert_eq!(buffer[(30, 20)].bg, theme.role(Role::Surface));
+        // Heading at overlay column 3, rows at column 5.
+        let heading = &buffer[(2 + 3, 3)];
+        assert_eq!(heading.symbol(), "T");
+        assert_eq!(heading.fg, theme.role(Role::Foreground));
+        assert!(heading.modifier.contains(ratatui::style::Modifier::BOLD));
+        let label = &buffer[(2 + 5, 5)];
+        assert_eq!(label.symbol(), "r");
+        assert_eq!(
+            label.fg,
+            theme.style(crate::theme::Token::Label).fg.unwrap()
+        );
+        // `row 10` is the widest label (6): the value is at column 5 + 8.
+        let value = &buffer[(2 + 5 + 8, 5)];
+        assert_eq!(value.symbol(), "v");
+        assert_eq!(value.fg, theme.role(Role::Foreground));
+    }
+
+    #[test]
+    fn a_transparent_theme_clears_but_does_not_fill() {
+        let theme = builtin::default_theme().with_transparent_background(true);
+        let mut overlay = DetailsOverlay::new(content(), theme, Keymap::default());
+        let area = Rect::new(2, 1, 40, 12);
+        let buffer = render(60, 14, |frame| {
+            frame.render_widget(
+                ratatui::widgets::Paragraph::new("x".repeat(60 * 14)),
+                frame.area(),
+            );
+            overlay.view(frame, area);
+        });
+        assert_eq!(buffer[(20, 6)].symbol(), " ", "the text under it is gone");
+        assert_eq!(buffer[(20, 6)].bg, ratatui::style::Color::Reset);
+        assert_eq!(buffer[(2, 1)].symbol(), "╭");
+    }
+
+    #[test]
+    fn it_draws_within_a_small_area_and_a_degenerate_one() {
+        let mut overlay = overlay(3);
+        for (w, h) in [(0, 0), (1, 1), (2, 2), (5, 3), (7, 5), (72, 5)] {
+            let _ = render(80, 24, |frame| overlay.view(frame, Rect::new(1, 1, w, h)));
+        }
+    }
+
+    #[test]
+    fn the_theme_and_interior_attributes_are_kept() {
+        let mut overlay = overlay(10);
+        let other = builtin::default_theme().with_transparent_background(true);
+        overlay.attr(THEME_ATTR, theme_value(&other));
+        let value = overlay.query(THEME_ATTR).unwrap().into_attr();
+        assert_eq!(theme_from_value(&value), Some(other));
+        let value = overlay.query(INTERIOR_ATTR).unwrap().into_attr();
+        assert_eq!(payload_from_value::<Size>(&value), Some(Size::new(60, 10)));
+        let fresh = DetailsOverlay::new(content(), builtin::default_theme(), Keymap::default());
+        assert!(fresh.query(INTERIOR_ATTR).is_none());
+    }
+}

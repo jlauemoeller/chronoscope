@@ -488,6 +488,19 @@ mod tests {
     }
 
     #[test]
+    fn the_sections_group_lists_the_details_key_from_the_active_keymap() {
+        let default = rows(&browser(&Keymap::default(), true), "Sections");
+        assert_eq!(
+            default.last(),
+            Some(&("i".to_owned(), "Show section details"))
+        );
+        let remapped = keymap_with("browser", "details", &["x"]);
+        let rows = rows(&browser(&remapped, true), "Sections");
+        assert_eq!(rows.last(), Some(&("x".to_owned(), "Show section details")));
+        assert!(rows.iter().all(|(keys, _)| keys != "i"));
+    }
+
+    #[test]
     fn the_row_count_matches_the_lines() {
         let theme = crate::theme::builtin::default_theme();
         for content in [
