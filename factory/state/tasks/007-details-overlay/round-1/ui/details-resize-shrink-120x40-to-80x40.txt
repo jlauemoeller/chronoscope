@@ -1,0 +1,80 @@
+# Scratch crate, opened at 120x40 (overlay 91 wide, 28 rows), then Msg::Resized(80, 40).
+# cwd now wraps, so the content is one row taller than the stale height: ' ↓ more ' is drawn although the screen has spare rows. Expected: 29 rows, no indicator.
+=== APP tool opened wide 120x40; mounted=true focus=Some(DetailsOverlay)
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│   ╭─ Project╭─ Details ───────────────────────────────────────────────────────────────────────────────╮──────────╮   │
+│   │         │                                                                                         │          │   │
+│   │         │  Turn                                                                                   │          │   │
+│   │         │                                                                                         │          │   │
+│   │         │    model               claude-opus-5-5                                                  │          │   │
+│   │         │    effort              high                                                             │          │   │
+│   │         │    start               2026-10-21 08:35:18Z                                             │          │   │
+│   │         │    duration            4m 3s                                                            │          │   │
+│   │         │    messages            12                                                               │          │   │
+│   │         │    input tokens        2.8k                                                             │          │   │
+│   │         │    output tokens       42.4k                                                            │          │   │
+│   │         │    thinking tokens     9.0k                                                             │          │   │
+│   │         │    cache read tokens   359.4M                                                           │          │   │
+│   │         │    cache write tokens  1.2k                                                             │          │   │
+│   │         │                                                                                         │          │   │
+│   │         │  Tool call                                                                              │          │   │
+│   │         │                                                                                         │          │   │
+│   │         │    duration            1m 2s                                                            │          │   │
+│   │         │    status              ok                                                               │          │   │
+│   │         │                                                                                         │          │   │
+│   │         │  Environment                                                                            │          │   │
+│   │         │                                                                                         │          │   │
+│   │         │    gitBranch           feature/camera-profiles                                          │          │   │
+│   ╰─────────│    cwd                 /home/user/projects/brio/crates/camera-profiles/src/descriptors  │──────────╯   │
+│   ╭─ Working│    version             2.1.0                                                            │──────────╮   │
+│   │         │    entrypoint          cli                                                              │          │   │
+│   │         │                                                                                         │          │   │
+│   │         ╰─────────────────────────────────────────────────────────────────────────────────────────╯          │   │
+│   ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   │
+│                                                                                                                      │
+│    / to search sessions | ENTER to open | TAB to switch between projects and sessions | ESC to Cancel                │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+=== APP tool shrunk to 80x40 80x40; mounted=true focus=Some(DetailsOverlay)
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ ╭─ Details ────────────────────────────────────────────────────────────────╮ │
+│ │                                                                          │ │
+│ │  Turn                                                                    │ │
+│ │                                                                          │ │
+│ │    model               claude-opus-5-5                                   │ │
+│ │    effort              high                                              │ │
+│ │    start               2026-10-21 08:35:18Z                              │ │
+│ │    duration            4m 3s                                             │ │
+│ │    messages            12                                                │ │
+│ │    input tokens        2.8k                                              │ │
+│ │    output tokens       42.4k                                             │ │
+│ │    thinking tokens     9.0k                                              │ │
+│ │    cache read tokens   359.4M                                            │ │
+│ │    cache write tokens  1.2k                                              │ │
+│ │                                                                          │ │
+│ │  Tool call                                                               │ │
+│ │                                                                          │ │
+│ │    duration            1m 2s                                             │ │
+│ │    status              ok                                                │ │
+│ │                                                                          │ │
+│ │  Environment                                                             │ │
+│ │                                                                          │ │
+│ │    gitBranch           feature/camera-profiles                           │ │
+│ │    cwd                 /home/user/projects/brio/crates/camera-profiles/  │ │
+│ │                        src/descriptors                                   │ │
+│ │    version             2.1.0                                             │ │
+│ │    entrypoint          cli                                               │ │
+│ ╰───────────────────────────────────────────────────────────────── ↓ more ─╯ │
+│   ╰──────────────────────────────────────────────────────────────────────╯   │
+│                                                                              │
+│    / to search sessions | ENTER to open                                      │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
