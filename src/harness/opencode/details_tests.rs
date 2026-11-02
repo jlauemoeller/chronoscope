@@ -529,6 +529,7 @@ fn the_error_row_says_what_the_notice_of_the_same_row_says() {
         r#""error":"a plain string""#,
         r#""error":{"type":"  spaced  ","message":" text\n"}"#,
         r#""error":{}"#,
+        r#""error":{"type":5,"message":true}"#,
     ];
     for error in errors {
         let data =
@@ -1026,4 +1027,118 @@ fn an_error_that_says_nothing_is_no_row_unless_the_notice_says_error() {
             .unwrap()
             .contains(&("error", "late"))
     );
+}
+
+// -- which part a tool call is read from
+
+const ONE_SECOND: (i64, i64) = (1_700_000_001_000, 1_700_000_002_000);
+const FIVE_SECONDS: (i64, i64) = (1_700_000_500_000, 1_700_000_505_000);
+
+/// A completed tool part; `id` is the JSON member, with its comma, or empty.
+fn tool_part(id: &str, (created, completed): (i64, i64)) -> String {
+    format!(
+        r#"{{"type":"tool",{id}"name":"shell","state":{{"status":"completed","input":{{}},"content":[]}},"time":{{"created":{created},"completed":{completed}}}}}"#
+    )
+}
+
+#[test]
+fn a_tool_part_sent_twice_in_one_row_is_read_from_the_last() {
+    let id = r#""id":"c1","#;
+    let data = format!(
+        r#"{{"content":[{},{}]}}"#,
+        tool_part(id, ONE_SECOND),
+        tool_part(id, FIVE_SECONDS)
+    );
+    let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", &data)]);
+    assert_eq!(
+        rows(&fx.item(1, "c1"), "Tool call").unwrap(),
+        [
+            ("start", "2023-11-14 22:21:40Z"),
+            ("duration", "5s"),
+            ("status", "ok")
+        ]
+    );
+}
+
+#[test]
+fn a_part_of_another_type_with_the_id_of_a_tool_part_is_not_read() {
+    let tool = tool_part(r#""id":"c1","#, ONE_SECOND);
+    for other in [
+        r#"{"type":"reasoning","id":"c1","text":"r","time":{"created":1600000000000}}"#,
+        r#"{"type":"text","id":"c1","text":"t","time":{"created":1600000000000}}"#,
+        r#"{"id":"c1","time":{"created":1600000000000}}"#,
+        r#"{"type":5,"id":"c1","time":{"created":1600000000000}}"#,
+    ] {
+        for data in [
+            format!(r#"{{"content":[{other},{tool}]}}"#),
+            format!(r#"{{"content":[{tool},{other}]}}"#),
+        ] {
+            let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", &data)]);
+            assert_eq!(
+                rows(&fx.item(1, "c1"), "Tool call").unwrap(),
+                [
+                    ("start", "2023-11-14 22:13:21Z"),
+                    ("duration", "1s"),
+                    ("status", "ok")
+                ],
+                "{data}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_position_that_holds_another_type_now_makes_the_tool_group_unavailable() {
+    let data = format!(r#"{{"content":[{}]}}"#, tool_part("", ONE_SECOND));
+    let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", &data)]);
+    let turns = fx.turns();
+    fx.set_data(
+        "a1",
+        r#"{"content":[{"type":"reasoning","text":"r","time":{"created":1600000000000}}]}"#,
+    );
+    let content = fx.content_of(&turns, 1, SectionKey::Item(ItemId::from("a1:0")));
+    assert_eq!(
+        labels(&content, "Tool call"),
+        ["duration", "status", "unavailable"]
+    );
+}
+
+// -- text with blanks around it
+
+#[test]
+fn a_text_value_is_trimmed_and_a_blank_one_is_left_out() {
+    let data = r#"{"agent":"  ","model":{"providerID":" acme "},"finish":" stop ","rawFinish":"  ","snapshot":{"start":" aaa ","end":"\t"},"content":[{"type":"text","text":"x"}]}"#;
+    let fx = Fx::new(&[("u1", "user", USER), ("a1", "assistant", data)]);
+    let content = fx.item(1, "a1:0");
+    assert_eq!(
+        rows(&content, "Message").unwrap(),
+        [("row id", "a1"), ("finish", "stop")]
+    );
+    assert_eq!(
+        rows(&content, "Environment").unwrap(),
+        [("snapshot.start", "aaa")]
+    );
+    let turn = rows(&content, "Turn").unwrap();
+    assert!(turn.contains(&("provider", "acme")));
+    assert!(!labels(&content, "Turn").contains(&"agent"));
+    for title in ["Turn", "Message", "Environment"] {
+        assert!(!has_unavailable(&content, title), "{title}");
+    }
+}
+
+// -- the real database's journal mode
+
+#[test]
+fn reading_details_in_wal_mode_leaves_the_database_file_untouched() {
+    let fx = full();
+    fx.db.exec("PRAGMA journal_mode = WAL;");
+    let turns = fx.turns();
+    let before = std::fs::read(&fx.db.path).unwrap();
+    let id = SectionId {
+        turn: turns[1].id().clone(),
+        key: SectionKey::Item(ItemId::from("call-1")),
+    };
+    let source = section_source(&turns[1], &id).unwrap();
+    assert!(!section_details(&fx.db.path, &source).is_empty());
+    assert_eq!(std::fs::read(&fx.db.path).unwrap(), before);
 }

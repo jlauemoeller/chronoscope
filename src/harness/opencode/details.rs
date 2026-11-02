@@ -214,8 +214,10 @@ fn environment_group(row: Option<&Row>) -> SourceGroup {
     })
 }
 
-/// The part of the row that has the id `part` the way the assembler names
-/// it: its own `id`, or `<row id>:<index>` when it has none.
+/// The tool part of the row that the item `part` shows, the way the assembler
+/// reads it: only a part of type `tool` is a tool call, it is named by its own
+/// `id`, or `<row id>:<index>` when it has none, and of several parts with one
+/// id the last wins.
 fn find_part(row: &Row, part: &str) -> Option<PartHead> {
     let content: ToolHead = serde_json::from_str(&row.data)
         .map_err(|err| log::warn!("session_message {}: parts unreadable, {err}", row.id))
@@ -225,9 +227,11 @@ fn find_part(row: &Row, part: &str) -> Option<PartHead> {
         .unwrap_or_default()
         .iter()
         .enumerate()
+        .rev()
         // A part that is not an object is no tool part, but it has a place.
         .filter(|(_, raw)| raw.get().starts_with('{'))
         .filter_map(|(index, raw)| Some((index, serde_json::from_str::<PartHead>(raw.get()).ok()?)))
+        .filter(|(_, p)| p.kind.as_deref() == Some("tool"))
         .find(
             |(index, p)| match p.id.as_deref().filter(|id| !id.is_empty()) {
                 Some(id) => id == part,
@@ -248,10 +252,11 @@ impl Rows {
         self.0.extend(row);
     }
 
-    /// A text field; an empty string is no value.
+    /// A text field, trimmed; a blank string is no value.
     fn text(&mut self, label: &str, value: Option<&str>) {
         self.push(
             value
+                .map(str::trim)
                 .filter(|v| !v.is_empty())
                 .map(|v| SourceRow::new(label, SourceValue::Text(v.to_owned()))),
         );
@@ -328,6 +333,8 @@ struct ToolHead {
 /// skipped.
 #[derive(Deserialize)]
 struct PartHead {
+    #[serde(default, rename = "type", deserialize_with = "lenient")]
+    kind: Option<String>,
     #[serde(default, deserialize_with = "lenient")]
     id: Option<String>,
     #[serde(default, deserialize_with = "lenient_object")]
