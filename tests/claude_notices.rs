@@ -51,6 +51,13 @@ fn result_line(n: u32, call: &str) -> String {
     )
 }
 
+/// An `isMeta` user line: injected content, one entry of an `Injected` item.
+fn meta_line(n: u32) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"meta{n}","isMeta":true,"timestamp":"2026-01-01T00:02:{n:02}Z","message":{{"role":"user","content":"meta {n}"}}}}"#
+    )
+}
+
 fn transcript(lines: &[String]) -> String {
     let mut out = String::from(PROMPT);
     for l in lines {
@@ -640,6 +647,15 @@ fn busy_transcript() -> Arc<[u8]> {
             &text("No response requested."),
             "",
         ),
+        line(10, "msg_f", "null", &text("late")),
+        api_error_line(11, "msg_f", "null", "late"),
+        api_error_line(12, "msg_d", "null", "first"),
+        api_error_line(13, "msg_d", "null", "second"),
+        line(14, "msg_z", "null", &text("z")),
+        meta_line(15),
+        line(16, "msg_m", r#""max_tokens""#, ""),
+        meta_line(17),
+        line(18, "msg_m", r#""end_turn""#, ""),
     ];
     Arc::from(transcript(&lines).as_bytes())
 }
@@ -666,8 +682,21 @@ fn any_chunking_gives_the_same_final_turns_with_notices() {
     let found = notices(&items);
     assert_eq!(
         found.iter().map(|n| n.0.as_str()).collect::<Vec<_>>(),
-        ["notice:msg_e", "notice:msg_2"]
+        [
+            "notice:msg_e",
+            "notice:msg_2",
+            "notice:msg_f",
+            "notice:msg_d"
+        ]
     );
+    let injected: Vec<usize> = items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Injected { entries, .. } => Some(entries.len()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(injected, [2], "{items:?}");
 
     for seed in 1..=60u64 {
         let mut rng = XorShift(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
@@ -732,4 +761,128 @@ fn removing_a_notice_is_reported_as_an_update_of_its_turn() {
     let second = line(2, "msg_1", r#""end_turn""#, &text("One"));
     feed(&mut asm, &mut replayed, &second);
     assert!(matches!(&*replayed[1], Turn::Assistant(t) if notices(&t.items).is_empty()));
+}
+
+// ------------------------------------------------ positions after a removal
+
+fn call_status(items: &[Item], id: &str) -> Option<ToolStatus> {
+    items.iter().find_map(|i| match i {
+        Item::ToolCall(c) if c.id.as_str() == id => Some(c.status),
+        _ => None,
+    })
+}
+
+/// The items as short descriptions, for exact comparisons.
+fn shape(items: &[Item]) -> Vec<String> {
+    items
+        .iter()
+        .map(|i| match i {
+            Item::Text { text, .. } => format!("text {text}"),
+            Item::Injected { entries, .. } => format!("injected {}", entries.len()),
+            Item::ToolCall(c) => format!("call {} {:?}", c.id, c.status),
+            Item::Notice { level, text, .. } => format!("notice {level:?} {text}"),
+            other => format!("{other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn a_call_sent_again_after_a_removed_notice_replaces_itself() {
+    // Taking the notice out shifts the call; the builder's index must follow,
+    // or the repeated call lands in the wrong place (or past the end).
+    let lines = [
+        line(1, "msg_1", r#""max_tokens""#, &text("One")),
+        line(2, "msg_1", "null", &tool_use("c1")),
+        line(3, "msg_1", r#""end_turn""#, ""),
+        line(4, "msg_1", "null", &tool_use("c1")),
+        result_line(5, "c1"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert!(notices(&items).is_empty());
+    assert_eq!(items.len(), 2, "{items:?}");
+    assert_eq!(call_status(&items, "c1"), Some(ToolStatus::Ok));
+}
+
+#[test]
+fn a_text_sent_again_after_the_text_taken_into_an_error_replaces_itself() {
+    let lines = [
+        line(1, "msg_e", "null", &text("err")),
+        line(2, "msg_1", "null", &tool_use("c1")),
+        line(3, "msg_1", "null", &text("hello")),
+        api_error_line(4, "msg_e", "null", "err"),
+        line(5, "msg_1", "null", &text("hello world")),
+        result_line(6, "c1"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(texts(&items), ["hello world"], "{items:?}");
+    assert_eq!(
+        notices(&items),
+        [(
+            "notice:msg_e".to_owned(),
+            NoticeLevel::Error,
+            "err".to_owned()
+        )]
+    );
+    assert_eq!(call_status(&items, "c1"), Some(ToolStatus::Ok));
+}
+
+#[test]
+fn injected_items_a_removal_leaves_side_by_side_collapse() {
+    let lines = [
+        line(1, "z", "null", &text("z")),
+        meta_line(2),
+        line(3, "m", r#""max_tokens""#, ""),
+        meta_line(4),
+        line(5, "m", r#""end_turn""#, ""),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(shape(&items), ["text z", "injected 2"]);
+}
+
+#[test]
+fn injected_items_collapse_before_a_notice_that_comes_after_them() {
+    let lines = [
+        line(1, "z", "null", &text("z")),
+        meta_line(2),
+        line(3, "m", "null", &text("m")),
+        meta_line(4),
+        api_error_line(5, "m", "null", "m"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(shape(&items), ["text z", "injected 2", "notice Error m"]);
+}
+
+#[test]
+fn a_merged_injected_item_keeps_a_later_call_and_its_result_attachable() {
+    let lines = [
+        line(1, "z", "null", &text("z")),
+        meta_line(2),
+        line(3, "m", r#""max_tokens""#, ""),
+        meta_line(4),
+        line(5, "n", "null", &tool_use("c9")),
+        line(6, "m", r#""end_turn""#, ""),
+        line(7, "n", "null", &tool_use("c9")),
+        result_line(8, "c9"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(shape(&items), ["text z", "injected 2", "call c9 Ok"]);
+}
+
+#[test]
+fn an_exact_repeat_is_preferred_over_a_shorter_block_it_extends() {
+    let lines = [
+        api_error_line(1, "msg_e", "null", "API Error: x"),
+        api_error_line(2, "msg_e", "null", "API Error"),
+        api_error_line(3, "msg_e", "null", "API Error: x"),
+        api_error_line(4, "msg_e", "null", "API Error"),
+    ];
+    let items = items_of(&assemble(&lines));
+    assert_eq!(
+        notices(&items),
+        [(
+            "notice:msg_e".to_owned(),
+            NoticeLevel::Error,
+            "API Error: x\nAPI Error".to_owned()
+        )]
+    );
 }

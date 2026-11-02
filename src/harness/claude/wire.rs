@@ -244,8 +244,14 @@ impl Entry {
     }
 }
 
-/// A [`Message`] that skips `usage`, for [`read_entry`]'s retry. Its fields
-/// are never read: parsing into it only checks the rest of the line.
+/// A [`Message`] that skips `usage`, `stop_reason` and `isApiErrorMessage`,
+/// for [`read_entry`]'s retry. Its fields are never read: parsing into it only
+/// checks the rest of the line.
+///
+/// Leaving the lenient fields out is deliberate: invalid UTF-8 inside them
+/// keeps the line parsed, as it did before they were read, so they must not
+/// be added here (the same goes for the entry's own `isApiErrorMessage`, read
+/// as `IgnoredAny` in the check parse).
 #[derive(Deserialize)]
 #[expect(dead_code, reason = "parsed only to check the line, never read")]
 struct MessageWithoutUsage {
@@ -257,28 +263,33 @@ struct MessageWithoutUsage {
 /// Reads a JSONL line as an [`Entry`].
 ///
 /// A line that does not parse gets more tries, so that every line that parses
-/// with `toolUseResult` and `usage` skipped still parses:
+/// with `toolUseResult`, `usage`, `message.stop_reason` and both
+/// `isApiErrorMessage` fields skipped still parses:
 /// - `toolUseResult` is checked while it is read (see [`ToolUseResult`]), so
 ///   a value in it that a skipped field would not mind fails the line. The
 ///   line is read again with the field kept as raw text, which is not
 ///   checked, and `isAsync` is looked for in that. If even that fails
 ///   (invalid UTF-8), the field counts as absent.
-/// - `usage` is kept as raw JSON text (see `lenient`), which must be valid
-///   UTF-8, so invalid UTF-8 inside it would fail the whole line although the
-///   line parses when `usage` is skipped.
+/// - `usage`, `message.stop_reason` and the two `isApiErrorMessage` fields are
+///   kept as raw JSON text (see `lenient`), which must be valid UTF-8, so
+///   invalid UTF-8 inside one of them would fail the whole line although the
+///   line parses when it is skipped.
 pub(crate) fn read_entry(line: &[u8]) -> Result<Entry, serde_json::Error> {
     serde_json::from_slice(line).or_else(|err| lenient_entry(line).ok_or(err))
 }
 
 /// The entry of a line that fails to parse because of `toolUseResult`, of
-/// invalid UTF-8 inside `message.usage`, or both; `None` for any other line.
+/// invalid UTF-8 inside `message.usage`, `message.stop_reason`,
+/// `message.isApiErrorMessage` or the top-level `isApiErrorMessage`, or of
+/// several of them; `None` for any other line.
 ///
 /// The line is first parsed with `toolUseResult` unchecked. If that fails
-/// too, the damage is looked for in `usage`: the line is parsed with `usage`
-/// skipped as well, which does not check its UTF-8. That keeps a line with
-/// invalid UTF-8 anywhere else (a text block, `cwd`, ...) unparsed, as it is
-/// on `main`: only the damage inside `usage` is forgiven, and the readable
-/// token figures stay.
+/// too, the damage is looked for in the other fields: the line is parsed with
+/// `usage`, `stop_reason` and both `isApiErrorMessage` fields skipped as
+/// well, which does not check their UTF-8. That keeps a line with invalid
+/// UTF-8 anywhere else (a text block, `cwd`, ...) unparsed, as it is on
+/// `main`: only damage inside those fields is forgiven, and the readable
+/// values of the rest stay (a damaged one counts as missing or lossy).
 fn lenient_entry(line: &[u8]) -> Option<Entry> {
     if let Some(entry) = entry_with_unchecked_tool_use_result(line) {
         return Some(entry);

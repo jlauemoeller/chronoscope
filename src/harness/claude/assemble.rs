@@ -1182,7 +1182,7 @@ fn upsert(turn: &mut AssistantTurn, b: &mut Builder, mut item: Item, changed: &m
 }
 
 /// The number of an error text block. With `apiBlockIndex` it is that index
-/// plus the block's position. Without it, a text that equals or extends a
+/// plus the block's position. Without it, a text that equals (first) or extends a
 /// block the message already has (not one from this line) is a re-send and
 /// replaces it; any other text gets the next free number.
 fn error_block_key(
@@ -1195,10 +1195,10 @@ fn error_block_key(
     if let Some(base) = api_index {
         return base + position;
     }
-    blocks
-        .iter()
-        .rev()
-        .find(|(key, old)| !taken.contains(key) && text.starts_with(old.as_str()))
+    let free = || blocks.iter().rev().filter(|(key, _)| !taken.contains(key));
+    free()
+        .find(|(_, old)| old.as_str() == text)
+        .or_else(|| free().find(|(_, old)| text.starts_with(old.as_str())))
         .map(|(&key, _)| key)
         .unwrap_or_else(|| blocks.keys().next_back().map_or(0, |last| last + 1))
 }
@@ -1236,6 +1236,9 @@ fn take_message_text(
 /// Removes the item with the given id from the turn being built, if it has
 /// it. The items after it shift, so the positions kept in the builder's index
 /// and in `calls` (for a tool result still to come) are renewed.
+///
+/// Injected items that the removal leaves side by side collapse into the
+/// first one (consecutive injected entries are one section, SPEC §5.6).
 fn remove(
     turn: &mut AssistantTurn,
     b: &mut Builder,
@@ -1247,6 +1250,28 @@ fn remove(
         return;
     };
     turn.items.remove(pos);
+    shift_after(b, calls, pos);
+    *changed = true;
+    if pos > 0
+        && pos < turn.items.len()
+        && matches!(turn.items[pos - 1], Item::Injected { .. })
+        && matches!(turn.items[pos], Item::Injected { .. })
+        && let Item::Injected {
+            id: second,
+            entries,
+        } = turn.items.remove(pos)
+    {
+        b.index.remove(&second);
+        shift_after(b, calls, pos);
+        if let Item::Injected { entries: first, .. } = &mut turn.items[pos - 1] {
+            first.extend(entries);
+        }
+    }
+}
+
+/// Renews the positions of the items after `pos`, which an item taken out at
+/// `pos` moved up by one.
+fn shift_after(b: &mut Builder, calls: &mut HashMap<String, CallRef>, pos: usize) {
     for at in b.index.values_mut().filter(|at| **at > pos) {
         *at -= 1;
     }
@@ -1256,7 +1281,6 @@ fn remove(
     {
         call.item -= 1;
     }
-    *changed = true;
 }
 
 fn entry_id(uuid: Option<&str>, range: &Range<u64>) -> TurnId {
