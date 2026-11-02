@@ -1,0 +1,23 @@
+# Scratch crate: one row, label "k", value "x\r" repeated 30 times, at 120x20. The value draws 30 columns, so the wanted width is 3 + 30 + 8 = 41. It is 71 because widest_row counts each dropped \r as a column.
+=== many CRs (want width counts dropped chars?) (area Rect { x: 24, y: 6, width: 71, height: 7 }, offset 0)
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                        ╭─ Details ───────────────────────────────────────────────────────────╮                         
+                        │                                                                     │                         
+                        │  G                                                                  │                         
+                        │                                                                     │                         
+                        │    k  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                │                         
+                        │                                                                     │                         
+                        ╰─────────────────────────────────────────────────────────────────────╯                         
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+
