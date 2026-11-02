@@ -1,0 +1,18 @@
+Export of a notice with the text: one<LF><LF>  two_with_underscore *star*<TAB>tab
+The indented line opens with _ followed by spaces, so CommonMark does not emphasise it.
+
+E   EXPORT full=true
+## Assistant (acme/coder-1) — 2026-10-21 08:35:18Z
+
+Starting.
+
+_provider.invalid-request: messages: text content blocks must be non-empty, and the request was rejected before any tokens were generated, so nothing was billed for it_
+
+## Assistant (acme/coder-1) — 2026-10-21 08:35:18Z
+
+_aborted_
+
+_one_
+
+_  two_with_underscore *star* tab_
+

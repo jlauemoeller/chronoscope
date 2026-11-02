@@ -1,0 +1,31 @@
+VERDICT: FAIL
+
+## Summary
+The feature is implemented as specified: the model item, section kind, rendering, selection, search, copy, save and export all work, the OpenCode rows of §4.2 produce the right notices, and the test gates and budgets pass. One test gap blocks the round. The index rebuild in `remove`, which the planner notes require, is covered by no test, and removing it leaves every test passing while later rows can crash the assembler or overwrite other items.
+
+## Acceptance criteria
+- [x] Assembler tests cover each OpenCode row of §4.2, an in-place update producing one notice, and streaming to error — `ending_notice` and `apply_assistant` in `src/harness/opencode/assemble.rs`; `notice_tests.rs`: `an_aborted_row_is_a_warning_with_the_message_when_there_is_one`, `another_error_type_is_an_error_with_whichever_parts_exist`, `another_finish_is_a_warning_naming_it`, `a_row_updated_in_place_has_one_notice_with_the_new_text`, `a_streaming_row_that_ends_in_error_gains_its_notice`; through the database in `tests.rs`: `an_assistant_row_that_ended_in_error_loads_with_its_notice`.
+- [x] Assembler tests pin the text (`aborted`; `aborted: <message>`; `<type>: <message>`; type only; message only; `stopped: <finish>`) — the same tests, plus `an_error_without_type_or_message_says_error` for the planner's `error` fallback.
+- [x] `stop`, `tool-calls` and an absent `finish` produce no notice — `a_normal_ending_produces_no_notice`.
+- [x] A row going from abnormal to normal loses its notice, and later in-place updates land on the right items — `remove` in `assemble.rs`; `a_row_that_ends_normally_after_an_error_loses_its_notice`, `later_rows_of_the_current_turn_land_after_a_removed_notice`. The criterion's wording is met through `replace_row`, but the index rebuild itself is untested: see finding 1.
+- [x] An `error` of an unexpected JSON type leaves the row parsed and not counted — `lenient_error`; `an_error_of_an_unexpected_json_type_leaves_the_row_parsed` asserts `unparsed_count() == 0`.
+- [x] Snapshots cover both levels at 80 and 120 columns, including a wrapping message — `src/components/turn_block/notice_snapshots.rs`, 24 styled snapshots. I read a sample of six: the colours, bold, `▒` marker, indent and wrapping match the task's `UI` section.
+- [x] Tests cover selecting, copying, saving, exporting and searching a notice — `src/components/transcript/tests/notice.rs`, `transcript_search::tests::a_notice_is_searched_by_its_text`.
+- [x] A saved notice's default file name uses `error` or `notice` — `Section::file_kind`, which `save_section` in `src/app/save.rs` puts in the default path; `w_saves_a_notice_under_error_or_notice`, `a_notice_is_saved_as_error_or_notice`.
+- [x] A notice is not foldable, and has no fold marker — `SectionKind::foldable`; `a_notice_is_not_foldable_and_has_no_marker` presses the default `fold_toggle`, `fold` and `unfold` keys, `a_notice_cannot_fold_and_is_never_folded`.
+- [x] The layout-cache property tests include notices — `ItemSpec::Notice` in `src/components/transcript/tests/property.rs`, with text that includes newlines.
+- [x] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` pass — run on this branch with `INSTA_UPDATE=no`; lib suite 2281 passed, 0 failed.
+- [x] The budgets hold — run on this branch: full parse worst 287.4 ms of 2000, first content worst 2.5 ms of 300, frames worst 5.08 ms of 16, memory at most 0.58x the file.
+- [x] Snapshot changes are limited to new notice snapshots — `git diff main...HEAD --stat` lists only the 24 new notice `.snap` files; no existing snapshot changed.
+
+## Findings
+1. [must-fix] No test covers the index rebuild in `remove` (`src/harness/opencode/assemble.rs`, lines 826-836), which the planner notes require ("rebuild `Builder.index` afterwards"). `replace_row` rebuilds the index itself through `take_builder`, so both tests for this case pass whether or not `remove` rebuilds it. A stale index is only read when `push_row` brings a row that re-sends an id already in the turn, and `later_rows_of_the_current_turn_land_after_a_removed_notice` pushes only new ids, after a `replace_row` that has already rebuilt the index. I confirmed this in a scratch copy: with the rebuild deleted, all OpenCode tests still passed, while a pushed row re-sending `call-a2` panicked with an index out of bounds in `upsert`. With another item after the call, the same row silently overwrote that item (`["a1:0", "call-a2", "call-a2"]` instead of `["a1:0", "call-a2", "a3:0"]`). The current code handles both cases correctly, so only the test is missing. Change: add a test to `src/harness/opencode/notice_tests.rs` with this shape, and keep the existing tests:
+   - `push_row` `u1`, then `a1` with `"finish":"length"`, then `a2` (`tool_row`, pending, id `call-a2`), then `a3` (a text row).
+   - `replace_row` `a1` with `"finish":"stop"`.
+   - With no other `replace_row` in between, `push_row` a row `a4` whose tool part has id `call-a2` and status `completed`, then `finish()`.
+   - Assert `ids(&asm) == ["a1:0", "call-a2", "a3:0"]` and that the call's status is `ToolStatus::Ok`.
+
+   This exact test passes on the branch and fails with the rebuild deleted.
+2. [nit] The export wraps each notice line in emphasis as it stands (`src/components/turn_block/export.rs`, lines 184-195). An inner line that starts with spaces exports as `_  indented_`, which CommonMark does not render as emphasis. Separately, a notice whose text ends in a newline copies with a trailing `\n`, against the "no trailing newline" contract in `plain.rs`. `ending_notice` trims both ends of the message, so a trailing newline cannot occur today, but an indented inner line can. The next task's Claude notices reuse this path. Change: trim each line before wrapping it in `_…_`, and trim the text in `NoticeSection` or `derive_sections`.
+3. [nit] The comment at `src/components/transcript/tests/notice.rs:220` ("Both notices have a colon; the notice is searched like any text.") does not describe the assertion below it, which checks that `aborted` matches once. Change: reword it to say that the query matches only the warning notice.
+4. [nit] `RowError` derives `Default` without using it (`src/harness/opencode/assemble.rs`, line 146); the crate and its tests build without it. Change: derive only `Deserialize`.
