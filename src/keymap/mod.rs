@@ -519,6 +519,14 @@ impl KeyResolver {
         self.pending = None;
     }
 
+    /// Whether `event`, as the next key, completes a chord bound to `action`:
+    /// the pending prefix and this key together, not this key on its own.
+    pub fn completes(&self, keymap: &Keymap, event: &KeyEvent, action: Action) -> bool {
+        self.pending.is_some_and(|first| {
+            keymap.chord_action(self.context, first, KeySpec::from_event(event)) == Some(action)
+        })
+    }
+
     /// Feeds a key press. `Ctrl-c` is never bound: it drops a pending prefix
     /// and gives `Unbound`.
     pub fn feed(&mut self, keymap: &Keymap, event: &KeyEvent) -> Resolved {

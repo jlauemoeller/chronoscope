@@ -562,6 +562,19 @@ fn chord_completes_with_its_second_key() {
 }
 
 #[test]
+fn completes_is_about_the_chord_and_not_about_the_key_alone() {
+    let (km, warnings) = keymap("[keys.browser]\nsearch = \"z x\"\ntop = \"v\"\n");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let mut r = KeyResolver::new(Browser);
+    assert!(!r.completes(&km, &ch('x'), Search), "nothing is pending");
+    assert_eq!(feed(&mut r, &km, 'z'), Resolved::Pending);
+    assert!(r.completes(&km, &ch('x'), Search));
+    assert!(!r.completes(&km, &ch('x'), Top), "another action");
+    assert!(!r.completes(&km, &ch('v'), Top), "a single key");
+    assert!(r.is_pending(), "asking changes nothing");
+}
+
+#[test]
 fn a_key_that_does_not_complete_the_chord_is_resolved_afresh() {
     let (km, _) = keymap("[keys.browser]\ntop = \"g g\"\n");
     let mut r = KeyResolver::new(Browser);

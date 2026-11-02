@@ -469,6 +469,43 @@ fn a_details_key_bound_to_a_chord_opens_and_closes_the_overlay() {
     assert_eq!(rig.focus(), Some(Id::Transcript));
 }
 
+#[test]
+fn a_details_chord_that_ends_in_an_overlay_key_opens_and_closes_the_overlay() {
+    let mut rig = rig_with_keymap(keymap_with("browser", "details", "z j"));
+    rig.open_loaded();
+    rig.press(Key::Char('z'));
+    rig.press(Key::Char('j'));
+    rig.pump_until(open);
+    assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
+    rig.press(Key::Char('z'));
+    rig.press(Key::Char('j'));
+    rig.pump_until(|app| !open(app));
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+}
+
+#[test]
+fn chords_with_overlay_keys_open_and_close_the_overlay_with_the_same_keys() {
+    for (chord, keys) in [("z k", ['z', 'k']), ("j i", ['j', 'i'])] {
+        // `j i` removes `j` from `next` with a warning; the chord works.
+        let mut raw = RawKeys::new();
+        raw.entry("browser".to_owned())
+            .or_default()
+            .insert("details".to_owned(), vec![chord.to_owned()]);
+        let (keymap, _) = Keymap::from_config(&raw);
+        let mut rig = rig_with_keymap(keymap);
+        rig.open_loaded();
+        for key in keys {
+            rig.press(Key::Char(key));
+        }
+        rig.pump_until(open);
+        for key in keys {
+            rig.press(Key::Char(key));
+        }
+        rig.pump_until(|app| !open(app));
+        assert_eq!(rig.focus(), Some(Id::Transcript), "{chord}");
+    }
+}
+
 // -- a snapshot
 
 #[test]

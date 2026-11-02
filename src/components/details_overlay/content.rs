@@ -135,8 +135,8 @@ impl DetailsContent {
             .groups
             .iter()
             .flat_map(|g| &g.rows)
-            .flat_map(|row| row.value.split('\n'))
-            .map(UnicodeWidthStr::width)
+            .flat_map(|row| display_lines(&row.value))
+            .map(|line| columns(&line))
             .max()
             .unwrap_or(0);
         self.value_column() + value
@@ -245,6 +245,11 @@ fn display_lines(value: &str) -> Vec<String> {
         .collect()
 }
 
+/// The columns `text` takes, counted as [`char_wrap`] counts them.
+fn columns(text: &str) -> usize {
+    text.chars().map(|ch| ch.width().unwrap_or(0)).sum()
+}
+
 /// `text` cut into pieces at most `width` columns wide, at any character
 /// (paths and long tokens are never hidden, SPEC §5.5). Always at least one
 /// piece. A character wider than `width` gets a piece of its own. A space
@@ -266,7 +271,10 @@ fn char_wrap(text: &str, width: usize) -> Vec<String> {
         current.push(ch);
         used += cols;
     }
-    pieces.push(current);
+    // Only spaces after the last cut are not a row.
+    if pieces.is_empty() || !current.trim().is_empty() {
+        pieces.push(current);
+    }
     pieces
 }
 
@@ -447,6 +455,12 @@ mod tests {
         assert_eq!(char_wrap("abc defg", 4), ["abc ", "defg"]);
         // Only that one space: later ones are kept.
         assert_eq!(char_wrap("abcd  efg", 4), ["abcd", " efg"]);
+        // Spaces at the end after a cut are not a row of their own.
+        assert_eq!(char_wrap("abcd ", 4), ["abcd"]);
+        assert_eq!(char_wrap("abcd  ", 4), ["abcd"]);
+        // A value always has a row.
+        assert_eq!(char_wrap("", 4), [""]);
+        assert_eq!(char_wrap("  ", 4), ["  "]);
     }
 
     #[test]
@@ -462,6 +476,12 @@ mod tests {
             assert!(line.starts_with("       "), "{line:?}");
             assert!(!line[7..].starts_with(' '), "{line:?}");
         }
+        // Joined up, only the space the cut fell on is gone.
+        let value: String = texts[3..texts.len() - 1]
+            .iter()
+            .map(|line| &line[7..])
+            .collect();
+        assert_eq!(value, "one two three fourfive six");
     }
 
     #[test]
@@ -477,6 +497,18 @@ mod tests {
             ["    a  x y z", "    b  end", "    c  p", "       q"]
         );
         assert_eq!(texts[7], "");
+    }
+
+    #[test]
+    fn what_is_not_drawn_does_not_widen_the_overlay() {
+        let wanted = |value: &str| {
+            let rows = vec![row("k", value)];
+            DetailsContent::new(vec![DetailsGroup::new("G", rows)]).desired_size(u16::MAX)
+        };
+        let long = "x".repeat(60);
+        let plain = wanted(&format!("{long}\n{long}"));
+        assert_eq!(wanted(&format!("{long}\r\n{long}\r\n")), plain);
+        assert_eq!(wanted(&format!("{long}\u{1b}\u{7}\n{long}")), plain);
     }
 
     #[test]

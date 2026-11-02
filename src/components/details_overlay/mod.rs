@@ -101,7 +101,7 @@ impl Component for DetailsOverlay {
                 .map(|size| QueryResult::Owned(interior_value(size)))
         } else if attr == DESIRED_SIZE_ATTR {
             let size = self.desired_size(self.max_width);
-            Some(QueryResult::Owned(interior_value(size)))
+            Some(QueryResult::Owned(payload_value(size)))
         } else {
             None
         }
@@ -147,10 +147,13 @@ impl DetailsOverlay {
 }
 
 impl AppComponent<Msg, UserEvent> for DetailsOverlay {
-    /// The overlay keys come first (`Esc` closes, the up, down and page keys
-    /// scroll); then the `details` key of the browser closes it too. Every
-    /// other key does nothing: the keys of the transcript and the global keys
-    /// are not for the overlay.
+    /// A `details` chord that this key completes closes the overlay, whatever
+    /// the key means in the overlay. Otherwise the overlay keys come first
+    /// (`Esc` closes, the up, down and page keys scroll), so a single
+    /// `details` key that is also an overlay key does what the overlay says;
+    /// then the `details` key closes it too. Every other key does nothing:
+    /// the keys of the transcript and the global keys are not for the
+    /// overlay.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let key = match ev {
             Event::Keyboard(key) => key,
@@ -158,21 +161,23 @@ impl AppComponent<Msg, UserEvent> for DetailsOverlay {
             Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
             _ => return None,
         };
-        let total = self.total();
-        let outcome = self.frame.on_key(key, total);
-        // The details key is resolved with a resolver of its own, because it
-        // can be a chord. A key of the overlay context drops a prefix.
-        if outcome != FrameKey::Unbound {
-            self.resolver.reset();
+        // The `details` key has a resolver of its own, because it can be a
+        // chord. It sees every key once, so an overlay key can start or end a
+        // chord, and a key that does not complete one drops the prefix.
+        let keymap = self.frame.keymap();
+        let completes_chord = self.resolver.completes(keymap, key, Action::Details);
+        let resolved = self.resolver.feed(keymap, key);
+        if completes_chord {
+            return Some(Msg::CloseDetails);
         }
-        match outcome {
+        let total = self.total();
+        match self.frame.on_key(key, total) {
             FrameKey::Close => Some(Msg::CloseDetails),
             FrameKey::Scrolled => Some(Msg::DetailsScrolled),
             FrameKey::Unmoved => None,
-            FrameKey::Unbound => match self.resolver.feed(self.frame.keymap(), key) {
-                Resolved::Action(Action::Details) => Some(Msg::CloseDetails),
-                _ => None,
-            },
+            FrameKey::Unbound => {
+                (resolved == Resolved::Action(Action::Details)).then_some(Msg::CloseDetails)
+            }
         }
     }
 }
@@ -293,6 +298,58 @@ mod tests {
         overlay.attr(MAX_WIDTH_ATTR, max_width_value(30));
         assert_eq!(wanted(&overlay), overlay.desired_size(30));
         assert_eq!(wanted(&overlay).width, 30);
+    }
+
+    /// An overlay whose browser keys are `bindings` (action, key).
+    fn overlay_bound(bindings: &[(&str, &str)]) -> DetailsOverlay {
+        let mut raw = crate::config::RawKeys::new();
+        let browser = raw.entry("browser".to_owned()).or_default();
+        for (action, key) in bindings {
+            browser.insert((*action).to_owned(), vec![(*key).to_owned()]);
+        }
+        let (keymap, _) = Keymap::from_config(&raw);
+        overlay_with(keymap, 10)
+    }
+
+    #[test]
+    fn a_chord_that_ends_in_an_overlay_key_closes_it() {
+        let mut overlay = overlay_bound(&[("details", "x j")]);
+        assert_eq!(press(&mut overlay, Key::Char('x')), None);
+        assert_eq!(press(&mut overlay, Key::Char('j')), Some(Msg::CloseDetails));
+        assert_eq!(offset(&overlay), 0);
+    }
+
+    #[test]
+    fn the_overlay_key_of_such_a_chord_scrolls_without_the_prefix() {
+        let mut overlay = overlay_bound(&[("details", "x j")]);
+        assert_eq!(
+            press(&mut overlay, Key::Char('j')),
+            Some(Msg::DetailsScrolled)
+        );
+        assert_eq!(offset(&overlay), 1);
+    }
+
+    #[test]
+    fn a_chord_that_starts_with_an_overlay_key_scrolls_and_then_closes_it() {
+        let mut overlay = overlay_bound(&[("details", "j i")]);
+        assert_eq!(press(&mut overlay, Key::Char('i')), None);
+        assert_eq!(
+            press(&mut overlay, Key::Char('j')),
+            Some(Msg::DetailsScrolled)
+        );
+        assert_eq!(offset(&overlay), 1);
+        assert_eq!(press(&mut overlay, Key::Char('i')), Some(Msg::CloseDetails));
+    }
+
+    #[test]
+    fn the_prefix_of_another_chord_does_not_make_a_single_overlay_key_close_it() {
+        let mut overlay = overlay_bound(&[("details", "j"), ("top", "g g")]);
+        assert_eq!(press(&mut overlay, Key::Char('g')), None);
+        assert_eq!(
+            press(&mut overlay, Key::Char('j')),
+            Some(Msg::DetailsScrolled)
+        );
+        assert_eq!(offset(&overlay), 1);
     }
 
     #[test]

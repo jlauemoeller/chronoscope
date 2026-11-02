@@ -302,8 +302,9 @@ pub fn overlay_max_width(screen_width: u16) -> u16 {
 }
 
 /// The help overlay, the details overlay and the theme selector: `wanted`
-/// (its widest entry and its content, with the border) but at most the screen less two columns either side and one row
-/// above and below, and centred.
+/// (its widest entry and its content, with the border) but at most the
+/// screen less two columns either side and one row above and below, and
+/// centred.
 pub fn help_overlay_rect(area: Rect, wanted: Size) -> Rect {
     let width = wanted.width.min(overlay_max_width(area.width));
     let height = wanted.height.min(area.height.saturating_sub(2));

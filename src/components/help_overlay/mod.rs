@@ -59,8 +59,8 @@ impl HelpOverlay {
 
 impl Component for HelpOverlay {
     fn view(&mut self, frame: &mut Frame, area: Rect) {
-        let theme = self.frame.theme().clone();
-        self.frame.draw(frame, area, |_| self.content.lines(&theme));
+        let theme = self.frame.theme();
+        self.frame.draw(frame, area, |_| self.content.lines(theme));
     }
 
     fn query<'a>(&'a self, attr: Attribute) -> Option<QueryResult<'a>> {
@@ -98,8 +98,9 @@ impl Component for HelpOverlay {
 }
 
 impl HelpOverlay {
-    /// The wheel scrolls [`WHEEL_ROWS`](super::overlay_frame::WHEEL_ROWS) rows; clicks do nothing (the `App`
-    /// closes the overlay for one outside it).
+    /// The wheel scrolls [`WHEEL_ROWS`](super::overlay_frame::WHEEL_ROWS)
+    /// rows; clicks do nothing (the `App` closes the overlay for one outside
+    /// it).
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         self.frame
             .on_mouse(mouse, self.content.row_count())

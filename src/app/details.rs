@@ -4,7 +4,7 @@
 //! is open.
 
 use ratatui::layout::Rect;
-use tuirealm::component::AppComponent;
+use tuirealm::component::{AppComponent, Component};
 
 use super::layout::{layout, overlay_max_width, too_small};
 use super::redraw::RedrawRequest;
@@ -31,17 +31,18 @@ impl App {
         if busy.iter().any(|id| self.application.mounted(id)) {
             return;
         }
-        let overlay = DetailsOverlay::new(content, self.theme.clone(), self.keymap.clone());
+        let mut overlay = DetailsOverlay::new(content, self.theme.clone(), self.keymap.clone());
+        let max_width = overlay_max_width(self.size.0);
+        overlay.attr(MAX_WIDTH_ATTR, max_width_value(max_width));
         // Wrapped at the width the screen leaves it, the content is as high
         // as it will be drawn.
-        let wanted = overlay.desired_size(overlay_max_width(self.size.0));
+        let wanted = overlay.desired_size(max_width);
         let component: Box<dyn AppComponent<Msg, UserEvent>> = Box::new(overlay);
         if let Err(err) = self.open_overlay(Id::DetailsOverlay, component) {
             log::error!("could not mount the details overlay: {err}");
             return;
         }
         self.details_size = Some(wanted);
-        self.refresh_details_size();
         self.refresh_routing();
         self.push_details_interior();
         self.request_redraw(RedrawRequest::Dirty);
