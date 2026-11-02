@@ -1,0 +1,16 @@
+=== section #3 open=true area=Some(Rect { x: 16, y: 4, width: 48, height: 15 }) @ 80x24
+╭─ Details ────────────────────────────────────╮
+│                                              │
+│  Turn                                        │
+│                                              │
+│    model               m                     │
+│    start               2026-10-21 08:00:01Z  │
+│                                              │
+│  Tool call                                   │
+│                                              │
+│    start               2026-10-21 08:00:06Z  │
+│    duration            1s                    │
+│    status              ok                    │
+│    permissionDecision  decision=             │
+│                                              │
+╰──────────────────────────────────────────────╯

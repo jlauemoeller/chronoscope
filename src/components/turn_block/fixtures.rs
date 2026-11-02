@@ -135,6 +135,7 @@ pub fn user(text: &str, items: Vec<Item>) -> Turn {
         timestamp: ts("2026-10-21T08:35:15.800Z"),
         text: text.to_owned(),
         items,
+        sources: crate::model::TurnSources::default(),
     })
 }
 
@@ -146,6 +147,7 @@ pub fn assistant(effort: Option<&str>, items: Vec<Item>, stats: Option<TurnStats
         effort: effort.map(str::to_owned),
         items,
         stats,
+        sources: crate::model::TurnSources::default(),
     })
 }
 
@@ -154,6 +156,7 @@ pub fn compaction(summary: &str) -> Turn {
         id: TurnId::from("c1"),
         timestamp: ts("2026-10-21T09:00:00Z"),
         summary: summary.to_owned(),
+        sources: crate::model::TurnSources::default(),
     })
 }
 

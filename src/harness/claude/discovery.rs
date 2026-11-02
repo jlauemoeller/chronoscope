@@ -28,8 +28,8 @@ use crate::config::Config;
 use crate::harness::shared::{UNTITLED, truncate_title};
 use crate::harness::{Harness, Result, WatchHandle};
 use crate::model::{
-    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary,
-    ToolCallId, Turn,
+    HarnessId, ModelUpdate, Project, ProjectId, SectionSource, SessionId, SessionStats,
+    SessionSummary, SourceGroup, ToolCallId, Turn,
 };
 
 /// The default data directory: `<home>/.claude/projects` on every platform.
@@ -400,6 +400,12 @@ impl Harness for ClaudeHarness {
             _ => Duration::ZERO,
         };
         Ok(SessionStats { turns, duration })
+    }
+
+    /// Reads the fields of the section's lines again; see
+    /// [`details::section_details`](super::details::section_details).
+    fn section_details(&self, source: &SectionSource) -> Vec<SourceGroup> {
+        super::details::section_details(source)
     }
 
     /// `claude:<path>:<size>:<mtime in ns since the epoch>`; a file that

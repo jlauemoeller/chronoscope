@@ -1302,6 +1302,7 @@ theme_snapshot!(loaded_browser_theme_solarized, "solarized");
 
 mod copy;
 mod details;
+mod details_source;
 mod help;
 mod launch;
 mod live;

@@ -34,7 +34,7 @@ fn at(kind: MouseEventKind, column: u16, row: u16) -> Msg {
     })
 }
 
-fn open(app: &App) -> bool {
+pub(super) fn open(app: &App) -> bool {
     app.application().mounted(&Id::DetailsOverlay)
 }
 
@@ -66,7 +66,7 @@ fn presentation(app: &App) -> Presentation {
 }
 
 /// The rows of the overlay as the app draws them at `width` x `height`.
-fn overlay_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
+pub(super) fn overlay_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
     let area = rig.app.routing().area(Id::DetailsOverlay).unwrap();
     screen_text(rig, width, height)
         .lines()
@@ -83,25 +83,25 @@ fn overlay_rows(rig: &mut Rig, width: u16, height: u16) -> Vec<String> {
 
 impl Rig {
     /// Presses the details key and waits until the overlay is up.
-    fn open_details(&mut self) {
+    pub(super) fn open_details(&mut self) {
         self.press(Key::Char('i'));
         self.pump_until(open);
     }
 
-    fn close_details_by(&mut self, code: Key) {
+    pub(super) fn close_details_by(&mut self, code: Key) {
         self.press(code);
         self.pump_until(|app| !open(app));
     }
 
     /// Moves the selection down `n` sections.
-    fn down(&self, n: usize) {
+    pub(super) fn down(&self, n: usize) {
         for _ in 0..n {
             self.press(Key::Char('j'));
         }
     }
 
     /// Opens the BRIO session with `turns`, fully loaded.
-    fn open_with(&mut self, turns: Vec<Arc<Turn>>) {
+    pub(super) fn open_with(&mut self, turns: Vec<Arc<Turn>>) {
         self.harness.script(
             BRIO_SESSION,
             vec![
@@ -335,7 +335,7 @@ fn an_open_request_while_it_is_open_changes_nothing() {
     rig.open_loaded();
     rig.open_details();
     let before = overlay_rows(&mut rig, 120, 40);
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert_eq!(overlay_rows(&mut rig, 120, 40), before);
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
     // The other overlays do not open over it either.
@@ -358,20 +358,20 @@ fn it_does_not_open_over_the_help_overlay_the_theme_selector_or_a_prompt() {
     let mut rig = rig();
     rig.open_loaded();
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
     rig.app.update(Msg::CloseHelp);
 
     rig.app.update(Msg::OpenThemeSelector);
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::ThemeSelector));
     rig.app.update(Msg::CancelTheme);
 
     rig.press(Key::Char('/'));
     rig.pump_until(|app| app.application().mounted(&Id::Prompt));
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::Prompt));
 }
@@ -653,7 +653,7 @@ fn it_does_not_open_on_a_screen_that_is_too_small_to_show_it() {
     let seen = rig.settle();
     assert!(!open(&rig.app), "{seen:?}");
     assert_eq!(rig.focus(), Some(Id::Transcript));
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert!(!open(&rig.app));
     // Grown, the key works.
     rig.app.update(Msg::Resized(120, 40));

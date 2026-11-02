@@ -59,6 +59,12 @@ impl DetailsRow {
         }
     }
 
+    /// Whether this is the row of a group whose source cannot be read: a
+    /// muted word with no value.
+    fn is_unavailable(&self) -> bool {
+        self.muted && self.value.is_empty() && self.label == UNAVAILABLE
+    }
+
     /// The muted row of a group whose source cannot be read (the file is
     /// gone, the row was deleted, the line does not parse).
     pub fn unavailable() -> Self {
@@ -115,11 +121,13 @@ impl DetailsContent {
     }
 
     /// The width of the label column: the widest label of all groups, so the
-    /// values start in one column.
+    /// values start in one column. The `unavailable` row has no label column
+    /// (its word is a muted row with no value), so it does not count.
     fn label_width(&self) -> usize {
         self.groups
             .iter()
             .flat_map(|g| &g.rows)
+            .filter(|row| !row.is_unavailable())
             .map(|row| row.label.width())
             .max()
             .unwrap_or(0)

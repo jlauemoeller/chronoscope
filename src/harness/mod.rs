@@ -15,7 +15,8 @@ use std::thread::JoinHandle;
 
 use crate::config::Config;
 use crate::model::{
-    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary, ToolCallId,
+    HarnessId, ModelUpdate, Project, ProjectId, SectionSource, SessionId, SessionStats,
+    SessionSummary, SourceGroup, ToolCallId,
 };
 
 /// Result type of harness operations.
@@ -92,6 +93,21 @@ pub trait Harness: Send + Sync {
     /// The command that resumes `session` in its harness, or `None` when the
     /// configured template is unusable.
     fn resume_command(&self, session: &SessionSummary) -> Option<Command>;
+
+    /// Reads what the harness records about a section from its source, for
+    /// the details overlay (SPEC cycle 2 §5.2): the Message, Tool call,
+    /// Prompt and Environment groups of §5.3. `source` holds the section's
+    /// references, which the turns keep instead of the field values.
+    ///
+    /// Runs on the UI thread when the overlay opens, so it reads one or two
+    /// lines. A group whose source cannot be read comes back `unavailable`.
+    ///
+    /// The default provides nothing, and the overlay then shows only what
+    /// the model knows, with no `unavailable` row. The Codex and Pi adapters
+    /// inherit it, and so does OpenCode until it reads its rows.
+    fn section_details(&self, _source: &SectionSource) -> Vec<SourceGroup> {
+        Vec::new()
+    }
 
     /// Reads the transcript file at `path` (given on the command line, so it
     /// need not be in the harness's data store) and returns its summary. The
@@ -196,6 +212,69 @@ pub fn build_harnesses_with_home(config: &Config, home: &Path) -> Vec<Arc<dyn Ha
             HarnessId::Codex | HarnessId::Pi => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod default_details_tests {
+    use std::process::Command;
+
+    use super::*;
+    use crate::model::{ByteSource, SectionRefs, SourceKind, SourceRef};
+
+    /// A harness that implements only what the trait requires, as the Codex
+    /// and Pi adapters would.
+    struct Stub;
+
+    impl Harness for Stub {
+        fn id(&self) -> HarnessId {
+            HarnessId::Codex
+        }
+        fn available(&self) -> bool {
+            true
+        }
+        fn refresh(&self) -> Result<()> {
+            Ok(())
+        }
+        fn watch_paths(&self) -> Vec<PathBuf> {
+            Vec::new()
+        }
+        fn projects(&self) -> Result<Vec<Project>> {
+            Ok(Vec::new())
+        }
+        fn sessions(&self, _: &ProjectId) -> Result<Vec<SessionSummary>> {
+            Ok(Vec::new())
+        }
+        fn stats(&self, _: &SessionSummary) -> Result<SessionStats> {
+            anyhow::bail!("not used")
+        }
+        fn stats_key(&self, _: &SessionSummary) -> String {
+            String::new()
+        }
+        fn load(&self, _: &SessionId, _: Sender<ModelUpdate>) -> Result<WatchHandle> {
+            anyhow::bail!("not used")
+        }
+        fn subagent(&self, _: &SessionId, _: &ToolCallId) -> Option<SessionId> {
+            None
+        }
+        fn resume_command(&self, _: &SessionSummary) -> Option<Command> {
+            None
+        }
+    }
+
+    #[test]
+    fn a_harness_provides_no_section_details_by_default() {
+        let source = SectionSource {
+            kind: SourceKind::Message,
+            refs: SectionRefs {
+                line: SourceRef {
+                    bytes: ByteSource::Memory(Arc::from(&b"{}"[..])),
+                    range: 0..2,
+                },
+                result: None,
+            },
+        };
+        assert!(Stub.section_details(&source).is_empty());
+    }
 }
 
 #[cfg(test)]

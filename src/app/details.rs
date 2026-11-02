@@ -10,15 +10,21 @@ use super::layout::{layout, overlay_max_width, too_small};
 use super::redraw::RedrawRequest;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
-    DESIRED_SIZE_ATTR, DetailsContent, DetailsOverlay, INTERIOR_ATTR, MAX_WIDTH_ATTR, interior_of,
-    interior_value, max_width_value, payload_from_value,
+    DESIRED_SIZE_ATTR, DetailsContent, DetailsOverlay, DetailsRequest, INTERIOR_ATTR,
+    MAX_WIDTH_ATTR, compose, interior_of, interior_value, max_width_value, payload_from_value,
 };
+use crate::model::SourceGroup;
 
 impl App {
-    /// Mounts the details overlay for `content` and gives it the focus. Does
+    /// Mounts the details overlay for `request` and gives it the focus. Does
     /// nothing when it, the help overlay, the theme selector or a prompt is
     /// open, or when the screen is too small to show it.
-    pub(super) fn open_details(&mut self, content: DetailsContent) {
+    ///
+    /// The open session's harness reads the section's source here, on the UI
+    /// thread, and its rows are composed with the ones the model knows. A
+    /// section without references, or a harness that provides nothing, leaves
+    /// the model's rows alone.
+    pub(super) fn open_details(&mut self, request: DetailsRequest) {
         if too_small(Rect::new(0, 0, self.size.0, self.size.1)) {
             return;
         }
@@ -31,6 +37,7 @@ impl App {
         if busy.iter().any(|id| self.application.mounted(id)) {
             return;
         }
+        let content = self.compose_details(request);
         let mut overlay = DetailsOverlay::new(content, self.theme.clone(), self.keymap.clone());
         let max_width = overlay_max_width(self.size.0);
         overlay.attr(MAX_WIDTH_ATTR, max_width_value(max_width));
@@ -46,6 +53,19 @@ impl App {
         self.refresh_routing();
         self.push_details_interior();
         self.request_redraw(RedrawRequest::Dirty);
+    }
+
+    /// The content of the overlay: what the model knows of the section, with
+    /// what the open session's harness reads from its source.
+    fn compose_details(&self, request: DetailsRequest) -> DetailsContent {
+        let read: Vec<SourceGroup> = request
+            .source
+            .as_ref()
+            .zip(self.browser.open.as_ref())
+            .and_then(|(source, open)| Some((source, self.harnesses.get(&open.harness)?)))
+            .map(|(source, harness)| harness.section_details(source))
+            .unwrap_or_default();
+        compose(request.content, &read, &self.timestamps)
     }
 
     /// Unmounts the details overlay and returns the focus to who had it.

@@ -21,7 +21,8 @@ use chronoscope::bench_support::{
 };
 use chronoscope::components::Transcript;
 use chronoscope::components::turn_block::{SectionId, SectionKey};
-use chronoscope::model::{Item, Turn};
+use chronoscope::harness::Harness;
+use chronoscope::model::{Item, SectionSource, SourceKey, SourceKind, Turn};
 use ratatui::layout::Size;
 use tuirealm::command::Cmd;
 use tuirealm::component::Component;
@@ -80,6 +81,48 @@ fn worst_unfold(transcript: &mut Transcript) -> Option<(usize, Duration)> {
         }
     }
     worst
+}
+
+/// The time to read the details of the tool call with the largest result, as
+/// the details overlay does when it opens: the harness re-reads the call's
+/// line and the result's line (up to 2 MB) and picks a few fields out of
+/// them. Reported, not asserted. Returns the result's size and the time.
+fn details_of_largest_result(
+    transcript: &Transcript,
+    harness: &dyn Harness,
+) -> Option<(usize, Duration)> {
+    let mut largest: Option<(usize, SectionSource)> = None;
+    for index in 0..transcript.turn_count() {
+        let turn = transcript.turn(index)?;
+        let Turn::Assistant(assistant) = turn.as_ref() else {
+            continue;
+        };
+        for item in &assistant.items {
+            let Item::ToolCall(call) = item else { continue };
+            let Some(result) = &call.result else { continue };
+            let size = result.output.byte_len();
+            if largest
+                .as_ref()
+                .is_some_and(|(biggest, _)| *biggest >= size)
+            {
+                continue;
+            }
+            if let Some(refs) = assistant.sources.get(&SourceKey::Item(call.id.clone())) {
+                let kind = SourceKind::ToolCall;
+                largest = Some((size, SectionSource { kind, refs }));
+            }
+        }
+    }
+    let (size, source) = largest?;
+    let start = Instant::now();
+    let groups = harness.section_details(&source);
+    let took = start.elapsed();
+    assert!(!groups.is_empty());
+    assert!(
+        groups.iter().all(|g| !g.unavailable),
+        "the largest result's lines could be read"
+    );
+    Some((size, took))
 }
 
 /// The time `Enter` takes on the `... N more lines` row of the scenario's
@@ -203,6 +246,61 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
             ms(took)
         );
     }
+    if let Some((bytes, took)) = details_of_largest_result(&scenario.transcript, &harness) {
+        println!(
+            "reference: reading the details of the largest tool result ({bytes} bytes) took {:.1} ms",
+            ms(took)
+        );
+    }
+    failures
+}
+
+/// One Assistant turn that never ends: rounds of a text, a tool call and its
+/// result, ~70 MB in all. The references of every section go to one table,
+/// so a lookup of each new item in it (quadratic in the items of a turn) would
+/// miss the full-parse budget here, though the fixtures above, with their
+/// many short turns, would not notice.
+fn long_turn_failures() -> Vec<String> {
+    use std::fmt::Write;
+    const ROUNDS: usize = 100_000;
+    let mut text = String::from(
+        r#"{"type":"user","uuid":"u0","origin":{"kind":"human"},"timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"go"}}"#,
+    );
+    for i in 0..ROUNDS {
+        let pad = "p".repeat(120);
+        write!(
+            text,
+            concat!(
+                "\n",
+                r#"{{"type":"assistant","uuid":"a{i}","timestamp":"2026-01-01T00:00:01Z","message":{{"id":"m{i}","model":"claude-opus-5-5","stop_reason":null,"content":[{{"type":"text","text":"{pad}"}}]}}}}"#,
+                "\n",
+                r#"{{"type":"assistant","uuid":"b{i}","timestamp":"2026-01-01T00:00:02Z","message":{{"id":"m{i}","model":"claude-opus-5-5","stop_reason":"tool_use","content":[{{"type":"tool_use","id":"c{i}","name":"Bash","input":{{"command":"ls"}}}}]}}}}"#,
+                "\n",
+                r#"{{"type":"user","uuid":"r{i}","timestamp":"2026-01-01T00:00:03Z","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"c{i}","content":"ok"}}]}}}}"#,
+            ),
+            i = i,
+            pad = pad
+        )
+        .unwrap();
+    }
+    let bytes: std::sync::Arc<[u8]> = std::sync::Arc::from(text.as_bytes());
+    let size = bytes.len();
+    drop(text);
+    let start = Instant::now();
+    let asm = chronoscope::harness::claude::Assembler::from_memory(bytes);
+    let took = start.elapsed();
+    assert_eq!(asm.unparsed_count(), 0);
+    assert_eq!(asm.turns().len(), 2, "one prompt and one endless turn");
+    println!(
+        "== one endless turn: {size} bytes, {} rounds: full parse {:.1} ms (budget {:.0} ms)",
+        ROUNDS,
+        ms(took),
+        ms(FULL_PARSE)
+    );
+    let mut failures = Vec::new();
+    if took >= FULL_PARSE {
+        failures.push(format!("one endless turn: the full parse took {took:?}"));
+    }
     failures
 }
 
@@ -214,5 +312,6 @@ fn budgets() {
     let dense = cached_fixture(&cache, FIXTURE_BYTES, SEED, 0).expect("the dense fixture");
     let mut failures = check("mixed session (5% large outputs)", &mixed);
     failures.extend(check("dense session (small entries only)", &dense));
+    failures.extend(long_turn_failures());
     assert!(failures.is_empty(), "budgets missed: {failures:#?}");
 }

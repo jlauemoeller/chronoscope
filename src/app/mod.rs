@@ -61,7 +61,7 @@ use tuirealm::subscription::{EventClause, Sub, SubClause};
 
 use crate::clipboard::{Clipboard, NoClipboard};
 use crate::components::{
-    DetailsContent, EmptyState, GlobalEvents, HelpContext, TOAST_DURATION, TOO_SMALL, Toast,
+    DetailsRequest, EmptyState, GlobalEvents, HelpContext, TOAST_DURATION, TOO_SMALL, Toast,
 };
 use crate::config::{Config, ConfigWarning};
 use crate::harness::Harness;
@@ -143,9 +143,10 @@ pub enum Msg {
     CloseHelp,
     /// A key scrolled the help overlay: nothing but a redraw is needed.
     HelpScrolled,
-    /// The details key on a section: open the details overlay with this
-    /// content, a snapshot made when the key was pressed.
-    OpenDetails(DetailsContent),
+    /// The details key on a section: open the details overlay with what the
+    /// model knows of it, a snapshot made when the key was pressed, and the
+    /// section's references, which the harness reads when the overlay opens.
+    OpenDetails(DetailsRequest),
     /// `Esc` or the details key in the details overlay: close it and return
     /// the focus.
     CloseDetails,
@@ -663,7 +664,7 @@ impl App {
             Msg::OpenHelp(context) => self.open_help(context),
             Msg::CloseHelp => self.close_help(),
             Msg::HelpScrolled | Msg::DetailsScrolled => self.request_redraw(RedrawRequest::Dirty),
-            Msg::OpenDetails(content) => self.open_details(content),
+            Msg::OpenDetails(request) => self.open_details(request),
             Msg::CloseDetails => self.close_details(),
             Msg::OpenThemeSelector => self.open_theme_selector(),
             Msg::PreviewTheme(id) => self.preview_theme(&id),

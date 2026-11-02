@@ -1,6 +1,7 @@
 //! The Claude Code adapter (SPEC §3.1, §5.1).
 
 pub mod assemble;
+mod details;
 mod discovery;
 mod inject;
 mod load;

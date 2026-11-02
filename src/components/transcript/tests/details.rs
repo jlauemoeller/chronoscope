@@ -15,7 +15,7 @@ use crate::model::ItemId;
 
 fn opened(msg: Option<Msg>) -> DetailsContent {
     match msg {
-        Some(Msg::OpenDetails(content)) => content,
+        Some(Msg::OpenDetails(request)) => request.content,
         other => panic!("expected OpenDetails, got {other:?}"),
     }
 }
