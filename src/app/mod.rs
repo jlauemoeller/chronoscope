@@ -11,6 +11,7 @@
 
 pub mod browser;
 mod copy;
+pub mod details;
 pub mod help;
 pub mod hints;
 pub mod index_port;
@@ -59,7 +60,9 @@ use tuirealm::listener::EventListenerCfg;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
 use crate::clipboard::{Clipboard, NoClipboard};
-use crate::components::{EmptyState, GlobalEvents, HelpContext, TOAST_DURATION, TOO_SMALL, Toast};
+use crate::components::{
+    DetailsContent, EmptyState, GlobalEvents, HelpContext, TOAST_DURATION, TOO_SMALL, Toast,
+};
 use crate::config::{Config, ConfigWarning};
 use crate::harness::Harness;
 use crate::index::{IndexEvent, IndexHandle};
@@ -121,6 +124,8 @@ pub enum Id {
     Prompt,
     /// The keybindings overlay.
     HelpOverlay,
+    /// The metadata of the selected section.
+    DetailsOverlay,
     /// The theme list with live preview.
     ThemeSelector,
     /// The notification in the bottom-right corner.
@@ -138,6 +143,15 @@ pub enum Msg {
     CloseHelp,
     /// A key scrolled the help overlay: nothing but a redraw is needed.
     HelpScrolled,
+    /// The details key on a section: open the details overlay with this
+    /// content, a snapshot made when the key was pressed.
+    OpenDetails(DetailsContent),
+    /// `Esc` or the details key in the details overlay: close it and return
+    /// the focus.
+    CloseDetails,
+    /// A key or the wheel scrolled the details overlay: nothing but a
+    /// redraw is needed.
+    DetailsScrolled,
     /// The theme key: open the theme selector.
     OpenThemeSelector,
     /// The cursor of the theme selector moved to the theme with this id:
@@ -364,6 +378,9 @@ pub struct App {
     osc52_out: Option<Box<dyn std::io::Write>>,
     /// The size the help overlay wants (borders included) while it is open.
     help_size: Option<ratatui::layout::Size>,
+    /// The size the details overlay wants (borders included) while it is
+    /// open.
+    details_size: Option<ratatui::layout::Size>,
     /// The theme selector: what it wants and what to restore on `Esc`, while
     /// it is open.
     theme_selector: Option<theme_selector::ThemeSelection>,
@@ -454,6 +471,7 @@ impl App {
             clipboard: Box::new(NoClipboard),
             osc52_out: None,
             help_size: None,
+            details_size: None,
             theme_selector: None,
             mouse: mouse::MouseState::default(),
             theme_id,
@@ -644,7 +662,9 @@ impl App {
             Msg::Quit => self.quit(),
             Msg::OpenHelp(context) => self.open_help(context),
             Msg::CloseHelp => self.close_help(),
-            Msg::HelpScrolled => self.request_redraw(RedrawRequest::Dirty),
+            Msg::HelpScrolled | Msg::DetailsScrolled => self.request_redraw(RedrawRequest::Dirty),
+            Msg::OpenDetails(content) => self.open_details(content),
+            Msg::CloseDetails => self.close_details(),
             Msg::OpenThemeSelector => self.open_theme_selector(),
             Msg::PreviewTheme(id) => self.preview_theme(&id),
             Msg::SelectTheme(id) => self.select_theme(&id),
@@ -752,6 +772,7 @@ impl App {
             prompt: self.application.mounted(&Id::Prompt),
             session_empty: self.browser.session_empty(),
             help: self.help_size,
+            details: self.details_size,
             theme_selector: self.theme_selector.as_ref().map(|s| s.size),
         }
     }

@@ -125,7 +125,7 @@ fn is_acted_on(mouse: &MouseEvent) -> bool {
 }
 
 /// When the global keys apply: not while the [`Prompt`](super::Prompt), the
-/// help overlay or the theme selector has focus. Each is mounted exactly
+/// help overlay, the details overlay or the theme selector has focus. Each is mounted exactly
 /// while it has focus, and handles its own keys (the prompt, `Ctrl-c` as
 /// well).
 fn key_clause() -> SubClause<Id> {
@@ -133,7 +133,10 @@ fn key_clause() -> SubClause<Id> {
         prompt_clause(),
         SubClause::not(SubClause::or(
             SubClause::IsMounted(Id::HelpOverlay),
-            SubClause::IsMounted(Id::ThemeSelector),
+            SubClause::or(
+                SubClause::IsMounted(Id::DetailsOverlay),
+                SubClause::IsMounted(Id::ThemeSelector),
+            ),
         )),
     )
 }

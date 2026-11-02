@@ -330,6 +330,7 @@ impl App {
         self.unmount_selector();
         self.unmount_browser();
         self.drop_help();
+        self.drop_details();
         self.drop_theme_selector();
         self.focus_stack.clear();
         self.set_screen(Screen::Browser);

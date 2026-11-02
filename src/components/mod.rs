@@ -3,6 +3,7 @@
 //! frame without an `Application`.
 
 mod browser_header;
+mod details_overlay;
 mod empty_state;
 mod global_events;
 mod harness_tabs;
@@ -27,6 +28,9 @@ use crate::theme::Theme;
 pub use browser_header::{
     BREADCRUMB_ATTR, BrowserHeader, HEADER_HEIGHT, LIVE_ATTR, PARSE_WARNINGS_ATTR, SESSION_ID_ATTR,
     parse_warning_note,
+};
+pub use details_overlay::{
+    DetailsContent, DetailsGroup, DetailsOverlay, DetailsRow, section_details,
 };
 pub use empty_state::{EMPTY_SESSION, EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL};
 pub use global_events::{GlobalEvents, quit_key_events};

@@ -93,6 +93,9 @@ pub struct LayoutInput {
     pub session_empty: bool,
     /// The size the help overlay wants, borders included, while it is open.
     pub help: Option<Size>,
+    /// The size the details overlay wants, borders included, while it is
+    /// open.
+    pub details: Option<Size>,
     /// The size the theme selector wants, borders included, while it is
     /// open.
     pub theme_selector: Option<Size>,
@@ -133,8 +136,8 @@ pub fn too_small(area: Rect) -> bool {
 /// in the same place instead of the help line; over the browser alone it
 /// takes the browser's help line.
 ///
-/// The help overlay, when `input` has one, comes after the screen (see
-/// [`help_overlay_rect`]). The toast, when `input` has one, comes last (on
+/// The help overlay and the details overlay, when `input` has one, come after
+/// the screen (see [`help_overlay_rect`]). The toast, when `input` has one, comes last (on
 /// top) in the bottom-right corner of the screen, except on the too-small
 /// screen.
 pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
@@ -183,6 +186,9 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
     }
     if let Some(wanted) = input.help {
         areas.push((Id::HelpOverlay, help_overlay_rect(area, wanted)));
+    }
+    if let Some(wanted) = input.details {
+        areas.push((Id::DetailsOverlay, help_overlay_rect(area, wanted)));
     }
     if let Some(wanted) = input.theme_selector {
         areas.push((Id::ThemeSelector, help_overlay_rect(area, wanted)));

@@ -1,0 +1,53 @@
+---
+source: src/components/details_overlay/snapshots.rs
+expression: "draw(&mut overlay, area, 80, 24)"
+---
+                                                                                
+  ╭─ Details ─────────────────────────────────────────────────────── ↑ more ─╮  
+  │    timestamp                      2026-10-21 08:35:21Z                   │  
+  │    requestedModel                 claude-opus-5-5                        │  
+  │    stop_reason                    end_turn                               │  
+  │    service_tier                   standard                               │  
+  │    speed                          standard                               │  
+  │    inference_geo                  us                                     │  
+  │    5m cache writes                800                                    │  
+  │    1h cache writes                400                                    │  
+  │    web searches                   2                                      │  
+  │    web fetches                    1                                      │  
+  │    diagnostics.cache_miss_reason  prefix_changed                         │  
+  │                                                                          │  
+  │  Environment                                                             │  
+  │                                                                          │  
+  │    gitBranch                      feature/camera-profiles                │  
+  │    cwd                            /home/user/projects/brio/crates/camer  │  
+  │                                   a-profiles/src/descriptors             │  
+  │    version                        2.1.0                                  │  
+  │    entrypoint                     cli                                    │  
+  │                                                                          │  
+  ╰──────────────────────────────────────────────────────────────────────────╯  
+                                                                                
+--- styles (fg/bg/modifiers) ---
+0: 0..80 Reset/Reset/NONE
+1: 0..2 Reset/Reset/NONE | 2..4 White/Black/NONE | 4..13 Reset/Black/NONE | 13..68 White/Black/NONE | 68..76 Gray/Black/NONE | 76..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+2: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..16 Gray/Black/NONE | 16..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+3: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..21 Gray/Black/NONE | 21..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+4: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..18 Gray/Black/NONE | 18..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+5: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..19 Gray/Black/NONE | 19..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+6: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..12 Gray/Black/NONE | 12..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+7: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..20 Gray/Black/NONE | 20..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+8: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..22 Gray/Black/NONE | 22..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+9: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..22 Gray/Black/NONE | 22..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+10: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..19 Gray/Black/NONE | 19..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+11: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..18 Gray/Black/NONE | 18..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+12: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..36 Gray/Black/NONE | 36..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+13: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+14: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..5 Reset/Black/NONE | 5..16 Reset/Black/BOLD | 16..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+15: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+16: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..16 Gray/Black/NONE | 16..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+17: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..10 Gray/Black/NONE | 10..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+18: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+19: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..14 Gray/Black/NONE | 14..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+20: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..7 Reset/Black/NONE | 7..17 Gray/Black/NONE | 17..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+21: 0..2 Reset/Reset/NONE | 2..3 White/Black/NONE | 3..77 Reset/Black/NONE | 77..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+22: 0..2 Reset/Reset/NONE | 2..78 White/Black/NONE | 78..80 Reset/Reset/NONE
+23: 0..80 Reset/Reset/NONE

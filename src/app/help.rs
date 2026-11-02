@@ -36,7 +36,9 @@ impl App {
     /// Mounts the help overlay for `context` and gives it the focus. Does
     /// nothing when it is open already.
     pub(super) fn open_help(&mut self, context: HelpContext) {
-        if self.application.mounted(&Id::HelpOverlay) {
+        if self.application.mounted(&Id::HelpOverlay)
+            || self.application.mounted(&Id::DetailsOverlay)
+        {
             return;
         }
         let content = HelpContent::new(

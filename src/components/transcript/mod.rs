@@ -79,6 +79,7 @@
 
 mod cache;
 mod content;
+mod details;
 mod folding;
 mod follow;
 mod keys;
@@ -667,7 +668,9 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     /// [`Msg::OpenSubagent`] on a subagent section (nothing on any other),
     /// and the back key [`Msg::CloseSubagent`] when the transcript is
     /// [`nested`](Self::nested). The resume key answers
-    /// [`Msg::RequestResume`] for the open session.
+    /// [`Msg::RequestResume`] for the open session. The details key answers
+    /// [`Msg::OpenDetails`] with the rows of the selected section (nothing
+    /// with nothing selected).
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let key = match ev {
             Event::Keyboard(key) => key,
@@ -690,6 +693,7 @@ impl AppComponent<Msg, UserEvent> for Transcript {
             Action::Export => return Some(self.export_msg(false)),
             Action::ExportFull => return Some(self.export_msg(true)),
             Action::Resume => return Some(Msg::RequestResume(None)),
+            Action::Details => return self.details_msg(),
             _ => {}
         }
         let cmd = keys::cmd_for(action)?;

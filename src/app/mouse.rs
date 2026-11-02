@@ -57,7 +57,12 @@ impl RoutedMouse {
 
 /// The ids of the overlays: the components under the topmost of them get no
 /// mouse events.
-const OVERLAYS: [Id; 3] = [Id::SelectorFrame, Id::HelpOverlay, Id::ThemeSelector];
+const OVERLAYS: [Id; 4] = [
+    Id::SelectorFrame,
+    Id::HelpOverlay,
+    Id::DetailsOverlay,
+    Id::ThemeSelector,
+];
 
 /// The topmost overlay and its area, or `None` if none is open.
 pub fn topmost_overlay(layout: &ScreenLayout) -> Option<(Id, Rect)> {
@@ -210,7 +215,7 @@ impl App {
 
     /// A press or a wheel step outside the topmost overlay `overlay`. The
     /// wheel is ignored. A left press closes the overlay with the message
-    /// `Esc` gives: `CloseHelp`, `CancelTheme` (which gives the previous
+    /// `Esc` gives: `CloseHelp`, `CloseDetails`, `CancelTheme` (which gives the previous
     /// theme back) and, for the selector over a session, `CloseSelector` (which
     /// also ends the search whose prompt is open). At startup there is
     /// nothing to return to (closing would quit), and the resume
@@ -221,6 +226,7 @@ impl App {
         }
         let msg = match overlay {
             Id::HelpOverlay => Msg::CloseHelp,
+            Id::DetailsOverlay => Msg::CloseDetails,
             Id::ThemeSelector => Msg::CancelTheme,
             Id::SelectorFrame
                 if self.screen == Screen::BrowserSelector && !self.resume.pending() =>
@@ -254,7 +260,7 @@ impl App {
         let prompt = self.application.mounted(&Id::Prompt);
         let wheel = matches!(kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown);
         match id {
-            Id::HelpOverlay | Id::ThemeSelector => true,
+            Id::HelpOverlay | Id::DetailsOverlay | Id::ThemeSelector => true,
             Id::Transcript | Id::Subagent(_) => !prompt,
             Id::ProjectList if wheel && self.selector.filtered.is_some() => false,
             Id::SessionList => !prompt || self.selector.search.is_some(),
