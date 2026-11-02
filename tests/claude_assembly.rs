@@ -1380,6 +1380,17 @@ fn a_compaction_ends_the_association_with_the_prompt() {
 }
 
 #[test]
+fn a_compaction_summary_without_a_boundary_ends_the_association_with_the_prompt() {
+    let stats = last_stats(&[
+        human("2026-01-01T00:00:00Z"),
+        COMPACT_SUMMARY.to_owned(),
+        reply("m1", "2026-01-01T00:10:00Z", "x"),
+        footer(Some("2026-01-01T00:10:30Z"), Some(1000), "7"),
+    ]);
+    assert_eq!(stats.duration, Duration::from_secs(30));
+}
+
+#[test]
 fn a_transcript_starting_with_an_assistant_entry_starts_at_that_entry() {
     let stats = last_stats(&[
         reply("m1", "2026-01-01T00:00:10Z", "x"),
@@ -1564,6 +1575,26 @@ fn messages_without_an_id_are_counted_by_uuid_then_line() {
     assert_eq!(stats.message_count, 2);
 }
 
+#[test]
+fn messages_without_an_id_or_uuid_are_counted_by_line_offset() {
+    let bare = r#"{"type":"assistant","timestamp":"2026-01-01T00:00:01Z","message":{"model":"x","content":[{"type":"text","text":"t"}]}}"#;
+    let mut asm = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(&b""[..])));
+    let mut offset = 0;
+    for line in [
+        human("2026-01-01T00:00:00Z"),
+        bare.to_owned(),
+        bare.to_owned(),
+        footer(Some("2026-01-01T00:00:05Z"), Some(1000), "9"),
+    ] {
+        let end = offset + line.len() as u64;
+        asm.push_line(line.as_bytes(), offset..end);
+        offset = end + 1;
+    }
+    // The same text at two offsets is two messages.
+    let stats = assistant(&asm.turns()[1]).stats.clone().unwrap();
+    assert_eq!(stats.message_count, 2);
+}
+
 fn late_message_lines() -> Vec<String> {
     vec![
         human("2026-01-01T00:00:00Z"),
@@ -1594,6 +1625,22 @@ fn a_message_after_a_footer_updates_the_count() {
             let stats = assistant(&t[0]).stats.as_ref().unwrap();
             assert_eq!(stats.message_count, 2);
             assert_eq!(stats.duration, Duration::from_secs(5));
+        }
+        other => panic!("expected one Updated, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_late_message_that_adds_no_item_still_updates_the_count_and_sends_updated() {
+    let lines = late_message_lines();
+    let mut asm = Assembler::new(chronoscope::model::ByteSource::Memory(Arc::from(&b""[..])));
+    for line in &lines[..3] {
+        push(&mut asm, line);
+    }
+    let empty = r#"{"type":"assistant","uuid":"a-m2","timestamp":"2026-01-01T00:00:06Z","message":{"id":"m2","model":"x","content":[]}}"#;
+    match &push(&mut asm, empty)[..] {
+        [ModelUpdate::Updated(t)] => {
+            assert_eq!(assistant(&t[0]).stats.as_ref().unwrap().message_count, 2);
         }
         other => panic!("expected one Updated, got {other:?}"),
     }

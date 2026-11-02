@@ -704,7 +704,12 @@ impl Assembler {
 
     fn on_assistant(&mut self, entry: Entry, ts: DateTime<Utc>, range: &Range<u64>) {
         let effort = entry.effort();
-        let usable = usable_timestamp(&entry);
+        // Only a new turn needs it (its start).
+        let usable = self
+            .cur
+            .is_none()
+            .then(|| usable_timestamp(&entry))
+            .flatten();
         let Some(message) = entry.message else {
             return;
         };
