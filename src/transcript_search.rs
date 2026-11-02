@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::components::turn_block::renderers::format_stats;
+use crate::components::turn_block::renderers::{ToolCallSection, format_stats};
 use crate::components::turn_block::{Section, SectionContent, SectionId, derive_sections};
 use crate::model::{InjectedEntry, ToolCall, Turn};
 
@@ -290,10 +290,9 @@ fn system_text(entries: &[InjectedEntry]) -> String {
 }
 
 fn tool_text(call: &ToolCall) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    if !call.description.trim().is_empty() {
-        parts.push(call.description.trim().to_owned());
-    }
+    // The description row as drawn, with the agent type of a subagent and
+    // the duration after it: the text shown is the text searched.
+    let mut parts: Vec<String> = vec![ToolCallSection(call).drawn_description()];
     input_values(&call.input, &mut parts);
     if let Some(result) = &call.result {
         match result.output.text() {

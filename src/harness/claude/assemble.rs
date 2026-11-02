@@ -680,8 +680,9 @@ impl Assembler {
         {
             self.flush_current();
             self.compaction_pending = None;
+            let is_async = entry.is_async_launch();
             for block in blocks.iter().filter(|b| b.is_result()) {
-                self.attach_result(block, ts, range);
+                self.attach_result(block, ts, range, is_async);
             }
             return;
         }
@@ -704,6 +705,7 @@ impl Assembler {
 
     fn on_assistant(&mut self, entry: Entry, ts: DateTime<Utc>, range: &Range<u64>) {
         let effort = entry.effort();
+        let is_async = entry.is_async_launch();
         // Only a new turn needs it (its start).
         let usable = self
             .cur
@@ -897,7 +899,7 @@ impl Assembler {
         }
         self.cur = Some(b);
         for block in &results {
-            self.attach_result(block, ts, range);
+            self.attach_result(block, ts, range, is_async);
         }
     }
 
@@ -930,7 +932,17 @@ impl Assembler {
     }
 
     /// Attaches the result in `block` to the call it names, if known.
-    fn attach_result(&mut self, block: &Block, ts: DateTime<Utc>, range: &Range<u64>) {
+    ///
+    /// The call's duration is the time to the result. An asynchronous launch
+    /// (`is_async`, from the entry's `toolUseResult`) only records the start
+    /// of the work, so the call gets none.
+    fn attach_result(
+        &mut self,
+        block: &Block,
+        ts: DateTime<Utc>,
+        range: &Range<u64>,
+        is_async: bool,
+    ) {
         let Some(call_id) = block.tool_use_id.as_deref() else {
             return;
         };
@@ -952,7 +964,9 @@ impl Assembler {
         } else {
             ToolStatus::Ok
         };
-        let duration = (ts - call.started).to_std().ok();
+        let duration = (!is_async)
+            .then(|| (ts - call.started).to_std().ok())
+            .flatten();
 
         let unchanged = matches!(
             &*self.turns[call.turn],

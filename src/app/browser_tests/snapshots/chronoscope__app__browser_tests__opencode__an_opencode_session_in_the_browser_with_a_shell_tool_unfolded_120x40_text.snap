@@ -22,9 +22,9 @@ expression: screen
 │                                                                                                                      │
 │   Let me look at the repo layout.                                                                                    │
 │                                                                                                                      │
-│ ▶ Read src/main.rs                                                                                                   │
+│ ▶ Read src/main.rs · 1.0s                                                                                            │
 │                                                                                                                      │
-▒ ▼ List the sources                                                                                                   │
+▒ ▼ List the sources · 2.0s                                                                                            │
 ▒                                                                                                                      │
 ▒   Command:                                                                                                           │
 ▒                                                                                                                      │
@@ -35,9 +35,9 @@ expression: screen
 ▒      main.rs                                                                                                         │
 ▒      settings.rs                                                                                                     │
 │                                                                                                                      │
-│ ▶ shell                                                                                                              │
+│ ▶ shell · 4.0s                                                                                                       │
 │                                                                                                                      │
-│ ▶ Write src/scratch.txt                                                                                              │
+│ ▶ Write src/scratch.txt · 1.0s                                                                                       │
 │                                                                                                                      │
 │   17s · 2 messages · 3.3k tokens · $0.03                                                                             │
                                                                                                                         

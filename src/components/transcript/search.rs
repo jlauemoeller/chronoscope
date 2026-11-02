@@ -931,3 +931,47 @@ fn is_label(row: &str) -> bool {
                 && name.chars().all(|c| c.is_alphabetic() || c == ' ')
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The drawn rows of a section, numbered from 2 (after the title and a
+    /// blank row), as `SectionView` gets them: with the fold marker.
+    fn view<'a>(rows: &[&str], source: &'a Source) -> SectionView<'a> {
+        let rows = rows
+            .iter()
+            .enumerate()
+            .map(|(i, text)| (i + 2, (*text).to_owned()))
+            .collect();
+        SectionView::new(rows, false, source)
+    }
+
+    #[test]
+    fn a_description_row_ending_in_the_duration_is_found_as_the_source_line() {
+        // `tool_text` gives the description as drawn, duration included, so
+        // the drawn row ends where the source line ends.
+        let source = Source::new("Do it · 1.2s\nls\nout".to_owned(), false, false);
+        let view = view(&["▼ Do it · 1.2s", "", "  Command:", "     ls"], &source);
+        assert!(view.place(0).is_some(), "the description row is found");
+        assert_eq!(view.row_at(view.place(0).unwrap()), 2);
+        let wrapped = view_wrapped();
+        assert_eq!(wrapped, Some(2));
+    }
+
+    /// A description wrapped over two rows, the duration at the end of the
+    /// second.
+    fn view_wrapped() -> Option<usize> {
+        let source = Source::new("Do it now and then · 1.2s".to_owned(), false, false);
+        let view = view(&["▼ Do it now and", "  then · 1.2s"], &source);
+        view.place(0).map(|at| view.row_at(at))
+    }
+
+    #[test]
+    fn a_bare_description_does_not_end_where_its_row_does() {
+        // What the search text was before the duration was part of it.
+        let source = Source::new("Do it".to_owned(), false, false);
+        let view = view(&["▼ Do it · 1.2s"], &source);
+        assert!(view.place(0).is_none());
+    }
+}

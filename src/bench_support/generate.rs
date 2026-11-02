@@ -471,8 +471,17 @@ impl<W: Write> Generator<W> {
         // the entry is assembled around it.
         let head = self.envelope_head("user");
         let error = if is_error { r#""is_error":true,"# } else { "" };
+        // Claude Code repeats the output in `toolUseResult`: an object for a
+        // call that succeeded, the error message as a string for one that
+        // failed. The assembler reads only `isAsync` from it, but has to get
+        // past all of it.
+        let result = if is_error {
+            json(&text)
+        } else {
+            tool_use_result(kind, &text)
+        };
         let line = format!(
-            r#"{head},"message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{call_id}",{error}"content":{}}}]}}}}"#,
+            r#"{head},"message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{call_id}",{error}"content":{}}}]}},"toolUseResult":{result}}}"#,
             json(&text)
         );
         self.raw(&line)
@@ -551,6 +560,28 @@ impl<W: Write> Generator<W> {
         self.bytes += line.len() as u64 + 1;
         self.lines += 1;
         Ok(())
+    }
+}
+
+/// The `toolUseResult` object of a call that succeeded, in the shape Claude
+/// Code writes it for the tool (0 Bash, 1 Read, 2 Edit, 3 Grep): the output
+/// again, in the fields the tool uses.
+fn tool_use_result(kind: usize, text: &str) -> String {
+    let lines = text.lines().count();
+    let text = json(text);
+    match kind {
+        0 => format!(
+            r#"{{"stdout":{text},"stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false}}"#
+        ),
+        1 => format!(
+            r#"{{"type":"text","file":{{"filePath":"/home/user/project/src/lib.rs","content":{text},"numLines":{lines},"startLine":1,"totalLines":{lines}}}}}"#
+        ),
+        2 => format!(
+            r#"{{"filePath":"/home/user/project/src/lib.rs","oldString":"","newString":"","originalFile":{text},"structuredPatch":[],"userModified":false,"replaceAll":false}}"#
+        ),
+        _ => format!(
+            r#"{{"mode":"content","numFiles":0,"filenames":[],"content":{text},"numLines":{lines}}}"#
+        ),
     }
 }
 

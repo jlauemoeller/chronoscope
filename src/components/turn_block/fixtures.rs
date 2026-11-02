@@ -84,6 +84,15 @@ pub fn tool_of(
     })
 }
 
+/// `item`, a tool call, with the duration `millis`.
+pub fn with_duration(mut item: Item, millis: u64) -> Item {
+    let Item::ToolCall(call) = &mut item else {
+        panic!("not a tool call");
+    };
+    call.duration = Some(Duration::from_millis(millis));
+    item
+}
+
 pub fn text(id: &str, text: &str) -> Item {
     Item::Text {
         id: ItemId::from(id),

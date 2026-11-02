@@ -306,7 +306,7 @@ fn loaded_transcript(dir: &Path, bytes: u64) -> (Transcript, SyntheticSession) {
 fn folded_large_outputs_are_not_materialised_by_the_load_or_by_rendering() {
     let tmp = tempfile::tempdir().unwrap();
     let (reads, calls) = (source_reads(), text_calls());
-    let (mut transcript, session) = loaded_transcript(tmp.path(), 5 * MIB);
+    let (mut transcript, session) = loaded_transcript(tmp.path(), 12 * MIB);
     assert!(session.large_outputs > 0);
     assert_eq!(text_calls(), calls, "the load materialised an output");
     assert_eq!(source_reads(), reads, "the load re-read the transcript");
@@ -338,7 +338,7 @@ fn folded_large_outputs_are_not_materialised_by_the_load_or_by_rendering() {
 #[test]
 fn the_frame_scenario_unfolds_a_large_output_and_that_does_materialise_it() {
     let tmp = tempfile::tempdir().unwrap();
-    let (transcript, _) = loaded_transcript(tmp.path(), 5 * MIB);
+    let (transcript, _) = loaded_transcript(tmp.path(), 12 * MIB);
     let (reads, calls) = (source_reads(), text_calls());
     let mut scenario = FrameScenario::new(transcript, SIZE);
     // The instrument works: unfolding the large output reads it.

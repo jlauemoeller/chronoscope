@@ -1714,3 +1714,99 @@ fn a_message_count_of_the_wrong_type_does_not_fail_the_line() {
         assert_eq!(stats.message_count, 1);
     }
 }
+
+// ------------------------------------------------------ toolUseResult
+
+/// A call `t1` written at :00 and its result at :03, the result line carrying
+/// `tool_use_result` (the raw JSON after `"toolUseResult":`) when given.
+fn call_with_tool_use_result(tool_use_result: Option<&str>) -> String {
+    let extra = tool_use_result.map_or(String::new(), |raw| format!(r#","toolUseResult":{raw}"#));
+    format!(
+        concat!(
+            r#"{{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:00Z","message":{{"id":"m","model":"x","content":[{{"type":"tool_use","id":"t1","name":"Task","input":{{"subagent_type":"Explore","description":"Look around"}}}}]}}}}"#,
+            "\n",
+            r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:03Z","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"t1","content":"done"}}]}}{extra}}}"#,
+            "\n",
+        ),
+        extra = extra
+    )
+}
+
+/// The call `t1` of the session `call_with_tool_use_result` writes.
+fn assembled_call(tool_use_result: Option<&str>) -> ToolCall {
+    let turns = assemble_str(&call_with_tool_use_result(tool_use_result));
+    assert_eq!(turns.len(), 1, "the line parses");
+    call(assistant(&turns[0]), "t1").clone()
+}
+
+fn assert_result_and_duration(c: &ToolCall, duration: Option<Duration>) {
+    assert_eq!(c.status, ToolStatus::Ok);
+    assert_eq!(c.result.as_ref().unwrap().output.text().unwrap(), "done");
+    assert_eq!(c.duration, duration);
+}
+
+#[test]
+fn a_synchronous_call_has_a_duration_whatever_its_tool_use_result_is() {
+    let three = Some(Duration::from_secs(3));
+    for raw in [
+        None,
+        Some(r#"{"isAsync":false,"status":"completed"}"#),
+        Some(r#"{"stdout":"x","stderr":""}"#),
+        Some(r#""Error: the file does not exist""#),
+        Some("[1,2,3]"),
+        Some("42"),
+        Some("null"),
+        Some("{}"),
+    ] {
+        assert_result_and_duration(&assembled_call(raw), three);
+    }
+}
+
+#[test]
+fn an_asynchronous_launch_has_no_duration() {
+    let c = assembled_call(Some(
+        r#"{"isAsync":true,"status":"async_launched","agentId":"a1","prompt":"p"}"#,
+    ));
+    assert_result_and_duration(&c, None);
+}
+
+#[test]
+fn a_string_tool_use_result_still_parses_the_line_and_its_result() {
+    let c = assembled_call(Some(r#""Error: something went wrong""#));
+    assert_result_and_duration(&c, Some(Duration::from_secs(3)));
+}
+
+#[test]
+fn an_is_async_of_the_wrong_type_still_parses_the_line_and_its_result() {
+    for raw in [
+        r#"{"isAsync":"true"}"#,
+        r#"{"isAsync":1}"#,
+        r#"{"isAsync":{"x":true}}"#,
+        r#"{"isAsync":[true]}"#,
+        r#"{"isAsync":null}"#,
+    ] {
+        let c = assembled_call(Some(raw));
+        assert_result_and_duration(&c, Some(Duration::from_secs(3)));
+    }
+}
+
+#[test]
+fn a_large_tool_use_result_is_skipped_and_the_result_is_read_from_the_message() {
+    let big = "x".repeat(200_000);
+    let raw =
+        format!(r#"{{"stdout":"{big}","nested":{{"a":[1,2,{{"b":"{big}"}}]}},"isAsync":false}}"#);
+    let c = assembled_call(Some(&raw));
+    assert_result_and_duration(&c, Some(Duration::from_secs(3)));
+}
+
+#[test]
+fn an_asynchronous_launch_keeps_no_duration_on_a_repeated_call_line() {
+    // The call is written again after its result (a streamed update): the
+    // duration stays as the result left it.
+    let mut text = call_with_tool_use_result(Some(r#"{"isAsync":true}"#));
+    let call_line = text.lines().next().unwrap().to_owned();
+    text.push_str(&call_line);
+    text.push('\n');
+    let turns = assemble_str(&text);
+    assert_result_and_duration(call(assistant(&turns[0]), "t1"), None);
+}

@@ -20,6 +20,7 @@ mod read;
 mod search;
 mod shell;
 mod subagent;
+mod timing;
 mod web;
 mod write;
 
@@ -30,6 +31,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use serde_json::Value;
 
+use self::timing::duration_suffix;
 use super::{
     BODY_INDENT, Rendered, SectionCtx, SectionRenderer, ellipsize, first_line, fold_marker, indent,
     label, verbatim_lines, with_lead, word_wrap,
@@ -125,33 +127,83 @@ impl ToolCallSection<'_> {
         .to_owned()
     }
 
-    /// Folded: one row, cut with `…` (the agent type of a subagent is kept).
-    /// Unfolded: the description is prose, so it is word-wrapped.
+    /// The description with its duration (` · 1.2s`), the summary of a call
+    /// in the full export.
+    pub fn description_with_duration(&self) -> String {
+        let mut text = self.description_text();
+        text.extend(duration_suffix(self.0));
+        text
+    }
+
+    /// The description row as the unfolded section draws it, in one line:
+    /// the description, the agent type of a subagent and the duration. What
+    /// is searched, so that the text shown is the text searched.
+    pub fn drawn_description(&self) -> String {
+        let mut text = self.description_text();
+        text.extend(subagent::agent_type(self.0).map(|agent| format!(" ({agent})")));
+        text.extend(duration_suffix(self.0));
+        text
+    }
+
+    /// Folded: one row, cut with `…` (the agent type of a subagent and the
+    /// duration are kept). Unfolded: the description is prose, so it is
+    /// word-wrapped, the duration being its last, muted, words.
     fn description(&self, ctx: &SectionCtx<'_>, style: Style) -> Vec<Line<'static>> {
         let text = self.description_text();
-        let suffix = subagent::agent_type(self.0).map(|agent| format!(" ({agent})"));
+        let agent = subagent::agent_type(self.0).map(|agent| format!(" ({agent})"));
+        let duration = duration_suffix(self.0);
         if !ctx.folded {
-            let full = match &suffix {
-                Some(suffix) => format!("{text}{suffix}"),
-                None => text,
+            let full = format!(
+                "{text}{}{}",
+                agent.as_deref().unwrap_or_default(),
+                duration.as_deref().unwrap_or_default()
+            );
+            let rows = word_wrap(&full, ctx.width, style);
+            return match duration {
+                Some(duration) => timing::mute_tail(rows, &duration, ctx.muted()),
+                None => rows,
             };
-            return word_wrap(&full, ctx.width, style);
         }
+        self.folded_description(ctx, style, &text, agent, duration)
+    }
+
+    /// The folded row: the description is cut first, the agent type and the
+    /// duration stay. When they leave no room for the description, the whole
+    /// row is cut instead.
+    fn folded_description(
+        &self,
+        ctx: &SectionCtx<'_>,
+        style: Style,
+        text: &str,
+        agent: Option<String>,
+        duration: Option<String>,
+    ) -> Vec<Line<'static>> {
         let width = usize::from(ctx.width);
-        let line = Line::from(Span::styled(first_line(&text), style));
-        let Some(suffix) = suffix else {
-            return vec![ellipsize(line, width, false)];
+        let width_of = |s: &Option<String>| {
+            s.as_deref()
+                .map_or(0, unicode_width::UnicodeWidthStr::width)
         };
-        let suffix_width = unicode_width::UnicodeWidthStr::width(suffix.as_str());
-        if suffix_width + 1 >= width {
-            let all = Line::from(Span::styled(
-                format!("{}{suffix}", first_line(&text)),
-                style,
-            ));
-            return vec![ellipsize(all, width, false)];
+        let tail_width = width_of(&agent) + width_of(&duration);
+        let first = first_line(text);
+        let description = Line::from(Span::styled(first.clone(), style));
+        if tail_width == 0 {
+            return vec![ellipsize(description, width, false)];
         }
-        let mut line = ellipsize(line, width - suffix_width, false);
-        line.spans.push(Span::styled(suffix, style));
+        let muted = ctx.muted();
+        let mut tail = Vec::new();
+        if let Some(agent) = agent {
+            tail.push(Span::styled(agent, style));
+        }
+        if let Some(duration) = duration {
+            tail.push(Span::styled(duration, muted));
+        }
+        if tail_width + 1 >= width {
+            let mut spans = vec![Span::styled(first, style)];
+            spans.extend(tail);
+            return vec![cut_row(Line::from(spans), width)];
+        }
+        let mut line = ellipsize(description, width - tail_width, false);
+        line.spans.extend(tail);
         vec![line]
     }
 
@@ -262,6 +314,25 @@ pub struct PlainBlock {
     pub label: &'static str,
     /// The content rows.
     pub lines: Vec<String>,
+}
+
+/// `line` cut to `width` cells. The `…` takes the style of the text it
+/// replaces, not that of the last span of the line.
+fn cut_row(line: Line<'static>, width: usize) -> Line<'static> {
+    if line.width() <= width {
+        return line;
+    }
+    let mut cut = ellipsize(line, width, false);
+    if let Some(style) = cut
+        .spans
+        .len()
+        .checked_sub(2)
+        .map(|before| cut.spans[before].style)
+        && let Some(ellipsis) = cut.spans.last_mut()
+    {
+        ellipsis.style = style;
+    }
+    cut
 }
 
 /// The text of the truncation row.

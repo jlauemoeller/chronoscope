@@ -58,9 +58,81 @@ pub struct Entry<M = Message> {
     pub cwd: Option<String>,
     #[serde(rename = "durationMs")]
     pub duration_ms: Option<u64>,
+    /// The structured result of a tool call (`tool_result` entries). Only
+    /// `isAsync` is read from it; see [`ToolUseResult`].
+    #[serde(rename = "toolUseResult")]
+    pub tool_use_result: Option<ToolUseResult>,
+}
+
+/// An entry's `toolUseResult`: an object, a string (a failed call has its
+/// error message there), or anything else.
+///
+/// It can be very large (stdout, whole files), so it is never materialised
+/// as a `Value`: the head reads `isAsync` and skips the rest, and any other
+/// shape is skipped. An `isAsync` of another type than a boolean makes the
+/// object arm fail, so the value falls to [`Other`](Self::Other) and counts as
+/// absent instead of failing the line.
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum ToolUseResult {
+    Object(ToolUseResultHead),
+    Other(serde::de::IgnoredAny),
+}
+
+/// The one field of a `toolUseResult` object the assembler reads.
+///
+/// Read by hand so that only a JSON object is accepted (a derived struct
+/// would also be read from an array, and `[true]` is not a launch); any
+/// field other than `isAsync` is skipped.
+pub struct ToolUseResultHead {
+    /// `true` for an asynchronous subagent: the result only records the
+    /// launch.
+    pub is_async: Option<bool>,
+}
+
+impl<'de> Deserialize<'de> for ToolUseResultHead {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct HeadVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for HeadVisitor {
+            type Value = ToolUseResultHead;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a toolUseResult object")
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut is_async = None;
+                while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
+                    if key == "isAsync" {
+                        is_async = map.next_value::<Option<bool>>()?;
+                    } else {
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+                Ok(ToolUseResultHead { is_async })
+            }
+        }
+
+        deserializer.deserialize_map(HeadVisitor)
+    }
 }
 
 impl Entry {
+    /// Whether the entry's `toolUseResult` says the call ran asynchronously,
+    /// so that the result is the launch and not the end of the call.
+    pub fn is_async_launch(&self) -> bool {
+        matches!(
+            self.tool_use_result,
+            Some(ToolUseResult::Object(ToolUseResultHead {
+                is_async: Some(true)
+            }))
+        )
+    }
+
     /// `origin.kind`, when the entry has an `origin` object.
     pub fn origin_kind(&self) -> Option<&str> {
         self.origin.as_ref()?.get("kind")?.as_str()
@@ -312,5 +384,37 @@ mod tests {
     fn a_result_is_not_read_from_a_line_with_invalid_utf8_in_the_result() {
         let line = advisor_line(b"hel\xfflo", br#"{"output_tokens":7}"#);
         assert_eq!(extract_result_text(&line, "c1"), None);
+    }
+
+    fn read(raw: &str) -> Entry {
+        let line = format!(r#"{{"type":"user","toolUseResult":{raw}}}"#);
+        read_entry(line.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn tool_use_result_is_the_head_and_not_a_value() {
+        // The field's type is the untagged head: a result of any size is
+        // never materialised as a `serde_json::Value`.
+        let entry = read(r#"{"isAsync":true,"stdout":"x"}"#);
+        let _: &Option<ToolUseResult> = &entry.tool_use_result;
+        assert!(entry.is_async_launch());
+    }
+
+    #[test]
+    fn only_a_boolean_true_is_an_asynchronous_launch() {
+        assert!(read(r#"{"isAsync":true}"#).is_async_launch());
+        for raw in [
+            r#"{"isAsync":false}"#,
+            r#"{"isAsync":"true"}"#,
+            r#"{"isAsync":1}"#,
+            r#"{"isAsync":null}"#,
+            r#"{}"#,
+            r#""isAsync""#,
+            "[true]",
+            "true",
+            "null",
+        ] {
+            assert!(!read(raw).is_async_launch(), "{raw}");
+        }
     }
 }
