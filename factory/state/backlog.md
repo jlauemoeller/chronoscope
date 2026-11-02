@@ -12,7 +12,7 @@
 | 008-claude-detail-sources | Complete |
 | 009-opencode-detail-sources | Complete |
 | 010-turn-sidebar-pane | Complete |
-| 011-sidebar-follows-transcript | Planned |
+| 011-sidebar-follows-transcript | In progress |
 | 012-turn-sidebar-keys | Planned |
 | 013-turn-sidebar-mouse | Planned |
 | 014-cycle-two-docs | Planned |
