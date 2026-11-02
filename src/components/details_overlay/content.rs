@@ -4,10 +4,11 @@
 //! The content is plain data, so it can ride in a message and be snapshotted
 //! as a whole. How the rows are made from the model is in [`super::rows`].
 
+use ratatui::buffer::CellWidth;
 use ratatui::layout::Size;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::theme::{Role, Theme, Token};
@@ -245,30 +246,38 @@ fn display_lines(value: &str) -> Vec<String> {
         .collect()
 }
 
-/// The columns `text` takes, counted as [`char_wrap`] counts them.
-fn columns(text: &str) -> usize {
-    text.chars().map(|ch| ch.width().unwrap_or(0)).sum()
+/// The graphemes of `text` that are drawn, with the columns each takes, as the
+/// buffer does it: it drops those with a control character and draws the rest
+/// whole.
+fn drawn_graphemes(text: &str) -> impl Iterator<Item = (&str, usize)> {
+    text.graphemes(true)
+        .filter(|g| !g.contains(char::is_control))
+        .map(|g| (g, usize::from(g.cell_width())))
 }
 
-/// `text` cut into pieces at most `width` columns wide, at any character
+/// The columns `text` takes, counted as [`char_wrap`] counts them.
+fn columns(text: &str) -> usize {
+    drawn_graphemes(text).map(|(_, cols)| cols).sum()
+}
+
+/// `text` cut into pieces at most `width` columns wide, at any grapheme
 /// (paths and long tokens are never hidden, SPEC §5.5). Always at least one
-/// piece. A character wider than `width` gets a piece of its own. A space
+/// piece. A grapheme wider than `width` gets a piece of its own. A space
 /// the cut falls on is dropped, so a piece never starts with it and the
 /// text stays under the value column.
 fn char_wrap(text: &str, width: usize) -> Vec<String> {
     let mut pieces = Vec::new();
     let mut current = String::new();
     let mut used = 0;
-    for ch in text.chars() {
-        let cols = ch.width().unwrap_or(0);
+    for (grapheme, cols) in drawn_graphemes(text) {
         if used + cols > width && !current.is_empty() {
             pieces.push(std::mem::take(&mut current));
             used = 0;
-            if ch == ' ' {
+            if grapheme == " " {
                 continue;
             }
         }
-        current.push(ch);
+        current.push_str(grapheme);
         used += cols;
     }
     // Only spaces after the last cut are not a row.
@@ -516,6 +525,23 @@ mod tests {
         assert_eq!(char_wrap("日本語", 4), ["日本", "語"]);
         assert_eq!(char_wrap("日本語", 1), ["日", "本", "語"]);
         assert_eq!(char_wrap("", 5), [""]);
+    }
+
+    #[test]
+    fn a_grapheme_is_measured_as_it_is_drawn() {
+        let sign = "\u{26a0}\u{fe0f}";
+        let value = format!("{}END", sign.repeat(40));
+        let wanted = |value: &str| {
+            let rows = vec![row("k", value)];
+            DetailsContent::new(vec![DetailsGroup::new("G", rows)]).desired_size(u16::MAX)
+        };
+        // 83 columns are wanted, as 83 "x" want.
+        assert_eq!(wanted(&value), wanted(&"x".repeat(83)));
+        let pieces = char_wrap(&value, 10);
+        assert_eq!(pieces[0], sign.repeat(5));
+        assert_eq!(pieces.last().unwrap(), "END");
+        let zwj = "\u{1f469}\u{200d}\u{1f4bb}";
+        assert_eq!(wanted(&zwj.repeat(40)), wanted(&"x".repeat(80)));
     }
 
     #[test]

@@ -541,6 +541,11 @@ fn what_it_shows_does_not_change_when_the_turn_does() {
 /// An Assistant turn whose model name is 110 columns wide, so its details
 /// are wider than a small screen and wrap there.
 fn long_model_turn() -> Arc<Turn> {
+    turn_with_model(format!("claude-{}", "m".repeat(103)))
+}
+
+/// An Assistant turn whose model name is `model`.
+fn turn_with_model(model: String) -> Arc<Turn> {
     let mut turn = (*arc(with_id(
         blocks::assistant(
             None,
@@ -553,7 +558,7 @@ fn long_model_turn() -> Arc<Turn> {
     let Turn::Assistant(assistant) = &mut turn else {
         unreachable!()
     };
-    assistant.model = format!("claude-{}", "m".repeat(103));
+    assistant.model = model;
     Arc::new(turn)
 }
 
@@ -569,10 +574,33 @@ fn open_long_model_at(width: u16, height: u16) -> Rig {
 }
 
 #[test]
+fn a_value_is_drawn_to_its_end_however_its_graphemes_are_measured() {
+    // A sign with a variation selector is wider than its characters, and the
+    // buffer gives a halfwidth sound mark cells of its own.
+    let values = [
+        format!("{}END", "\u{26a0}\u{fe0f}".repeat(40)),
+        format!("{}END", "\u{ff76}\u{ff9e}".repeat(7)),
+    ];
+    for value in values {
+        for (width, height) in [(80, 24), (120, 40), (200, 30)] {
+            let mut rig = rig_with(theme("default"), width, height);
+            rig.open_with(vec![turn_with_model(value.clone())]);
+            rig.open_details();
+            let rows = overlay_rows(&mut rig, width, height).join("\n");
+            assert!(rows.contains("END"), "{width}x{height}\n{rows}");
+        }
+    }
+}
+
+#[test]
 fn a_wider_screen_gives_the_overlay_the_width_its_rows_want() {
     let mut rig = open_long_model_at(80, 24);
-    // Capped by the screen: 76 columns, the model wrapped.
-    assert_eq!(rect_of(&rig).width, 76);
+    // Capped by the screen: 76 columns, the model wrapped. Read before
+    // anything draws, because `overlay_rows` sends `Msg::Resized`, which asks
+    // the overlay for its size again.
+    let at_open = rect_of(&rig);
+    assert_eq!(at_open.width, 76);
+    assert_eq!(at_open.height, 14, "as high as the wrapped rows");
     let narrow = overlay_rows(&mut rig, 80, 24).join("\n");
     assert!(!narrow.contains(&"m".repeat(103)), "{narrow}");
     // 13 (`output tokens`) + 2 + 110 + 8 columns want.
