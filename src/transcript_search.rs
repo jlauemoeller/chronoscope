@@ -14,7 +14,9 @@
 //!
 //! Each section of each turn, as its full *unfolded* plain text (see
 //! [`section_text`]): the prompt, assistant text, readable thinking, the tool
-//! description, input and complete output (materialised with
+//! description as its row draws it (with the agent type of a subagent, the
+//! duration, and the tool's name when the description is blank), input and
+//! complete output (materialised with
 //! `ToolOutput::text()`, so a lazily stored output is read back), system
 //! entries, the compaction summary and the stats footer. Sections that are
 //! not listed (system content while it is hidden) are not searched.
@@ -28,9 +30,9 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::components::turn_block::renderers::format_stats;
+use crate::components::turn_block::renderers::{ToolCallSection, format_stats};
 use crate::components::turn_block::{Section, SectionContent, SectionId, derive_sections};
-use crate::model::{InjectedEntry, ToolCall, Turn};
+use crate::model::{InjectedEntry, ToolCall, ToolKind, Turn};
 
 /// A search text with smart case.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,8 +265,10 @@ pub fn search(query: &SearchQuery, corpus: &SearchCorpus) -> Vec<Match> {
 /// folded or not.
 ///
 /// - Prompt, assistant text, thinking and the compaction summary: the text.
-/// - A tool call: the description, the string values of the input, and the
-///   complete output (re-read from the transcript when it is stored lazily;
+/// - A tool call: the description row as drawn (the description or, when it
+///   is blank, the tool's name; then the agent type of a subagent and the
+///   duration of a finished call), the string values of the input (not the
+///   agent type, which the row has), and the complete output (re-read from the transcript when it is stored lazily;
 ///   an output that cannot be read is left out).
 /// - System content: each entry's kind and text.
 /// - The model-change note and the stats footer as they are drawn.
@@ -290,11 +294,17 @@ fn system_text(entries: &[InjectedEntry]) -> String {
 }
 
 fn tool_text(call: &ToolCall) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    if !call.description.trim().is_empty() {
-        parts.push(call.description.trim().to_owned());
+    // The description row as drawn, with the agent type of a subagent and
+    // the duration after it: the text shown is the text searched.
+    let mut parts: Vec<String> = vec![ToolCallSection(call).drawn_description()];
+    match (&call.input, agent_type_key(call)) {
+        // The agent type is in the description row.
+        (Value::Object(map), Some(agent)) => map
+            .iter()
+            .filter(|(key, _)| key.as_str() != agent)
+            .for_each(|(_, value)| input_values(value, &mut parts)),
+        (input, _) => input_values(input, &mut parts),
     }
-    input_values(&call.input, &mut parts);
     if let Some(result) = &call.result {
         match result.output.text() {
             Ok(text) => parts.push(text.into_owned()),
@@ -302,6 +312,20 @@ fn tool_text(call: &ToolCall) -> String {
         }
     }
     parts.join("\n")
+}
+
+/// The key of a subagent's input that gives the agent type shown in the
+/// description row (`subagent_type`, else `agent`).
+fn agent_type_key(call: &ToolCall) -> Option<&'static str> {
+    if call.tool != ToolKind::Subagent {
+        return None;
+    }
+    ["subagent_type", "agent"].into_iter().find(|key| {
+        call.input
+            .get(*key)
+            .and_then(Value::as_str)
+            .is_some_and(|text| !text.trim().is_empty())
+    })
 }
 
 /// The values of a tool input, without its keys: the strings as they are,

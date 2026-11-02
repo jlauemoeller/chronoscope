@@ -17,9 +17,11 @@
 mod edit;
 mod other;
 mod read;
+mod row;
 mod search;
 mod shell;
 mod subagent;
+mod timing;
 mod web;
 mod write;
 
@@ -30,9 +32,10 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use serde_json::Value;
 
+use self::timing::duration_suffix;
 use super::{
     BODY_INDENT, Rendered, SectionCtx, SectionRenderer, ellipsize, first_line, fold_marker, indent,
-    label, verbatim_lines, with_lead, word_wrap,
+    label, verbatim_lines, with_lead,
 };
 use crate::markdown::char_wrap;
 use crate::model::{ToolCall, ToolKind, ToolStatus};
@@ -99,8 +102,9 @@ pub fn body_renderer(kind: &ToolKind) -> &'static dyn ToolBodyRenderer {
 
 /// A tool call.
 ///
-/// Folded: `▶ <description>` (plus the agent type for a subagent). Unfolded:
-/// the description, then the body of the call's kind.
+/// Folded: `▶ <description>` (plus the agent type for a subagent), then ` · `
+/// and the duration of a finished call. Unfolded: the same, word-wrapped,
+/// then the body of the call's kind.
 #[derive(Debug, Clone, Copy)]
 pub struct ToolCallSection<'a>(pub &'a ToolCall);
 
@@ -125,34 +129,42 @@ impl ToolCallSection<'_> {
         .to_owned()
     }
 
-    /// Folded: one row, cut with `…` (the agent type of a subagent is kept).
-    /// Unfolded: the description is prose, so it is word-wrapped.
+    /// The description with its duration (` · 1.2s`), the summary of a call
+    /// in the full export.
+    pub fn description_with_duration(&self) -> String {
+        let mut text = self.description_text();
+        text.extend(duration_suffix(self.0));
+        text
+    }
+
+    /// The description row as the unfolded section draws it, in one line:
+    /// the description, the agent type of a subagent and the duration. What
+    /// is searched, so that the text shown is the text searched.
+    pub fn drawn_description(&self) -> String {
+        let mut text = self.description_text();
+        text.extend(subagent::agent_type(self.0).map(|agent| format!(" ({agent})")));
+        text.extend(duration_suffix(self.0));
+        text
+    }
+
+    /// Folded: one row, cut with `…` (the agent type of a subagent and the
+    /// duration are kept). Unfolded: the description is prose, so it is
+    /// word-wrapped, the duration being its last, muted, words.
     fn description(&self, ctx: &SectionCtx<'_>, style: Style) -> Vec<Line<'static>> {
         let text = self.description_text();
-        let suffix = subagent::agent_type(self.0).map(|agent| format!(" ({agent})"));
-        if !ctx.folded {
-            let full = match &suffix {
-                Some(suffix) => format!("{text}{suffix}"),
-                None => text,
-            };
-            return word_wrap(&full, ctx.width, style);
-        }
+        let agent = subagent::agent_type(self.0).map(|agent| format!(" ({agent})"));
+        let duration = duration_suffix(self.0);
+        let muted = style.patch(ctx.muted());
         let width = usize::from(ctx.width);
-        let line = Line::from(Span::styled(first_line(&text), style));
-        let Some(suffix) = suffix else {
-            return vec![ellipsize(line, width, false)];
-        };
-        let suffix_width = unicode_width::UnicodeWidthStr::width(suffix.as_str());
-        if suffix_width + 1 >= width {
-            let all = Line::from(Span::styled(
-                format!("{}{suffix}", first_line(&text)),
-                style,
-            ));
-            return vec![ellipsize(all, width, false)];
+        if ctx.folded {
+            let tail = row::Tail {
+                agent: agent.as_deref(),
+                duration: duration.as_deref(),
+            };
+            return vec![row::folded(&first_line(&text), tail, width, style, muted)];
         }
-        let mut line = ellipsize(line, width - suffix_width, false);
-        line.spans.push(Span::styled(suffix, style));
-        vec![line]
+        let full = format!("{text}{}", agent.as_deref().unwrap_or_default());
+        row::wrapped(&full, duration.as_deref(), ctx.width, style, muted)
     }
 
     /// The description rows, and the body when the section is unfolded. The

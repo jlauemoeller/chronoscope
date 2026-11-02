@@ -1524,3 +1524,112 @@ fn a_repeated_context_line_of_an_edit_lands_on_its_own_hunk() {
     ch(&mut t, 'n');
     assert_hit_shown(&mut t, "2/4", "@@ -54,7 +54,7 @@", "usb");
 }
+
+// ---- The duration after a tool description ----
+
+/// A transcript of one Shell call described "Do it" that took 1.2 s, with 300
+/// lines of output of which the 250th reads `Do it later`: taller than the
+/// viewport once the search unfolds it.
+fn timed_tool_turn(kind: crate::model::ToolKind, millis: u64) -> Transcript {
+    let output: String = (1..=300)
+        .map(|n| {
+            if n == 250 {
+                "Do it later\n".to_owned()
+            } else {
+                format!("line {n}\n")
+            }
+        })
+        .collect();
+    let call = blocks::with_duration(
+        blocks::tool_of(
+            kind,
+            "c1",
+            "Do it",
+            json!({"command": "ls", "subagent_type": "Explore"}),
+            Some((&output, false)),
+            ToolStatus::Ok,
+        ),
+        millis,
+    );
+    let turn = arc(with_id(blocks::assistant(None, vec![call], None), "a1"));
+    transcript_of(vec![turn], 80, 17)
+}
+
+#[test]
+fn a_hit_in_a_description_with_a_duration_lands_on_its_row_with_the_right_cells() {
+    let mut t = timed_tool_turn(crate::model::ToolKind::Shell, 1_200);
+    // `Do it` is in the description and in the 250th line of the output.
+    assert_eq!(search(&mut t, "Do it").as_deref(), Some("1/2"));
+    assert_hit_shown(&mut t, "1/2", "▼ Do it · 1.2s", "Do");
+    // The description row was found at once: the output (cut at 200 lines)
+    // was not expanded to look for it.
+    assert!(!t.content.folds.is_expanded(&tool()));
+    // Only the query is highlighted, not the duration after it.
+    // (Runs of cells are split at the blanks.)
+    let marked = highlighted(&mut t);
+    assert_eq!(marked, ["Do", "it"]);
+    // The next hit is in the output, a screen below: it is scrolled to.
+    ch(&mut t, 'n');
+    assert_hit_shown(&mut t, "2/2", "Do it later", "Do");
+    assert!(!rows(&mut t).contains("▼ Do it · 1.2s"));
+    // And back again.
+    ch(&mut t, 'N');
+    assert_hit_shown(&mut t, "1/2", "▼ Do it · 1.2s", "Do");
+}
+
+#[test]
+fn a_search_for_the_duration_finds_it_and_highlights_its_cells() {
+    let mut t = timed_tool_turn(crate::model::ToolKind::Shell, 1_200);
+    assert_eq!(search(&mut t, "1.2s").as_deref(), Some("1/1"));
+    assert_hit_shown(&mut t, "1/1", "▼ Do it · 1.2s", "1.2s");
+    assert_eq!(highlighted(&mut t), ["1.2s"]);
+    // The cells are those of the duration in the drawn row.
+    let size = t.viewport.unwrap();
+    let buf = draw(&mut t, size.width, size.height);
+    let text = text_rows(&buf);
+    let (y, line) = text
+        .iter()
+        .enumerate()
+        .find(|(_, l)| l.contains("▼ Do it"))
+        .unwrap();
+    let x = line[..line.find("1.2s").unwrap()].chars().count();
+    let bg = blocks::theme().role(crate::theme::Role::Primary);
+    for dx in 0..4 {
+        assert_eq!(
+            buf[(u16::try_from(x + dx).unwrap(), u16::try_from(y).unwrap())].bg,
+            bg
+        );
+    }
+    assert_ne!(
+        buf[(u16::try_from(x - 1).unwrap(), u16::try_from(y).unwrap())].bg,
+        bg
+    );
+}
+
+#[test]
+fn a_search_for_a_duration_of_minutes_finds_it() {
+    let mut t = timed_tool_turn(crate::model::ToolKind::Shell, 302_000);
+    assert_eq!(search(&mut t, "5m 2s").as_deref(), Some("1/1"));
+    assert_hit_shown(&mut t, "1/1", "▼ Do it · 5m 2s", "5m");
+    assert_eq!(highlighted(&mut t), ["5m", "2s"]);
+}
+
+#[test]
+fn a_search_for_the_duration_of_a_subagent_finds_it_after_the_agent_type() {
+    let mut t = timed_tool_turn(crate::model::ToolKind::Subagent, 340);
+    assert_eq!(search(&mut t, "340ms").as_deref(), Some("1/1"));
+    assert_hit_shown(&mut t, "1/1", "▼ Do it (Explore) · 340ms", "340ms");
+    // The agent type is shown, so it is searched too, once: the input's
+    // `subagent_type` is the same text, not a second occurrence.
+    assert_eq!(search_with(&mut t, 2, "Explore").as_deref(), Some("1/1"));
+}
+
+#[test]
+fn a_call_without_a_duration_has_no_duration_to_find() {
+    let mut t = tool_turn(
+        crate::model::ToolKind::Shell,
+        json!({"command": "ls"}),
+        "out",
+    );
+    assert_eq!(search(&mut t, " · ").as_deref(), Some("0/0"));
+}

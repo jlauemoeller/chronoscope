@@ -506,7 +506,9 @@ pub struct ToolCall {
     pub result: Option<ToolResult>,
     /// Pending until a result arrives, then Ok or Error.
     pub status: ToolStatus,
-    /// Time between the call and its result.
+    /// Time between the call and its result. Empty while the call is pending,
+    /// when the adapter does not know it, and for an asynchronous subagent
+    /// (its result only records the launch).
     pub duration: Option<Duration>,
 }
 

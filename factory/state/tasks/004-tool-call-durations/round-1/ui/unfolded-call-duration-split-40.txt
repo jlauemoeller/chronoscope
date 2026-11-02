@@ -1,0 +1,51 @@
+Rendered from factory/004-tool-call-durations with TestBackend in a scratch crate.
+Caret rows mark cells with the search_match background.
+
+=== 1. Separator left at the end of a row: unfolded call @ 40, 5m 2s, dim off
+    Muted is Rgb(161, 161, 161). The style is correct on both rows.
+╭─ Assistant ── claude-opus-5.5 @ h… ──╮
+│                                      │
+│ ▼ xxxxxxxxxxxxxxxxxxxxxxx end ·      │
+│   5m 2s                              │
+2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..32 Rgb(250, 250, 250)/Reset/NONE | 32..33 Rgb(161, 161, 
+3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/NONE | 4..9 Rgb(161, 161, 161
+
+=== 2. Duration split between its two words: unfolded call @ 14x30, 1h 5m, query '1h 5m'
+    The position is 1/1 and no cell is highlighted. Last line: 4000 random wraps.
+╭─ Assistant…──╮
+│              │
+▒ ▼ abcdefg    │
+▒   abcdef     │
+▒   abcdefgh   │
+▒   ijk        │
+▒   abcdefgh   │
+▒   i abc      │
+▒   abcdefgh   │
+▒   ijk        │
+▒   abcde      │
+▒   abcde      │
+▒   abcdefgh   │
+▒   ijk · 1h   │
+▒   5m         │
+▒              │
+position 1/1
+checked 4000 bad 0 duration-split-rows 17 of-which-no-highlight 17
+
+=== 3. The same rule on main, with no duration: query 'of the camera' @ 40x18
+    The match wraps between rows. The position is 1/1 and no cell is highlighted.
+  position 1/1
+  ╭─ Assistant ── claude-opus-5.5 @ h… ──╮
+  │                                      │
+  ▒ ▼ Investigate the descriptors of     │
+  ▒   the camera                         │
+  ▒                                      │
+
+=== 4. Duration hard-broken at a tiny width: unfolded call @ 10, 1.2s
+╭─ Ass…──╮
+│        │
+│ ▼ Do   │
+│   it   │
+│   ·    │
+│   1.   │
+│   2s   │
+│        │

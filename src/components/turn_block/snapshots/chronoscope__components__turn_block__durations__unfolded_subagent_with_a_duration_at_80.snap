@@ -1,0 +1,19 @@
+---
+source: src/components/turn_block/durations.rs
+expression: "buffer_to_text(&draw(&turn, &unfolded(&turn), 80))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│ ▼ Explore the repository (story-writer) · 5m 2s                              │
+│                                                                              │
+│   Prompt:                                                                    │
+│                                                                              │
+│      List the crates.                                                        │
+│                                                                              │
+│   Result:                                                                    │
+│                                                                              │
+│      Found three crates.                                                     │
+│                                                                              │
+│   a to open transcript                                                       │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯

@@ -331,3 +331,52 @@ fn the_position_reads_as_current_over_total() {
         "0/0"
     );
 }
+
+#[test]
+fn the_duration_is_searched_as_it_is_drawn_after_the_description() {
+    let mut call = shell_call(
+        "c1",
+        json!({"command": "ls"}),
+        ToolOutput::inline("out".to_owned()),
+    );
+    if let Item::ToolCall(c) = &mut call {
+        c.duration = Some(std::time::Duration::from_millis(1_200));
+    }
+    let corpus = corpus(
+        vec![with_id(blocks::assistant(None, vec![call], None), "a1")],
+        true,
+    );
+    let found = run("1.2s", &corpus);
+    assert_eq!(found.len(), 1, "{found:?}");
+    // On the description's own line, after the description.
+    assert_eq!(found[0].line, 0);
+    assert_eq!(
+        found[0].range,
+        "Look around · ".len().."Look around · 1.2s".len()
+    );
+    // The description still matches, once.
+    assert_eq!(run("look around", &corpus).len(), 1);
+}
+
+#[test]
+fn a_pending_call_or_one_without_a_duration_has_no_duration_text() {
+    for (status, duration) in [
+        (ToolStatus::Pending, Some(std::time::Duration::from_secs(1))),
+        (ToolStatus::Ok, None),
+    ] {
+        let mut call = shell_call(
+            "c1",
+            json!({"command": "ls"}),
+            ToolOutput::inline("out".to_owned()),
+        );
+        if let Item::ToolCall(c) = &mut call {
+            c.status = status;
+            c.duration = duration;
+        }
+        let corpus = corpus(
+            vec![with_id(blocks::assistant(None, vec![call], None), "a1")],
+            true,
+        );
+        assert!(run(" · ", &corpus).is_empty());
+    }
+}

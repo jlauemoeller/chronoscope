@@ -1,0 +1,27 @@
+Query 'story-writer' on a subagent call with input {subagent_type, description, prompt}, @ 80x20.
+
+=== main
+  position 1/1
+  ▒ ▼ Explore the repository (story-writer)                                      │
+                              ^^^^^^^^^^^^
+  -- n
+  position 1/1
+  ▒ ▼ Explore the repository (story-writer)                                      │
+                              ^^^^^^^^^^^^
+  -- n
+  position 1/1
+  ▒ ▼ Explore the repository (story-writer)                                      │
+                              ^^^^^^^^^^^^
+
+=== branch (one drawn occurrence, two hits; n changes the position and nothing on screen)
+  position 1/2
+  ▒ ▼ Explore the repository (story-writer) · 5m 2s                              │
+                              ^^^^^^^^^^^^
+  -- n
+  position 2/2
+  ▒ ▼ Explore the repository (story-writer) · 5m 2s                              │
+                              ^^^^^^^^^^^^
+  -- n
+  position 1/2
+  ▒ ▼ Explore the repository (story-writer) · 5m 2s                              │
+                              ^^^^^^^^^^^^

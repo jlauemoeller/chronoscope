@@ -30,6 +30,8 @@ pub use title::TitleBar;
 pub use widget::{BlockLayout, TurnBlock};
 
 #[cfg(test)]
+mod durations;
+#[cfg(test)]
 pub(crate) mod fixtures;
 #[cfg(test)]
 mod snapshots;

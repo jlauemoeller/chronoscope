@@ -41,7 +41,7 @@ use crate::timestamp::{DEFAULT_TIMESTAMP_FORMAT, DisplayTz, TimestampFormatter};
 pub const SEED: u64 = 0x5EED_0036;
 
 /// Bump when the generator's output changes, so cached fixtures are rebuilt.
-const GENERATOR_VERSION: u32 = 1;
+const GENERATOR_VERSION: u32 = 2;
 
 /// The directory generated fixtures are cached in: `target/bench-fixtures`
 /// (under `CARGO_TARGET_DIR` when it is set), which is never committed.

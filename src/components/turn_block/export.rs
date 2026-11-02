@@ -270,7 +270,9 @@ fn unfolded_tool(call: &ToolCall, section: &Section<'_>, settings: &ExportSettin
 /// A tool call in full, as a `<details>` block: the description in its
 /// summary, then the input and the output in fenced code blocks.
 fn details(call: &ToolCall) -> String {
-    let description = escape_html(&one_line(&ToolCallSection(call).description_text()));
+    let description = escape_html(&one_line(
+        &ToolCallSection(call).description_with_duration(),
+    ));
     let (info, input) = match (&call.tool, call.input.get("command")) {
         (ToolKind::Shell, Some(serde_json::Value::String(command))) => ("sh", command.clone()),
         _ => (

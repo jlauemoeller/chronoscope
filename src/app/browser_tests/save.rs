@@ -25,9 +25,18 @@ fn prompt_text(app: &App) -> String {
 /// called `brio`, and the app resolving relative paths in a new temporary
 /// directory (with a home directory `home` in it).
 fn save_rig(width: u16, height: u16) -> (Rig, tempfile::TempDir) {
+    save_rig_opening(width, height, Rig::open_loaded)
+}
+
+/// Like [`save_rig`], with the session opened by `open`.
+fn save_rig_opening(
+    width: u16,
+    height: u16,
+    open: impl FnOnce(&mut Rig),
+) -> (Rig, tempfile::TempDir) {
     let mut rig = rig_with(theme("default"), width, height);
     rig.app.update(fixtures::message(index_named("brio")));
-    rig.open_loaded();
+    open(&mut rig);
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join("home")).unwrap();
     rig.app.set_save_dir(dir.path().to_path_buf());
@@ -72,6 +81,39 @@ impl Rig {
     /// Answers the path prompt with `path`, as `Enter` would.
     fn submit(&mut self, path: &str) {
         self.app.update(Msg::PromptSubmit(path.to_owned()));
+    }
+}
+
+/// The turns of the fixture session, every tool call finished after 1.2 s.
+fn timed_turns() -> Vec<Arc<Turn>> {
+    turns()
+        .into_iter()
+        .map(|mut turn| {
+            if let Turn::Assistant(assistant) = Arc::make_mut(&mut turn) {
+                for item in &mut assistant.items {
+                    if let crate::model::Item::ToolCall(call) = item {
+                        call.duration = Some(Duration::from_millis(1_200));
+                    }
+                }
+            }
+            turn
+        })
+        .collect()
+}
+
+impl Rig {
+    /// Opens the BRIO session with its tool calls timed.
+    fn open_timed(&mut self) {
+        self.harness.script(
+            BRIO_SESSION,
+            vec![
+                ModelUpdate::Appended(timed_turns()),
+                ModelUpdate::Progress(1.0),
+                ModelUpdate::ParseWarnings(0),
+                ModelUpdate::Loaded,
+            ],
+        );
+        self.open(BRIO_SESSION);
     }
 }
 
@@ -221,6 +263,26 @@ fn capital_w_saves_the_full_content_of_the_section() {
         "Find the BRIO on USB and check available tools\n\nCommand:\n\nlsusb | grep -i brio\n\nResult:\n\nBus 001 Device 004: ID 046d:085e Logitech, Inc. BRIO"
     );
     assert_eq!(rig.shown_toast().as_deref(), Some("Saved to ./full.txt"));
+}
+
+#[test]
+fn w_saves_the_duration_with_the_description_and_capital_w_with_the_full_content() {
+    let (mut rig, dir) = save_rig_opening(120, 40, Rig::open_timed);
+    rig.select_shell_call();
+    rig.ask(Key::Char('w'), KeyModifiers::NONE);
+    rig.submit("./shown.txt");
+    let shown = std::fs::read_to_string(dir.path().join("shown.txt")).unwrap();
+    assert_eq!(
+        shown,
+        "Find the BRIO on USB and check available tools · 1.2s"
+    );
+    rig.ask(Key::Char('W'), KeyModifiers::SHIFT);
+    rig.submit("./full.txt");
+    let full = std::fs::read_to_string(dir.path().join("full.txt")).unwrap();
+    assert!(
+        full.starts_with("Find the BRIO on USB and check available tools · 1.2s\n\nCommand:\n"),
+        "{full}"
+    );
 }
 
 #[test]

@@ -1714,3 +1714,217 @@ fn a_message_count_of_the_wrong_type_does_not_fail_the_line() {
         assert_eq!(stats.message_count, 1);
     }
 }
+
+// ------------------------------------------------------ toolUseResult
+
+/// A call `t1` written at :00 and its result at :03, the result line carrying
+/// `tool_use_result` (the raw JSON after `"toolUseResult":`) when given.
+fn call_with_tool_use_result(tool_use_result: Option<&str>) -> String {
+    let extra = tool_use_result.map_or(String::new(), |raw| format!(r#","toolUseResult":{raw}"#));
+    format!(
+        concat!(
+            r#"{{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:00Z","message":{{"id":"m","model":"x","content":[{{"type":"tool_use","id":"t1","name":"Task","input":{{"subagent_type":"Explore","description":"Look around"}}}}]}}}}"#,
+            "\n",
+            r#"{{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:03Z","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"t1","content":"done"}}]}}{extra}}}"#,
+            "\n",
+        ),
+        extra = extra
+    )
+}
+
+/// The call `t1` of the session `call_with_tool_use_result` writes.
+fn assembled_call(tool_use_result: Option<&str>) -> ToolCall {
+    let turns = assemble_str(&call_with_tool_use_result(tool_use_result));
+    assert_eq!(turns.len(), 1, "the line parses");
+    call(assistant(&turns[0]), "t1").clone()
+}
+
+fn assert_result_and_duration(c: &ToolCall, duration: Option<Duration>) {
+    assert_eq!(c.status, ToolStatus::Ok);
+    assert_eq!(c.result.as_ref().unwrap().output.text().unwrap(), "done");
+    assert_eq!(c.duration, duration);
+}
+
+#[test]
+fn a_synchronous_call_has_a_duration_whatever_its_tool_use_result_is() {
+    let three = Some(Duration::from_secs(3));
+    for raw in [
+        None,
+        Some(r#"{"isAsync":false,"status":"completed"}"#),
+        Some(r#"{"stdout":"x","stderr":""}"#),
+        Some(r#""Error: the file does not exist""#),
+        Some("[1,2,3]"),
+        Some("42"),
+        Some("null"),
+        Some("{}"),
+    ] {
+        assert_result_and_duration(&assembled_call(raw), three);
+    }
+}
+
+#[test]
+fn an_asynchronous_launch_has_no_duration() {
+    let c = assembled_call(Some(
+        r#"{"isAsync":true,"status":"async_launched","agentId":"a1","prompt":"p"}"#,
+    ));
+    assert_result_and_duration(&c, None);
+}
+
+#[test]
+fn a_string_tool_use_result_still_parses_the_line_and_its_result() {
+    let c = assembled_call(Some(r#""Error: something went wrong""#));
+    assert_result_and_duration(&c, Some(Duration::from_secs(3)));
+}
+
+#[test]
+fn an_is_async_of_the_wrong_type_still_parses_the_line_and_its_result() {
+    for raw in [
+        r#"{"isAsync":"true"}"#,
+        r#"{"isAsync":1}"#,
+        r#"{"isAsync":{"x":true}}"#,
+        r#"{"isAsync":[true]}"#,
+        r#"{"isAsync":null}"#,
+    ] {
+        let c = assembled_call(Some(raw));
+        assert_result_and_duration(&c, Some(Duration::from_secs(3)));
+    }
+}
+
+#[test]
+fn a_large_tool_use_result_is_skipped_and_the_result_is_read_from_the_message() {
+    let big = "x".repeat(200_000);
+    let raw =
+        format!(r#"{{"stdout":"{big}","nested":{{"a":[1,2,{{"b":"{big}"}}]}},"isAsync":false}}"#);
+    let c = assembled_call(Some(&raw));
+    assert_result_and_duration(&c, Some(Duration::from_secs(3)));
+}
+
+#[test]
+fn an_asynchronous_launch_keeps_no_duration_on_a_repeated_call_line() {
+    // The call is written again after its result (a streamed update): the
+    // duration stays as the result left it.
+    let mut text = call_with_tool_use_result(Some(r#"{"isAsync":true}"#));
+    let call_line = text.lines().next().unwrap().to_owned();
+    text.push_str(&call_line);
+    text.push('\n');
+    let turns = assemble_str(&text);
+    assert_result_and_duration(call(assistant(&turns[0]), "t1"), None);
+}
+
+// A `toolUseResult` that a skipped field would not mind must not fail the
+// line: it parses as it does without the field.
+
+/// The two lines of `call_with_tool_use_result`, with `tool_use_result` (raw
+/// bytes after `"toolUseResult":`) and `message_extra` (raw bytes put in the
+/// result's `message`, before `content`) on the result line.
+fn raw_call_lines(tool_use_result: &[u8], message_extra: &[u8]) -> Vec<u8> {
+    let mut bytes = concat!(
+        r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:00Z","message":{"id":"m","model":"x","content":[{"type":"tool_use","id":"t1","name":"Task","input":{}}]}}"#,
+        "\n",
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:03Z","message":{"role":"user","#,
+    )
+    .as_bytes()
+    .to_vec();
+    bytes.extend_from_slice(message_extra);
+    bytes.extend_from_slice(
+        br#""content":[{"type":"tool_result","tool_use_id":"t1","content":"done"}]},"toolUseResult":"#,
+    );
+    bytes.extend_from_slice(tool_use_result);
+    bytes.extend_from_slice(b"}\n");
+    bytes
+}
+
+/// The call `t1` and the number of lines that could not be parsed.
+fn assemble_raw(bytes: Vec<u8>) -> (ToolCall, usize) {
+    let asm = Assembler::from_memory(Arc::from(bytes));
+    let unparsed = asm.unparsed_count();
+    let turns = asm.into_turns();
+    (call(assistant(&turns[0]), "t1").clone(), unparsed)
+}
+
+#[test]
+fn a_tool_use_result_that_main_skips_does_not_fail_the_line() {
+    let three = Some(Duration::from_secs(3));
+    let deep = format!("{}1{}", "[".repeat(200), "]".repeat(200));
+    let cases: Vec<(&str, Vec<u8>, Option<Duration>)> = vec![
+        (
+            "a lone surrogate in an object",
+            br#"{"stdout":"cut \ud83d here"}"#.to_vec(),
+            three,
+        ),
+        (
+            "a lone surrogate in a string",
+            br#""cut \ud83d here""#.to_vec(),
+            three,
+        ),
+        (
+            "an invalid byte in an object",
+            b"{\"stdout\":\"bad \xff byte\"}".to_vec(),
+            three,
+        ),
+        (
+            "an invalid byte in a string",
+            b"\"bad \xff byte\"".to_vec(),
+            three,
+        ),
+        ("a number out of range", br#"{"n":1e999}"#.to_vec(), three),
+        (
+            "deep nesting",
+            format!(r#"{{"n":{deep}}}"#).into_bytes(),
+            three,
+        ),
+        (
+            "a launch",
+            br#"{"isAsync":true,"status":"async_launched"}"#.to_vec(),
+            None,
+        ),
+        (
+            "a launch with a lone surrogate",
+            br#"{"isAsync":true,"prompt":"\ud83d"}"#.to_vec(),
+            None,
+        ),
+    ];
+    for (what, raw, duration) in cases {
+        let (c, unparsed) = assemble_raw(raw_call_lines(&raw, b""));
+        assert_eq!(unparsed, 0, "{what}: parsed");
+        assert_result_and_duration(&c, duration);
+    }
+}
+
+#[test]
+fn a_damaged_tool_use_result_and_a_damaged_usage_in_one_line_still_parse() {
+    // Invalid UTF-8 in `usage` and a lone surrogate in `toolUseResult`.
+    let (c, unparsed) = assemble_raw(raw_call_lines(
+        br#"{"stdout":"\ud83d"}"#,
+        b"\"usage\":{\"output_tokens\":7,\"service_tier\":\"\xff\"},",
+    ));
+    assert_eq!(unparsed, 0);
+    assert_result_and_duration(&c, Some(Duration::from_secs(3)));
+    // And invalid UTF-8 in both.
+    let (c, unparsed) = assemble_raw(raw_call_lines(
+        b"{\"stdout\":\"\xff\"}",
+        b"\"usage\":{\"output_tokens\":7,\"service_tier\":\"\xff\"},",
+    ));
+    assert_eq!(unparsed, 0);
+    assert_result_and_duration(&c, Some(Duration::from_secs(3)));
+}
+
+#[test]
+fn invalid_utf8_elsewhere_than_tool_use_result_and_usage_is_still_unparsed() {
+    // In the result's text block: the line does not parse, as on `main`.
+    let mut bytes = raw_call_lines(br#"{"stdout":"x"}"#, b"");
+    let at = bytes
+        .windows(4)
+        .rposition(|w| w == b"done")
+        .expect("the content");
+    bytes[at] = 0xff;
+    let asm = Assembler::from_memory(Arc::from(bytes.clone()));
+    assert_eq!(asm.unparsed_count(), 1);
+    // Also when `toolUseResult` is damaged as well.
+    let damaged = raw_call_lines(br#"{"stdout":"\ud83d"}"#, b"");
+    let mut bytes = damaged;
+    let at = bytes.windows(4).rposition(|w| w == b"done").unwrap();
+    bytes[at] = 0xff;
+    let asm = Assembler::from_memory(Arc::from(bytes));
+    assert_eq!(asm.unparsed_count(), 1);
+}
