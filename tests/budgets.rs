@@ -256,7 +256,7 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
 }
 
 /// One Assistant turn that never ends: rounds of a text, a tool call and its
-/// result, ~85 MB in all. The references of every section go to one table,
+/// result, ~70 MB in all. The references of every section go to one table,
 /// so a lookup of each new item in it (quadratic in the items of a turn) would
 /// miss the full-parse budget here, though the fixtures above, with their
 /// many short turns, would not notice.

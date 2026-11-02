@@ -389,13 +389,6 @@ fn a_compaction_and_a_system_section_read_their_first_line_for_the_environment()
         "the boundary line, not the summary's"
     );
 
-    let hook = |uuid: &str, branch: &str| {
-        json!({
-            "type": "attachment", "uuid": uuid, "timestamp": "2026-01-01T00:00:03Z",
-            "gitBranch": branch, "cwd": CWD,
-            "attachment": {"type": "hook_system_message", "content": "x"}
-        })
-    };
     let t = transcript(&[
         prompt_line(),
         hook("h1", "first-hook"),
@@ -544,11 +537,157 @@ fn held_entries_that_open_an_assistant_turn_read_the_environment_of_their_first_
 }
 
 #[test]
+fn a_line_after_the_stopped_line_leaves_the_message_group_on_the_stopped_line() {
+    let mut later = first_line();
+    later["uuid"] = json!("a3");
+    later["timestamp"] = json!("2026-01-01T00:00:03Z");
+    later["gitBranch"] = json!("later");
+    later["message"]["content"] = json!([{"type": "text", "text": "More."}]);
+    let t = transcript(&[prompt_line(), first_line(), call_line(), later]);
+    let groups = read(&t.item("m1:0", SourceKind::Message));
+    let message = group(&groups, SourceGroupKind::Message).unwrap();
+    assert!(
+        message.rows.contains(&"stop_reason=tool_use".to_owned()),
+        "{message:?}"
+    );
+    assert!(
+        message
+            .rows
+            .contains(&"timestamp=2026-01-01T00:00:02+00:00".to_owned()),
+        "{message:?}"
+    );
+    let env = group(&groups, SourceGroupKind::Environment).unwrap();
+    assert_eq!(env.rows, environment("main"));
+}
+
+#[test]
+fn the_footer_reads_its_last_turn_duration_line() {
+    let mut last = duration_line();
+    last["uuid"] = json!("d2");
+    last["timestamp"] = json!("2026-01-01T00:00:11Z");
+    last["gitBranch"] = json!("last-footer");
+    let t = transcript(&[prompt_line(), first_line(), duration_line(), last]);
+    let refs = t.assistant().sources.get(&SourceKey::Footer).unwrap();
+    let groups = read(&SectionSource {
+        kind: SourceKind::Other,
+        refs,
+    });
+    assert_eq!(
+        group(&groups, SourceGroupKind::Environment).unwrap().rows,
+        environment("last-footer")
+    );
+}
+
+#[test]
+fn a_hook_before_the_prompt_reads_the_environment_of_its_own_line() {
+    let t = transcript(&[hook("h0", "before-prompt"), prompt_line(), first_line()]);
+    assert!(matches!(&*t.turns[0], Turn::User(_)));
+    let source = section(&t, 0, "injected:h0");
+    assert_eq!(source.kind, SourceKind::Other);
+    assert_eq!(environment_branch(&source), "gitBranch=before-prompt");
+}
+
+#[test]
+fn a_summary_without_a_boundary_reads_the_environment_of_its_own_line() {
+    let summary = json!({
+        "type": "user", "uuid": "cs1", "isCompactSummary": true,
+        "timestamp": "2026-01-01T00:05:01Z", "gitBranch": "summary-only",
+        "message": {"role": "user", "content": "Summary"}
+    });
+    let t = transcript(&[prompt_line(), summary]);
+    assert!(matches!(&*t.turns[1], Turn::Compaction(_)));
+    let id = SectionId {
+        turn: t.turns[1].id().clone(),
+        key: SectionKey::Summary,
+    };
+    let source = section_source(&t.turns[1], &id).expect("a source for the summary");
+    assert_eq!(source.kind, SourceKind::Other);
+    assert_eq!(environment_branch(&source), "gitBranch=summary-only");
+}
+
+#[test]
+fn a_call_sent_again_in_its_turn_keeps_the_rows_of_its_result() {
+    let t = transcript(&[
+        prompt_line(),
+        first_line(),
+        call_line(),
+        call_line(),
+        result_line(json!({"isAsync": true})),
+    ]);
+    let groups = read(&t.item("c1", SourceKind::ToolCall));
+    let call = group(&groups, SourceGroupKind::ToolCall).unwrap();
+    assert!(
+        call.rows.contains(&"sandboxed=false".to_owned()),
+        "{call:?}"
+    );
+    assert!(call.rows.contains(&"isAsync=true".to_owned()), "{call:?}");
+    assert!(!call.unavailable);
+}
+
+#[test]
+fn a_call_id_seen_in_an_earlier_turn_reads_its_own_line() {
+    let mut second_prompt = prompt_line();
+    second_prompt["uuid"] = json!("u2");
+    second_prompt["timestamp"] = json!("2026-01-01T00:01:00Z");
+    let mut again = call_line();
+    again["uuid"] = json!("a9");
+    again["timestamp"] = json!("2026-01-01T00:01:01Z");
+    again["gitBranch"] = json!("later-turn");
+    again["message"]["id"] = json!("m9");
+    let t = transcript(&[
+        prompt_line(),
+        first_line(),
+        call_line(),
+        result_line(json!({})),
+        second_prompt,
+        again,
+    ]);
+    let turn = t.turns.len() - 1;
+    let source = section(&t, turn, "c1");
+    let groups = read(&source);
+    let call = group(&groups, SourceGroupKind::ToolCall).unwrap();
+    assert_eq!(call.lead, ["start=2026-01-01T00:01:01+00:00"]);
+    assert_eq!(environment_branch(&source), "gitBranch=later-turn");
+}
+
+#[test]
+fn the_other_field_locations_are_read_and_the_top_of_the_line_wins() {
+    let mut call = call_line();
+    call["diagnostics"] = json!({"cache_miss_reason": "top"});
+    let mut result = result_line(json!({
+        "permissionDecision": "from-result-object",
+        "resolvedModel": "from-result-object"
+    }));
+    result.as_object_mut().unwrap().remove("permissionDecision");
+    result["resolvedModel"] = json!("from-the-top");
+    let t = transcript(&[prompt_line(), first_line(), call, result]);
+    let groups = read(&t.item("m1:0", SourceKind::Message));
+    let message = group(&groups, SourceGroupKind::Message).unwrap();
+    assert!(
+        message
+            .rows
+            .contains(&"diagnostics.cache_miss_reason=top".to_owned()),
+        "{message:?}"
+    );
+    let groups = read(&t.item("c1", SourceKind::ToolCall));
+    let call = group(&groups, SourceGroupKind::ToolCall).unwrap();
+    assert_eq!(
+        call.rows,
+        [
+            "permissionDecision=from-result-object",
+            "sandboxed=false",
+            "resolvedModel=from-the-top",
+        ]
+    );
+}
+
+#[test]
 fn an_empty_string_is_no_value() {
     let mut line = first_line();
     line["version"] = json!("");
     line["gitBranch"] = json!("");
     line["message"]["usage"]["speed"] = json!("");
+    line["timestamp"] = json!("");
     let t = transcript(&[prompt_line(), line]);
     let groups = read(&t.item("m1:0", SourceKind::Message));
     let env = group(&groups, SourceGroupKind::Environment).unwrap();
@@ -558,6 +697,7 @@ fn an_empty_string_is_no_value() {
     );
     let message = group(&groups, SourceGroupKind::Message).unwrap();
     assert!(!message.rows.iter().any(|r| r.starts_with("speed")));
+    assert!(!message.rows.iter().any(|r| r.starts_with("timestamp")));
 }
 
 // -- assembly stays linear in the items of a turn
@@ -584,12 +724,12 @@ fn time_long_turn(n: usize) -> std::time::Duration {
 #[test]
 fn assembling_a_long_turn_takes_time_in_proportion_to_its_items() {
     // Looking each new item up in the references would make this quadratic:
-    // eight times the items would take sixty-four times as long.
+    // sixteen times the items would take 256 times as long.
     let best = |n| (0..2).map(|_| time_long_turn(n)).min().unwrap();
-    let (small, large) = (best(3_000), best(24_000));
+    let (small, large) = (best(3_000), best(48_000));
     assert!(
-        large < small * 24,
-        "3000 items took {small:?}, 24000 took {large:?}"
+        large < small * 48,
+        "3000 items took {small:?}, 48000 took {large:?}"
     );
 }
 

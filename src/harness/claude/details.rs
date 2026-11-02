@@ -578,7 +578,7 @@ impl<'de> Deserialize<'de> for Member {
             }
 
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> {
-                Ok(Member(Some(value.to_owned())))
+                Ok(Member((!value.is_empty()).then(|| value.to_owned())))
             }
 
             fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> {
@@ -676,7 +676,19 @@ mod tests {
             text(r#"{"decision":"accept","n":2,"on":true,"nested":{"a":1},"list":[1]}"#).as_deref(),
             Some("decision=accept, n=2, on=true")
         );
-        for raw in ["{}", "5", "true", "null", "[1]", r#"{"a":{"b":1}}"#] {
+        assert_eq!(
+            text(r#"{"decision":"","source":"config"}"#).as_deref(),
+            Some("source=config")
+        );
+        for raw in [
+            "{}",
+            "5",
+            "true",
+            "null",
+            "[1]",
+            r#"{"a":{"b":1}}"#,
+            r#"{"decision":""}"#,
+        ] {
             assert_eq!(text(raw), None, "{raw}");
         }
     }
