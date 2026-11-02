@@ -29,6 +29,7 @@ pub use generate::{
     generate_session_with,
 };
 
+use crate::components::TurnSidebar;
 use crate::components::transcript::{Transcript, WHEEL_DOWN};
 use crate::components::turn_block::{SectionId, SectionKey};
 use crate::harness::Harness;
@@ -264,6 +265,67 @@ pub fn load_transcript(fixture: &Fixture, size: Size) -> (Transcript, LoadTiming
         transcript.apply_update(update);
     });
     (transcript, timings)
+}
+
+/// Like [`load_transcript`], with the turns sidebar of the session built
+/// alongside: each update goes to both, as the application forwards it, so
+/// the timings include building the rows (SPEC §6.6).
+pub fn load_with_sidebar(fixture: &Fixture, size: Size) -> (Transcript, TurnSidebar, LoadTimings) {
+    let mut transcript = new_transcript().loading(true).viewport(size);
+    let mut sidebar = TurnSidebar::new(builtin::default_theme());
+    let timings = run_load(&fixture.harness(), &fixture.id(), |update| {
+        transcript.apply_update(update);
+        sidebar.apply_update(update);
+    });
+    (transcript, sidebar, timings)
+}
+
+/// Draws a loaded session's turns sidebar in a pane of `size`, moving the
+/// selection one entry down before each frame, as a key press would.
+pub struct SidebarScenario {
+    /// The sidebar.
+    pub sidebar: TurnSidebar,
+    terminal: Terminal<TestBackend>,
+    next: usize,
+}
+
+impl SidebarScenario {
+    /// Prepares the scenario for a pane of `size`, with the selection in the
+    /// middle of the list.
+    pub fn new(mut sidebar: TurnSidebar, size: Size) -> Self {
+        let entries = sidebar.rows().entry_count();
+        let next = entries / 2;
+        sidebar.attr(
+            crate::components::VISIBLE_ROWS_ATTR,
+            tuirealm::props::AttrValue::Length(crate::components::sidebar_list_rows(size.height)),
+        );
+        sidebar.select(Some(next));
+        let terminal =
+            Terminal::new(TestBackend::new(size.width, size.height)).expect("a test backend");
+        Self {
+            sidebar,
+            terminal,
+            next,
+        }
+    }
+
+    /// Moves the selection to the next entry (to the first one after the
+    /// last) and draws the frame; returns how long both took.
+    pub fn select_next_and_draw(&mut self) -> Duration {
+        let start = Instant::now();
+        let entries = self.sidebar.rows().entry_count().max(1);
+        self.next = (self.next + 1) % entries;
+        self.sidebar.select(Some(self.next));
+        self.draw();
+        start.elapsed()
+    }
+
+    fn draw(&mut self) {
+        let sidebar = &mut self.sidebar;
+        self.terminal
+            .draw(|frame| sidebar.view(frame, frame.area()))
+            .expect("drawing to a TestBackend never fails");
+    }
 }
 
 /// A transcript at `size` showing the middle of a loaded session, ready to

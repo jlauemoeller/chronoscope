@@ -82,6 +82,11 @@ impl ListCursor {
         self.offset
     }
 
+    /// How many rows are visible; 0 while not known.
+    pub fn visible(&self) -> usize {
+        self.visible
+    }
+
     /// Sets the number of rows and the selection (ignored when out of range)
     /// and scrolls the least that keeps the selection visible. Without a
     /// selection the list shows its first rows: the offset of the list it

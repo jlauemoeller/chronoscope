@@ -7,38 +7,38 @@ expression: after
 │ /home/user/projects/brio                                                                                      ● live │
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-│                                                                                                                      │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Assistant ── claude-opus-5.5 ──────────────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│                                                                                                                      │
-│   The extension units are listed under VideoControl:                                                                 │
-│                                                                                                                      │
-│   • one for exposure                                                                                                 │
-│   • one for pan and tilt                                                                                             │
-│                                                                                                                      │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Assistant ── claude-opus-5.5 ──────────────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│                                                                                                                      │
-│   That is everything the camera exposes over plain UVC. Anything beyond that needs the vendor protocol, which is     │
-│   not documented.                                                                                                    │
-│                                                                                                                      │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Assistant ── claude-opus-5.5 ──────────────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│                                                                                                                      │
-│   I will ask the story writer.                                                                                       │
-│                                                                                                                      │
-▒ ▼ Ask story-writer (story-writer)                                                                                    │
-▒                                                                                                                      │
-▒   Prompt:                                                                                                            │
-▒                                                                                                                      │
-▒      Write a short story                                                                                             │
-▒                                                                                                                      │
-▒   Result:                                                                                                            │
-▒                                                                                                                      │
-▒      Once upon a time.                                                                                               │
-▒                                                                                                                      │
-▒   a to open transcript                                                                                               │
-│                                                                                                                      │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ │                                                                                       │
+│                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│                            │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  ●   Start                 │ │                                                                                       │
+│  │                         │ │   The extension units are listed under VideoControl:                                  │
+│  ●   User                  │ │                                                                                       │
+│  │                         │ │   • one for exposure                                                                  │
+│  ●   Assistant      5m 2s  │ │   • one for pan and tilt                                                              │
+│  │                         │ │                                                                                       │
+│  ●   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  ●   Assistant      5m 2s  │ │                                                                                       │
+│                            │ │   That is everything the camera exposes over plain UVC. Anything beyond that needs    │
+│  ═══ Compaction ═════════  │ │   the vendor protocol, which is not documented.                                       │
+│                            │ │                                                                                       │
+│  ●   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  ●   Assistant             │ │                                                                                       │
+│  │                         │ │   I will ask the story writer.                                                        │
+│  ●   Assistant             │ │                                                                                       │
+│  │                         │ ▒ ▼ Ask story-writer (story-writer)                                                     │
+│  ●   Assistant             │ ▒                                                                                       │
+│  │                         │ ▒   Prompt:                                                                             │
+│  ●   End                   │ ▒                                                                                       │
+│                            │ ▒      Write a short story                                                              │
+│                            │ ▒                                                                                       │
+│                            │ ▒   Result:                                                                             │
+│                            │ ▒                                                                                       │
+│                            │ ▒      Once upon a time.                                                                │
+│                            │ ▒                                                                                       │
+│                            │ ▒   a to open transcript                                                                │
+│                            │ │                                                                                       │
+╰────────────────────────────╯ ╰───────────────────────────────────────────────────────────────────────────────────────╯
                                                                                                                         
  / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

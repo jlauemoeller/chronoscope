@@ -1111,7 +1111,11 @@ impl App {
             }
         }
         if self.screen.has_browser() {
-            let transcript = browser_areas(area).transcript;
+            let areas = browser_areas(area);
+            self.push_sidebar_viewport(areas.sidebar);
+            // The transcript's area is the narrow one when the sidebar is
+            // shown, the one drawing and mouse routing use.
+            let transcript = areas.transcript;
             // Every transcript, the covered ones too: they are drawn at this
             // size again when the ones over them are closed.
             for depth in 0..=self.browser.depth() {
@@ -1124,6 +1128,26 @@ impl App {
             // A new size can show the end again, which resumes following.
             self.sync_new_sections();
         }
+    }
+
+    /// Tells the turns sidebar how many list rows its pane shows. A sidebar
+    /// that is hidden (`sidebar` is `None`) cannot keep the focus: it goes to
+    /// the transcript on top.
+    fn push_sidebar_viewport(&mut self, sidebar: Option<ratatui::layout::Rect>) {
+        let Some(sidebar) = sidebar else {
+            if self.application.focus() == Some(&Id::TurnSidebar) {
+                let top = self.top_transcript();
+                if let Err(err) = self.application.active(&top) {
+                    log::warn!("could not return the focus to {top:?}: {err}");
+                }
+            }
+            return;
+        };
+        self.set_attr(
+            Id::TurnSidebar,
+            VISIBLE_ROWS_ATTR,
+            AttrValue::Length(crate::components::sidebar_list_rows(sidebar.height)),
+        );
     }
 }
 

@@ -144,6 +144,21 @@ the largest result (a 2 MB line): reading its details took 1.2 ms. The
 dense session's largest result (3 KB) took 0.1 ms. It runs on the UI thread,
 like unfolding a large output, and is far under a frame.
 
+## The turns sidebar (task 010)
+
+The turns sidebar (SPEC §6) keeps one slot per turn and the list of turns that
+have an entry, and derives only the sections of a turn (`derive_sections`),
+never a layout or a render. The budget test builds its rows during the load, as
+the application does, and draws the pane after each of 100 selection moves:
+
+| session | turns  | load incl. rows | slowest sidebar frame (30x43) |
+|---------|--------|-----------------|-------------------------------|
+| mixed   | 312    | 141 ms          | 0.10 ms                       |
+| dense   | 6 856  | 413 ms          | 0.10 ms                       |
+
+A pane draws only the rows it shows (`lines_built` in its tests), and a turn
+update derives one entry.
+
 ## Running them
 
 Benchmarks (criterion; each prints its time and keeps a report under

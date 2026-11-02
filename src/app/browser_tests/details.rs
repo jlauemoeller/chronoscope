@@ -272,7 +272,7 @@ fn the_selection_and_the_scroll_of_the_transcript_are_unchanged_by_the_overlay()
 fn more_row_selected(rig: &mut Rig) -> bool {
     screen_text(rig, 120, 40)
         .lines()
-        .any(|row| row.starts_with('▒') && row.contains("more lines"))
+        .any(|row| super::from_transcript(row).starts_with('▒') && row.contains("more lines"))
 }
 
 #[test]

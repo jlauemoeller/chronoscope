@@ -27,6 +27,8 @@ pub use section::{
     FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, derive_sections,
 };
 pub use title::TitleBar;
+#[cfg(test)]
+pub(crate) use widget::block_work;
 pub use widget::{BlockLayout, TurnBlock};
 
 #[cfg(test)]

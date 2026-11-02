@@ -23,10 +23,10 @@ use super::session_port::{SessionUpdate, forward_to};
 use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
-    BREADCRUMB_ATTR, BrowserHeader, EMPTY_SESSION, EmptyState, HINTS_ATTR, HelpLine, LIVE_ATTR,
-    MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR, PARSE_WARNINGS_ATTR,
-    SESSION_ID_ATTR, STATUS_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, Transcript,
-    hints_value, payload_value, status_value,
+    BREADCRUMB_ATTR, BackgroundFill, BrowserHeader, EMPTY_SESSION, EmptyState, HINTS_ATTR,
+    HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR,
+    PARSE_WARNINGS_ATTR, SESSION_ID_ATTR, STATUS_ATTR, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR,
+    TURN_ROWS_ATTR, Transcript, TurnSidebar, hints_value, payload_value, status_value,
 };
 use crate::harness::WatchHandle;
 use crate::keymap::{Action, Context};
@@ -34,8 +34,10 @@ use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary, ToolCallId
 use crate::theme::Role;
 
 /// The browser's components, in drawing order.
-const BROWSER_IDS: [Id; 4] = [
+const BROWSER_IDS: [Id; 6] = [
     Id::BrowserHeader,
+    Id::TurnSidebar,
+    Id::SidebarGap,
     Id::Transcript,
     Id::BrowserHelpLine,
     Id::EmptySession,
@@ -444,8 +446,14 @@ impl App {
         )
         .inset(HELP_LINE_INSET);
         let empty = EmptyState::new(EMPTY_SESSION, self.theme.clone());
+        let sidebar = TurnSidebar::new(self.theme.clone());
+        let gap = BackgroundFill::new(self.theme.clone());
         self.application
             .mount(Id::BrowserHeader, Box::new(header), Vec::new())?;
+        self.application
+            .mount(Id::TurnSidebar, Box::new(sidebar), Vec::new())?;
+        self.application
+            .mount(Id::SidebarGap, Box::new(gap), Vec::new())?;
         self.application
             .mount(Id::Transcript, Box::new(transcript), Vec::new())?;
         self.application
@@ -540,6 +548,7 @@ impl App {
         });
         self.show_top_in_header();
         self.refresh_status();
+        self.push_sidebar_rows();
         self.push_viewports();
         self.request_redraw(RedrawRequest::Dirty);
     }
@@ -598,6 +607,7 @@ impl App {
         self.sync_new_sections();
         self.refresh_session_empty();
         self.refresh_live();
+        self.push_sidebar_rows();
         self.push_viewports();
         self.request_redraw(RedrawRequest::Dirty);
     }
@@ -684,15 +694,18 @@ impl App {
             }
             ModelUpdate::Appended(_) => {
                 self.forward_to_transcript(depth, update);
+                self.forward_to_sidebar(update);
                 self.sync_new_sections();
                 self.refresh_session_empty();
             }
             ModelUpdate::Updated(_) => {
                 self.forward_to_transcript(depth, update);
+                self.forward_to_sidebar(update);
                 self.sync_new_sections();
             }
             ModelUpdate::Reset => {
                 self.forward_to_transcript(depth, update);
+                self.forward_to_sidebar(update);
                 self.sync_new_sections();
                 // The matches were of the turns that are gone.
                 self.search_reloaded();
@@ -798,6 +811,33 @@ impl App {
             MODEL_UPDATE_ATTR,
             AttrValue::Payload(PropPayload::Any(Box::new(update.shared()))),
         );
+    }
+
+    /// Hands a turn update of the transcript on top to the turns sidebar,
+    /// which keeps rows only. The updates of a transcript that a subagent
+    /// covers do not come here: the sidebar is rebuilt from it when it is on
+    /// top again ([`push_sidebar_rows`](Self::push_sidebar_rows)).
+    fn forward_to_sidebar(&mut self, update: &SessionUpdate) {
+        self.set_attr(
+            Id::TurnSidebar,
+            MODEL_UPDATE_ATTR,
+            AttrValue::Payload(PropPayload::Any(Box::new(update.shared()))),
+        );
+    }
+
+    /// Replaces the sidebar's rows by those of the transcript on top: one
+    /// pass over its turns, asked of the transcript that owns them. Done when
+    /// the transcript on top changes (a subagent opened or closed).
+    fn push_sidebar_rows(&mut self) {
+        let rows = self
+            .application
+            .query(&self.top_transcript(), TURN_ROWS_ATTR)
+            .ok()
+            .flatten()
+            .map(tuirealm::props::QueryResult::into_attr);
+        if let Some(rows) = rows {
+            self.set_attr(Id::TurnSidebar, TURN_ROWS_ATTR, rows);
+        }
     }
 
     /// Remembers the progress of the initial load and shows it.

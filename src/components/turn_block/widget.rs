@@ -34,6 +34,19 @@ pub struct BlockLayout {
     sections: Vec<(SectionId, Range<usize>)>,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many blocks were laid out or rendered on this thread.
+    static BLOCK_WORK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many blocks were laid out or rendered on this thread: the work the
+/// turns sidebar must not cause (SPEC §6.6).
+#[cfg(test)]
+pub(crate) fn block_work() -> usize {
+    BLOCK_WORK.with(std::cell::Cell::get)
+}
+
 impl BlockLayout {
     /// The number of rows of the whole block, borders included.
     pub fn height(&self) -> usize {
@@ -162,6 +175,8 @@ impl<'a> TurnBlock<'a> {
 
     /// Lays the block out for `width` cells.
     pub fn layout(&self, width: u16) -> BlockLayout {
+        #[cfg(test)]
+        BLOCK_WORK.with(|n| n.set(n.get() + 1));
         let text_width = text_width(width);
         let default_folds = FoldState::new();
         let folds = self.folds.unwrap_or(&default_folds);
@@ -301,6 +316,8 @@ impl<'a> TurnBlock<'a> {
     /// without laying the block out again. A caller that cached the layout
     /// (the virtualised transcript) renders it every frame this way.
     pub fn render_layout(&self, layout: &BlockLayout, area: Rect, buf: &mut Buffer) {
+        #[cfg(test)]
+        BLOCK_WORK.with(|n| n.set(n.get() + 1));
         let area = area.intersection(buf.area);
         if area.width < 2 || area.height == 0 {
             return;

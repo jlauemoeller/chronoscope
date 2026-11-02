@@ -128,7 +128,10 @@ pub use search::{
 use self::content::{Content, Measurer};
 use self::folding::FoldOp;
 use self::window::Window;
-use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
+use super::{
+    THEME_ATTR, TURN_ROWS_ATTR, TurnRows, payload_from_value, payload_value, theme_from_value,
+    theme_value,
+};
 use crate::app::{Msg, UserEvent};
 use crate::components::turn_block::SectionId;
 use crate::components::turn_block::export::ExportMeta;
@@ -151,7 +154,8 @@ pub const OPEN_SUBAGENT_KEY_ATTR: Attribute = Attribute::Custom("open_subagent_k
 pub const TIMESTAMP_FORMATTER_ATTR: Attribute = Attribute::Custom("timestamp_formatter");
 /// A [`ModelUpdate`] to apply (an `Arc<ModelUpdate>` payload).
 pub const MODEL_UPDATE_ATTR: Attribute = Attribute::Custom("model_update");
-/// The number of turns the transcript holds (a length; query only).
+/// The number of turns the transcript holds (a length; query only). The rows
+/// the turns sidebar lists are asked with [`TURN_ROWS_ATTR`](super::TURN_ROWS_ATTR).
 pub const TURN_COUNT_ATTR: Attribute = Attribute::Custom("turn_count");
 /// The number of sections that arrived while the user was away from the end,
 /// the `N` of `↓ N new` (a length; query only). A `Component::attr` cannot
@@ -544,6 +548,12 @@ impl Component for Transcript {
             payload_value(self.content.formatter.clone())
         } else if attr == TURN_COUNT_ATTR {
             AttrValue::Length(self.content.turns.len())
+        } else if attr == TURN_ROWS_ATTR {
+            // One pass over the turns, deriving each one's sections only:
+            // nothing is laid out or rendered.
+            payload_value(TurnRows::from_turns(
+                self.content.turns.iter().map(AsRef::as_ref),
+            ))
         } else if attr == NEW_SECTIONS_ATTR {
             AttrValue::Length(self.new_sections)
         } else if attr == FOLLOWING_ATTR {

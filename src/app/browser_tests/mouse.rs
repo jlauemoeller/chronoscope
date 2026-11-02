@@ -108,7 +108,8 @@ fn following_of(rig: &Rig, id: Id) -> bool {
         == AttrValue::Flag(true)
 }
 
-/// The rows of the transcript's area as drawn.
+/// The rows of the transcript's area as drawn: the columns of the area only,
+/// not the turns sidebar to the left of it.
 fn transcript_rows(rig: &mut Rig) -> Vec<String> {
     let area = rig.app.routing().area(Id::Transcript).unwrap();
     let screen = screen_text(rig, 120, 40);
@@ -116,7 +117,12 @@ fn transcript_rows(rig: &mut Rig) -> Vec<String> {
         .lines()
         .skip(usize::from(area.y))
         .take(usize::from(area.height))
-        .map(str::to_owned)
+        .map(|row| {
+            row.chars()
+                .skip(usize::from(area.x))
+                .take(usize::from(area.width))
+                .collect()
+        })
         .collect()
 }
 
