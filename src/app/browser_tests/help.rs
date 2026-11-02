@@ -253,7 +253,7 @@ fn the_interior_follows_the_overlay_and_the_terminal_size() {
     rig.app.update(Msg::Resized(80, 24));
     assert_eq!(interior(&rig.app), Size::new(70, 20));
     rig.app.update(Msg::Resized(200, 60));
-    assert_eq!(interior(&rig.app), Size::new(70, 50));
+    assert_eq!(interior(&rig.app), Size::new(70, 51));
 }
 
 #[test]
@@ -269,10 +269,10 @@ fn the_scroll_keys_move_the_overlay_through_the_app() {
     rig.press(Key::Char('k'));
     rig.pump_until(|app| offset(app) == 0);
     rig.press(Key::PageDown);
-    rig.pump_until(|app| offset(app) == 14);
+    rig.pump_until(|app| offset(app) == 15);
     rig.press(Key::PageDown);
     rig.settle();
-    assert_eq!(offset(&rig.app), 14, "clamped at the end: 50 - 36");
+    assert_eq!(offset(&rig.app), 15, "clamped at the end: 51 - 36");
     rig.press(Key::PageUp);
     rig.pump_until(|app| offset(app) == 0);
     // The transcript behind did not scroll or select.
@@ -306,8 +306,8 @@ fn scroll_to_end(rig: &mut Rig) {
     for _ in 0..4 {
         rig.press(Key::PageDown);
     }
-    // 50 rows in a 36 row interior: the last offset.
-    rig.pump_until(|app| offset(app) == 14);
+    // 51 rows in a 36 row interior: the last offset.
+    rig.pump_until(|app| offset(app) == 15);
 }
 
 #[test]

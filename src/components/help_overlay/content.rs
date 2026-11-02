@@ -498,7 +498,7 @@ mod tests {
         ] {
             assert_eq!(content.lines(&theme).len(), content.row_count());
         }
-        assert_eq!(browser(&Keymap::default(), true).row_count(), 50);
+        assert_eq!(browser(&Keymap::default(), true).row_count(), 51);
     }
 
     #[test]
@@ -506,7 +506,7 @@ mod tests {
         let content = browser(&Keymap::default(), true);
         // "q / Ctrl-q / Ctrl-w / Ctrl-c" (28) + 6, then the longest
         // description "Fold or unfold current section" (30) + 8.
-        assert_eq!(content.desired_size(), Size::new(28 + 6 + 30 + 8, 52));
+        assert_eq!(content.desired_size(), Size::new(28 + 6 + 30 + 8, 53));
     }
 
     #[test]

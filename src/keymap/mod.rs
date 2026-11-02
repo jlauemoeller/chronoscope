@@ -99,6 +99,7 @@ pub enum Action {
     CopyFull,
     Save,
     SaveFull,
+    Details,
     Search,
     SearchNext,
     SearchPrev,

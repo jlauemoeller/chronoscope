@@ -118,6 +118,7 @@ written in the config file's key syntax.
 | `copy_full` | `Y` | Copy full section |
 | `save` | `w`, `ctrl-s` | Save section as displayed |
 | `save_full` | `W` | Save full section |
+| `details` | `i` | Show section details |
 | `search` | `/` | Search transcript |
 | `search_next` | `n` | Next match |
 | `search_prev` | `N` | Previous match |

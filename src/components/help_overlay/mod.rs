@@ -6,35 +6,24 @@ mod content;
 
 use ratatui::Frame;
 use ratatui::layout::{Rect, Size};
-use ratatui::style::Style;
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Paragraph};
 use tuirealm::command::{Cmd, CmdResult};
 use tuirealm::component::{AppComponent, Component};
-use tuirealm::event::{Event, MouseEventKind};
+use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
 pub use content::{HelpContent, HelpContext, HelpGroup, HelpRow, MIN_WIDTH, SHIFT_NOTE};
 
-use super::list_pane::titled_block;
+use super::overlay_frame::{FrameKey, OverlayFrame};
+pub use super::overlay_frame::{INTERIOR_ATTR, interior_value};
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, Keymap};
-use crate::theme::{Role, Theme};
+use crate::theme::Theme;
 
-/// The attribute that announces the size of the overlay's interior (a [`Size`]
-/// payload, see [`interior_value`]): its rows decide how far a page scrolls
-/// and how far the content can scroll.
-pub const INTERIOR_ATTR: Attribute = Attribute::Custom("help_interior");
 /// The attribute that tells the global keys where the help is opened from (a
 /// [`HelpContext`] payload, see [`context_value`]).
 pub const HELP_CONTEXT_ATTR: Attribute = Attribute::Custom("help_context");
-
-/// The attribute value that announces the interior size.
-pub fn interior_value(size: Size) -> AttrValue {
-    payload_value(size)
-}
 
 /// The attribute value that sets where the help is opened from.
 pub fn context_value(context: HelpContext) -> AttrValue {
@@ -46,31 +35,16 @@ pub fn context_from_value(value: &AttrValue) -> Option<HelpContext> {
     payload_from_value(value)
 }
 
-/// How many rows one step of the mouse wheel scrolls.
-pub const WHEEL_ROWS: usize = 3;
-
-/// The text of the indicator on the top border when rows are hidden above.
-const MORE_ABOVE: &str = " ↑ more ";
-/// The text of the indicator on the bottom border when rows are hidden below.
-const MORE_BELOW: &str = " ↓ more ";
-
 /// The help overlay. It takes the focus; `Esc` or the global help key closes
 /// it, the up and down keys scroll a row and the page keys a page.
 ///
 /// `view` gets the overlay's rect (see `App`'s layout) as its area. The
-/// overlay is cleared and filled with `surface` (only cleared with a
-/// transparent theme), and bordered in `ring`. When the content is taller than
-/// the interior, ` ↑ more ` and ` ↓ more ` on the borders say where more is.
+/// frame (border, fill, `more` indicators and scrolling) is the
+/// [`OverlayFrame`] that the details overlay uses too.
 #[derive(Debug, Clone)]
 pub struct HelpOverlay {
     content: HelpContent,
-    theme: Theme,
-    keymap: Keymap,
-    /// The first row shown.
-    offset: usize,
-    /// The rows of the interior; unknown until announced, when nothing
-    /// scrolls.
-    interior: Option<Size>,
+    frame: OverlayFrame,
 }
 
 impl HelpOverlay {
@@ -78,92 +52,23 @@ impl HelpOverlay {
     pub fn new(content: HelpContent, theme: Theme, keymap: Keymap) -> Self {
         Self {
             content,
-            theme,
-            keymap,
-            offset: 0,
-            interior: None,
+            frame: OverlayFrame::new("Keybindings", theme, keymap),
         }
-    }
-
-    /// The last row that can be the first shown with `rows` rows visible.
-    fn max_offset(&self, rows: usize) -> usize {
-        self.content.row_count().saturating_sub(rows)
-    }
-
-    /// Scrolls to `offset`, kept in range. Returns whether the view moved.
-    fn scroll_to(&mut self, offset: usize) -> bool {
-        let rows = self.interior.map_or(usize::MAX, |s| usize::from(s.height));
-        let offset = offset.min(self.max_offset(rows));
-        let moved = offset != self.offset;
-        self.offset = offset;
-        moved
-    }
-
-    fn scroll_by(&mut self, rows: usize, down: bool) -> bool {
-        let target = if down {
-            self.offset.saturating_add(rows)
-        } else {
-            self.offset.saturating_sub(rows)
-        };
-        self.scroll_to(target)
-    }
-
-    /// A page: the rows of the interior.
-    fn page(&self) -> usize {
-        self.interior.map_or(1, |s| usize::from(s.height)).max(1)
-    }
-
-    /// The border block, with the indicators for the rows hidden above and
-    /// below.
-    fn block(&self, above: bool, below: bool) -> Block<'static> {
-        let mut block = titled_block(&self.theme, "Keybindings", Role::Ring);
-        if !self.theme.transparent_background() {
-            block = block.style(Style::new().bg(self.theme.role(Role::Surface)));
-        }
-        if above {
-            block = block.title(self.indicator(MORE_ABOVE));
-        }
-        if below {
-            block = block.title_bottom(self.indicator(MORE_BELOW));
-        }
-        block
-    }
-
-    /// `text` in `muted_foreground`, right-aligned with one `─` before the
-    /// corner.
-    fn indicator(&self, text: &'static str) -> Line<'static> {
-        let muted = Style::new().fg(self.theme.role(Role::MutedForeground));
-        let ring = Style::new().fg(self.theme.role(Role::Ring));
-        Line::from(vec![Span::styled(text, muted), Span::styled("─", ring)]).right_aligned()
     }
 }
 
 impl Component for HelpOverlay {
     fn view(&mut self, frame: &mut Frame, area: Rect) {
-        let area = area.intersection(frame.area());
-        frame.render_widget(Clear, area);
-        let rows = usize::from(area.height.saturating_sub(2));
-        let offset = self.offset.min(self.max_offset(rows));
-        let above = offset > 0;
-        let below = offset + rows < self.content.row_count();
-        let block = self.block(above, below);
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        let lines: Vec<Line> = self
-            .content
-            .lines(&self.theme)
-            .into_iter()
-            .skip(offset)
-            .take(rows)
-            .collect();
-        frame.render_widget(Paragraph::new(lines), inner);
+        let theme = self.frame.theme().clone();
+        self.frame.draw(frame, area, |_| self.content.lines(&theme));
     }
 
     fn query<'a>(&'a self, attr: Attribute) -> Option<QueryResult<'a>> {
         if attr == THEME_ATTR {
-            Some(QueryResult::Owned(theme_value(&self.theme)))
+            Some(QueryResult::Owned(theme_value(self.frame.theme())))
         } else if attr == INTERIOR_ATTR {
-            self.interior
+            self.frame
+                .interior()
                 .map(|size| QueryResult::Owned(interior_value(size)))
         } else {
             None
@@ -173,20 +78,18 @@ impl Component for HelpOverlay {
     fn attr(&mut self, attr: Attribute, value: AttrValue) {
         if attr == THEME_ATTR {
             if let Some(theme) = theme_from_value(&value) {
-                self.theme = theme;
+                self.frame.set_theme(theme);
             }
         } else if attr == INTERIOR_ATTR
             && let Some(size) = payload_from_value::<Size>(&value)
         {
-            self.interior = Some(size);
-            // A taller overlay can show rows that were out of reach.
-            self.scroll_to(self.offset);
+            self.frame.set_interior(size, self.content.row_count());
         }
     }
 
     /// The first row shown.
     fn state(&self) -> State {
-        State::Single(StateValue::Usize(self.offset))
+        State::Single(StateValue::Usize(self.frame.offset()))
     }
 
     fn perform(&mut self, _cmd: Cmd) -> CmdResult {
@@ -198,12 +101,9 @@ impl HelpOverlay {
     /// The wheel scrolls [`WHEEL_ROWS`] rows; clicks do nothing (the `App`
     /// closes the overlay for one outside it).
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
-        let moved = match mouse.kind {
-            MouseEventKind::ScrollUp => self.scroll_by(WHEEL_ROWS, false),
-            MouseEventKind::ScrollDown => self.scroll_by(WHEEL_ROWS, true),
-            _ => false,
-        };
-        moved.then_some(Msg::HelpScrolled)
+        self.frame
+            .on_mouse(mouse, self.content.row_count())
+            .then_some(Msg::HelpScrolled)
     }
 }
 
@@ -215,29 +115,29 @@ impl AppComponent<Msg, UserEvent> for HelpOverlay {
             Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
             _ => return None,
         };
-        let Some(action) = self.keymap.resolve(Context::Overlay, key) else {
-            let closes = self.keymap.resolve(Context::Global, key) == Some(Action::Help);
-            return closes.then_some(Msg::CloseHelp);
-        };
-        let moved = match action {
-            Action::Close => return Some(Msg::CloseHelp),
-            Action::Up => self.scroll_by(1, false),
-            Action::Down => self.scroll_by(1, true),
-            Action::PageUp => self.scroll_by(self.page(), false),
-            Action::PageDown => self.scroll_by(self.page(), true),
-            _ => false,
-        };
-        moved.then_some(Msg::HelpScrolled)
+        match self.frame.on_key(key, self.content.row_count()) {
+            FrameKey::Close => Some(Msg::CloseHelp),
+            FrameKey::Scrolled => Some(Msg::HelpScrolled),
+            FrameKey::Unmoved => None,
+            FrameKey::Unbound => (self.frame.keymap().resolve(Context::Global, key)
+                == Some(Action::Help))
+            .then_some(Msg::CloseHelp),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::overlay_frame::WHEEL_ROWS;
     use super::*;
     use crate::model::HarnessId;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
-    use crate::theme::{Token, builtin};
-    use tuirealm::event::{Key, KeyEvent, KeyModifiers};
+    use crate::theme::{Role, Token, builtin};
+    use ratatui::widgets::Paragraph;
+    use tuirealm::event::{Key, KeyEvent, KeyModifiers, MouseEventKind};
+
+    /// The rows of the browser's help with the mouse note.
+    const ROWS: usize = 51;
 
     fn overlay_with(keymap: Keymap, mouse: bool) -> HelpOverlay {
         let content = HelpContent::new(&keymap, HelpContext::Browser, &[HarnessId::Claude], mouse);
@@ -282,7 +182,7 @@ mod tests {
     #[test]
     fn the_down_keys_scroll_one_row_and_clamp_at_the_end() {
         let mut overlay = with_interior(20);
-        let last = 50 - 20;
+        let last = ROWS - 20;
         for code in [Key::Down, Key::Char('j')] {
             let before = offset(&overlay);
             assert_eq!(press(&mut overlay, code), Some(Msg::HelpScrolled));
@@ -328,7 +228,7 @@ mod tests {
     #[test]
     fn the_wheel_scrolls_three_rows_per_step_and_clamps_at_both_ends() {
         let mut overlay = with_interior(20);
-        let last = 50 - 20;
+        let last = ROWS - 20;
         assert_eq!(
             wheel(&mut overlay, MouseEventKind::ScrollDown),
             Some(Msg::HelpScrolled)
@@ -392,9 +292,9 @@ mod tests {
         assert_eq!(press(&mut overlay, Key::PageDown), Some(Msg::HelpScrolled));
         assert_eq!(offset(&overlay), 20);
         press(&mut overlay, Key::PageDown);
-        assert_eq!(offset(&overlay), 30, "clamped to the last page");
+        assert_eq!(offset(&overlay), ROWS - 20, "clamped to the last page");
         press(&mut overlay, Key::PageUp);
-        assert_eq!(offset(&overlay), 10);
+        assert_eq!(offset(&overlay), ROWS - 40);
         press(&mut overlay, Key::PageUp);
         assert_eq!(offset(&overlay), 0);
         assert_eq!(press(&mut overlay, Key::PageUp), None);
@@ -434,9 +334,9 @@ mod tests {
         let mut overlay = with_interior(20);
         press(&mut overlay, Key::PageDown);
         press(&mut overlay, Key::PageDown);
-        assert_eq!(offset(&overlay), 30);
+        assert_eq!(offset(&overlay), ROWS - 20);
         overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, 45)));
-        assert_eq!(offset(&overlay), 5);
+        assert_eq!(offset(&overlay), ROWS - 45);
         overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, 60)));
         assert_eq!(offset(&overlay), 0);
     }
@@ -505,11 +405,12 @@ mod tests {
 
     #[test]
     fn a_tall_enough_overlay_shows_no_indicator() {
-        let mut overlay = with_interior(50);
-        let rows = text_of(&mut overlay, 50);
+        let rows_needed = u16::try_from(ROWS).unwrap();
+        let mut overlay = with_interior(rows_needed);
+        let rows = text_of(&mut overlay, rows_needed);
         assert!(rows.iter().all(|r| !r.contains("more")));
         assert!(rows[1].contains("╭─ Keybindings ─"));
-        assert!(rows[52].contains("╰"));
+        assert!(rows[ROWS + 2].contains("╰"));
     }
 
     #[test]

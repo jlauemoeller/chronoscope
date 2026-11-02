@@ -9,6 +9,7 @@ mod harness_tabs;
 mod help_line;
 mod help_overlay;
 mod list_pane;
+mod overlay_frame;
 mod project_list;
 mod prompt;
 mod selector_frame;
@@ -32,12 +33,15 @@ pub use global_events::{GlobalEvents, quit_key_events};
 pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
 pub use help_line::{HINTS_ATTR, HelpLine, Hint, STATUS_ATTR, hints_value, status_value};
 pub use help_overlay::{
-    HELP_CONTEXT_ATTR, HelpContent, HelpContext, HelpGroup, HelpOverlay, HelpRow, INTERIOR_ATTR,
-    MIN_WIDTH as HELP_MIN_WIDTH, SHIFT_NOTE, context_from_value, context_value, interior_value,
+    HELP_CONTEXT_ATTR, HelpContent, HelpContext, HelpGroup, HelpOverlay, HelpRow,
+    MIN_WIDTH as HELP_MIN_WIDTH, SHIFT_NOTE, context_from_value, context_value,
 };
 pub use list_pane::{
     ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
     selected_value, visible_rows,
+};
+pub use overlay_frame::{
+    FrameKey, INTERIOR_ATTR, OverlayFrame, interior_from_value, interior_of, interior_value,
 };
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
 pub use prompt::{Prompt, PromptMode, tail_fitting};

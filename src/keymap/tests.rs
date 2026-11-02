@@ -70,6 +70,7 @@ const EXPECTED: &[Row] = &[
     (Browser, "copy_full", CopyFull, &["Y"], "Sections", "Copy full section"),
     (Browser, "save", Save, &["w", "ctrl-s"], "Sections", "Save section as displayed"),
     (Browser, "save_full", SaveFull, &["W"], "Sections", "Save full section"),
+    (Browser, "details", Details, &["i"], "Sections", "Show section details"),
     (Browser, "search", Search, &["/"], "Search", "Search transcript"),
     (Browser, "search_next", SearchNext, &["n"], "Search", "Next match"),
     (Browser, "search_prev", SearchPrev, &["N"], "Search", "Previous match"),
