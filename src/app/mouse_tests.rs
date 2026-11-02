@@ -146,6 +146,57 @@ fn hit_testing_maps_points_to_components_at_200x50() {
     assert_eq!(hit(&l, 190, 10), None, "right of the centred overlay");
 }
 
+fn browser_at(width: u16, height: u16, session_empty: bool) -> crate::app::layout::ScreenLayout {
+    let input = LayoutInput {
+        screen: crate::app::layout::Screen::Browser,
+        session_empty,
+        ..LayoutInput::default()
+    };
+    layout(&input, Rect::new(0, 0, width, height))
+}
+
+#[test]
+fn hit_testing_finds_the_sidebar_in_the_pane_nothing_in_the_gap_and_the_transcript_beyond() {
+    let l = browser_at(120, 40, false);
+    // The sidebar is columns 0..30 of rows 5..38, the gap is column 30 and
+    // the transcript is columns 31..120.
+    assert_eq!(hit(&l, 0, 5), Some(Id::TurnSidebar));
+    assert_eq!(hit(&l, 15, 20), Some(Id::TurnSidebar));
+    assert_eq!(hit(&l, 29, 37), Some(Id::TurnSidebar));
+    assert_eq!(hit(&l, 30, 5), None, "the gap");
+    assert_eq!(hit(&l, 30, 20), None, "the gap");
+    assert_eq!(hit(&l, 30, 37), None, "the gap");
+    assert_eq!(hit(&l, 31, 5), Some(Id::Transcript));
+    assert_eq!(hit(&l, 119, 37), Some(Id::Transcript));
+    assert_eq!(hit(&l, 15, 38), Some(Id::BrowserHelpLine));
+    assert_eq!(hit(&l, 15, 4), Some(Id::BrowserHeader));
+    assert_eq!(hit(&l, 120, 20), None, "off the screen");
+}
+
+#[test]
+fn hit_testing_at_89_and_90_columns_has_the_sidebar_only_from_90() {
+    assert_eq!(
+        hit(&browser_at(89, 24, false), 10, 10),
+        Some(Id::Transcript)
+    );
+    assert_eq!(
+        hit(&browser_at(89, 24, false), 30, 10),
+        Some(Id::Transcript)
+    );
+    let l = browser_at(90, 24, false);
+    assert_eq!(hit(&l, 10, 10), Some(Id::TurnSidebar));
+    assert_eq!(hit(&l, 30, 10), None);
+    assert_eq!(hit(&l, 31, 10), Some(Id::Transcript));
+    assert_eq!(hit(&l, 89, 10), Some(Id::Transcript));
+}
+
+#[test]
+fn an_empty_session_has_nothing_at_the_sidebar_and_the_message_everywhere() {
+    let l = browser_at(120, 40, true);
+    assert_eq!(hit(&l, 10, 20), Some(Id::EmptySession));
+    assert_eq!(hit(&l, 30, 20), Some(Id::EmptySession));
+}
+
 #[test]
 fn the_gap_between_the_panes_is_the_frame_at_every_size() {
     for (width, height) in [(60, 20), (80, 24), (120, 40), (200, 50), (201, 24)] {

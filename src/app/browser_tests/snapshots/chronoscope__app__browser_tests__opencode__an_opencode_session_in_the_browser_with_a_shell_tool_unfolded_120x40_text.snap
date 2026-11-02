@@ -7,38 +7,38 @@ expression: screen
 │ /home/user/alpha                                                                                                     │
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-28 09:00:01Z ─╮
-│                                                                                                                      │
-│ ▶ synthetic: <system-reminder>Note: The user opened the file src/settings.rs.</system-reminder>                      │
-│                                                                                                                      │
-│ ▶ system: Instructions updated: core/skill-guidance                                                                  │
-│                                                                                                                      │
-│ ▶ Add a settings screen with a dark mode toggle.                                                                     │
-│                                                                                                                      │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Assistant ── acme/coder-1 @ high ──────────────────────────────────────────────────────────── 2026-10-28 09:00:03Z ─╮
-│                                                                                                                      │
-│ ▶ Thinking: I should look at the existing screens first.                                                             │
-│                                                                                                                      │
-│   Let me look at the repo layout.                                                                                    │
-│                                                                                                                      │
-│ ▶ Read src/main.rs · 1.0s                                                                                            │
-│                                                                                                                      │
-▒ ▼ List the sources · 2.0s                                                                                            │
-▒                                                                                                                      │
-▒   Command:                                                                                                           │
-▒                                                                                                                      │
-▒      ls src                                                                                                          │
-▒                                                                                                                      │
-▒   Result:                                                                                                            │
-▒                                                                                                                      │
-▒      main.rs                                                                                                         │
-▒      settings.rs                                                                                                     │
-│                                                                                                                      │
-│ ▶ shell · 4.0s                                                                                                       │
-│                                                                                                                      │
-│ ▶ Write src/scratch.txt · 1.0s                                                                                       │
-│                                                                                                                      │
-│   17s · 2 messages · 3.3k tokens · $0.03                                                                             │
+╭─ [1] Turns  ───────────────╮ ╭─ User ───────────────────────────────────────────────────────── 2026-10-28 09:00:01Z ─╮
+│                            │ │                                                                                       │
+│                            │ │ ▶ synthetic: <system-reminder>Note: The user opened the file src/settings.rs.</sys…   │
+│  ●   Start                 │ │                                                                                       │
+│  │                         │ │ ▶ system: Instructions updated: core/skill-guidance                                   │
+│  ●   User                  │ │                                                                                       │
+│  │                         │ │ ▶ Add a settings screen with a dark mode toggle.                                      │
+│  ●   Assistant        17s  │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ●   User                  │ ╭─ Assistant ── acme/coder-1 @ high ───────────────────────────── 2026-10-28 09:00:03Z ─╮
+│  │                         │ │                                                                                       │
+│  ●   Assistant        39s  │ │ ▶ Thinking: I should look at the existing screens first.                              │
+│  │                         │ │                                                                                       │
+│  ●   End                   │ │   Let me look at the repo layout.                                                     │
+│                            │ │                                                                                       │
+│                            │ │ ▶ Read src/main.rs · 1.0s                                                             │
+│                            │ │                                                                                       │
+│                            │ ▒ ▼ List the sources · 2.0s                                                             │
+│                            │ ▒                                                                                       │
+│                            │ ▒   Command:                                                                            │
+│                            │ ▒                                                                                       │
+│                            │ ▒      ls src                                                                           │
+│                            │ ▒                                                                                       │
+│                            │ ▒   Result:                                                                             │
+│                            │ ▒                                                                                       │
+│                            │ ▒      main.rs                                                                          │
+│                            │ ▒      settings.rs                                                                      │
+│                            │ │                                                                                       │
+│                            │ │ ▶ shell · 4.0s                                                                        │
+│                            │ │                                                                                       │
+│                            │ │ ▶ Write src/scratch.txt · 1.0s                                                        │
+│                            │ │                                                                                       │
+╰────────────────────────────╯ │   17s · 2 messages · 3.3k tokens · $0.03                                              │
                                                                                                                         
  / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

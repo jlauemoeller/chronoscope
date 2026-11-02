@@ -7,38 +7,38 @@ expression: "screen(120, 40, 2, false)"
 │ /home/user/projects/brio                                                                                             │
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ User ───────────────────────╭─ Details ──────────────────────────────────────────────╮─────── 2026-10-21 08:35:15Z ─╮
-│                              │                                                        │                              │
-│ ▶ Is the camera on USB?      │  Turn                                                  │                              │
-│                              │                                                        │                              │
-╰──────────────────────────────│    model               claude-opus-5-5                 │──────────────────────────────╯
-╭─ Assistant ── claude-opus-5-5│    start               2026-10-21 08:35:18Z            │─────── 2026-10-21 08:35:18Z ─╮
-│                              │    duration            7s                              │                              │
-│   I'll list the USB devices. │    messages            1                               │                              │
-│                              │    input tokens        3                               │                              │
-▒ ▶ List USB devices · 2.0s    │    output tokens       245                             │                              │
-│                              │                                                        │                              │
-│   7s · 1 message · 248 tokens│  Tool call                                             │                              │
-│                              │                                                        │                              │
-╰──────────────────────────────│    start               2026-10-21 08:35:19Z            │──────────────────────────────╯
-                               │    duration            2s                              │                               
-                               │    status              ok                              │                               
-                               │    permissionDecision  decision=accept, source=config  │                               
-                               │    sandboxed           false                           │                               
-                               │    resolvedModel       claude-haiku-5-5                │                               
-                               │    isAsync             false                           │                               
-                               │                                                        │                               
-                               │  Environment                                           │                               
-                               │                                                        │                               
-                               │    gitBranch           main                            │                               
-                               │    cwd                 /home/user/projects/brio        │                               
-                               │    version             2.1.100                         │                               
-                               │    entrypoint          cli                             │                               
-                               │                                                        │                               
-                               ╰────────────────────────────────────────────────────────╯                               
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
+╭─ [1] Turns  ───────────────╮ ╭─ Details ──────────────────────────────────────────────╮─────── 2026-10-21 08:35:15Z ─╮
+│                            │ │                                                        │                              │
+│                            │ │  Turn                                                  │                              │
+│  ●   Start                 │ │                                                        │                              │
+│  │                         │ │    model               claude-opus-5-5                 │──────────────────────────────╯
+│  ●   User                  │ │    start               2026-10-21 08:35:18Z            │─────── 2026-10-21 08:35:18Z ─╮
+│  │                         │ │    duration            7s                              │                              │
+│  ●   Assistant         7s  │ │    messages            1                               │                              │
+│  │                         │ │    input tokens        3                               │                              │
+│  ●   End                   │ │    output tokens       245                             │                              │
+│                            │ │                                                        │                              │
+│                            │ │  Tool call                                             │                              │
+│                            │ │                                                        │                              │
+│                            │ │    start               2026-10-21 08:35:19Z            │──────────────────────────────╯
+│                            │ │    duration            2s                              │                               
+│                            │ │    status              ok                              │                               
+│                            │ │    permissionDecision  decision=accept, source=config  │                               
+│                            │ │    sandboxed           false                           │                               
+│                            │ │    resolvedModel       claude-haiku-5-5                │                               
+│                            │ │    isAsync             false                           │                               
+│                            │ │                                                        │                               
+│                            │ │  Environment                                           │                               
+│                            │ │                                                        │                               
+│                            │ │    gitBranch           main                            │                               
+│                            │ │    cwd                 /home/user/projects/brio        │                               
+│                            │ │    version             2.1.100                         │                               
+│                            │ │    entrypoint          cli                             │                               
+│                            │ │                                                        │                               
+│                            │ ╰────────────────────────────────────────────────────────╯                               
+│                            │                                                                                          
+│                            │                                                                                          
+│                            │                                                                                          
+╰────────────────────────────╯                                                                                          
                                                                                                                         
  / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

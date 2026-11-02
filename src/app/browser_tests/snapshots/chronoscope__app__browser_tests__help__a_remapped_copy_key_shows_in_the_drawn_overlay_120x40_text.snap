@@ -7,38 +7,38 @@ expression: text
 │ /home/user/projects/br│                                                                      │                       │
 │                       │  Navigation                                                          │                       │
 ╰───────────────────────│                                                                      │───────────────────────╯
-╭─ User ────────────────│    Up / k                            Previous section                │ 2026-10-21 08:35:15Z ─╮
+╭─ [1] Turns  ──────────│    Up / k                            Previous section                │ 2026-10-21 08:35:15Z ─╮
 │                       │    Down / j                          Next section                    │                       │
-▒ ▶ I have a Logitech BR│    [                                 Previous turn                   │era and microphone -   │
-▒   but I don't have a w│    ]                                 Next turn                       │dows, since there…     │
-│                       │    Ctrl-u                            Scroll half a page up           │                       │
-╰───────────────────────│    Ctrl-d                            Scroll half a page down         │───────────────────────╯
-╭─ Assistant ── claude-o│    PgUp                              Scroll a page up                │ 2026-10-21 08:35:18Z ─╮
-│                       │    PgDn                              Scroll a page down              │                       │
-│   I'll start by lookin│    g / Home                          Jump to start                   │                       │
-│                       │    G / End                           Jump to end and follow          │                       │
-│   • Check lsusb -v for│                                                                      │                       │
-│   • Look at v4l2-ctl -│  Sections                                                            │                       │
+│                       │    [                                 Previous turn                   │a USB. It works fine   │
+│  ●   Start            │    ]                                 Next turn                       │ss settings that…      │
+│  │                    │    Ctrl-u                            Scroll half a page up           │                       │
+│  ●   User             │    Ctrl-d                            Scroll half a page down         │───────────────────────╯
+│  │                    │    PgUp                              Scroll a page up                │ 2026-10-21 08:35:18Z ─╮
+│  ●   Assistant      5m│    PgDn                              Scroll a page down              │                       │
+│  │                    │    g / Home                          Jump to start                   │                       │
+│  ●   User             │    G / End                           Jump to end and follow          │                       │
+│  │                    │                                                                      │                       │
+│  ●   Assistant      5m│  Sections                                                            │                       │
 │                       │                                                                      │                       │
-│   Then I'll compare th│    ENTER / SPACE                     Fold or unfold current section  │                       │
+│  ═══ Compaction ══════│    ENTER / SPACE                     Fold or unfold current section  │                       │
 │                       │    Left / h                          Fold current section            │                       │
-│ ▶ Thinking: The user w│    Right / l                         Unfold current section          │                       │
-│                       │    -                                 Fold all sections               │                       │
-│ ▶ Find the BRIO on USB│    + / =                             Unfold all sections             │                       │
-│                       │    s                                 Show or hide system content     │                       │
-│ ▶ Dump full USB descri│    c                                 Copy section as displayed       │                       │
-│                       │    Y                                 Copy full section               │                       │
-│   model → claude-sonne│    w / Ctrl-s                        Save section as displayed       │                       │
+│  ●   User             │    Right / l                         Unfold current section          │lsusb.                 │
+│  │                    │    -                                 Fold all sections               │                       │
+│  ●   Assistant        │    + / =                             Unfold all sections             │                       │
+│  │                    │    s                                 Show or hide system content     │                       │
+│  ●   Assistant        │    c                                 Copy section as displayed       │                       │
+│  │                    │    Y                                 Copy full section               │                       │
+│  ●   End              │    w / Ctrl-s                        Save section as displayed       │                       │
 │                       │    W                                 Save full section               │                       │
-│   5m 2s · 112 messages│    i                                 Show section details            │                       │
+│                       │    i                                 Show section details            │                       │
 │                       │                                                                      │                       │
-╰───────────────────────│  Search                                                              │───────────────────────╯
-╭─ User ────────────────│                                                                      │ 2026-10-21 08:35:15Z ─╮
+│                       │  Search                                                              │───────────────────────╯
+│                       │                                                                      │ 2026-10-21 08:35:15Z ─╮
 │                       │    /                                 Search transcript               │                       │
-│ ▶ Dump the full descri│    n                                 Next match                      │                       │
+│                       │    n                                 Next match                      │                       │
 │                       │    N                                 Previous match                  │                       │
-╰───────────────────────│    ESC                               Clear search                    │───────────────────────╯
-╭─ Assistant ── claude-o│                                                                      │ 2026-10-21 08:35:18Z ─╮
-│                       │  Sessions                                                            │                       │
+│                       │    ESC                               Clear search                    │───────────────────────╯
+│                       │                                                                      │ 2026-10-21 08:35:18Z ─╮
+╰───────────────────────│  Sessions                                                            │                       │
                         ╰───────────────────────────────────────────────────────────── ↓ more ─╯                        
  / to search | ENTER to fold or unfold sections | c to copy current | ? for keybindings

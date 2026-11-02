@@ -876,7 +876,11 @@ fn with_the_claude_harness_the_subagent_opens_with_its_prompt_as_the_first_user_
         rows[0]
     );
     // The first block under the header is a User turn holding the prompt.
-    assert!(rows[5].starts_with("╭─ User "), "{}", rows[5]);
+    assert!(
+        super::from_transcript(rows[5]).starts_with("╭─ User "),
+        "{}",
+        rows[5]
+    );
     assert!(
         rows[6..9]
             .iter()

@@ -509,7 +509,8 @@ fn the_transcript_viewport_follows_the_terminal_size() {
             .into_attr();
         payload_from_value(&value).unwrap()
     };
-    assert_eq!(viewport(&rig.app), Size::new(120, 33));
+    // The turns sidebar and its gap take 31 columns.
+    assert_eq!(viewport(&rig.app), Size::new(89, 33));
     rig.app.update(Msg::Resized(80, 24));
     assert_eq!(viewport(&rig.app), Size::new(80, 17));
 }
@@ -1050,6 +1051,13 @@ fn shutdown_stops_the_load() {
 
 // -- screens
 
+/// A screen row from the transcript's first column on, without the turns
+/// sidebar and the gap after it (on a screen 90 columns wide or wider).
+fn from_transcript(row: &str) -> String {
+    let skip = crate::app::layout::SIDEBAR_WIDTH + crate::app::layout::SIDEBAR_GAP;
+    row.chars().skip(usize::from(skip)).collect()
+}
+
 fn screen_text(rig: &mut Rig, width: u16, height: u16) -> String {
     text(&mut rig.app, width, height)
 }
@@ -1091,7 +1099,12 @@ fn the_browser_layout_is_header_transcript_blank_row_and_help_line() {
     );
     assert!(rows[4].starts_with("╰──") && rows[4].ends_with("──╯"));
     assert!(
-        rows[5].starts_with("╭─ User "),
+        rows[5].starts_with("╭─ [1] Turns  ─") && rows[5][..].contains("─╮ ╭─ User "),
+        "the sidebar, then the first block: {}",
+        rows[5]
+    );
+    assert!(
+        from_transcript(&rows[5]).starts_with("╭─ User "),
         "the first block: {}",
         rows[5]
     );
@@ -1149,6 +1162,31 @@ fn loaded_browser_80x24_text() {
     let mut rig = rig();
     rig.open_loaded();
     insta::assert_snapshot!(screen_text(&mut rig, 80, 24));
+}
+
+/// One column short of the sidebar: the transcript has the whole width.
+#[test]
+fn loaded_browser_89x30_text() {
+    let mut rig = rig_with(theme("default"), 89, 30);
+    rig.open_loaded();
+    insta::assert_snapshot!(screen_text(&mut rig, 89, 30));
+}
+
+/// The narrowest screen with the sidebar: the transcript has 59 columns.
+#[test]
+fn loaded_browser_90x24_text() {
+    let mut rig = rig_with(theme("default"), 90, 24);
+    rig.open_loaded();
+    insta::assert_snapshot!(screen_text(&mut rig, 90, 24));
+}
+
+/// The empty-session message takes the whole width, with no sidebar.
+#[test]
+fn empty_session_120x40_text() {
+    let mut rig = rig();
+    rig.harness.script(BRIO_SESSION, vec![ModelUpdate::Loaded]);
+    rig.open(BRIO_SESSION);
+    insta::assert_snapshot!(screen_text(&mut rig, 120, 40));
 }
 
 #[test]
@@ -1239,10 +1277,11 @@ fn selector_over_the_browser_200x50_text() {
     let text = screen_text(&mut rig, 200, 50);
     let rows: Vec<Vec<char>> = text.lines().map(|l| l.chars().collect()).collect();
     // The browser shows in the columns beside the 160-column overlay: the
-    // first block's border on row 5, and the header and help line in full.
+    // turns sidebar at the left, the first block's border on row 5 at the
+    // right, and the header and help line in full.
     let left: String = rows[5][..20].iter().collect();
     assert!(
-        left.starts_with("╭─ User "),
+        left.starts_with("╭─ [1] Turns  ─"),
         "left of the overlay: {left:?}"
     );
     let right: String = rows[5][180..].iter().collect();
@@ -1313,5 +1352,6 @@ mod overlay_mouse;
 mod resume;
 mod save;
 mod search;
+mod sidebar;
 mod subagent;
 mod theme_selector;

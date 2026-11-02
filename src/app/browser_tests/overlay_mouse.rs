@@ -51,8 +51,10 @@ fn wheel_outside(rig: &mut Rig, kind: MouseEventKind) {
 }
 
 /// The screen position of a `▶ Thinking:` summary row of the transcript at
-/// the left edge of the screen (column 3), which a centred overlay does not
-/// cover. Call it before the overlay opens: the overlay hides rows.
+/// the right edge of the screen (three columns in from its last), which a
+/// centred overlay does not cover: the turns sidebar is at the left edge, so
+/// the transcript has nothing to show outside an overlay there. Call it
+/// before the overlay opens: the overlay hides rows.
 fn summary_point(rig: &mut Rig, width: u16, height: u16) -> (u16, u16) {
     let area = rig.app.routing().area(Id::Transcript).unwrap();
     let screen = screen_text(rig, width, height);
@@ -64,7 +66,7 @@ fn summary_point(rig: &mut Rig, width: u16, height: u16) -> (u16, u16) {
         .find(|(_, row)| row.contains("▶ Thinking:"))
         .map(|(row, _)| u16::try_from(row).unwrap())
         .expect("a folded thinking section is on screen");
-    (area.x + 3, row)
+    (area.right() - 3, row)
 }
 
 /// Asserts that `point` is outside the overlay `id`, and on the transcript.
@@ -137,8 +139,9 @@ fn click_theme(rig: &mut Rig, line: u16) {
 // -- the selector over the browser
 
 /// A 200x50 rig with the session open and the selector over it: the overlay
-/// is 160 columns wide, so the transcript shows in the 20 columns either side.
-/// Returns the screen position of a summary row at the left edge.
+/// is 160 columns wide, so the transcript shows in the 20 columns at the
+/// right (the turns sidebar covers those at the left). Returns the screen
+/// position of a summary row at the right edge.
 fn selector_over_wide_browser() -> (Rig, (u16, u16)) {
     let mut rig = rig_with(theme("default"), 200, 50);
     rig.open_loaded();
@@ -391,7 +394,7 @@ fn the_wheel_outside_an_overlay_does_not_stop_following() {
     assert!(following(&rig));
     let point = {
         let area = rig.app.routing().area(Id::Transcript).unwrap();
-        (area.x + 3, area.y + 4)
+        (area.right() - 3, area.y + 4)
     };
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
     assert_outside(&rig, Id::HelpOverlay, point);

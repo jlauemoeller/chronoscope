@@ -110,6 +110,9 @@ pub enum Id {
     /// Project and session titles, working directory and parse warnings of
     /// the browser.
     BrowserHeader,
+    /// The turns and compaction events of the transcript on top, in a pane
+    /// to the left of it.
+    TurnSidebar,
     /// The open session's turns.
     Transcript,
     /// The turns of the subagent opened at this depth (1 for the first, 2 for
@@ -587,6 +590,13 @@ impl App {
     /// The mounted components, for tests and, later, focus handling.
     pub fn application(&self) -> &Application<Id, Msg, UserEvent> {
         &self.application
+    }
+
+    /// The mounted components, mutably: tests move the focus to components
+    /// no key reaches yet.
+    #[cfg(test)]
+    pub(crate) fn application_mut(&mut self) -> &mut Application<Id, Msg, UserEvent> {
+        &mut self.application
     }
 
     /// Returns what the screen needs and resets it to nothing.

@@ -16,8 +16,8 @@
 use std::time::{Duration, Instant};
 
 use chronoscope::bench_support::{
-    CountingAlloc, FIXTURE_BYTES, Fixture, FrameScenario, LARGE_PERCENT, SEED, cached_fixture,
-    fixture_cache_dir, load_transcript, run_load,
+    CountingAlloc, FIXTURE_BYTES, Fixture, FrameScenario, LARGE_PERCENT, SEED, SidebarScenario,
+    cached_fixture, fixture_cache_dir, load_with_sidebar, run_load,
 };
 use chronoscope::components::Transcript;
 use chronoscope::components::turn_block::{SectionId, SectionKey};
@@ -185,7 +185,8 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
     // process held before it, at its peak and when it is done.
     let before = ALLOC.stats().live;
     ALLOC.reset_peak();
-    let (transcript, applied) = load_transcript(fixture, SIZE);
+    // The turns sidebar's rows are built during the load, as in the app.
+    let (transcript, sidebar, applied) = load_with_sidebar(fixture, SIZE);
     let stats = ALLOC.stats();
     assert!(applied.turns >= session.prompts, "turns are missing");
     let peak = stats.peak.saturating_sub(before) as u64;
@@ -213,6 +214,12 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
         ));
     }
 
+    assert_eq!(
+        sidebar.rows().turn_count(),
+        transcript.turn_count(),
+        "the sidebar has a slot for every turn"
+    );
+
     // Frames: scroll down through the middle of the session, through a large
     // output that is unfolded.
     let mut scenario = FrameScenario::new(transcript, SIZE);
@@ -233,6 +240,31 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
     );
     if worst_frame >= FRAME {
         failures.push(format!("{label}: the slowest frame took {worst_frame:?}"));
+    }
+    // The turns sidebar: a key press moves the selection and draws a frame
+    // of the pane next to the transcript.
+    let pane = Size::new(30, SIZE.height - 7);
+    let mut sidebar_scenario = SidebarScenario::new(sidebar, pane);
+    println!(
+        "turns sidebar: {} entries in {} turns",
+        sidebar_scenario.sidebar.rows().entry_count(),
+        sidebar_scenario.sidebar.rows().turn_count()
+    );
+    let sidebar_frames: Vec<Duration> = (0..FRAMES)
+        .map(|_| sidebar_scenario.select_next_and_draw())
+        .collect();
+    let worst_sidebar = *sidebar_frames.iter().max().unwrap();
+    println!(
+        "sidebar frames, {FRAMES} key presses at {}x{}: worst {:.2} ms (budget {:.0} ms)",
+        pane.width,
+        pane.height,
+        ms(worst_sidebar),
+        ms(FRAME)
+    );
+    if worst_sidebar >= FRAME {
+        failures.push(format!(
+            "{label}: the slowest sidebar frame took {worst_sidebar:?}"
+        ));
     }
     if let Some(took) = expand_large_output(&mut scenario) {
         println!(

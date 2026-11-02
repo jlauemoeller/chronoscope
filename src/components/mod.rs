@@ -19,6 +19,7 @@ mod theme_selector;
 mod toast;
 pub mod transcript;
 pub mod turn_block;
+mod turn_sidebar;
 mod working_dir;
 
 use tuirealm::props::{AttrValue, Attribute, PropPayload};
@@ -67,6 +68,10 @@ pub use transcript::{
 pub use turn_block::{
     BlockLayout, FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, TitleBar,
     TurnBlock, derive_sections, emphasize,
+};
+pub use turn_sidebar::{
+    DEFAULT_KEY_LABEL, Entry, EntryKind, KEY_LABEL_ATTR, Look, Row, TURN_ROWS_ATTR, TurnRows,
+    TurnSidebar, entry_for, list_rows,
 };
 pub use working_dir::{CWD_ATTR, WorkingDir};
 

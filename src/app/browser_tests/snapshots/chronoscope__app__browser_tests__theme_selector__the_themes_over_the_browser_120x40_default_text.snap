@@ -7,38 +7,38 @@ expression: text
 │ /home/user/projects/brio                                                                                             │
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
-│                                                                                                                      │
-▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine - both camera and microphone -   │
-▒   but I don't have a way to access settings that would have been available on say a mac or windows, since there…     │
-│                                                                                                                      │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│                                                                                                                      │
-│   I'll start by looking at what the camera exposes over USB:                                                         │
-│                                      ╭─ Themes ──────────────────────────────╮                                       │
-│   • Check lsusb -v for the UVC descri│                                       │                                       │
-│   • Look at v4l2-ctl --list-ctrls    │  > Default                            │                                       │
-│                                      │    Terminal                           │                                       │
-│   Then I'll compare the results.     │    Catppuccin                         │                                       │
-│                                      │    Gruvbox                            │                                       │
-│ ▶ Thinking: The user wants the UVC ex│    Nord                               │                                       │
-│                                      │    Tokyo Night                        │                                       │
-│ ▶ Find the BRIO on USB and check avai│    Solarized                          │                                       │
-│                                      │                                       │                                       │
-│ ▶ Dump full USB descriptors for the B│ ENTER to select | ESC to cancel       │                                       │
-│                                      ╰───────────────────────────────────────╯                                       │
-│   model → claude-sonnet-5.5                                                                                          │
-│                                                                                                                      │
-│   5m 2s · 112 messages · 45.2k tokens                                                                                │
-│                                                                                                                      │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
-│                                                                                                                      │
-│ ▶ Dump the full descriptors and look for extension units.                                                            │
-│                                                                                                                      │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│                                                                                                                      │
+╭─ [1] Turns  ───────────────╮ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                            │ │                                                                                       │
+│                            │ ▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
+│  ●   Start                 │ ▒   - both camera and microphone - but I don't have a way to access settings that…      │
+│  │                         │ │                                                                                       │
+│  ●   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  ●   Assistant      5m 2s  │ │                                                                                       │
+│  │                         │ │   I'll start by looking at what the camera exposes over USB:                          │
+│  ●   User                  │ │       ╭─ Themes ──────────────────────────────╮                                       │
+│  │                         │ │   • Ch│                                       │                                       │
+│  ●   Assistant      5m 2s  │ │   • Lo│  > Default                            │                                       │
+│                            │ │       │    Terminal                           │                                       │
+│  ═══ Compaction ═════════  │ │   Then│    Catppuccin                         │                                       │
+│                            │ │       │    Gruvbox                            │                                       │
+│  ●   User                  │ │ ▶ Thin│    Nord                               │its. Start with lsusb.                 │
+│  │                         │ │       │    Tokyo Night                        │                                       │
+│  ●   Assistant             │ │ ▶ Find│    Solarized                          │s                                      │
+│  │                         │ │       │                                       │                                       │
+│  ●   Assistant             │ │ ▶ Dump│ ENTER to select | ESC to cancel       │                                       │
+│  │                         │ │       ╰───────────────────────────────────────╯                                       │
+│  ●   End                   │ │   model → claude-sonnet-5.5                                                           │
+│                            │ │                                                                                       │
+│                            │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
+│                            │ │                                                                                       │
+│                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│                            │ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                            │ │                                                                                       │
+│                            │ │ ▶ Dump the full descriptors and look for extension units.                             │
+│                            │ │                                                                                       │
+│                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│                            │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
+╰────────────────────────────╯ │                                                                                       │
                                                                                                                         
  / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings
