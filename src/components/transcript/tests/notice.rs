@@ -170,24 +170,32 @@ fn both_exports_write_a_notice_like_the_model_note() {
     }
 }
 
-#[test]
-fn a_notice_of_several_paragraphs_is_emphasised_per_line() {
+fn exported_notice(text: &str) -> String {
     let turns = vec![arc(with_id(
         blocks::assistant(
             None,
-            vec![blocks::notice(
-                "n1",
-                NoticeLevel::Error,
-                "first line\n\nsecond paragraph",
-            )],
+            vec![blocks::notice("n1", NoticeLevel::Error, text)],
             None,
         ),
         "a1",
     ))];
-    let t = transcript_of(turns, 100, 30);
+    transcript_of(turns, 100, 30).export_document(true)
+}
+
+#[test]
+fn a_notice_of_several_paragraphs_is_emphasised_per_line() {
     assert!(
-        t.export_document(true)
+        exported_notice("first line\n\nsecond paragraph")
             .contains("\n_first line_\n\n_second paragraph_\n")
+    );
+}
+
+#[test]
+fn an_exported_notice_keeps_its_indent_outside_the_emphasis_and_escapes_markers() {
+    let document = exported_notice("one\n  two_with_underscore *star*");
+    assert!(
+        document.contains("\n_one_\n  _two\\_with\\_underscore \\*star\\*_\n"),
+        "{document}"
     );
 }
 
@@ -217,8 +225,9 @@ fn a_search_finds_the_text_of_a_notice_and_jumps_to_it() {
     assert_eq!(t.selected(), Some(&warning()));
     assert_eq!(search(&mut t, "invalid-request").as_deref(), Some("1/1"));
     assert_eq!(t.selected(), Some(&error()));
-    // Both notices have a colon; the notice is searched like any text.
+    // Only the warning contains `aborted`.
     assert_eq!(search(&mut t, "aborted").as_deref(), Some("1/1"));
+    assert_eq!(t.selected(), Some(&warning()));
 }
 
 #[test]
@@ -253,4 +262,79 @@ fn a_notice_has_a_section_of_its_own_in_every_turn_it_is_in() {
         })
         .collect();
     assert_eq!(ids, [ItemId::from("n1"), ItemId::from("n2")]);
+}
+
+#[test]
+fn a_hyphenated_word_is_not_split_across_rows_so_a_search_highlights_it() {
+    let mut t = notices();
+    assert_eq!(search(&mut t, "non-empty").as_deref(), Some("1/1"));
+    let bg = blocks::theme().role(crate::theme::Role::Primary);
+    let buf = draw(&mut t, 100, 30);
+    let mut found = String::new();
+    for y in 0..30 {
+        for x in 0..100 {
+            let cell = &buf[(x, y)];
+            if cell.bg == bg && cell.symbol() != " " {
+                found.push_str(cell.symbol());
+            }
+        }
+    }
+    assert_eq!(found, "non-empty");
+    // Narrow enough to wrap inside the message: no row ends in a hyphen.
+    let mut t = notices().viewport(ratatui::layout::Size::new(40, 40));
+    let rows = text_rows(&draw(&mut t, 40, 40));
+    assert!(
+        rows.iter()
+            .all(|r| !r.trim_end_matches([' ', '│', '▒']).ends_with('-')),
+        "{rows:#?}"
+    );
+}
+
+#[test]
+fn a_control_character_in_a_notice_is_searched_as_the_space_it_is_drawn_as() {
+    let turns = vec![arc(with_id(
+        blocks::assistant(
+            None,
+            vec![blocks::notice(
+                "n1",
+                NoticeLevel::Error,
+                "alpha\tbeta and more",
+            )],
+            None,
+        ),
+        "a1",
+    ))];
+    let mut t = transcript_of(turns, 100, 30);
+    assert_eq!(search(&mut t, "alpha beta").as_deref(), Some("1/1"));
+}
+
+#[test]
+fn trailing_whitespace_of_a_notice_draws_no_extra_marked_row() {
+    let turns = vec![arc(with_id(
+        blocks::assistant(
+            None,
+            vec![blocks::notice(
+                "n1",
+                NoticeLevel::Error,
+                "first\nsecond\n\n",
+            )],
+            None,
+        ),
+        "a1",
+    ))];
+    let mut t = transcript_of(turns, 60, 20);
+    assert!(t.select(&error()) || t.select(&item_section("a1", "n1")));
+    let rows = text_rows(&draw(&mut t, 60, 20));
+    let marked: Vec<&String> = rows.iter().filter(|r| r.starts_with('▒')).collect();
+    assert_eq!(marked.len(), 2, "{rows:#?}");
+    assert!(
+        marked
+            .iter()
+            .all(|r| !r.trim_matches(['▒', '│', ' ']).is_empty())
+    );
+    assert_eq!(
+        copied(ch(&mut t, 'y')),
+        "first\nsecond",
+        "nothing trailing is copied"
+    );
 }

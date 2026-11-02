@@ -127,6 +127,25 @@ fn heading(turn: &Turn, formatter: &TimestampFormatter) -> String {
     }
 }
 
+/// `text` with one emphasis per line, so that a blank line inside it does not
+/// end a single one. The indent of a line stays outside its emphasis (an
+/// emphasis cannot open before a space), and `_` and `*` inside are escaped so
+/// that they cannot close it early or open another.
+fn emphasized_lines(text: &str) -> String {
+    text.split('\n')
+        .map(|line| {
+            let body = line.trim();
+            if body.is_empty() {
+                return String::new();
+            }
+            let indent = &line[..line.len() - line.trim_start().len()];
+            let body = body.replace('_', "\\_").replace('*', "\\*");
+            format!("{indent}_{body}_")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The markdown of one section, `None` for a section with nothing to write.
 fn section_markdown(
     turn: &Turn,
@@ -171,7 +190,7 @@ fn section_markdown(
                 unfolded_tool(call, section, settings)
             }
         }
-        SectionContent::ModelChange(_) | SectionContent::Notice(..) | SectionContent::Stats(_) => {
+        SectionContent::ModelChange(_) | SectionContent::Stats(_) | SectionContent::Notice(..) => {
             let text = displayed_text(
                 turn,
                 &section.id,
@@ -181,18 +200,11 @@ fn section_markdown(
                 settings.open_key,
                 None,
             )?;
-            // One emphasis per line: a blank line inside a notice would end
-            // a single one.
-            text.split('\n')
-                .map(|line| {
-                    if line.is_empty() {
-                        String::new()
-                    } else {
-                        format!("_{line}_")
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
+            if matches!(section.content, SectionContent::Notice(..)) {
+                emphasized_lines(&text)
+            } else {
+                format!("_{text}_")
+            }
         }
         SectionContent::Compaction(summary_text) => {
             if folded {

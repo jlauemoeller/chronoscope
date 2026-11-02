@@ -143,7 +143,7 @@ struct AssistantData {
 
 /// The `error` of an assistant row: `type` and `message` of an object, or a
 /// plain string, which counts as the message.
-#[derive(Deserialize, Default)]
+#[derive(Deserialize)]
 struct RowError {
     #[serde(default, rename = "type", deserialize_with = "lenient")]
     kind: Option<String>,
@@ -174,23 +174,26 @@ where
 /// The notice for how an assistant row ended (SPEC cycle 2 §4.2); `None` for
 /// a normal ending.
 fn ending_notice(row: &Row, data: &AssistantData) -> Option<Item> {
-    let part = |value: Option<&String>| {
+    let part = |value: Option<&str>| {
         value
-            .map(|v| v.trim())
+            .map(str::trim)
             .filter(|v| !v.is_empty())
             .map(str::to_owned)
     };
-    let finish = part(data.finish.as_ref())?;
+    let finish = part(data.finish.as_deref())?;
     let (level, text) = match finish.as_str() {
         "stop" | "tool-calls" => return None,
         "error" => {
             let error = data.error.as_ref();
-            let kind = part(error.and_then(|e| e.kind.as_ref()));
-            let message = part(error.and_then(|e| e.message.as_ref()));
+            let kind = part(error.and_then(|e| e.kind.as_deref()));
+            let message = part(error.and_then(|e| e.message.as_deref()));
             match (kind, message) {
                 (Some(kind), message) if kind == "aborted" => (
                     NoticeLevel::Warning,
-                    message.map_or(kind.clone(), |m| format!("{kind}: {m}")),
+                    match message {
+                        Some(message) => format!("{kind}: {message}"),
+                        None => kind,
+                    },
                 ),
                 (Some(kind), Some(message)) => (NoticeLevel::Error, format!("{kind}: {message}")),
                 (Some(only), None) | (None, Some(only)) => (NoticeLevel::Error, only),
@@ -624,9 +627,11 @@ impl Assembler {
     /// Feeds a row that was fed before and has changed in place (OpenCode
     /// updates a streaming message's `data` and `time_updated`). The turn the
     /// row went into is rebuilt from its new content: items keep their ids
-    /// and positions (parts that are new are added at the end of the turn), a
-    /// replaced tool part keeps its place, and the turn's stats count the row
-    /// once. Rows that were not fed before are ignored: feed those with
+    /// and positions (parts that are new are added at the end of the turn,
+    /// after the items of later rows, and so is a notice the row gains now),
+    /// a replaced tool part keeps its place, and the turn's stats count the
+    /// row once. A row that now ends normally loses its notice, which shifts
+    /// the items after it. Rows that were not fed before are ignored: feed those with
     /// [`push_row`](Self::push_row), in `seq` order.
     pub fn replace_row(&mut self, row: &Row) {
         let Some(&idx) = self.row_turn.get(&row.id) else {

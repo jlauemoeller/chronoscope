@@ -3,7 +3,7 @@
 
 use ratatui::text::Line;
 
-use super::{SectionCtx, SectionRenderer, with_lead, word_wrap};
+use super::{SectionCtx, SectionRenderer, with_lead, word_wrap, word_wrap_unhyphenated};
 use crate::markdown::render_markdown;
 use crate::model::NoticeLevel;
 use crate::theme::Token;
@@ -32,6 +32,7 @@ impl SectionRenderer for ModelChangeSection<'_> {
 
 /// An error or warning about how the turn ended: plain prose (not markdown),
 /// `error_output` for an error and muted for a warning, indented by two spaces.
+/// Words are not split at hyphens, and trailing whitespace is not drawn.
 #[derive(Debug, Clone, Copy)]
 pub struct NoticeSection<'a>(pub NoticeLevel, pub &'a str);
 
@@ -41,6 +42,7 @@ impl SectionRenderer for NoticeSection<'_> {
             NoticeLevel::Error => ctx.theme.style(Token::ErrorOutput),
             NoticeLevel::Warning => ctx.muted(),
         };
-        with_lead(word_wrap(self.1, ctx.width, style), "  ", style)
+        let text = self.1.trim_end();
+        with_lead(word_wrap_unhyphenated(text, ctx.width, style), "  ", style)
     }
 }

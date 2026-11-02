@@ -353,3 +353,29 @@ fn a_notice_does_not_change_the_turn_stats() {
     };
     assert_eq!(stats(&plain), stats(&failed));
 }
+
+#[test]
+fn a_row_pushed_after_a_removed_notice_replaces_the_item_it_names_not_a_shifted_one() {
+    // Removing the notice shifts the items after it. The index of the open
+    // turn must follow, or a pushed row that re-sends a known id lands on the
+    // wrong item (or past the end of the turn).
+    let mut asm = Assembler::new();
+    asm.push_row(&user("u1", 1));
+    asm.push_row(&assistant("a1", 2, r#""finish":"length""#));
+    asm.push_row(&tool_row("a2", 3, "pending", ""));
+    asm.push_row(&assistant("a3", 4, ""));
+    asm.replace_row(&assistant("a1", 2, r#""finish":"stop""#));
+    // `call-a2` again, completed, with no `replace_row` in between.
+    asm.push_row(&row(
+        "a4",
+        "assistant",
+        5,
+        r#"{"model":{"id":"m"},"content":[{"type":"tool","id":"call-a2","name":"shell","state":{"status":"completed","input":{"command":"ls"},"content":[{"type":"text","text":"done"}]}}]}"#,
+    ));
+    asm.finish();
+    assert_eq!(ids(&asm), ["a1:0", "call-a2", "a3:0"]);
+    let Item::ToolCall(call) = &items(&asm, 1)[1] else {
+        panic!("the second item is the tool call")
+    };
+    assert_eq!(call.status, crate::model::ToolStatus::Ok);
+}
