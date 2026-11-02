@@ -6,6 +6,7 @@
 //! selection state survives in-place updates.
 
 mod output;
+mod sources;
 
 use std::fmt;
 use std::path::PathBuf;
@@ -18,6 +19,10 @@ use serde::{Deserialize, Serialize};
 pub use output::{ByteSource, LineFormat, OutputSource, ToolOutput, ToolOutputError, ToolResult};
 #[cfg(test)]
 pub(crate) use output::{source_reads, text_calls};
+pub use sources::{
+    SectionRefs, SectionSource, SourceGroup, SourceGroupKind, SourceKey, SourceKind, SourceRef,
+    SourceRow, SourceValue, TurnSources,
+};
 
 /// Tool results longer than this many bytes are stored lazily (SPEC §9.2).
 pub const INLINE_OUTPUT_LIMIT: usize = 4096;
@@ -281,6 +286,16 @@ impl Turn {
         }
     }
 
+    /// Where the turn's sections were read from (empty for a harness that
+    /// gives no source details).
+    pub fn sources(&self) -> &TurnSources {
+        match self {
+            Turn::User(t) => &t.sources,
+            Turn::Assistant(t) => &t.sources,
+            Turn::Compaction(t) => &t.sources,
+        }
+    }
+
     /// When the turn started.
     pub fn timestamp(&self) -> DateTime<Utc> {
         match self {
@@ -302,6 +317,8 @@ pub struct UserTurn {
     pub text: String,
     /// Injected content preceding or attached to the prompt.
     pub items: Vec<Item>,
+    /// Where the prompt and its injected content were read from.
+    pub sources: TurnSources,
 }
 
 /// The agent's side of one exchange.
@@ -319,6 +336,8 @@ pub struct AssistantTurn {
     pub items: Vec<Item>,
     /// The footer statistics, once known.
     pub stats: Option<TurnStats>,
+    /// Where the turn's sections were read from.
+    pub sources: TurnSources,
 }
 
 /// A compaction summary.
@@ -330,6 +349,8 @@ pub struct CompactionTurn {
     pub timestamp: DateTime<Utc>,
     /// The summary text.
     pub summary: String,
+    /// Where the compaction was read from.
+    pub sources: TurnSources,
 }
 
 /// Token counts of one message, or summed over the messages of a turn.
@@ -662,6 +683,7 @@ mod tests {
             id: TurnId::from("c"),
             timestamp: now(),
             summary: "s".to_owned(),
+            sources: TurnSources::new(),
         }));
         let mut turns = Vec::new();
         ModelUpdate::Appended(vec![turn]).apply(&mut turns);

@@ -24,7 +24,7 @@ use super::wire::{Block, Content, Entry, Head, Usage, content_text, read_entry, 
 use crate::model::{
     AssistantTurn, ByteSource, CompactionTurn, InjectedEntry, Item, ItemId, LineFormat,
     ModelUpdate, NoticeLevel, OutputSource, Thinking, TokenUsage, ToolCall, ToolOutput, ToolResult,
-    ToolStatus, Turn, TurnId, TurnStats, UserTurn,
+    ToolStatus, Turn, TurnId, TurnSources, TurnStats, UserTurn,
 };
 
 /// Placeholder model name Claude Code writes for locally generated messages;
@@ -39,8 +39,9 @@ struct Builder {
     index: HashMap<ItemId, usize>,
     /// The model of the most recent message.
     last_model: String,
-    /// Message ids seen in this turn.
-    messages: HashSet<String>,
+    /// Message ids seen in this turn, with their number in the turn's
+    /// [`TurnSources`].
+    messages: HashMap<String, usize>,
     /// How many of those messages are not `<synthetic>`: the turn's message
     /// count.
     counted: usize,
@@ -117,6 +118,8 @@ struct CallRef {
     turn: usize,
     item: usize,
     started: DateTime<Utc>,
+    /// The call's number in the turn's [`TurnSources`].
+    source: usize,
 }
 
 /// Incremental Claude turn assembler.
@@ -139,6 +142,8 @@ pub struct Assembler {
     held: Vec<InjectedEntry>,
     /// Identity (uuid or line offset) of the first held entry.
     held_key: Option<String>,
+    /// The line of the first held entry.
+    held_line: Option<Range<u64>>,
     /// Attachment kinds that are neither allowlisted nor known noise.
     unknown_kinds: BTreeMap<String, usize>,
     /// Unknown kinds already written to the log.
@@ -177,6 +182,7 @@ impl Assembler {
             unparsed: 0,
             held: Vec::new(),
             held_key: None,
+            held_line: None,
             unknown_kinds: BTreeMap::new(),
             logged_kinds: HashSet::new(),
             user_flushed: false,
@@ -386,7 +392,7 @@ impl Assembler {
                 {
                     let ts = self.timestamp(&entry);
                     match sub {
-                        "turn_duration" => self.on_turn_duration(&entry),
+                        "turn_duration" => self.on_turn_duration(&entry, range),
                         "compact_boundary" => self.on_compact_boundary(&entry, ts, range),
                         _ => {
                             let text = system_text(
@@ -512,6 +518,7 @@ impl Assembler {
     ) {
         if self.held.is_empty() {
             self.held_key = Some(entry_id(uuid, range).to_string());
+            self.held_line = Some(range.clone());
         }
         self.held.push(InjectedEntry {
             kind: kind.to_owned(),
@@ -531,7 +538,7 @@ impl Assembler {
         };
         if let Some(text) = queued {
             let id = entry_id(entry.uuid.as_deref(), range);
-            self.start_user_turn(id, ts, usable_timestamp(entry), text);
+            self.start_user_turn(id, ts, usable_timestamp(entry), text, range);
         } else {
             let text = attachment_text(kind, attachment);
             self.hold(kind, ts, text, entry.uuid.as_deref(), range);
@@ -540,26 +547,32 @@ impl Assembler {
 
     /// Starts a User turn; held injected entries become its first item.
     /// `usable` is the prompt's own timestamp, when it has one: the start of
-    /// the Assistant turn that follows.
+    /// the Assistant turn that follows. `range` is the prompt's line.
     fn start_user_turn(
         &mut self,
         id: TurnId,
         timestamp: DateTime<Utc>,
         usable: Option<DateTime<Utc>>,
         text: String,
+        range: &Range<u64>,
     ) {
         self.cur = None;
         self.prompt_ts = usable;
         self.user_flushed = false;
         self.compaction_pending = None;
-        let items = take_held(&mut self.held, &mut self.held_key)
-            .into_iter()
-            .collect();
+        let mut sources = TurnSources::new();
+        sources.set_own(&self.source, range);
+        let held = take_held(&mut self.held, &mut self.held_key, &mut self.held_line);
+        if let Some(held) = &held {
+            held.link(&mut sources, &self.source);
+        }
+        let items = held.map(|held| held.item).into_iter().collect();
         self.turns.push(Arc::new(Turn::User(UserTurn {
             id,
             timestamp,
             text,
             items,
+            sources,
         })));
     }
 
@@ -572,10 +585,13 @@ impl Assembler {
             return;
         }
         if let Some(b) = self.cur.as_mut() {
-            let Some(item) = take_held(&mut self.held, &mut self.held_key) else {
+            let Some(held) = take_held(&mut self.held, &mut self.held_key, &mut self.held_line)
+            else {
                 return;
             };
             if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[b.idx]) {
+                let HeldItem { item, line } = held;
+                let id = item.id().clone();
                 match (turn.items.last_mut(), item) {
                     // Deliberately wider than "only noise between": a tool
                     // result or turn footer between two injected runs makes
@@ -589,15 +605,20 @@ impl Assembler {
                     }
                     (_, item) => {
                         upsert(turn, b, item, &mut false);
+                        if let Some(line) = &line {
+                            turn.sources.link_line(&self.source, &id, line);
+                        }
                     }
                 }
                 self.dirty.insert(b.idx);
             }
         } else if let Some(last) = self.turns.len().checked_sub(1)
             && matches!(&*self.turns[last], Turn::User(_))
-            && let Some(item) = take_held(&mut self.held, &mut self.held_key)
+            && let Some(HeldItem { item, line }) =
+                take_held(&mut self.held, &mut self.held_key, &mut self.held_line)
             && let Turn::User(turn) = Arc::make_mut(&mut self.turns[last])
         {
+            let id = item.id().clone();
             match (turn.items.last_mut(), item) {
                 // An earlier flush after the prompt: same collapsing as in an
                 // Assistant turn, so a live batch boundary changes nothing.
@@ -608,7 +629,12 @@ impl Assembler {
                 {
                     entries.extend(more);
                 }
-                (_, item) => turn.items.push(item),
+                (_, item) => {
+                    turn.items.push(item);
+                    if let Some(line) = &line {
+                        turn.sources.link_line(&self.source, &id, line);
+                    }
+                }
             }
             self.user_flushed = true;
             self.dirty.insert(last);
@@ -644,6 +670,7 @@ impl Assembler {
             id: entry_id(entry.uuid.as_deref(), range),
             timestamp: ts,
             summary: String::new(),
+            sources: own_sources(&self.source, range),
         })));
     }
 
@@ -670,6 +697,7 @@ impl Assembler {
                 id: entry_id(entry.uuid.as_deref(), range),
                 timestamp: ts,
                 summary,
+                sources: own_sources(&self.source, range),
             })));
         }
     }
@@ -709,7 +737,7 @@ impl Assembler {
             return;
         };
         let id = entry_id(entry.uuid.as_deref(), range);
-        self.start_user_turn(id, ts, usable_timestamp(&entry), text);
+        self.start_user_turn(id, ts, usable_timestamp(&entry), text, range);
     }
 
     fn on_assistant(&mut self, entry: Entry, ts: DateTime<Utc>, range: &Range<u64>) {
@@ -734,7 +762,7 @@ impl Assembler {
         self.compaction_pending = None;
         // Still held when the previous turn cannot take them (none, or a
         // Compaction turn): they open this turn.
-        let mut held_item = take_held(&mut self.held, &mut self.held_key);
+        let mut held_item = take_held(&mut self.held, &mut self.held_key, &mut self.held_line);
         let msg_id = message
             .id
             .clone()
@@ -753,6 +781,7 @@ impl Assembler {
                     effort: None,
                     items: Vec::new(),
                     stats: None,
+                    sources: TurnSources::new(),
                 })));
                 Builder {
                     idx,
@@ -762,7 +791,7 @@ impl Assembler {
                     } else {
                         String::new()
                     },
-                    messages: HashSet::new(),
+                    messages: HashMap::new(),
                     counted: 0,
                     start: self.prompt_ts.take().or(usable),
                     duration: None,
@@ -780,14 +809,24 @@ impl Assembler {
         let mut changed = false;
         let mut results: Vec<Block> = Vec::new();
         if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[b.idx]) {
-            if let Some(item) = held_item.take() {
-                upsert(turn, &mut b, item, &mut changed);
+            if let Some(held) = held_item.take() {
+                held.link(&mut turn.sources, &self.source);
+                upsert(turn, &mut b, held.item, &mut changed);
             }
             if turn.effort.is_none() && effort.is_some() {
                 turn.effort = effort;
                 changed = true;
             }
-            if b.messages.insert(msg_id.clone()) {
+            let first_sight = !b.messages.contains_key(&msg_id);
+            let message_no = match b.messages.get(&msg_id) {
+                Some(&number) => number,
+                None => {
+                    let number = turn.sources.add_message(&self.source, range);
+                    b.messages.insert(msg_id.clone(), number);
+                    number
+                }
+            };
+            if first_sight {
                 if model != SYNTHETIC_MODEL {
                     b.counted += 1;
                 }
@@ -798,8 +837,10 @@ impl Assembler {
                     turn.model.clone_from(&model);
                     changed = true;
                 } else if real && model != b.last_model {
+                    let id = ItemId::from(format!("model:{msg_id}"));
+                    changed |= turn.sources.link_message_item(&id, message_no);
                     let item = Item::ModelChange {
-                        id: ItemId::from(format!("model:{msg_id}")),
+                        id,
                         model: model.clone(),
                     };
                     upsert(turn, &mut b, item, &mut changed);
@@ -816,6 +857,9 @@ impl Assembler {
             }
             let api_error = b.api_errors.contains(&msg_id);
             let stop_changed = stop_reason.is_some();
+            changed |= turn
+                .sources
+                .note_message_line(message_no, range, stop_changed);
             if let Some(reason) = stop_reason {
                 b.stop.insert(msg_id.clone(), reason);
             }
@@ -856,6 +900,7 @@ impl Assembler {
                                 |old, _| matches!(old, Item::Text { text: o, .. } if text.starts_with(o.as_str())),
                             );
                             note_block(&mut b, &msg_id, api_index, &id);
+                            changed |= turn.sources.link_message_item(&id, message_no);
                             upsert(turn, &mut b, Item::Text { id, text }, &mut changed);
                         }
                     }
@@ -889,6 +934,7 @@ impl Assembler {
                             b.signatures.insert(id.clone(), sig);
                         }
                         note_block(&mut b, &msg_id, api_index, &id);
+                        changed |= turn.sources.link_message_item(&id, message_no);
                         upsert(turn, &mut b, Item::Thinking { id, thinking }, &mut changed);
                     }
                     Some("tool_use" | "server_tool_use") => {
@@ -907,11 +953,13 @@ impl Assembler {
                             duration: None,
                         };
                         note_block(&mut b, &msg_id, api_index, &call.id);
+                        let source = turn.sources.link_call(&self.source, &call.id, range);
                         let item = upsert(turn, &mut b, Item::ToolCall(call), &mut changed);
                         self.calls.entry(call_id).or_insert(CallRef {
                             turn: b.idx,
                             item,
                             started: ts,
+                            source,
                         });
                     }
                     _ if block.is_result() => results.push(block),
@@ -923,6 +971,7 @@ impl Assembler {
                 let notice_id = ItemId::from(format!("notice:{msg_id}"));
                 match message_notice(&b, &msg_id) {
                     Some((level, text)) => {
+                        changed |= turn.sources.link_message_item(&notice_id, message_no);
                         let item = Item::Notice {
                             id: notice_id,
                             level,
@@ -960,7 +1009,7 @@ impl Assembler {
     /// wins; entries are never summed): wall-clock time from the turn's start
     /// to the entry's timestamp, or the entry's own `durationMs` when either
     /// end has no usable timestamp or the span would be negative.
-    fn on_turn_duration(&mut self, entry: &Entry) {
+    fn on_turn_duration(&mut self, entry: &Entry, range: &Range<u64>) {
         self.flush_current();
         self.compaction_pending = None;
         let Some(b) = self.cur.as_mut() else {
@@ -976,11 +1025,15 @@ impl Assembler {
         b.duration = Some(duration);
         let stats = b.stats();
         let idx = b.idx;
-        if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[idx])
-            && turn.stats != stats
-        {
-            turn.stats = stats;
-            self.dirty.insert(idx);
+        if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[idx]) {
+            let mut changed = turn.sources.set_footer(&self.source, range);
+            if turn.stats != stats {
+                turn.stats = stats;
+                changed = true;
+            }
+            if changed {
+                self.dirty.insert(idx);
+            }
         }
     }
 
@@ -1032,16 +1085,19 @@ impl Assembler {
                         && c.status == status
                         && c.duration == duration
             )
-        );
+        ) && self.turns[call.turn]
+            .sources()
+            .has_result(call.source, range);
         if unchanged {
             return;
         }
-        if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[call.turn])
-            && let Some(Item::ToolCall(c)) = turn.items.get_mut(call.item)
-        {
-            c.result = Some(result);
-            c.status = status;
-            c.duration = duration;
+        if let Turn::Assistant(turn) = Arc::make_mut(&mut self.turns[call.turn]) {
+            turn.sources.set_result(&self.source, call.source, range);
+            if let Some(Item::ToolCall(c)) = turn.items.get_mut(call.item) {
+                c.result = Some(result);
+                c.status = status;
+                c.duration = duration;
+            }
             self.dirty.insert(call.turn);
         }
     }
@@ -1095,15 +1151,38 @@ fn message_notice(b: &Builder, msg_id: &str) -> Option<(NoticeLevel, String)> {
 
 /// Turns the held injected entries into one `Injected` item, identified by
 /// the first entry.
-fn take_held(held: &mut Vec<InjectedEntry>, key: &mut Option<String>) -> Option<Item> {
+fn take_held(
+    held: &mut Vec<InjectedEntry>,
+    key: &mut Option<String>,
+    line: &mut Option<Range<u64>>,
+) -> Option<HeldItem> {
     if held.is_empty() {
         return None;
     }
     let key = key.take().unwrap_or_default();
-    Some(Item::Injected {
-        id: ItemId::from(format!("injected:{key}")),
-        entries: std::mem::take(held),
+    Some(HeldItem {
+        item: Item::Injected {
+            id: ItemId::from(format!("injected:{key}")),
+            entries: std::mem::take(held),
+        },
+        line: line.take(),
     })
+}
+
+/// The `Injected` item the held entries made, and the line of the first.
+struct HeldItem {
+    item: Item,
+    line: Option<Range<u64>>,
+}
+
+impl HeldItem {
+    /// Records the line of the item in `sources`, now that it is in a turn.
+    fn link(&self, sources: &mut TurnSources, bytes: &ByteSource) -> bool {
+        match &self.line {
+            Some(line) => sources.link_line(bytes, self.item.id(), line),
+            None => false,
+        }
+    }
 }
 
 /// The entry's own `timestamp`, when it parses.
@@ -1281,6 +1360,13 @@ fn shift_after(b: &mut Builder, calls: &mut HashMap<String, CallRef>, pos: usize
     {
         call.item -= 1;
     }
+}
+
+/// The sources of a turn that is one line.
+fn own_sources(bytes: &ByteSource, range: &Range<u64>) -> TurnSources {
+    let mut sources = TurnSources::new();
+    sources.set_own(bytes, range);
+    sources
 }
 
 fn entry_id(uuid: Option<&str>, range: &Range<u64>) -> TurnId {

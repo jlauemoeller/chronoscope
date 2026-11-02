@@ -443,7 +443,9 @@ fn a_batch_flush_between_consecutive_entries_in_a_user_turn_still_collapses_them
     assert_eq!(item_names(&user(&whole[0]).items), ["injected"]);
     assert_eq!(injected(&user(&whole[0]).items[0]).len(), 2);
 
-    let mut asm = Assembler::new(ByteSource::Memory(Arc::from(&b""[..])));
+    // The turns carry the bytes their references name, so both read the same.
+    let bytes: Arc<[u8]> = Arc::from(format!("{first}{second}").as_bytes());
+    let mut asm = Assembler::new(ByteSource::Memory(bytes));
     let mut replayed = Vec::new();
     for batch in [&first, &second] {
         for u in asm.push_chunk(batch.as_bytes()) {

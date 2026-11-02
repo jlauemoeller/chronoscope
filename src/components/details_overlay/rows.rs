@@ -14,6 +14,8 @@ use crate::timestamp::TimestampFormatter;
 
 /// The title of the group about the turn.
 pub const TURN: &str = "Turn";
+/// The title of the group about one API message.
+pub const MESSAGE: &str = "Message";
 /// The title of the group about a tool call.
 pub const TOOL_CALL: &str = "Tool call";
 /// The title of the group about a user prompt.

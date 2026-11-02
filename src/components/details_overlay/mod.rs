@@ -8,6 +8,7 @@
 
 mod content;
 mod rows;
+mod source;
 
 #[cfg(test)]
 mod snapshots;
@@ -22,6 +23,7 @@ use tuirealm::state::{State, StateValue};
 
 pub use content::{DetailsContent, DetailsGroup, DetailsRow};
 pub use rows::section_details;
+pub use source::{DetailsRequest, compose, section_source};
 
 use super::overlay_frame::{FrameKey, INTERIOR_ATTR, OverlayFrame, interior_value};
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};

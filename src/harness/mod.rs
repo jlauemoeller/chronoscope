@@ -15,7 +15,8 @@ use std::thread::JoinHandle;
 
 use crate::config::Config;
 use crate::model::{
-    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary, ToolCallId,
+    HarnessId, ModelUpdate, Project, ProjectId, SectionSource, SessionId, SessionStats,
+    SessionSummary, SourceGroup, ToolCallId,
 };
 
 /// Result type of harness operations.
@@ -92,6 +93,22 @@ pub trait Harness: Send + Sync {
     /// The command that resumes `session` in its harness, or `None` when the
     /// configured template is unusable.
     fn resume_command(&self, session: &SessionSummary) -> Option<Command>;
+
+    /// Reads what the harness records about a section from its source, for
+    /// the details overlay (SPEC cycle 2 §5.2): the Message, Tool call,
+    /// Prompt and Environment groups of §5.3. `source` holds the section's
+    /// references, which the turns keep instead of the field values.
+    ///
+    /// Runs on the UI thread when the overlay opens, so it reads one or two
+    /// lines. A group whose source cannot be read comes back `unavailable`.
+    ///
+    /// The default provides nothing, and the overlay then shows only what
+    /// the model knows, with no `unavailable` row. The Codex and Pi adapters
+    /// inherit it, and so does OpenCode until it reads its rows.
+    fn section_details(&self, source: &SectionSource) -> Vec<SourceGroup> {
+        let _ = source;
+        Vec::new()
+    }
 
     /// Reads the transcript file at `path` (given on the command line, so it
     /// need not be in the harness's data store) and returns its summary. The

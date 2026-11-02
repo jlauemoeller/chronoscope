@@ -35,7 +35,7 @@ use super::tools::{describe, tool_kind};
 use crate::harness::shared::{lenient, lenient_object};
 use crate::model::{
     AssistantTurn, InjectedEntry, Item, ItemId, ModelUpdate, NoticeLevel, Thinking, TokenUsage,
-    ToolCall, ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnStats, UserTurn,
+    ToolCall, ToolOutput, ToolResult, ToolStatus, Turn, TurnId, TurnSources, TurnStats, UserTurn,
 };
 
 /// The variant that means "no particular effort".
@@ -472,6 +472,7 @@ impl Assembler {
             timestamp,
             text: text.unwrap_or_default(),
             items,
+            sources: TurnSources::default(),
         })));
     }
 
@@ -534,6 +535,7 @@ impl Assembler {
                     effort: None,
                     items: Vec::new(),
                     stats: None,
+                    sources: TurnSources::default(),
                 })));
                 Builder::new(idx, &model)
             }

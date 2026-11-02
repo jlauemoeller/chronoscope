@@ -335,7 +335,7 @@ fn an_open_request_while_it_is_open_changes_nothing() {
     rig.open_loaded();
     rig.open_details();
     let before = overlay_rows(&mut rig, 120, 40);
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert_eq!(overlay_rows(&mut rig, 120, 40), before);
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
     // The other overlays do not open over it either.
@@ -358,20 +358,20 @@ fn it_does_not_open_over_the_help_overlay_the_theme_selector_or_a_prompt() {
     let mut rig = rig();
     rig.open_loaded();
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
     rig.app.update(Msg::CloseHelp);
 
     rig.app.update(Msg::OpenThemeSelector);
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::ThemeSelector));
     rig.app.update(Msg::CancelTheme);
 
     rig.press(Key::Char('/'));
     rig.pump_until(|app| app.application().mounted(&Id::Prompt));
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::Prompt));
 }
@@ -653,7 +653,7 @@ fn it_does_not_open_on_a_screen_that_is_too_small_to_show_it() {
     let seen = rig.settle();
     assert!(!open(&rig.app), "{seen:?}");
     assert_eq!(rig.focus(), Some(Id::Transcript));
-    rig.app.update(Msg::OpenDetails(some_details()));
+    rig.app.update(Msg::OpenDetails(some_details().into()));
     assert!(!open(&rig.app));
     // Grown, the key works.
     rig.app.update(Msg::Resized(120, 40));
