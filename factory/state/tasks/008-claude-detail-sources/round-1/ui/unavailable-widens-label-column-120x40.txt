@@ -1,0 +1,44 @@
+# Prompt section, source readable: labels are padded to 'permissionMode' (14)
+=== section #0 open=true area=Some(Rect { x: 36, y: 12, width: 48, height: 16 }) @ 120x40
+╭─ Details ────────────────────────────────────╮
+│                                              │
+│  Prompt                                      │
+│                                              │
+│    timestamp       2026-10-21 08:35:15Z      │
+│    permissionMode  auto                      │
+│    promptSource    typed                     │
+│                                              │
+│  Environment                                 │
+│                                              │
+│    gitBranch       main                      │
+│    cwd             /home/user/projects/brio  │
+│    version         2.1.100                   │
+│    entrypoint      cli                       │
+│                                              │
+╰──────────────────────────────────────────────╯
+
+# Prompt section, file gone: 'timestamp' (9) should give a value column of 11 from the row column; 'unavailable' (11) pushes it to 13, and the overlay is 41 columns wide instead of 40
+=== section #0 open=true area=Some(Rect { x: 39, y: 14, width: 41, height: 12 }) @ 120x40
+╭─ Details ─────────────────────────────╮
+│                                       │
+│  Prompt                               │
+│                                       │
+│    timestamp    2026-10-21 08:35:15Z  │
+│    unavailable                        │
+│                                       │
+│  Environment                          │
+│                                       │
+│    unavailable                        │
+│                                       │
+╰───────────────────────────────────────╯
+
+# Compaction section, file gone: the same, 'timestamp' at 13 instead of 11
+=== section #10 open=true area=Some(Rect { x: 39, y: 16, width: 41, height: 8 }) @ 120x40
+╭─ Details ─────────────────────────────╮
+│                                       │
+│  Environment                          │
+│                                       │
+│    timestamp    2026-10-21 09:00:00Z  │
+│    unavailable                        │
+│                                       │
+╰───────────────────────────────────────╯

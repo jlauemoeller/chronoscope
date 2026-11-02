@@ -1,0 +1,18 @@
+# Prompt section whose line has "version": "" (also shows control characters stripped from gitBranch)
+=== section #0 open=true area=Some(Rect { x: 2, y: 3, width: 76, height: 18 }) @ 80x24
+╭─ Details ────────────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Prompt                                                                  │
+│                                                                          │
+│    timestamp   not a date                                                │
+│                                                                          │
+│  Environment                                                             │
+│                                                                          │
+│    gitBranch   [31mred[0m                                                │
+│                second line                                               │
+│    cwd         /home/user/very-long-directory-name/very-long-directory-  │
+│                name/very-long-directory-name/very-long-directory-name/v  │
+│                ery-long-directory-name/very-long-directory-name/end      │
+│    version                                                               │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
