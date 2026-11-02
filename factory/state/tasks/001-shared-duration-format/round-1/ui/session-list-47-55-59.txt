@@ -1,0 +1,50 @@
+SessionList rendered with TestBackend at height 15; rows are scratch-crate data.
+--- pane width 47 ---
+╭─ Sessions in BRIO ──────────────────────────╮
+│                                             │
+│  > 2026-10-30 11:40Z  ● Fix the flaky log…  │
+│    2026-10-30 11:40Z    Fix the flaky log…  │
+│    2026-10-30 11:40Z    Hi                  │
+│    2026-10-30 11:40Z    A very long sessi…  │
+│    2026-10-30 11:40Z    Zero padded?        │
+│    2026-10-30 11:40Z    An exact hour       │
+│    2026-10-30 11:40Z    Sub minute          │
+│    2026-10-30 11:40Z    Instant             │
+│    2026-10-30 11:40Z    日本語のタイトル…   │
+│    2026-10-30 11:40Z    BRIO › A session …  │
+│    2026-10-30 11:40Z    No stats yet        │
+│                                             │
+╰─────────────────────────────────────────────╯
+--- pane width 55 ---
+╭─ Sessions in BRIO ──────────────────────────────────╮
+│                                                     │
+│  > 2026-10-30 11:40Z  ● Fix the flaky login test    │
+│    2026-10-30 11:40Z    Fix the flaky login test    │
+│    2026-10-30 11:40Z    Hi                          │
+│    2026-10-30 11:40Z    A very long session title…  │
+│    2026-10-30 11:40Z    Zero padd…  1 turn · 1m 0s  │
+│    2026-10-30 11:40Z    An exact hour               │
+│    2026-10-30 11:40Z    Sub minute    1 turn · 59s  │
+│    2026-10-30 11:40Z    Instant       0 turns · 0s  │
+│    2026-10-30 11:40Z    日本語のタイトルがとても…   │
+│    2026-10-30 11:40Z    BRIO › A session of BRIO    │
+│    2026-10-30 11:40Z    No stats yet                │
+│                                                     │
+╰─────────────────────────────────────────────────────╯
+
+--- pane width 59 ---
+╭─ Sessions in BRIO ──────────────────────────────────────╮
+│                                                         │
+│  > 2026-10-30 11:40Z  ● Fix the f…  12 turns · 59m 59s  │
+│    2026-10-30 11:40Z    Fix the f…  12 turns · 59m 59s  │
+│    2026-10-30 11:40Z    Hi          12 turns · 59m 59s  │
+│    2026-10-30 11:40Z    A very long session title tha…  │
+│    2026-10-30 11:40Z    Zero padded?    1 turn · 1m 0s  │
+│    2026-10-30 11:40Z    An exact hour  2 turns · 1h 0m  │
+│    2026-10-30 11:40Z    Sub minute        1 turn · 59s  │
+│    2026-10-30 11:40Z    Instant           0 turns · 0s  │
+│    2026-10-30 11:40Z    日本語のタイ…  7 turns · 4m 3s  │
+│    2026-10-30 11:40Z    BRIO › A se…  3 turns · 1m 35s  │
+│    2026-10-30 11:40Z    No stats yet                    │
+│                                                         │
+╰─────────────────────────────────────────────────────────╯

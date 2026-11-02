@@ -1208,7 +1208,7 @@ fn the_focused_selection_is_one_inverted_band_with_a_primary_marker() {
         line.contains("2026-10-30 11:40Z  ● Fix the flaky login test"),
         "{line}"
     );
-    assert!(line.contains("23 turns · 1h 05m"), "{line}");
+    assert!(line.contains("23 turns · 1h 5m"), "{line}");
 }
 
 #[test]

@@ -30,7 +30,7 @@ expression: "buffer_to_styled(&screen_buffer(&mut rig, 120, 40))"
 │                       │    Y                                 Copy full section               │                       │
 │   model → claude-sonne│    w / Ctrl-s                        Save section as displayed       │                       │
 │                       │    W                                 Save full section               │                       │
-│   5m 02s · 112 message│                                                                      │                       │
+│   5m 2s · 112 messages│                                                                      │                       │
 │                       │  Search                                                              │                       │
 ╰───────────────────────│                                                                      │───────────────────────╯
 ╭─ User ────────────────│    /                                 Search transcript               │ 2026-10-21 08:35:15Z ─╮

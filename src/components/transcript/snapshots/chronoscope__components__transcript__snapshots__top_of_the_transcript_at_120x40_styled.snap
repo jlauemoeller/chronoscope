@@ -25,7 +25,7 @@ expression: "buffer_to_styled(&draw(&mut t, 120, 40))"
 │                                                                                                                      │
 │   model → claude-sonnet-5.5                                                                                          │
 │                                                                                                                      │
-│   5m 02s · 112 messages · 45.2k tokens                                                                               │
+│   5m 2s · 112 messages · 45.2k tokens                                                                                │
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
@@ -41,7 +41,7 @@ expression: "buffer_to_styled(&draw(&mut t, 120, 40))"
 │                                                                                                                      │
 │ ▶ Read the UVC descriptor dump                                                                                       │
 │                                                                                                                      │
-│   5m 02s · 112 messages · 45.2k tokens                                                                               │
+│   5m 2s · 112 messages · 45.2k tokens                                                                                │
 --- styles (fg/bg/modifiers) ---
 0: 0..2 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 2..8 Rgb(229, 229, 229)/Rgb(10, 10, 10)/NONE | 8..96 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 96..118 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 118..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
 1: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
@@ -66,7 +66,7 @@ expression: "buffer_to_styled(&draw(&mut t, 120, 40))"
 20: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
 21: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..29 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 29..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
 22: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
-23: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..40 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 40..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+23: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..39 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 39..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
 24: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
 25: 0..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
 26: 0..2 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 2..8 Rgb(229, 229, 229)/Rgb(10, 10, 10)/NONE | 8..96 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 96..118 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 118..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
@@ -82,4 +82,4 @@ expression: "buffer_to_styled(&draw(&mut t, 120, 40))"
 36: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
 37: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..32 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 32..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
 38: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
-39: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..40 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 40..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+39: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..39 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 39..119 Reset/Rgb(10, 10, 10)/NONE | 119..120 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE

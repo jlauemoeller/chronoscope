@@ -555,7 +555,7 @@ mod tests {
                 &FoldState::new(),
                 20
             ),
-            "5m 02s · 112 messages · 45.2k tokens"
+            "5m 2s · 112 messages · 45.2k tokens"
         );
     }
 

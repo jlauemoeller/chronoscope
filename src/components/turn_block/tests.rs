@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthStr;
 use super::fixtures::*;
 use super::renderers::{
     CompactionSection, SectionCtx, SectionRenderer, StatsSection, SystemSection, ThinkingSection,
-    ToolCallSection, UserPromptSection, format_duration, format_stats, format_tokens,
+    ToolCallSection, UserPromptSection, format_stats, format_tokens,
 };
 use super::*;
 use crate::model::{Item, ItemId, Thinking, ToolStatus, Turn, TurnStats};
@@ -409,7 +409,7 @@ fn stats_footer_formats_the_spec_example() {
         tokens: Some(45_213),
         cost: None,
     };
-    assert_eq!(format_stats(&stats), "5m 02s · 112 messages · 45.2k tokens");
+    assert_eq!(format_stats(&stats), "5m 2s · 112 messages · 45.2k tokens");
 }
 
 #[test]
@@ -418,25 +418,17 @@ fn stats_footer_adds_cost_and_omits_unknown_parts() {
     stats.cost = Some(0.4);
     assert_eq!(
         format_stats(&stats),
-        "5m 02s · 112 messages · 45.2k tokens · $0.40"
+        "5m 2s · 112 messages · 45.2k tokens · $0.40"
     );
     stats.tokens = None;
     stats.cost = None;
-    assert_eq!(format_stats(&stats), "5m 02s · 112 messages");
+    assert_eq!(format_stats(&stats), "5m 2s · 112 messages");
     stats.message_count = 0;
-    assert_eq!(format_stats(&stats), "5m 02s");
+    assert_eq!(format_stats(&stats), "5m 2s");
 }
 
 #[test]
-fn durations_and_token_counts_are_formatted() {
-    let secs = Duration::from_secs;
-    assert_eq!(format_duration(secs(0)), "0s");
-    assert_eq!(format_duration(secs(12)), "12s");
-    assert_eq!(format_duration(secs(59)), "59s");
-    assert_eq!(format_duration(secs(60)), "1m 00s");
-    assert_eq!(format_duration(secs(302)), "5m 02s");
-    assert_eq!(format_duration(secs(3599)), "59m 59s");
-    assert_eq!(format_duration(secs(3900)), "1h 05m");
+fn token_counts_are_formatted() {
     assert_eq!(format_tokens(0), "0");
     assert_eq!(format_tokens(950), "950");
     assert_eq!(format_tokens(999), "999");
@@ -454,7 +446,7 @@ fn footer_is_muted_and_indented_by_two_spaces() {
     let lines = StatsSection(&stats).lines(&ctx(&theme, 60, false));
     assert_eq!(
         lines_text(&lines),
-        ["  5m 02s · 112 messages · 45.2k tokens"]
+        ["  5m 2s · 112 messages · 45.2k tokens"]
     );
     assert!(
         lines[0]
@@ -1130,7 +1122,7 @@ fn stats_footer_and_model_note_wrap_at_word_boundaries() {
     let lines = StatsSection(&stats).lines(&ctx(&theme, 24, false));
     assert_eq!(
         lines_text(&lines),
-        ["  5m 02s · 112 messages ·", "  45.2k tokens"]
+        ["  5m 2s · 112 messages ·", "  45.2k tokens"]
     );
     let note = super::renderers::ModelChangeSection("claude-sonnet-5.5 preview mode");
     let lines = note.lines(&ctx(&theme, 30, false));

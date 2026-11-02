@@ -30,7 +30,7 @@ expression: text
 │                       │    Backspace                         Back to parent session          │                       │
 │   model → claude-sonne│    R                                 Resume in harness               │                       │
 │                       │    Ctrl-o                            Open another session            │                       │
-│   5m 02s · 112 message│                                                                      │                       │
+│   5m 2s · 112 messages│                                                                      │                       │
 │                       │  Application                                                         │                       │
 ╰───────────────────────│                                                                      │───────────────────────╯
 ╭─ User ────────────────│    e / Ctrl-e                        Export session as folded        │ 2026-10-21 08:35:15Z ─╮

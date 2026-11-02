@@ -30,7 +30,7 @@ expression: text
 │                                                               │    + / =                             Unfold all sections             │                                                               │
 │   model → claude-sonnet-5.5                                   │    s                                 Show or hide system content     │                                                               │
 │                                                               │    y                                 Copy section as displayed       │                                                               │
-│   5m 02s · 112 messages · 45.2k tokens                        │    Y                                 Copy full section               │                                                               │
+│   5m 2s · 112 messages · 45.2k tokens                         │    Y                                 Copy full section               │                                                               │
 │                                                               │    w / Ctrl-s                        Save section as displayed       │                                                               │
 ╰───────────────────────────────────────────────────────────────│    W                                 Save full section               │───────────────────────────────────────────────────────────────╯
 ╭─ User ────────────────────────────────────────────────────────│                                                                      │──────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
@@ -46,7 +46,7 @@ expression: text
 │                                                               │    a                                 Open subagent transcript        │                                                               │
 │ ▶ Read the UVC descriptor dump                                │    Backspace                         Back to parent session          │                                                               │
 │                                                               │    R                                 Resume in harness               │                                                               │
-│   5m 02s · 112 messages · 45.2k tokens                        │    Ctrl-o                            Open another session            │                                                               │
+│   5m 2s · 112 messages · 45.2k tokens                         │    Ctrl-o                            Open another session            │                                                               │
 │                                                               │                                                                      │                                                               │
 ╰───────────────────────────────────────────────────────────────│  Application                                                         │───────────────────────────────────────────────────────────────╯
 ╭─ Compaction ──────────────────────────────────────────────────│                                                                      │──────────────────────────────────────── 2026-10-21 09:00:00Z ─╮
