@@ -64,6 +64,10 @@ pub struct Entry<M = Message, T = ToolUseResult> {
     /// `isAsync` is read from it; see [`ToolUseResult`].
     #[serde(rename = "toolUseResult")]
     pub tool_use_result: Option<T>,
+    /// Set on the line that carries an API error as its text. A value of
+    /// another type than a boolean counts as missing.
+    #[serde(rename = "isApiErrorMessage", default, deserialize_with = "lenient")]
+    pub is_api_error_message: Option<bool>,
 }
 
 impl<T> Entry<Message, T> {
@@ -86,6 +90,7 @@ impl<T> Entry<Message, T> {
             cwd: self.cwd,
             duration_ms: self.duration_ms,
             tool_use_result,
+            is_api_error_message: self.is_api_error_message,
         }
     }
 }
@@ -205,6 +210,15 @@ impl Entry {
         is_prompt.then(|| content_text(content))
     }
 
+    /// Whether the entry (or its message) is flagged as an API error.
+    pub fn is_api_error(&self) -> bool {
+        self.is_api_error_message == Some(true)
+            || self
+                .message
+                .as_ref()
+                .is_some_and(|m| m.is_api_error_message == Some(true))
+    }
+
     /// `effort`, falling back to `perTurnEffort`.
     pub fn effort(&self) -> Option<String> {
         [&self.effort, &self.per_turn_effort]
@@ -305,6 +319,14 @@ pub struct Message {
     pub content: Option<Content>,
     #[serde(default, deserialize_with = "lenient_object")]
     pub usage: Option<Usage>,
+    /// Why the message ended; null on most lines. A value of another type
+    /// than a string counts as missing.
+    #[serde(default, deserialize_with = "lenient")]
+    pub stop_reason: Option<String>,
+    /// `isApiErrorMessage` inside the message, which counts like the one on
+    /// the entry.
+    #[serde(rename = "isApiErrorMessage", default, deserialize_with = "lenient")]
+    pub is_api_error_message: Option<bool>,
 }
 
 #[derive(Deserialize)]

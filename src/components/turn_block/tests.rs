@@ -1610,3 +1610,47 @@ fn a_notice_uses_the_level_style_two_spaces_in_and_wraps_to_the_text_width() {
     );
     assert_ne!(error, muted);
 }
+
+#[test]
+fn an_assembled_claude_api_error_is_drawn_as_one_notice_in_error_output() {
+    use crate::harness::claude::Assembler;
+    use std::sync::Arc;
+
+    let transcript = concat!(
+        r#"{"type":"user","uuid":"u1","origin":{"kind":"human"},"timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"go"}}"#,
+        "\n",
+        r#"{"type":"assistant","uuid":"a1","isApiErrorMessage":true,"timestamp":"2026-01-01T00:00:01Z","message":{"id":"msg_e","model":"<synthetic>","stop_reason":null,"content":[{"type":"text","text":"API Error: 529 overloaded"}]}}"#,
+        "\n",
+    );
+    let turns = Assembler::from_memory(Arc::from(transcript.as_bytes())).into_turns();
+    let turn = (*turns[1]).clone();
+
+    assert_eq!(kinds(&turn, true), [SectionKind::Notice]);
+    let theme = distinct_theme();
+    let buffer = draw(&turn, &Opts::default().dim(false).themed(theme.clone()), 60);
+    let rendered = buffer_to_text(&buffer);
+    assert_eq!(
+        rendered.matches("API Error: 529 overloaded").count(),
+        1,
+        "{rendered}"
+    );
+    let error = theme.style(Token::ErrorOutput).fg;
+    // The cells of the notice's own row: each letter is in `error_output`.
+    let width = usize::from(buffer.area.width);
+    let row = buffer
+        .content()
+        .chunks(width)
+        .find(|row| {
+            row.iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
+                .contains("API Error")
+        })
+        .expect("a row with the notice");
+    assert!(
+        row.iter()
+            .filter(|cell| !cell.symbol().trim().is_empty() && cell.symbol() != "│")
+            .all(|cell| Some(cell.fg) == error),
+        "the notice text is drawn in error_output"
+    );
+}
