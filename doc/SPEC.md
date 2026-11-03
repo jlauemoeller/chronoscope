@@ -40,11 +40,14 @@ trait Harness {
     // streams the initial parse, then incremental updates, as ModelUpdate events
     fn subagent(&self, parent: &SessionId, call: &ToolCallId) -> Option<SessionId>;
     fn resume_command(&self, session: &SessionSummary) -> Option<Command>;
+    fn section_details(&self, source: &SectionSource) -> Vec<SourceGroup>;
+    // re-reads a section's metadata from its source for the details overlay (§4.3, §5.1);
+    // the default provides nothing, which the Codex and Pi adapters would inherit
 }
 ```
 
 - The UI is a tui-realm `Application` (§2) driven by a single-threaded loop: the loop calls `Application::tick`, passes every returned `Msg` to `App::update`, and redraws only when something changed (at most every 50 ms, §7.1).
-- Parsing, watching, stats computation and search indexing run on worker threads. Their results come back over channels, which sync Ports (`Poll`) read and turn into `Event::User` events. No async runtime is required; tui-realm's async ports (tokio) are not used.
+- Parsing, watching, stats computation and search indexing run on worker threads. Their results come back over channels, which sync Ports (`Poll`) read and turn into `Event::User` events. No async runtime is required; tui-realm's async ports (tokio) are not used. (Reading the details of one section for the overlay is an exception, like materialising a large output when it is unfolded: it re-reads one or two lines or rows on the UI thread, §9.2.)
 
 ### 1.2 Application structure
 
@@ -83,28 +86,33 @@ Components (each is its own type and module):
 | `SessionList` | Selector | Sessions pane, including search results with the project prefix and the `●` marker | Yes |
 | `WorkingDir` | Selector | Working Directory box | No |
 | `BrowserHeader` | Browser | Project and session titles, cwd, `● live`, breadcrumb, parse-warning note | No |
+| `TurnSidebar` | Browser | The turns and compaction events of the open transcript, with selection and mouse (§4.2, §6.3, §6.9) | Yes |
+| `SidebarGap` | Browser | Paints the column between the sidebar and the transcript; nothing else | No |
 | `Transcript` | Browser | The turn blocks: selection, folding, navigation, search highlights (§5, §6.1–§6.3) | Yes |
 | `HelpLine` | Both | Key hints and status items (`3/17`, `↓ N new`, `Loading… 34%`) | No |
 | `Prompt` | Both | Search and path prompts and `y/n` confirmations, drawn in place of the help line while active | Yes (input mode, §6) |
 | `Toast` | Both | Bottom-right toast; expires on `Tick` | No |
 | `HelpOverlay` | Overlay | §4.3 | Yes |
+| `DetailsOverlay` | Overlay | The metadata of the selected section (§4.3) | Yes |
 | `ThemeSelector` | Overlay | §8.4 | Yes |
 | `GlobalEvents` | Both | Nothing drawn; turns global keys and worker events into `Msg`s (§1.4) | No |
 | `EmptyState` | Both | "Terminal too small", "No sessions for this harness", "Session file is empty" | No |
 
 The `Transcript` is **one** mounted component, because it is virtualised and can hold thousands of sections (§9.2). It does not mount one tui-realm component per section. It is still built from small parts rather than one large render function: a `TurnBlock` widget (rounded block, titles, selection marker), one renderer per section kind (§5.2), one body renderer per `ToolKind` (§5.3), the markdown renderer (§5.5) and the layout cache. Each is its own type with its own tests. Opening a subagent (§5.4) mounts a new `Transcript`. The parent's stays mounted but is not drawn, so `Backspace` returns to it unchanged.
 
+The `TurnSidebar` is likewise one mounted instance. It keeps no turns, only the rows built from them (§4.2): the `App` forwards it the same `ModelUpdate`s as the transcript, and when a subagent is opened or closed it swaps the rows for those of the transcript on top.
+
 ### 1.4 Events, focus and keys
 
-- **Focus:** exactly one component has focus at a time, set by `App::update` through `Application::active`. In the selector, the pane keys of §6.6 move focus between `ProjectList` and `SessionList`. A focused component shows it through `Attribute::Focus` (e.g. the `ring` border, §8.2).
+- **Focus:** exactly one component has focus at a time, set by `App::update` through `Application::active`. In the selector, the pane keys of §6.6 move focus between `ProjectList` and `SessionList`. In the browser, the keys of §6.3 move it between `Transcript` and `TurnSidebar`. A focused component shows it through `Attribute::Focus` (e.g. the `ring` border, §8.2).
 - **Overlays and prompts:** opening one mounts its component and gives it focus. Closing it unmounts it and returns focus to the component that had it before.
 - **Keys go through the keymap.** A component's `on()` resolves the key with the shared keymap (§8.5), for its own context, to an action. The action becomes a `Cmd` (handled internally with `perform`) or a `Msg`. Components never match literal `KeyEvent`s, except that `Prompt` takes printable characters as text. This keeps remapping and the generated help overlay (§4.3) correct.
-- **Global keys** (quit, `?`, `t`, `Ctrl-o`) are handled by `GlobalEvents`, which subscribes to them (`Sub` / `SubClause`) using the active keymap, instead of every component checking for them. Subscribers get events as well as the focused component, so a `SubClause` keeps them from firing while `Prompt`, `HelpOverlay` or `ThemeSelector` has focus. Those components handle their own keys (input mode, §6; `Esc` / `?` closes help). `Ctrl-c` always quits. In the selector, `t`, `?` and `q` still work (§6.6).
+- **Global keys** (quit, `?`, `t`, `Ctrl-o`) are handled by `GlobalEvents`, which subscribes to them (`Sub` / `SubClause`) using the active keymap, instead of every component checking for them. Subscribers get events as well as the focused component, so a `SubClause` keeps them from firing while `Prompt`, `HelpOverlay`, `DetailsOverlay` or `ThemeSelector` has focus. Those components handle their own keys (input mode, §6; `Esc` / `?` closes help, `Esc` / `i` closes details). `Ctrl-c` always quits. In the selector, `t`, `?` and `q` still work (§6.6).
 - **Mouse:** wheel and clicks act on the element under the pointer, whether or not it has focus (§6.9). The event goes to the topmost component drawn there, for example through mouse subscriptions whose row/column ranges are that component's area. That component turns the event into a `Cmd` or `Msg`.
-  - While an overlay is open (selector, help, theme selector), the components under it get no mouse events, and a click outside the overlay closes it.
+  - While an overlay is open (selector, help, details, theme selector), the components under it get no mouse events, and a click outside the overlay closes it.
   - Component areas come from a pure layout function that `App::view` also uses. Subscriptions are refreshed from it when the screen or terminal size changes, never from inside `view`.
 - **Ticks:** `Event::Tick` drives toast expiry, the `● live` marker and the redraw limit (§7.1).
-- **Worker results** take one path: Port → `Event::User` → `GlobalEvents` (subscribed to all user events) turns it into a `Msg` → `App::update` applies it to domain state and pushes what changed to the components that display it (rows and stats to `ProjectList` / `SessionList`, `ModelUpdate`s to `Transcript`). Other components don't subscribe to worker events.
+- **Worker results** take one path: Port → `Event::User` → `GlobalEvents` (subscribed to all user events) turns it into a `Msg` → `App::update` applies it to domain state and pushes what changed to the components that display it (rows and stats to `ProjectList` / `SessionList`, `ModelUpdate`s to `Transcript` and `TurnSidebar`). Other components don't subscribe to worker events.
 
 ## 2. Tech stack
 
@@ -132,9 +140,16 @@ Candidate crates: `tuirealm` (with the `crossterm` feature), `ratatui`, `crosste
   - Linkage: the parent's `Agent` `tool_use.id` equals `meta.toolUseId`, and the matching `tool_result` entry's `toolUseResult.agentId` names the file.
 - Relevant entry types: `user`, `assistant`, `system` (e.g. `turn_duration`), `attachment`, `ai-title`, `last-prompt`, `cost-state`.
   Noise to skip: `api-request*`, `mode`, `permission-mode`, `atis-latch`, `file-history-*`.
-- Assistant entries carry `message.model`, `effort` / `perTurnEffort`, `timestamp`, `usage`.
+- Assistant entries carry `message.model`, `effort` / `perTurnEffort`, `timestamp`, `message.usage`, `message.stop_reason` and, for an API error, `isApiErrorMessage: true`.
+  - Read from `usage`: `input_tokens`, `output_tokens`, `cache_read_input_tokens` and `cache_creation_input_tokens`, plus `output_tokens_details.thinking_tokens`, which is already part of `output_tokens`.
+  - `stop_reason` is null on many lines of a message. The last non-null value per message id is the one that counts.
+  - A message whose model is `<synthetic>` is generated by Claude Code itself (for example `No response requested.`).
 - Content blocks: `text`, `thinking` (usually redacted — empty text + signature; ~15% of blocks observed carry readable text), `tool_use`, `server_tool_use`, `advisor_tool_result`; tool results arrive as `tool_result` blocks inside `user` entries, paired by `tool_use_id`.
 - Session title available via `ai-title` (written repeatedly; use the **last** one).
+- `system` `turn_duration` entries carry `timestamp` and `durationMs`. `messageCount` is a running total for the whole session, not a count for the turn (a 3-second turn reported 4124), so it is **not read**. One Assistant turn can contain many `turn_duration` entries, and `durationMs` restarts when a delivery such as a `queued_command` attachment with a non-human origin arrives.
+- `toolUseResult` on a result entry is usually an object and sometimes a string, and can be very large (stdout, whole files). The assembler and the details overlay read it through an object-or-ignored head and never materialise it as a JSON value. The only field the assembler reads is `isAsync`: when `true`, the result records only the launch of an asynchronous subagent.
+- **Detail fields are not parsed into the model.** Their availability varies across Claude Code versions and they are rarely looked at, so a turn keeps only the byte range of the line each section came from (§5.1), and the fields are read again when the details overlay opens (§4.3): `message.id`, `requestId`, `timestamp`, `requestedModel`, `stop_reason`, `usage.service_tier`, `speed` and `inference_geo`, `usage.cache_creation` (5-minute and 1-hour writes), `usage.server_tool_use` (web search and fetch counts) and `diagnostics.cache_miss_reason` on assistant lines; `permissionDecision`, `sandboxed`, `resolvedModel` and `isAsync` on the result of a tool call (at the top of the entry or inside `toolUseResult`); `permissionMode` and `promptSource` on prompts; `gitBranch`, `cwd`, `version` and `entrypoint` on every line. Claude records no cost.
+- Every one of these fields is optional. The details overlay's re-read treats a field of an unexpected type as missing and only drops its row; what assembling does with a wrong type is in §9.5.
 - **One JSONL line per content block:** an assistant API response is split over several `assistant` lines sharing `message.id` (BRIO session: 195 lines → 73 messages, up to 16 lines per message).
 - **Most `user` entries are not human prompts:** in the BRIO session, 80 of 92 `user` entries only carry `tool_result` blocks. Human prompts have `origin.kind == "human"` and no `tool_result`. Entries with `isMeta: true` are injected, not typed.
 
@@ -142,7 +157,11 @@ Candidate crates: `tuirealm` (with the `crossterm` feature), `ratatui`, `crosste
 
 - Location: `~/.local/share/opencode/opencode.db` (SQLite, WAL mode).
 - Tables: `project` (`worktree`, `name`), `session_v2` (`project_id`, `parent_id`, `directory`, `title`, `model`, tokens/cost, timestamps), `session_message` (`session_id`, `type`, `seq`, `data` JSON).
-- Message types: `user`, `assistant`, `synthetic`, `system`, `idle`. Assistant `data` has `agent`, `model {id, providerID, variant}`, and a `content` array of `text` / `tool` parts.
+- Message types: `user`, `assistant`, `synthetic`, `system`, `idle`. Assistant `data` has `agent`, `model {id, providerID, variant}`, `time {created, streamed, completed}`, `cost`, `tokens {input, output, reasoning, cache {read, write}}`, `finish`, `rawFinish`, `error {type, message}`, and a `content` array of `text` / `tool` parts.
+  - `tokens.reasoning` is separate from `tokens.output`; the adapter adds it to `output` (§5.1).
+  - A row with `finish: "error"` has empty content. Its `error` is shown as a notice (§5.2).
+  - A tool part's `time` (`created` and `completed`) gives the duration of the call.
+  - The details overlay (§4.3) reads the row again when it opens: its id, `time.*`, `finish`, `rawFinish`, `error`, `model.providerID`, `agent`, a tool part's `time.created`, and `snapshot.start` and `snapshot.end`. A turn keeps only the id of the row (§5.1).
 - Subagent sessions are linked via `session_v2.parent_id`.
 
 ## 4. Screens
@@ -157,7 +176,18 @@ Sizing:
 
 Session row format: `<local start timestamp>  <title>` on the left, plus muted stats on the right (turn count · duration). The model is not shown: the browser shows it on every Assistant turn.
 - Title: Claude `ai-title` → OpenCode `session_v2.title` → first user prompt (truncated) → `(untitled)`.
-- Stats are computed in the background and cached (§9.2). Until they are ready, the row shows just timestamp + title.
+- Stats are computed in the background and cached (§9.2). Until they are ready, the row shows just timestamp + title. The cache stores the duration in milliseconds, so the display format can change without invalidating it.
+- The title gets the room the stats leave. When that would be less than 10 cells, the stats are dropped from the row.
+
+**Duration format.** Durations use one format everywhere: the selector's rows, the stats footer (§5.2), the turns sidebar (§4.2), the details overlay (§4.3) and tool calls of a minute or longer (§5.2). One shared formatter (`src/duration.rs`) provides it, so no component has its own.
+
+| Duration | Resolution | Examples |
+|---|---|---|
+| Under 1 minute | 1 second | `0s`, `45s` |
+| 1 minute up to, but not including, 1 hour | 1 second | `1m 0s`, `4m 3s`, `59m 59s` |
+| 1 hour or longer | 1 minute | `1h 0m`, `3h 4m`, `2h 45m`, `26h 30m`, `100h 30m` |
+
+Numbers are not zero-padded. Values are truncated, not rounded: `59m 59.9s` shows `59m 59s`.
 
 Projects:
 - Claude: one project per distinct real `cwd`, read from the session entries (not the lossy directory name).
@@ -183,19 +213,104 @@ Search (`/` in the selector):
 ### 4.2 Session browser
 
 - Header block: `Project <name>` (left title), session id (right title), working directory in the body. A `● live` marker shows while the session is active (§7.2), and a breadcrumb shows when viewing a subagent (§5.4).
+- Turns sidebar: a fixed pane to the left of the transcript that lists the session's turns (see below).
 - Transcript: one rounded block per turn (§5.2), scrolling vertically, with the selected section marked by `▒` over the block's left border.
-- Help line under the transcript: context-sensitive key hints. It turns into the search/path prompt when active and shows search position (`3/17`), the `↓ N new` indicator and parse warnings.
+- Help line under the transcript and the sidebar, full width: context-sensitive key hints. It turns into the search/path prompt when active and shows search position (`3/17`), the `↓ N new` indicator and parse warnings.
 - Toasts (copy/save/export confirmations, config warnings) appear in the bottom-right corner for ~2 s.
 - Loading state: `Loading… 34%` in the help line while the initial parse streams in.
 - Empty states: "No sessions for this harness" / "Session file is empty".
 
+#### Turns sidebar
+
+A sidebar lists the session's turns and compaction events, so the shape of a long session is visible and any block is a few keys away.
+
+```
+╭─ [1] Turns  ───────────────╮
+│                            │
+│                            │
+│  ●   Start                 │
+│  │                         │
+│  ●   User                  │
+│  │                         │
+│  ●   Assistant      4m 3s  │
+│  │                         │
+│  ●   User                  │
+│  │                         │
+│  ●   Assistant      3h 4m  │
+│                            │
+│  ═══ Compaction ═════════  │
+│                            │
+│  ●   Assistant     2h 45m  │
+│  │                         │
+│  ●   End                   │
+│                            │
+╰────────────────────────────╯
+```
+
+**Layout.**
+- The pane's title shows the key that focuses it (`[1] Turns` by default; it follows a remapped `focus_turns`).
+- The `TurnSidebar` component (§1.3) sits to the left of the transcript, below the header. Header and help line stay full width.
+- It is **30 columns wide, with a 1-column gap** before the transcript, and exactly as tall as the transcript area. The gap belongs to a `SidebarGap` component that only paints the background.
+- **It stays in a fixed position:** scrolling the transcript never moves the pane. Only its own list scrolls, and only as far as needed to keep the selected row visible, as in the selector's lists.
+- The areas come from the pure layout function (§1.4), so drawing and mouse routing agree. The transcript's viewport and its mouse coordinates use the narrower area.
+- **Below 90 columns the sidebar is hidden** and the transcript takes the full width, because 90 columns leave the transcript 59. While it is hidden the focus keys do nothing, and if it has focus when it becomes hidden, focus moves to the transcript.
+- It is not drawn when the empty-session message replaces the transcript. An open subagent (§5.4) shows that subagent's turns, and going back shows the parent's again.
+
+**Rows.** There is one entry per turn with at least one non-system section, in transcript order, decided by the same section derivation as the blocks `]` / `[` stop on. System content never forms a block of its own (§5.6), so toggling it (`s`) does not change the entries. Building the entries lays out and renders nothing.
+
+| Row | Content | Selectable |
+|---|---|---|
+| `● Start` | First row of the list | No: it has no block |
+| `● User` | A User turn | Yes |
+| `● Assistant` | An Assistant turn, with its duration | Yes |
+| `═══ Compaction ═══` | A Compaction turn; `═` fills to the right margin | Yes |
+| `● End` | Last row of the list | No: it has no block |
+
+- Columns (from 0): `●`, `═` and the selection marker in column 3; labels in column 7, except that the Compaction rule runs from column 3; the right margin is two cells before the border, as in the selector. The list starts two rows below the top border.
+- Between two `●` rows there is one row with `│` in column 3. A Compaction row has a blank row above and below it instead, so the timeline visibly breaks. Connector and blank rows cannot be selected or clicked.
+- An Assistant entry shows the turn's duration (§5.2) in the shared format (above), right-aligned to the right margin. A turn without stats (for example, one still running) shows none, and it appears in place once known.
+- Long lists scroll by rows; `Start` and `End` scroll with the list. The list never wraps around.
+- Unselected rows, `●`, `│` and `═` use `muted_foreground`.
+
+**Selection** looks and behaves like the selector's lists (§8.2): the border is `ring` when the sidebar has focus and `border` otherwise; the selected row in a focused sidebar has `>` in `primary` in place of the `●` (or the first `═`) and one inverted band after it up to the right margin; in an unfocused sidebar the `>` and the text are `secondary_foreground`, the text bold.
+
+- **While the transcript has focus, the sidebar's selection follows it:** the selected row is the turn containing the transcript's selected section, and it stays visible. The sidebar shows the current position, and returning to it never jumps. Pushing that selection to the sidebar produces no message.
+- When the sidebar has focus and nothing is selected, the first move selects the first entry. An empty list has no selection, and its keys do nothing.
+- A live update adds or changes only the rows of the turns it names (§7.2): an appended turn adds a row without moving the selection.
+
+**Performance.** The sidebar keeps one slot per turn and derives only the sections of a turn when it changes, never a layout or a render, and it draws only the rows it shows. A key press in the sidebar (selection, transcript scroll and frame) stays within the frame budget on the 100 MB fixture (§9.2).
+
 ### 4.3 Overlays
 
 - **Help overlay** (`?`): grouped keybindings as in ui-sketch.md, generated from the active keymap. `Esc` / `?` closes it.
+- **Details overlay** (`i`, the `details` action of `[keys.browser]`, listed as "Show section details" in the help overlay's Sections group): the metadata of the selected section, so that blocks stay uncluttered. See below.
 - **Theme selector** (`t`): see §8.4.
 - **Confirmation prompts** (overwrite file, resume in harness) appear in the help line as `y/n` questions, not as dialogs.
 
 Overlays are centred, use rounded borders with `ring` colour, and paint `surface` behind them (unless the background is transparent, in which case `Clear` is still used so underlying text doesn't bleed through).
+
+#### Details overlay
+
+A `Details` overlay in the help overlay's frame: it reuses its sizing (as wide as its widest row, at most the screen less two columns either side), its scrolling and its keys (`↑↓` / `j` `k` a row, `PgUp` / `PgDn` a page, a `↓ more` hint when it is taller than the screen). `Esc` or the `details` key closes it, and focus returns to who had it.
+
+- It opens for the selected section. A `… N more lines` row resolves to its parent tool call. With no selection, or while another overlay or a prompt is open, the key does nothing.
+- It is a snapshot taken when it opens and does not update while open. It is not part of copy, save or export.
+- Rows are `label  value`: labels in `muted_foreground`, values in `foreground`, under bold group headings. Groups that do not apply to the section, and rows whose field is missing, are left out.
+- Timestamps use the configured format (§8.6). Durations use the shared format (§4.1) and token counts the footer's format (§5.2). Claude records no cost, so none is shown for it.
+
+| Group | Applies to | Claude | OpenCode |
+|---|---|---|---|
+| Turn | Every section of an Assistant turn | `model`, `effort`, `start`, `duration`, `messages`, `input tokens`, `output tokens`, `thinking tokens`, `cache read tokens`, `cache write tokens` | The same, plus `cost`, `provider` (`model.providerID`) and `agent` |
+| Message | Text, thinking, notice | `message.id`, `requestId`, `timestamp`, `requestedModel`, `stop_reason`, `service_tier`, `speed`, `inference_geo`, `5m cache writes`, `1h cache writes`, `web searches`, `web fetches`, `diagnostics.cache_miss_reason` | `row id`, `time.created`, `time.streamed`, `time.completed`, `finish`, `rawFinish`, `error` |
+| Tool call | Tool call | `start`, `duration`, `status`, `permissionDecision`, `sandboxed`, `resolvedModel`, `isAsync` | `start`, `duration`, `status` |
+| Prompt | User prompt | `timestamp`, `permissionMode`, `promptSource` | `time.created` |
+| Environment | Every section with a source; compaction and system sections show their timestamp | `gitBranch`, `cwd`, `version`, `entrypoint` | `snapshot.start`, `snapshot.end` |
+
+Groups come in this order. A token row of zero is left out, because the model cannot tell zero from not recorded.
+
+**Where the rows come from.** The model supplies the rows it already holds (the Turn group, a tool call's `duration` and `status`, the timestamp of a prompt, a compaction or an injected entry). The rest is read from the section's source when the overlay opens (§5.1): the open session's harness adapter implements `section_details` (§1.1), re-reading one line (Claude: a byte range in the transcript, two for a tool call, its call and its result) or one row (OpenCode: the `session_message` row, through the read-only connection). The overlay's content is composed from both, so the UI stays harness-agnostic. A harness that provides nothing (Codex, Pi) leaves the model's rows alone.
+
+An unreadable source (the file is gone, the row was deleted, the line does not parse) shows one muted `unavailable` row in the affected group, with what could be read before it. It never panics and never closes the overlay.
 
 ## 5. Conversation model & rendering
 
@@ -205,15 +320,34 @@ Harness adapters translate each native format into one shared model:
 
 ```
 Session { id, harness, project, cwd, title, started_at, turns: [Turn], children: [SessionRef] }
-Turn    = User      { timestamp, text, items: [Item] }     // items: injected content preceding/attached to the prompt
-        | Assistant { timestamp, model, effort?, items: [Item], stats? }
-        | Compaction{ timestamp, summary }
+Turn    = User      { timestamp, text, items: [Item], sources }     // items: injected content preceding/attached to the prompt
+        | Assistant { timestamp, model, effort?, items: [Item], stats?: TurnStats, sources }
+        | Compaction{ timestamp, summary, sources }
 Item    = Text(markdown)
         | Injected { entries: [{ kind, timestamp, text }] }   // §5.6; consecutive entries collapsed
         | Thinking(text | Redacted)
         | ToolCall { id, tool: ToolKind, description, input, result?: ToolResult, status, duration? }
+        | ModelChange { model }                                // the muted note of rule 5
+        | Notice { id, level: Error | Warning, text }          // an abnormal ending, see below
 ToolKind = Shell | Read | Write | Edit | Grep | Glob | WebFetch | WebSearch | Subagent | Other(name)
+TurnStats  = { duration, message_count, tokens?: TokenUsage, cost? }
+TokenUsage = { input, output, cache_read, cache_write, reasoning }
 ```
+
+- **Tokens.** `TurnStats.tokens` is a `TokenUsage` summed over the turn's messages. Each message counts once, using its latest usage. `output` includes `reasoning` on every harness, and `reasoning` is only an "of which" figure that is never added to a total. The footer's `tokens` is input + output + cache writes (§5.2), and its `cached` is the sum of cache reads.
+- **Sources.** Every turn carries `sources`, a side table of cheap references to where its sections were read from, and never the field values (§3.1, §3.2): for Claude a `ByteSource` and a byte range per line (the prompt, the last `turn_duration` line, the latest line of each message with a non-null `stop_reason`, else its latest line, and for a tool call two ranges, its call and its result), for OpenCode the ids of rows. Items carry nothing of it. Adding to the table takes constant time per item and it is never searched while assembling, because one turn can hold tens of thousands of items. The details overlay (§4.3) reads through the references when it opens, so assembling a turn never parses the detail fields.
+- **Durations.** `ToolCall.duration` is the time between the call and its result. It is empty for a pending call, when the adapter does not know it, and for an asynchronous subagent (Claude `toolUseResult.isAsync` is `true`), whose result only records the launch.
+- **Notices.** An `Item::Notice` records how a message ended abnormally, because the turn would otherwise show nothing about it. Its id is `notice:<message or row id>` and it is upserted, so a row updated in place replaces its notice instead of adding another. A normal ending never produces one.
+
+  | Harness | Input | Result |
+  |---|---|---|
+  | OpenCode | `finish: "error"`, `error.type` is `aborted` | `Warning`: `aborted`, followed by `: <error.message>` when there is one |
+  | OpenCode | `finish: "error"`, any other type | `Error`: `<error.type>: <error.message>`, using whichever parts exist |
+  | OpenCode | `finish` other than `stop`, `tool-calls`, `error` (absent is normal) | `Warning`: `stopped: <finish>` |
+  | Claude | `isApiErrorMessage: true` | `Error` with the message's text, **replacing** its text block so it is not shown twice |
+  | Claude | `stop_reason` other than `end_turn`, `tool_use`, `stop_sequence`, `pause_turn` | `Warning`: `stopped: <reason>` |
+
+  A null Claude `stop_reason` alone produces no notice, and synthetic messages without `isApiErrorMessage` (such as `No response requested.`) stay ordinary text.
 
 Turn assembly (Claude):
 1. A **User turn** starts at a `user` entry that is a human prompt: `origin.kind == "human"` (or, for older versions without `origin`, string/text content with no `tool_result` and no `isMeta`). A message typed while the agent is working is stored as an `attachment` of kind `queued_command` with `origin.kind == "human"`; it also starts a User turn, and the content after it forms a new Assistant turn.
@@ -221,9 +355,13 @@ Turn assembly (Claude):
 3. `assistant` lines with the same `message.id` are merged into one message, keeping their content blocks in order. Repeated blocks (same `tool_use.id`, or same index for text/thinking) replace the earlier version instead of being duplicated.
 4. `tool_result` blocks are attached to the `ToolCall` with the matching `tool_use_id`. A tool call without a result yet has status `pending`.
 5. The model shown in the Assistant title is that of the turn's first message. If the model changes within a turn, the new model is shown as a muted inline note.
-6. `system` `turn_duration` entries become the stats footer of the preceding Assistant turn.
+6. `system` `turn_duration` entries become the stats footer of the preceding Assistant turn. A turn has a footer only once such an entry exists. The footer is built as follows:
+   - **Duration:** wall-clock. It is the timestamp of the turn's last `turn_duration` entry minus the timestamp of the prompt that started the turn; for a turn without a prompt (for example, one following a compaction), minus the timestamp of its first assistant entry. Without a usable timestamp (or when the span would be negative), the last entry's own `durationMs` is used. Entries are never summed, because a turn can contain many of them and they restart on deliveries such as non-human `queued_command` attachments. The duration includes any time spent waiting on background agents.
+   - **Messages:** the number of distinct message ids in the turn, leaving out messages whose model is `<synthetic>`. It stays current when messages arrive after a `turn_duration` entry. `messageCount` is a running total for the session and is not read.
+   - **Tokens:** from each message's `usage`, per the tokens rule above. Claude's `thinking_tokens` is already part of `output_tokens`, so it only fills `reasoning`.
+   - No cost: Claude records none, and there is no price table.
 
-Turn assembly (OpenCode): each `user` row (with `synthetic` rows treated as injected content) starts a turn. `assistant` rows up to the next `user` row form the Assistant turn. Tool calls and their results are already combined in each `tool` part (`state.input`, `state.content`, `state.status`).
+Turn assembly (OpenCode): each `user` row (with `synthetic` rows treated as injected content) starts a turn. `assistant` rows up to the next `user` row form the Assistant turn. Tool calls and their results are already combined in each `tool` part (`state.input`, `state.content`, `state.status`). The stats come from the rows: the duration, the message count (assistant messages) and the cost, and the tokens from each row's `tokens` (`input`, `output` plus `reasoning`, `cache.read`, `cache.write`). A row with an abnormal `finish` produces a notice (table above).
 
 - Tool names are mapped to `ToolKind` per harness (e.g. Claude `Bash` and OpenCode `shell` → `Shell`; Claude `Agent`/`Task` and OpenCode `subagent` → `Subagent`).
 - Tool description: the tool's own `description` input if present (Claude Bash). Otherwise a derived label (`Read src/main.rs`, `Grep "pattern" in path`, `WebFetch example.com/…`, `<tool name>` for unknown tools).
@@ -239,9 +377,10 @@ Each turn is rendered as a rounded block. Its title shows the role on the left a
 | Assistant text | Not foldable | n/a | Rendered markdown |
 | Thinking (readable) | Folded | `Thinking` + first line, muted | Full text, muted |
 | Thinking (redacted) | Not shown | n/a | n/a |
-| Tool call | Folded | `> <description>` | Description, then per-tool body (§5.3) |
-| Subagent call | Folded | `> <description>` + agent name | Prompt + final result + "open transcript" hint (§5.4) |
-| Turn stats footer | Not foldable | One muted line: duration · messages · tokens/cost (if available) | n/a |
+| Tool call | Folded | `> <description>`, then the duration of a finished call (below) | Description and duration, then per-tool body (§5.3) |
+| Subagent call | Folded | `> <description>` + agent name, then the duration | Prompt + final result + "open transcript" hint (§5.4) |
+| Notice | Not foldable | n/a | The text of an abnormal ending, word-wrapped (below) |
+| Turn stats footer | Not foldable | One muted line: duration · messages · tokens · cached · cost (the parts that are known) | n/a |
 | Compaction marker | Folded | Divider `── context compacted ──` | Summary text |
 | System / injected | Folded | Muted one-liner: kind + first line | Full content, muted |
 
@@ -251,7 +390,32 @@ The folded/unfolded marker prefix is `▶` when folded and `▼` when unfolded (
 
 Every section's text starts at the same column, two cells in from the block's padding:
 - Foldable sections put their marker (`▶`/`▼` and a space) in those two cells.
-- All other non-foldable lines (assistant text, `model → …` notes, the turn stats footer) are indented by two spaces.
+- All other non-foldable lines (assistant text, `model → …` notes, notices, the turn stats footer) are indented by two spaces.
+
+**Turn stats footer.** One muted line of the parts that are known, joined by ` · `:
+
+```
+5m 2s · 12 messages · 45.2k tokens · 359.4M cached · $0.42
+```
+
+- `5m 2s` is the turn's duration in the shared format (§4.1). `12 messages` is the message count (`1 message`).
+- `45.2k tokens` is input + output + cache writes. Counts below 1 000 are plain (`950`), then `45.2k`, `1.2M`. Reasoning is already part of output and is not added.
+- `359.4M cached` is the cache reads summed over the turn's messages. It is hidden when zero. It is shown apart from `tokens` because a session's cache reads are usually far larger than everything else.
+- The cost, when known, stays last (`$0.42`). Claude records none.
+- On a narrow block the line wraps between parts; a row never starts with the separator.
+- Search matches the footer as displayed.
+
+**Tool call rows.** A finished tool call shows a muted ` · 1.2s` after its description, and after the agent type of a subagent call (`(story-writer)`), both folded and unfolded. A pending call, a call whose duration is not known and an asynchronous subagent show none. When a folded row is too narrow, the description is cut with `…` first, and the agent type and duration are kept. Unfolded, the description is word-wrapped with the duration as its last, muted, words. Under a minute the duration has finer resolution than the shared format (§4.1), which would show most calls as `0s`:
+
+| Duration | Shown as |
+|---|---|
+| Under 1 second | `340ms` |
+| Under 60 seconds | `1.2s` |
+| Otherwise | The shared format (§4.1): `5m 2s`, `1h 5m` |
+
+Values are truncated, as in the shared format. The text that is copied, saved, exported and searched is the text displayed, so search highlights stay aligned with the cells drawn.
+
+**Notice rows.** A `Notice` item (§5.1) is a section of its own kind in the turn's order. It is not foldable and is selectable. Its text is word-wrapped and indented like the other non-foldable lines. An `Error` is drawn in `error_output` and a `Warning` in `muted_foreground`. It is included in search, copy, save and export like the `model → …` note. When saved, the file-name word is `error` for an `Error` and `notice` for a `Warning` (§6.4).
 
 ### 5.3 Per-tool renderers
 
@@ -328,10 +492,29 @@ Fold levels (`1`/`2`/`3`) and Vim-style `z` aliases (`za`, `zc`, `zo`, `zM`, `zR
 | `Ctrl-d` / `Ctrl-u` | Scroll half a page down / up |
 | `PgDn` / `PgUp` | Scroll a full page down / up |
 | `g` / `Home`, `G` / `End` | Jump to start / end (`G` resumes following, §7.2) |
+| `1`, `Tab` / `Shift-Tab` | Focus the turns sidebar (below). While the sidebar is hidden they do nothing |
 
 - `Ctrl-b` / `Ctrl-f` are deliberately not bound: `Ctrl-b` is tmux's default prefix.
 - Selecting a section scrolls it into view. If the selected section is taller than the viewport, `j`/`k` first scroll through it a page at a time and only then move to the next section.
 - Scrolling with page keys or the mouse wheel moves the selection to the topmost fully visible section when the current one leaves the viewport.
+
+**Turns sidebar keys.** The sidebar (§4.2) has its own keymap context, `[keys.turns]` (§8.5), with the same defaults as the selector's lists. `focus_turns` and the pane keys are `browser` actions that hand it the focus.
+
+| Context | Action | Default keys | Effect |
+|---|---|---|---|
+| `browser` | `focus_turns` | `1` | Focus the sidebar |
+| `browser` | `next_pane`, `prev_pane` | `tab`, `shift-tab` | Focus the sidebar |
+| `turns` | `up`, `down` | `up`, `k` and `down`, `j` | Select the previous or next entry, and scroll the transcript to it |
+| `turns` | `open` | `enter` | Move focus to the selected entry's block |
+| `turns` | `next_pane`, `prev_pane` | `tab`, `shift-tab` | Focus the transcript, leaving it as it is |
+| `turns` | `focus_transcript` | `right`, `l` | The same |
+
+- `1` and `Tab` in the browser do not affect the selector, where `1` still switches harness and `Tab` still switches pane: the contexts keep them apart. While the sidebar has focus, `1` and `←` / `h` do nothing, matching the selector, where they don't wrap around.
+- Selecting an entry **scrolls the transcript to its block**, with the same result as `]` / `[` (one code path): the block's top at the top of the viewport, or as near as the end of the transcript allows, and the transcript's selection on the block's first selectable section. The usual follow rule applies (§7.2): moving away from the bottom stops following. There is no wrap-around at either end.
+- A turn can have an entry but nothing selectable, when its text renders to no rows (for example, only an HTML comment). Selecting that entry still scrolls to the block and leaves the transcript's selection unchanged.
+- `Enter` does the same and also gives the transcript focus. Focusing the sidebar does not by itself scroll the transcript.
+- While the sidebar has focus, other browser keys (`/`, `y`, the fold keys and so on) do nothing. Global keys still work (`q`, `?`, `t`, `Ctrl-o`), and overlays return focus to the sidebar when they close (§1.4).
+- The help line shows the sidebar's hints while it has focus, generated from the active keymap: `ENTER to go to block | TAB to switch to transcript`. The help overlay lists the keys in a "Turns sidebar" group.
 
 ### 6.4 Copy, save, export
 
@@ -346,7 +529,7 @@ Fold levels (`1`/`2`/`3`) and Vim-style `z` aliases (`za`, `zc`, `zo`, `zM`, `zR
 
 - Save and export prompt for a path in the help line. Defaults:
   - export: `./<project>-<yyyymmdd-hhmm>-<short-id>.md`
-  - save: `./<project>-<short-id>-<section-kind>.txt`
+  - save: `./<project>-<short-id>-<section-kind>.txt` (the kind is `user`, `assistant`, `thinking`, the tool's kind, `system`, `compaction`, `stats`, and for a notice `error` or `notice`)
 - Saving or exporting asks for confirmation before overwriting an existing file.
 - Clipboard: `arboard`, falling back to OSC52 when there's no display server or over SSH/tmux. A toast confirms the copy (`Copied 42 lines`).
 
@@ -355,6 +538,7 @@ Fold levels (`1`/`2`/`3`) and Vim-style `z` aliases (`za`, `zc`, `zo`, `zM`, `zR
 | Key | Action |
 |---|---|
 | `Ctrl-o` | Open the session selector (plain `o` is not bound) |
+| `i` | Show the details of the selected section (§4.3) |
 | `a` | Open the selected subagent's transcript (§5.4) |
 | `Backspace` | Back to the parent session (after `a`) |
 | `R` | Resume the session in its harness (§6.7) |
@@ -416,6 +600,7 @@ If a session id is ambiguous (prefix matches several sessions), the selector ope
 - Wheel scrolls the transcript or the list under the pointer.
 - Click selects a section or list row. Clicking a section's summary line (or the `▶`/`▼` marker) toggles its fold. Double-clicking a session row opens it.
 - Click on a harness tab switches to it. Click outside an overlay closes it.
+- **Turns sidebar** (§4.2): the wheel selects the previous or next entry, like `↑` / `↓` (no wrap-around), and scrolls the transcript to its block; it does not move the focus. Clicking a selectable row focuses the sidebar, selects that row and scrolls the transcript to its block. Double-clicking a row does what `Enter` does and gives the transcript focus (two presses on the same row at most 400 ms apart). A click on `Start`, `End`, a connector or blank row, the border or the margin does nothing. Clicking the transcript gives it focus.
 - Mouse events go to the component under the pointer (§1.4).
 - Mouse capture can be disabled in config (`mouse = false`). Most terminals also bypass mouse capture while `Shift` is held, which allows native text selection; the help overlay mentions this.
 
@@ -435,6 +620,7 @@ If a session id is ambiguous (prefix matches several sessions), the selector ope
 
 - **Follow when at bottom:** if the viewport is at the end of the transcript, new content scrolls into view automatically. If the user has scrolled up, the position is kept and a `↓ N new` indicator appears in the help line; `G` / `End` jumps to the end and resumes following.
 - Updates to content already displayed (e.g. a tool result arriving for a pending tool call, or a streamed message growing) update the section in place. The current selection and fold states are preserved.
+- The turns sidebar (§4.2) gets the same updates and rebuilds only the rows of the turns they name: an appended turn adds a row, and an Assistant turn gains its duration in place once its stats are known. Neither moves the sidebar's selection, and while the transcript follows the end its selection is tracked.
 - A `● live` marker is shown in the browser header while the session is active: file/rows modified within the last 60 s, or OpenCode `time_idle` is null.
 
 ### 7.3 Selector behaviour
@@ -461,7 +647,7 @@ Two layers, modelled on ratcn's shadcn-inspired `Theme`:
 | `label` | `muted_foreground` | `Command:` / `Result:` labels |
 | `command` | `foreground` | Command / tool input text |
 | `output` | `muted_foreground` | Tool results |
-| `error_output` | `destructive` | Failed tool results |
+| `error_output` | `destructive` | Failed tool results, error notices |
 | `diff_added` / `diff_removed` | `primary` / `destructive` | Edit diffs |
 | `thinking` | `muted_foreground` | Thinking text |
 | `selection_marker` | `primary` | `▒` and `>` markers |
@@ -483,6 +669,7 @@ Selection is shown with **text brightness and markers**. The one background band
 - Session selector (Projects and Sessions lists):
   - Selected row in the **focused** list: the `>` marker in `primary`, never inverted. Everything after the marker is one **inverted** band (`foreground` with the reverse-video modifier, not bold), running up to the row's right margin (two cells before the pane border). Inside the band, the timestamp, live dot, title, gaps and stats all take the band's style.
   - Selected row in the **unfocused** list (e.g. Projects while Sessions has focus): text **bold** in `secondary_foreground`, not inverted; the `>` marker in the same `secondary_foreground` (not bold), so the context stays visible.
+- The turns sidebar (§4.2) selects the same way: in a focused sidebar the `>` marker in `primary` and one inverted band after it; in an unfocused one the `>` and the bold text in `secondary_foreground`. Its `●`, `│` and `═` are `muted_foreground`.
 - Focused pane border: `ring`; unfocused borders: `border`.
 - Selected harness tab: `primary`, underlined; other tabs: `muted_foreground`.
 - In the transcript, dimming of unselected sections is controlled by `dim_unselected` (default `true`). When `false`, all sections use their normal token colours and only the marker + bold indicate selection.
@@ -575,9 +762,24 @@ copy_full = "Y"
 
 [keys.selector]
 search = "/"
+
+[keys.turns]                   # the turns sidebar while it has focus
+open = "enter"
 ```
 
-Key syntax: `a`, `A`, `ctrl-d`, `shift-tab`, `enter`, `esc`, `pgdn`, `f5`, and two-key chords as space-separated keys (`"g g"`; only in user config, since no default binding is a chord). The help overlay is generated from the active keymap, so it always reflects the user's remappings.
+Key bindings are grouped in contexts, one `[keys.<context>]` table each: `global` (quit, help, theme selector, open the selector), `browser`, `selector`, `overlay` (the help and details overlays and the theme selector) and `turns` (the turns sidebar, §6.3). Apart from the global keys, components resolve a key in their own context only, which is why the same key (`1`, `Tab`) can mean different things in the browser and in the selector. The `turns` defaults match the selector's lists:
+
+| Action | Default keys |
+|---|---|
+| `up` | `up`, `k` |
+| `down` | `down`, `j` |
+| `open` | `enter` |
+| `next_pane`, `prev_pane` | `tab`, `shift-tab` |
+| `focus_transcript` | `right`, `l` |
+
+`focus_turns` (`1`), `next_pane` (`tab`) and `prev_pane` (`shift-tab`) in `[keys.browser]` focus the sidebar, and `details` (`i`) opens the details overlay (§4.3).
+
+Key syntax: `a`, `A`, `ctrl-d`, `shift-tab`, `enter`, `esc`, `pgdn`, `f5`, and two-key chords as space-separated keys (`"g g"`; only in user config, in the `browser`, `selector` and `turns` contexts, since no default binding is a chord). The help overlay is generated from the active keymap, so it always reflects the user's remappings.
 
 ### 8.6 Timestamps
 
@@ -605,10 +807,12 @@ Rules that keep tiers 2–3 cheap:
 Target: sessions up to **~100 MB** stay smooth.
 - Parsing is streaming (line by line for JSONL, paged queries for SQLite) and runs off the UI thread. The UI shows a loading state and becomes interactive as soon as the first screen of content is parsed.
 - Large tool outputs: the model stores line counts and byte ranges up front. The full text is materialised only when the section is unfolded, searched, copied or exported.
+- Detail fields are not parsed while assembling. A turn keeps only a byte range or row id per section (§5.1), and opening the details overlay re-reads one or two lines (Claude) or rows (OpenCode) on the UI thread, which takes about a millisecond even for a 2 MB result (a line of about 4 MB; measured for Claude). `toolUseResult`, which can hold whole files, is read by the assembler and the details overlay through a typed head and never loaded as a whole value. (Finding a subagent's transcript from its parent, when no meta file names the call, scans the parent for the call's result line and loads its `toolUseResult` as a value, §5.4.)
+- The turns sidebar (§4.2) builds its rows from the section derivation, never from a layout or a render, and a turn update rebuilds only the rows it names. A key press in the sidebar (selection, transcript scroll and frame) is held to the frame budget below.
 - Layout is computed lazily per block for the current width. Only blocks overlapping the viewport are rendered.
 - Session list stats are computed in the background and cached in `$XDG_CACHE_HOME/chronoscope/`, keyed by (path, size, mtime) or by (db, session id, `time_updated`).
 - Session discovery reads each Claude transcript at most once per index build. Each file's scan result (cwd, start time, first prompt, last `ai-title`) is kept in memory, keyed by (path, size, mtime). The initial build and live rebuilds rescan only new or changed files, scanning several files in parallel. Results for files that are gone are dropped.
-- Budgets (to be measured with benchmarks on a synthetic 100 MB fixture):
+- Budgets (measured with benchmarks and an ignored budget test on a synthetic 100 MB fixture, `docs/performance.md`):
   - first content within 300 ms;
   - full parse under 2 s;
   - each frame rendered in under 16 ms;
@@ -636,7 +840,7 @@ Primary environment: inside terminal multiplexers (**tmux**, **herdr**).
 ### 9.5 Robustness
 
 - Never writes to harness data. The SQLite database is opened read-only.
-- Unknown entry types, unknown content blocks and malformed lines are skipped and counted, not fatal.
+- Unknown entry types, unknown content blocks and malformed lines are skipped and counted, not fatal. Every field is optional and unknown fields are ignored. While assembling, a known field of another JSON type fails its line (OpenCode: its row), which is then skipped and counted like a malformed line (for example Claude `timestamp`, `message.id`, `message.model`, `cwd` and `durationMs`, or OpenCode `time` and `cost`). Fields read leniently count as missing instead: Claude `message.usage` and its counts, `message.stop_reason`, both `isApiErrorMessage` fields and `toolUseResult`; OpenCode `tokens`, `finish` and `error`. The details overlay's re-read tolerates a wrong type in every field it reads, and a bad value only drops its row.
   - A muted `N entries could not be parsed` note appears in the browser header.
   - Session metadata entries (known ones such as `agent-name`, `queue-operation`, `continued-in`, `bridge-session`, `tools-used`, and unknown types without a `message`) carry no conversation content: they are skipped and logged, but not counted in the note.
   - Details are written to a log file at `$XDG_STATE_HOME/chronoscope/chronoscope.log`.
