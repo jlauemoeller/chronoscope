@@ -22,7 +22,8 @@ use tuirealm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
 
 use super::layout::{Screen, ScreenLayout, layout};
 use super::{App, Id, Msg, Pane, UserEvent};
-use crate::model::{ProjectId, SessionId};
+use crate::components::{SELECTED_TURN_ATTR, payload_value};
+use crate::model::{ProjectId, SessionId, TurnId};
 
 /// Two presses on the same row at most this far apart are a double-click.
 pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
@@ -99,6 +100,7 @@ enum ClickTarget {
     Project(ProjectId),
     Session(SessionId),
     Theme(String),
+    Turn(TurnId),
 }
 
 /// What the `App` keeps for the mouse: the layout it routes with, the last
@@ -254,7 +256,8 @@ impl App {
     /// transcript, unless a prompt has the input. The selector's tabs and
     /// panes do, unless a prompt has the input: the search prompt lets the
     /// Sessions pane's results be clicked and scrolled, any other (the
-    /// resume confirmation) is modal. In the filtered selector the Projects
+    /// resume confirmation) is modal. The turns sidebar does, unless a prompt
+    /// has the input. In the filtered selector the Projects
     /// pane is as at a start without the prefix: the wheel leaves it alone
     /// (a click ends the filter).
     fn takes_mouse(&self, id: Id, kind: MouseEventKind) -> bool {
@@ -265,7 +268,7 @@ impl App {
             Id::Transcript | Id::Subagent(_) => !prompt,
             Id::ProjectList if wheel && self.selector.filtered.is_some() => false,
             Id::SessionList => !prompt || self.selector.search.is_some(),
-            Id::ProjectList | Id::HarnessTabs => !prompt,
+            Id::ProjectList | Id::HarnessTabs | Id::TurnSidebar => !prompt,
             _ => false,
         }
     }
@@ -283,6 +286,24 @@ impl App {
         } else {
             self.preview_theme(id);
         }
+    }
+
+    // -- the turns sidebar's clicks
+
+    /// A click on the entry of turn `id`: the sidebar gets the focus, the
+    /// entry is selected and the transcript scrolls to its block. A
+    /// double-click is `Enter` on it: the transcript gets the focus.
+    pub(super) fn turn_clicked(&mut self, id: TurnId) {
+        let double = self.mouse.press(ClickTarget::Turn(id.clone()));
+        // Focus first: the sidebar takes its selection from the transcript
+        // unless it has the focus itself.
+        self.focus_turns();
+        self.set_attr(
+            Id::TurnSidebar,
+            SELECTED_TURN_ATTR,
+            payload_value(id.clone()),
+        );
+        self.go_to_turn(&id, double);
     }
 
     // -- the selector's clicks

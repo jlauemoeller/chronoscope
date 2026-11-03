@@ -580,12 +580,13 @@ fn a_click_on_the_transcript_at_120_columns_hits_the_same_section_shifted_by_the
 }
 
 #[test]
-fn clicks_on_the_sidebar_and_in_the_gap_do_nothing() {
+fn clicks_on_the_sidebars_border_and_in_the_gap_do_nothing() {
+    // (What a click on a row does is `sidebar_mouse`'s.)
     let mut rig = rig();
     rig.open_loaded();
     let row = thinking_row(&mut rig);
     let before = selected(&rig);
-    for column in [0, 10, 29, 30] {
+    for column in [0, 29, 30] {
         click(&mut rig, column, row);
         assert_eq!(selected(&rig), before, "column {column}");
     }
@@ -595,14 +596,15 @@ fn clicks_on_the_sidebar_and_in_the_gap_do_nothing() {
 }
 
 #[test]
-fn the_wheel_over_the_sidebar_does_not_scroll_the_transcript() {
+fn the_wheel_in_the_gap_does_not_scroll_the_transcript() {
+    // (The wheel over the pane selects entries: `sidebar_mouse`.)
     let mut rig = rig();
     rig.open_loaded();
     let before = screen_text(&mut rig, 120, 40);
     rig.app.update(Msg::Mouse(MouseEvent {
         kind: MouseEventKind::ScrollDown,
         modifiers: KeyModifiers::NONE,
-        column: 10,
+        column: 30,
         row: 12,
     }));
     assert_eq!(screen_text(&mut rig, 120, 40), before);

@@ -1362,5 +1362,6 @@ mod search;
 mod sidebar;
 mod sidebar_follow;
 mod sidebar_keys;
+mod sidebar_mouse;
 mod subagent;
 mod theme_selector;
