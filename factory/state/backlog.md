@@ -14,5 +14,5 @@
 | 010-turn-sidebar-pane | Complete |
 | 011-sidebar-follows-transcript | Complete |
 | 012-turn-sidebar-keys | Complete |
-| 013-turn-sidebar-mouse | Planned |
+| 013-turn-sidebar-mouse | In progress |
 | 014-cycle-two-docs | Planned |
