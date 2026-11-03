@@ -1,17 +1,17 @@
 # Chronoscope
 
-Chronoscope is a terminal viewer for the session histories of AI coding
-agents. It lists the sessions of your projects, and opens one as a transcript
-of turns that you can fold, search, copy, save and export, with live updates
-while the session is still running.
+Chronoscope is a read-only terminal viewer for session histories of AI coding agents. It lists 
+the sessions of your local projects, and presents them as a transcript of turns that you can 
+fold, search, copy, save and export, with live updates while the session is still running.
 
-Supported harnesses:
+You can export individual sections or the entire transcript as a Markdown document, view details about token usage and tool use in individual turns, or re-open the selected transcript in your harness. 
 
-- **Claude Code** (`~/.claude/projects`)
-- **OpenCode** (its SQLite database)
+![transcript](doc/screenshots/transcript.png)
 
-Chronoscope is a read-only viewer. It never writes to the data of a harness
-(see [Data sources](#data-sources)).
+![details](doc/screenshots/details.png)
+
+![themes](doc/screenshots/themes.png)
+
 
 ## Install
 
@@ -36,7 +36,7 @@ sudo dnf install ./chronoscope-<version>-1.x86_64.rpm
 ```
 
 Linux is the primary platform. macOS is built and tested in CI. Windows is not
-supported.
+officially supported but you should be able to build the tool for the platform.
 
 ### From source
 
@@ -85,7 +85,7 @@ chronoscope --latest                 # open the newest session for $PWD (or --pr
 - `chronoscope --help` and `chronoscope --version` print the usage and the
   version.
 
-In the browser:
+In the transcript browser:
 
 - A **turns sidebar** at the left lists the session's turns and compaction
   events, with the duration of each Assistant turn, so you can see the shape
