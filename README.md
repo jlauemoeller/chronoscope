@@ -6,6 +6,10 @@ fold, search, copy, save and export, with live updates while the session is stil
 
 You can export individual sections or the entire transcript as a Markdown document, view details about token usage and tool use in individual turns, or re-open the selected transcript in your harness. 
 
+**Supported harnesses** are Claude Code (from `~/.claude/projects`) and OpenCode (from its SQLite database)
+
+### Screenshots
+
 ![transcript](doc/screenshots/transcript.png)
 
 ![details](doc/screenshots/details.png)
@@ -14,6 +18,7 @@ You can export individual sections or the entire transcript as a Markdown docume
 
 
 ## Install
+You can install Chronoscope from a relase or by compiling it from source.
 
 ### From a release
 
