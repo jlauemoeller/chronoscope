@@ -5,9 +5,9 @@
 //! not the turn has an entry, plus a map from the turn's id to its slot. An
 //! update therefore touches the slots of the turns it names and nothing else,
 //! and a turn that gains or loses its entry keeps its place. The list drawn
-//! is `Start`, the entries, `End`, with exactly one row between neighbours:
-//! `│`, or a blank row when either neighbour is a Compaction. It follows that
-//! the item `k` is on row `2k`, so a row is found without a row vector.
+//! is `Start`, the entries, `End`, with exactly one `│` row between
+//! neighbours. It follows that the item `k` is on row `2k`, so a row is found
+//! without a row vector.
 //!
 //! Nothing here lays out or renders a block, and no tool output is read:
 //! an entry is decided by [`derive_sections`], which only lists the sections.
@@ -79,15 +79,15 @@ pub fn entry_for(turn: &Turn) -> Option<Entry> {
 /// One row of the list as drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Row {
-    /// `● Start`, the first row. Not selectable.
+    /// `┬ Start`, the first row. Not selectable.
     Start,
-    /// `● End`, the last row. Not selectable.
+    /// `┴ End`, the last row. Not selectable.
     End,
     /// A turn.
     Entry(Entry),
-    /// `│` between two `●` rows.
+    /// `│` between two rows.
     Connector,
-    /// A blank row next to a Compaction.
+    /// A blank row, in place of an entry that cannot be found.
     Blank,
 }
 
@@ -95,17 +95,6 @@ impl Row {
     /// Whether the row can be selected.
     pub fn selectable(self) -> bool {
         matches!(self, Row::Entry(_))
-    }
-
-    /// Whether the row is a Compaction, which breaks the timeline.
-    fn is_compaction(self) -> bool {
-        matches!(
-            self,
-            Row::Entry(Entry {
-                kind: EntryKind::Compaction,
-                ..
-            })
-        )
     }
 }
 
@@ -256,11 +245,6 @@ impl TurnRows {
         if row.is_multiple_of(2) {
             return Some(item(row / 2));
         }
-        let (above, below) = (item(row / 2), item(row / 2 + 1));
-        Some(if above.is_compaction() || below.is_compaction() {
-            Row::Blank
-        } else {
-            Row::Connector
-        })
+        Some(Row::Connector)
     }
 }

@@ -39,8 +39,8 @@
 //! next entry like `Up` / `Down` (no wrap-around) and answers
 //! [`Msg::TurnSelected`]; it does not ask for the focus. A left press on an
 //! entry's row answers [`Msg::TurnClicked`] with its turn; a press anywhere
-//! else (`Start`, `End`, a connector or blank row, the border, the margin,
-//! below the last row) answers nothing.
+//! else (`Start`, `End`, a connector, the blank row above the list, the
+//! border, the margin, below the last row) answers nothing.
 
 mod line;
 mod rows;
@@ -95,11 +95,11 @@ pub const KEY_LABEL_ATTR: Attribute = Attribute::Custom("sidebar_key");
 /// The key label the title shows until another is set.
 pub const DEFAULT_KEY_LABEL: &str = "1";
 
-/// The rows above the list inside the pane: the border and two blank rows.
-const ROWS_ABOVE_LIST: u16 = 3;
+/// The rows above the list inside the pane: the border and a blank row.
+const ROWS_ABOVE_LIST: u16 = 2;
 /// The rows of the pane that are not list rows: the rows above the list, and
 /// the bottom border.
-const PANE_CHROME_ROWS: u16 = 4;
+const PANE_CHROME_ROWS: u16 = 3;
 
 /// How many list rows a pane of `pane_height` rows shows.
 pub fn sidebar_list_rows(pane_height: u16) -> usize {
@@ -206,9 +206,9 @@ impl TurnSidebar {
     }
 
     /// The turn of the entry whose row is at (`column`, `row`) of a pane of
-    /// `size` (as drawn: the border, two blank rows, then the list from its
-    /// scroll offset), or `None` on the border, the blank rows, the margin,
-    /// below the last row and on `Start`, `End`, a connector and a blank row.
+    /// `size` (as drawn: the border, a blank row, then the list from its
+    /// scroll offset), or `None` on the border, the blank row, the margin,
+    /// below the last row and on `Start`, `End` and a connector.
     pub fn turn_at(&self, column: u16, row: u16, size: Size) -> Option<&TurnId> {
         let line = usize::from(row.checked_sub(ROWS_ABOVE_LIST)?);
         let inside = column >= 1 && column < size.width.saturating_sub(1);
@@ -339,7 +339,7 @@ impl TurnSidebar {
         frame.render_widget(Block::new().style(style), area);
     }
 
-    /// Draws the rows the pane shows, from its fourth row.
+    /// Draws the rows the pane shows, from its third row.
     fn draw_rows(&self, frame: &mut Frame, area: Rect) {
         let shown = sidebar_list_rows(area.height);
         let first = self.cursor.offset_for(shown);

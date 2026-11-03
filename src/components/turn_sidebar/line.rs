@@ -1,7 +1,7 @@
 //! One row of the turns sidebar as a styled line (SPEC §6.2, §6.3).
 //!
 //! Columns count from the pane's left border (column 0): the marker is in
-//! column 3, labels in column 7 (the Compaction rule from column 3), and the
+//! column 3, labels in column 7 (the Compaction rule from column 4), and the
 //! right margin ends two cells before the right border, `pane_width - 4`.
 //! The line returned starts in column 1, inside the border.
 
@@ -94,15 +94,15 @@ pub fn row_line(theme: &Theme, row: Row, look: Look, pane_width: usize) -> Optio
     let (glyph, body) = match row {
         Row::Blank => return Some(Line::default()),
         Row::Connector => ("│", String::new()),
-        Row::Start => ("●", labelled("Start", None, body_width)),
-        Row::End => ("●", labelled("End", None, body_width)),
+        Row::Start => ("┬", labelled("Start", None, body_width)),
+        Row::End => ("┴", labelled("End", None, body_width)),
         Row::Entry(entry) => match entry.kind {
-            EntryKind::User => ("●", labelled("User", None, body_width)),
-            EntryKind::Assistant => ("●", assistant_body(entry, body_width)),
-            EntryKind::Compaction => ("═", compaction_body(body_width)),
+            EntryKind::User => ("├", labelled("User", None, body_width)),
+            EntryKind::Assistant => ("├", assistant_body(entry, body_width)),
+            EntryKind::Compaction => ("├", compaction_body(body_width)),
         },
     };
-    let marker = if look == Look::Plain { glyph } else { ">" };
+    let marker = if look == Look::Plain { glyph } else { "▒" };
     Some(Line::from(vec![
         Span::raw(" ".repeat(MARKER_COLUMN - 1)),
         Span::styled(marker, styles.marker),
@@ -137,17 +137,17 @@ fn labelled(label: &str, duration: Option<&str>, body_width: usize) -> String {
     text
 }
 
-/// `═══ Compaction ═══…`: the rule runs from column 3 (the marker, which the
-/// caller supplies), the label is in column 7 and the rule goes on to the
-/// right margin.
+/// `╶╶ Compaction ╶╶╶…`, after the marker the caller supplies in column 3: the
+/// rule runs from column 4, the label is in column 7 and the rule goes on to
+/// the right margin.
 fn compaction_body(body_width: usize) -> String {
     let lead = LABEL_COLUMN - MARKER_COLUMN - 1;
-    let mut text = format!("{} ", "═".repeat(lead - 1));
+    let mut text = format!("{} ", "╶".repeat(lead - 1));
     text.push_str(COMPACTION);
     text.push(' ');
     let used = text.width();
     if used < body_width {
-        text.push_str(&"═".repeat(body_width - used));
+        text.push_str(&"╶".repeat(body_width - used));
     }
     fit(&text, body_width)
 }

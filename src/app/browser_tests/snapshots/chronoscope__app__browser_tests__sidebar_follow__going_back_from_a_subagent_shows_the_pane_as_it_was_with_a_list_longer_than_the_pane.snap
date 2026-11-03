@@ -9,36 +9,36 @@ expression: before
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ │                                                                                       │
 │                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│                            │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  ●   Assistant             │ │                                                                                       │
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  ├   Assistant             │ │                                                                                       │
 │  │                         │ │   The extension units are listed under VideoControl:                                  │
-│  ●   User                  │ │                                                                                       │
+│  ├   User                  │ │                                                                                       │
 │  │                         │ │   • one for exposure                                                                  │
-│  ●   Assistant             │ │   • one for pan and tilt                                                              │
+│  ├   Assistant             │ │   • one for pan and tilt                                                              │
 │  │                         │ │                                                                                       │
-│  ●   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ├   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
 │  │                         │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  ●   Assistant             │ │                                                                                       │
+│  ├   Assistant             │ │                                                                                       │
 │  │                         │ │   That is everything the camera exposes over plain UVC. Anything beyond that needs    │
-│  ●   User                  │ │   the vendor protocol, which is not documented.                                       │
+│  ├   User                  │ │   the vendor protocol, which is not documented.                                       │
 │  │                         │ │                                                                                       │
-│  ●   Assistant      5m 2s  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ├   Assistant      5m 2s  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
 │  │                         │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  ●   User                  │ │                                                                                       │
+│  ├   User                  │ │                                                                                       │
 │  │                         │ │   I will ask the story writer.                                                        │
-│  ●   Assistant      5m 2s  │ │                                                                                       │
-│                            │ ▒ ▼ Ask story-writer (story-writer)                                                     │
-│  ═══ Compaction ═════════  │ ▒                                                                                       │
-│                            │ ▒   Prompt:                                                                             │
-│  ●   User                  │ ▒                                                                                       │
+│  ├   Assistant      5m 2s  │ │                                                                                       │
+│  │                         │ ▒ ▼ Ask story-writer (story-writer)                                                     │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ ▒                                                                                       │
+│  │                         │ ▒   Prompt:                                                                             │
+│  ├   User                  │ ▒                                                                                       │
 │  │                         │ ▒      Write a short story                                                              │
-│  ●   Assistant             │ ▒                                                                                       │
+│  ├   Assistant             │ ▒                                                                                       │
 │  │                         │ ▒   Result:                                                                             │
-│  ●   Assistant             │ ▒                                                                                       │
+│  ├   Assistant             │ ▒                                                                                       │
 │  │                         │ ▒      Once upon a time.                                                                │
-│  >   Assistant             │ ▒                                                                                       │
+│  ▒   Assistant             │ ▒                                                                                       │
 │  │                         │ ▒   a to open transcript                                                                │
-│  ●   End                   │ │                                                                                       │
+│  ┴   End                   │ │                                                                                       │
 ╰────────────────────────────╯ ╰───────────────────────────────────────────────────────────────────────────────────────╯
                                                                                                                         
  / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

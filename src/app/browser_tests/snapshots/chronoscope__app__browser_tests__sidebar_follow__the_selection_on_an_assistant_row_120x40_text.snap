@@ -9,26 +9,26 @@ expression: "screen_text(&mut rig, 120, 40)"
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
 │                            │ │                                                                                       │
-│                            │ ▒   I'll start by looking at what the camera exposes over USB:                          │
-│  ●   Start                 │ ▒                                                                                       │
-│  │                         │ ▒   • Check lsusb -v for the UVC descriptors                                            │
-│  ●   User                  │ ▒   • Look at v4l2-ctl --list-ctrls                                                     │
+│  ┬   Start                 │ ▒   I'll start by looking at what the camera exposes over USB:                          │
 │  │                         │ ▒                                                                                       │
-│  >   Assistant      5m 2s  │ ▒   Then I'll compare the results.                                                      │
-│  │                         │ │                                                                                       │
-│  ●   User                  │ │ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.                 │
-│  │                         │ │                                                                                       │
-│  ●   Assistant      5m 2s  │ │ ▶ Find the BRIO on USB and check available tools                                      │
+│  ├   User                  │ ▒   • Check lsusb -v for the UVC descriptors                                            │
+│  │                         │ ▒   • Look at v4l2-ctl --list-ctrls                                                     │
+│  ▒   Assistant      5m 2s  │ ▒                                                                                       │
+│  │                         │ ▒   Then I'll compare the results.                                                      │
+│  ├   User                  │ │                                                                                       │
+│  │                         │ │ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.                 │
+│  ├   Assistant      5m 2s  │ │                                                                                       │
+│  │                         │ │ ▶ Find the BRIO on USB and check available tools                                      │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ │                                                                                       │
+│  │                         │ │ ▶ Dump full USB descriptors for the BRIO                                              │
+│  ├   User                  │ │                                                                                       │
+│  │                         │ │   model → claude-sonnet-5.5                                                           │
+│  ├   Assistant             │ │                                                                                       │
+│  │                         │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
+│  ├   Assistant             │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ┴   End                   │ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
 │                            │ │                                                                                       │
-│  ═══ Compaction ═════════  │ │ ▶ Dump full USB descriptors for the BRIO                                              │
-│                            │ │                                                                                       │
-│  ●   User                  │ │   model → claude-sonnet-5.5                                                           │
-│  │                         │ │                                                                                       │
-│  ●   Assistant             │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
-│  │                         │ │                                                                                       │
-│  ●   Assistant             │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  │                         │ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
-│  ●   End                   │ │                                                                                       │
 │                            │ │ ▶ Dump the full descriptors and look for extension units.                             │
 │                            │ │                                                                                       │
 │                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯

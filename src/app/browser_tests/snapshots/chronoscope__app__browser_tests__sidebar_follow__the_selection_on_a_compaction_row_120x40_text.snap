@@ -9,26 +9,26 @@ expression: "screen_text(&mut rig, 120, 40)"
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ │ ▶ Thinking: Look for the Logitech XU GUIDs.                                           │
 │                            │ │                                                                                       │
-│                            │ │ ▶ Read the UVC descriptor dump                                                        │
-│  ●   Start                 │ │                                                                                       │
-│  │                         │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
-│  ●   User                  │ │                                                                                       │
+│  ┬   Start                 │ │ ▶ Read the UVC descriptor dump                                                        │
+│  │                         │ │                                                                                       │
+│  ├   User                  │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
+│  │                         │ │                                                                                       │
+│  ├   Assistant      5m 2s  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Compaction ─────────────────────────────────────────────────── 2026-10-21 09:00:00Z ─╮
+│  ├   User                  │ │                                                                                       │
+│  │                         │ ▒ ▶ ── context compacted ──                                                             │
+│  ├   Assistant      5m 2s  │ │                                                                                       │
 │  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  ●   Assistant      5m 2s  │ ╭─ Compaction ─────────────────────────────────────────────────── 2026-10-21 09:00:00Z ─╮
+│  ▒╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
 │  │                         │ │                                                                                       │
-│  ●   User                  │ ▒ ▶ ── context compacted ──                                                             │
+│  ├   User                  │ │ ▶ file: /home/jacob/notes.md                                                          │
 │  │                         │ │                                                                                       │
-│  ●   Assistant      5m 2s  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│                            │ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
-│  >══ Compaction ═════════  │ │                                                                                       │
-│                            │ │ ▶ file: /home/jacob/notes.md                                                          │
-│  ●   User                  │ │                                                                                       │
-│  │                         │ │ ▶ Continue with the extension units.                                                  │
-│  ●   Assistant             │ │                                                                                       │
-│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  ●   Assistant             │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  ├   Assistant             │ │ ▶ Continue with the extension units.                                                  │
 │  │                         │ │                                                                                       │
-│  ●   End                   │ │   The extension units are listed under VideoControl:                                  │
+│  ├   Assistant             │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  ┴   End                   │ │                                                                                       │
+│                            │ │   The extension units are listed under VideoControl:                                  │
 │                            │ │                                                                                       │
 │                            │ │   • one for exposure                                                                  │
 │                            │ │   • one for pan and tilt                                                              │

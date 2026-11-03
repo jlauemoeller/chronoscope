@@ -227,22 +227,22 @@ A sidebar lists the session's turns and compaction events, so the shape of a lon
 ```
 ╭─ [1] Turns  ───────────────╮
 │                            │
+│  ┬   Start                 │
+│  │                         │
+│  ├   User                  │
+│  │                         │
+│  ├   Assistant      4m 3s  │
+│  │                         │
+│  ├   User                  │
+│  │                         │
+│  ├   Assistant      3h 4m  │
+│  │                         │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │
+│  │                         │
+│  ├   Assistant     2h 45m  │
+│  │                         │
+│  ┴   End                   │
 │                            │
-│  ●   Start                 │
-│  │                         │
-│  ●   User                  │
-│  │                         │
-│  ●   Assistant      4m 3s  │
-│  │                         │
-│  ●   User                  │
-│  │                         │
-│  ●   Assistant      3h 4m  │
-│                            │
-│  ═══ Compaction ═════════  │
-│                            │
-│  ●   Assistant     2h 45m  │
-│  │                         │
-│  ●   End                   │
 │                            │
 ╰────────────────────────────╯
 ```
@@ -260,19 +260,19 @@ A sidebar lists the session's turns and compaction events, so the shape of a lon
 
 | Row | Content | Selectable |
 |---|---|---|
-| `● Start` | First row of the list | No: it has no block |
-| `● User` | A User turn | Yes |
-| `● Assistant` | An Assistant turn, with its duration | Yes |
-| `═══ Compaction ═══` | A Compaction turn; `═` fills to the right margin | Yes |
-| `● End` | Last row of the list | No: it has no block |
+| `┬ Start` | First row of the list | No: it has no block |
+| `├ User` | A User turn | Yes |
+| `├ Assistant` | An Assistant turn, with its duration | Yes |
+| `├╶╶ Compaction ╶╶╶` | A Compaction turn; `╶` fills to the right margin | Yes |
+| `┴ End` | Last row of the list | No: it has no block |
 
-- Columns (from 0): `●`, `═` and the selection marker in column 3; labels in column 7, except that the Compaction rule runs from column 3; the right margin is two cells before the border, as in the selector. The list starts two rows below the top border.
-- Between two `●` rows there is one row with `│` in column 3. A Compaction row has a blank row above and below it instead, so the timeline visibly breaks. Connector and blank rows cannot be selected or clicked.
+- Columns (from 0): `┬`, `├`, `┴` and the selection marker in column 3; labels in column 7, with the Compaction rule running from column 4; the right margin is two cells before the border, as in the selector. One blank row separates the list from the top border.
+- Between two rows of the list there is one row with `│` in column 3, so the timeline runs unbroken through a Compaction too. Connector rows cannot be selected or clicked.
 - An Assistant entry shows the turn's duration (§5.2) in the shared format (above), right-aligned to the right margin. A turn without stats (for example, one still running) shows none, and it appears in place once known.
 - Long lists scroll by rows; `Start` and `End` scroll with the list. The list never wraps around.
-- Unselected rows, `●`, `│` and `═` use `muted_foreground`.
+- Unselected rows, `┬`, `├`, `┴`, `│` and `╶` use `muted_foreground`.
 
-**Selection** looks and behaves like the selector's lists (§8.2): the border is `ring` when the sidebar has focus and `border` otherwise; the selected row in a focused sidebar has `>` in `primary` in place of the `●` (or the first `═`) and one inverted band after it up to the right margin; in an unfocused sidebar the `>` and the text are `secondary_foreground`, the text bold.
+**Selection** looks and behaves like the selector's lists (§8.2), except that its marker is `▒`: the border is `ring` when the sidebar has focus and `border` otherwise; the selected row in a focused sidebar has `▒` in `primary` in place of the `├` and one inverted band after it up to the right margin; in an unfocused sidebar the `▒` and the text are `secondary_foreground`, the text bold.
 
 - **While the transcript has focus, the sidebar's selection follows it:** the selected row is the turn containing the transcript's selected section, and it stays visible. The sidebar shows the current position, and returning to it never jumps. Pushing that selection to the sidebar produces no message.
 - When the sidebar has focus and nothing is selected, the first move selects the first entry. An empty list has no selection, and its keys do nothing.
@@ -600,7 +600,7 @@ If a session id is ambiguous (prefix matches several sessions), the selector ope
 - Wheel scrolls the transcript or the list under the pointer.
 - Click selects a section or list row. Clicking a section's summary line (or the `▶`/`▼` marker) toggles its fold. Double-clicking a session row opens it.
 - Click on a harness tab switches to it. Click outside an overlay closes it.
-- **Turns sidebar** (§4.2): the wheel selects the previous or next entry, like `↑` / `↓` (no wrap-around), and scrolls the transcript to its block; it does not move the focus. Clicking a selectable row focuses the sidebar, selects that row and scrolls the transcript to its block. Double-clicking a row does what `Enter` does and gives the transcript focus (two presses on the same row at most 400 ms apart). A click on `Start`, `End`, a connector or blank row, the border or the margin does nothing. Clicking the transcript gives it focus.
+- **Turns sidebar** (§4.2): the wheel selects the previous or next entry, like `↑` / `↓` (no wrap-around), and scrolls the transcript to its block; it does not move the focus. Clicking a selectable row focuses the sidebar, selects that row and scrolls the transcript to its block. Double-clicking a row does what `Enter` does and gives the transcript focus (two presses on the same row at most 400 ms apart). A click on `Start`, `End`, a connector, a blank row of the pane, the border or the margin does nothing. Clicking the transcript gives it focus.
 - Mouse events go to the component under the pointer (§1.4).
 - Mouse capture can be disabled in config (`mouse = false`). Most terminals also bypass mouse capture while `Shift` is held, which allows native text selection; the help overlay mentions this.
 
@@ -669,7 +669,7 @@ Selection is shown with **text brightness and markers**. The one background band
 - Session selector (Projects and Sessions lists):
   - Selected row in the **focused** list: the `>` marker in `primary`, never inverted. Everything after the marker is one **inverted** band (`foreground` with the reverse-video modifier, not bold), running up to the row's right margin (two cells before the pane border). Inside the band, the timestamp, live dot, title, gaps and stats all take the band's style.
   - Selected row in the **unfocused** list (e.g. Projects while Sessions has focus): text **bold** in `secondary_foreground`, not inverted; the `>` marker in the same `secondary_foreground` (not bold), so the context stays visible.
-- The turns sidebar (§4.2) selects the same way: in a focused sidebar the `>` marker in `primary` and one inverted band after it; in an unfocused one the `>` and the bold text in `secondary_foreground`. Its `●`, `│` and `═` are `muted_foreground`.
+- The turns sidebar (§4.2) selects the same way, with `▒` as its marker: in a focused sidebar the `▒` in `primary` and one inverted band after it; in an unfocused one the `▒` and the bold text in `secondary_foreground`. Its `┬`, `├`, `┴`, `│` and `╶` are `muted_foreground`.
 - Focused pane border: `ring`; unfocused borders: `border`.
 - Selected harness tab: `primary`, underlined; other tabs: `muted_foreground`.
 - In the transcript, dimming of unselected sections is controlled by `dim_unselected` (default `true`). When `false`, all sections use their normal token colours and only the marker + bold indicate selection.

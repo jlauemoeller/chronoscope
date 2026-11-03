@@ -9,26 +9,26 @@ expression: text
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
 │                            │ │                                                                                       │
-│                            │ ▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
-│  ●   Start                 │ ▒   - both camera and microphone - but I don't have a way to access settings that…      │
+│  ┬   Start                 │ ▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
+│  │                         │ ▒   - both camera and microphone - but I don't have a way to access settings that…      │
+│  ▒   User                  │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ├   Assistant      5m 2s  │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  │                         │ │                                                                                       │
-│  >   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  │                         │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  ●   Assistant      5m 2s  │ │                                                                                       │
-│  │                         │ │   I'll start by looking at what the camera exposes over USB:                          │
-│  ●   User                  │ │                                                                                       │
-│  │                         │ │   • Check lsusb -v for the UVC descriptors                                            │
-│  ●   Assistant      5m 2s  │ │   • Look at v4l2-ctl --list-ctrls                                                     │
-│                            │ │                                                                                       │
-│  ═══ Compaction ═════════  │ │   Then I'll compare the results.                                                      │
-│                            │ │                                                                                       │
-│  ●   User                  │ │ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.                 │
+│  ├   User                  │ │   I'll start by looking at what the camera exposes over USB:                          │
 │  │                         │ │                                                                                       │
-│  ●   Assistant             │ │ ▶ Find the BRIO on USB and check available tools                                      │
-│  │                         │ │                                                                                       │
-│  ●   Assistant             │ │ ▶ Dump full USB descriptors for the BRIO                                              │
-│  │                         │ │                                                                                       │
-│  ●   End                   │ │   model → claude-sonnet-5.5                                                           │
+│  ├   Assistant      5m 2s  │ │   • Check lsusb -v for the UVC descriptors                                            │
+│  │                         │ │   • Look at v4l2-ctl --list-ctrls                                                     │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ │                                                                                       │
+│  │                         │ │   Then I'll compare the results.                                                      │
+│  ├   User                  │ │                                                                                       │
+│  │                         │ │ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.                 │
+│  ├   Assistant             │ │                                                                                       │
+│  │                         │ │ ▶ Find the BRIO on USB and check available tools                                      │
+│  ├   Assistant             │ │                                                                                       │
+│  │                         │ │ ▶ Dump full USB descriptors for the BRIO                                              │
+│  ┴   End                   │ │                                                                                       │
+│                            │ │   model → claude-sonnet-5.5                                                           │
 │                            │ │                                                                                       │
 │                            │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
 │                            │ │                                                                                       │

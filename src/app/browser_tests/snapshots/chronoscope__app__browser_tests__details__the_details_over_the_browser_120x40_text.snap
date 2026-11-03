@@ -9,26 +9,26 @@ expression: "screen_with_details(120, 40, \"default\", 3)"
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
 │                            │ │                                                                                       │
-│                            │ │ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
-│  ●   Start                 │ │   - both camera and microphone - but I don't have a way to access settings that…      │
-│  │                         │ │                                                                                       │
-│  ●   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  │                         │ ╭─ Assi╭─ Details ───────────────────────────────╮─────────────── 2026-10-21 08:35:18Z ─╮
-│  >   Assistant      5m 2s  │ │      │                                         │                                      │
-│  │                         │ │   I'l│  Turn                                   │es over USB:                          │
-│  ●   User                  │ │      │                                         │                                      │
-│  │                         │ │   • C│    model          claude-opus-5.5       │                                      │
-│  ●   Assistant      5m 2s  │ │   • L│    effort         high                  │                                      │
-│                            │ │      │    start          2026-10-21 08:35:18Z  │                                      │
-│  ═══ Compaction ═════════  │ │   The│    duration       5m 2s                 │                                      │
-│                            │ │      │    messages       112                   │                                      │
-│  ●   User                  │ │ ▶ Thi│    input tokens   5.2k                  │ts. Start with lsusb.                 │
-│  │                         │ │      │    output tokens  40.0k                 │                                      │
-│  ●   Assistant             │ ▒ ▶ Fin│                                         │                                      │
-│  │                         │ │      │  Tool call                              │                                      │
-│  ●   Assistant             │ │ ▶ Dum│                                         │                                      │
-│  │                         │ │      │    status         ok                    │                                      │
-│  ●   End                   │ │   mod│                                         │                                      │
+│  ┬   Start                 │ │ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
+│  │                         │ │   - both camera and microphone - but I don't have a way to access settings that…      │
+│  ├   User                  │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ▒   Assistant      5m 2s  │ ╭─ Assi╭─ Details ───────────────────────────────╮─────────────── 2026-10-21 08:35:18Z ─╮
+│  │                         │ │      │                                         │                                      │
+│  ├   User                  │ │   I'l│  Turn                                   │es over USB:                          │
+│  │                         │ │      │                                         │                                      │
+│  ├   Assistant      5m 2s  │ │   • C│    model          claude-opus-5.5       │                                      │
+│  │                         │ │   • L│    effort         high                  │                                      │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ │      │    start          2026-10-21 08:35:18Z  │                                      │
+│  │                         │ │   The│    duration       5m 2s                 │                                      │
+│  ├   User                  │ │      │    messages       112                   │                                      │
+│  │                         │ │ ▶ Thi│    input tokens   5.2k                  │ts. Start with lsusb.                 │
+│  ├   Assistant             │ │      │    output tokens  40.0k                 │                                      │
+│  │                         │ ▒ ▶ Fin│                                         │                                      │
+│  ├   Assistant             │ │      │  Tool call                              │                                      │
+│  │                         │ │ ▶ Dum│                                         │                                      │
+│  ┴   End                   │ │      │    status         ok                    │                                      │
+│                            │ │   mod│                                         │                                      │
 │                            │ │      ╰─────────────────────────────────────────╯                                      │
 │                            │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
 │                            │ │                                                                                       │

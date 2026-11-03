@@ -71,9 +71,9 @@ fn each_kind_is_listed_in_transcript_order_between_start_and_end() {
             "User",
             "|",
             "Assistant",
-            " ",
+            "|",
             "Compaction",
-            " ",
+            "|",
             "Assistant",
             "|",
             "End"
@@ -115,7 +115,7 @@ fn an_empty_list_is_start_a_connector_and_end() {
 }
 
 #[test]
-fn connector_rows_join_dots_and_a_compaction_has_blank_rows_around_it() {
+fn connector_rows_join_the_rows_and_a_compaction_is_joined_like_any_other() {
     let rows = rows_of(&[user("u1"), compaction("c1"), assistant("a1", 5)]);
     assert_eq!(
         kinds(&rows),
@@ -123,9 +123,9 @@ fn connector_rows_join_dots_and_a_compaction_has_blank_rows_around_it() {
             "Start",
             "|",
             "User",
-            " ",
+            "|",
             "Compaction",
-            " ",
+            "|",
             "Assistant",
             "|",
             "End"
@@ -134,7 +134,7 @@ fn connector_rows_join_dots_and_a_compaction_has_blank_rows_around_it() {
 }
 
 #[test]
-fn two_adjacent_compactions_have_one_blank_row_between_them() {
+fn two_adjacent_compactions_have_one_connector_between_them() {
     let rows = rows_of(&[user("u1"), compaction("c1"), compaction("c2"), user("u2")]);
     assert_eq!(
         kinds(&rows),
@@ -142,11 +142,11 @@ fn two_adjacent_compactions_have_one_blank_row_between_them() {
             "Start",
             "|",
             "User",
-            " ",
+            "|",
             "Compaction",
-            " ",
+            "|",
             "Compaction",
-            " ",
+            "|",
             "User",
             "|",
             "End"
@@ -159,15 +159,15 @@ fn a_compaction_right_after_start_and_right_before_end() {
     let first = rows_of(&[compaction("c1"), user("u1")]);
     assert_eq!(
         kinds(&first),
-        ["Start", " ", "Compaction", " ", "User", "|", "End"]
+        ["Start", "|", "Compaction", "|", "User", "|", "End"]
     );
     let last = rows_of(&[user("u1"), compaction("c1")]);
     assert_eq!(
         kinds(&last),
-        ["Start", "|", "User", " ", "Compaction", " ", "End"]
+        ["Start", "|", "User", "|", "Compaction", "|", "End"]
     );
     let only = rows_of(&[compaction("c1")]);
-    assert_eq!(kinds(&only), ["Start", " ", "Compaction", " ", "End"]);
+    assert_eq!(kinds(&only), ["Start", "|", "Compaction", "|", "End"]);
 }
 
 #[test]
@@ -284,9 +284,9 @@ fn an_updated_turn_gaining_its_first_section_appears_in_its_transcript_position(
             "User",
             "|",
             "User",
-            " ",
+            "|",
             "Compaction",
-            " ",
+            "|",
             "End"
         ]
     );
@@ -302,9 +302,9 @@ fn an_updated_turn_gaining_its_first_section_appears_in_its_transcript_position(
             "Assistant",
             "|",
             "User",
-            " ",
+            "|",
             "Compaction",
-            " ",
+            "|",
             "End"
         ]
     );
@@ -476,9 +476,9 @@ fn the_sidebar_builds_only_the_rows_it_shows() {
     assert!(sidebar.rows().row_count() > 20_000);
     let before = line::lines_built();
     let buffer = draw(&mut sidebar, 30, 40);
-    // 40 rows: the border, two blank rows, 36 list rows and the border.
-    assert_eq!(line::lines_built() - before, 36);
-    assert!(row_text(&buffer, 3).contains("Start"));
+    // 40 rows: the border, a blank row, 37 list rows and the border.
+    assert_eq!(line::lines_built() - before, 37);
+    assert!(row_text(&buffer, 2).contains("Start"));
 }
 
 #[test]
@@ -528,16 +528,16 @@ fn the_sidebar_keeps_no_turns() {
 fn an_assistant_entry_without_stats_shows_no_duration_and_gets_it_in_place() {
     let mut sidebar = sidebar(&[user("u1"), running("a1"), user("u2")]);
     let before = draw(&mut sidebar, 30, 20);
-    let row = row_text(&before, 7);
-    assert_eq!(row, "│  ●   Assistant             │");
+    let row = row_text(&before, 6);
+    assert_eq!(row, "│  ├   Assistant             │");
     sidebar.attr(
         MODEL_UPDATE_ATTR,
         update(updated(vec![assistant("a1", 4 * 60 + 3)])),
     );
     let after = draw(&mut sidebar, 30, 20);
-    assert_eq!(row_text(&after, 7), "│  ●   Assistant      4m 3s  │");
+    assert_eq!(row_text(&after, 6), "│  ├   Assistant      4m 3s  │");
     // Nothing else moved.
-    for y in (0..20).filter(|&y| y != 7) {
+    for y in (0..20).filter(|&y| y != 6) {
         assert_eq!(row_text(&before, y), row_text(&after, y), "row {y}");
     }
 }
@@ -547,7 +547,7 @@ fn a_duration_ends_at_the_right_margin_in_the_shared_format() {
     let mut sidebar = sidebar(&widest_durations());
     let buffer = draw(&mut sidebar, 30, 30);
     let mut seen = Vec::new();
-    for y in 3..30 {
+    for y in 2..30 {
         let row = row_text(&buffer, y);
         if row.contains("Assistant") {
             let text: String = row.chars().skip(16).take(11).collect();
@@ -592,8 +592,7 @@ fn the_title_reads_the_key_and_has_two_spaces_before_the_rule() {
     let buffer = draw(&mut sidebar, 30, 20);
     assert_eq!(row_text(&buffer, 0), "╭─ [1] Turns  ───────────────╮");
     assert_eq!(row_text(&buffer, 1), format!("│{}│", " ".repeat(28)));
-    assert_eq!(row_text(&buffer, 2), format!("│{}│", " ".repeat(28)));
-    assert_eq!(row_text(&buffer, 3), "│  ●   Start                 │");
+    assert_eq!(row_text(&buffer, 2), "│  ┬   Start                 │");
     assert_eq!(row_text(&buffer, 19), format!("╰{}╯", "─".repeat(28)));
     let relabelled = TurnSidebar::new(theme()).key_label("2");
     let mut relabelled = relabelled;
@@ -611,22 +610,22 @@ fn the_wireframe_is_drawn_as_specified() {
     let expected = [
         "╭─ [1] Turns  ───────────────╮",
         "│                            │",
+        "│  ┬   Start                 │",
+        "│  │                         │",
+        "│  ├   User                  │",
+        "│  │                         │",
+        "│  ├   Assistant      4m 3s  │",
+        "│  │                         │",
+        "│  ├   User                  │",
+        "│  │                         │",
+        "│  ├   Assistant      3h 4m  │",
+        "│  │                         │",
+        "│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │",
+        "│  │                         │",
+        "│  ├   Assistant     2h 45m  │",
+        "│  │                         │",
+        "│  ┴   End                   │",
         "│                            │",
-        "│  ●   Start                 │",
-        "│  │                         │",
-        "│  ●   User                  │",
-        "│  │                         │",
-        "│  ●   Assistant      4m 3s  │",
-        "│  │                         │",
-        "│  ●   User                  │",
-        "│  │                         │",
-        "│  ●   Assistant      3h 4m  │",
-        "│                            │",
-        "│  ═══ Compaction ═════════  │",
-        "│                            │",
-        "│  ●   Assistant     2h 45m  │",
-        "│  │                         │",
-        "│  ●   End                   │",
         "│                            │",
         "╰────────────────────────────╯",
     ];
@@ -638,8 +637,8 @@ fn unselected_rows_are_muted_foreground() {
     let mut sidebar = sidebar(&wireframe());
     let buffer = draw(&mut sidebar, 30, 20);
     let muted = theme().role(Role::MutedForeground);
-    // `●` on Start, `│`, a User label, a duration, the Compaction rule.
-    for (x, y) in [(3, 3), (3, 4), (7, 5), (22, 7), (3, 13), (10, 13), (26, 13)] {
+    // `┬` on Start, `│`, a User label, a duration, the Compaction row.
+    for (x, y) in [(3, 2), (3, 3), (7, 4), (22, 6), (3, 12), (10, 12), (26, 12)] {
         assert_eq!(fg(&buffer, x, y), muted, "({x}, {y})");
         assert_eq!(modifier(&buffer, x, y), Modifier::empty(), "({x}, {y})");
     }
@@ -663,11 +662,11 @@ fn the_border_is_ring_when_focused_and_border_otherwise() {
 
 #[test]
 fn a_selected_row_of_the_focused_pane_is_an_inverted_band_after_a_primary_marker() {
-    for (entry, row, label) in [(0, 5, "User"), (1, 7, "Assistant"), (4, 13, "Compaction")] {
+    for (entry, row, label) in [(0, 4, "User"), (1, 6, "Assistant"), (4, 12, "Compaction")] {
         let mut sidebar = selected(entry, true);
         let buffer = draw(&mut sidebar, 30, 20);
         let text = row_text(&buffer, row);
-        assert_eq!(text.chars().nth(3), Some('>'), "{text}");
+        assert_eq!(text.chars().nth(3), Some('▒'), "{text}");
         assert!(text.contains(label), "{text}");
         let marker = &buffer[(3, row)];
         assert_eq!(marker.fg, theme().style(Token::SelectionMarker).fg.unwrap());
@@ -691,27 +690,27 @@ fn a_selected_row_of_the_focused_pane_is_an_inverted_band_after_a_primary_marker
 fn a_selected_assistant_row_gives_its_duration_the_bands_style() {
     let mut sidebar = selected(1, true);
     let buffer = draw(&mut sidebar, 30, 20);
-    assert_eq!(cols(&buffer, 7, 22, 27), "4m 3s");
+    assert_eq!(cols(&buffer, 6, 22, 27), "4m 3s");
     for x in 22..=26 {
-        assert_eq!(modifier(&buffer, x, 7), Modifier::REVERSED);
+        assert_eq!(modifier(&buffer, x, 6), Modifier::REVERSED);
     }
 }
 
 #[test]
-fn a_selected_compaction_has_the_marker_in_place_of_the_first_rule_cell() {
+fn a_selected_compaction_has_the_marker_before_the_rule() {
     let mut sidebar = selected(4, true);
     let buffer = draw(&mut sidebar, 30, 20);
-    assert_eq!(row_text(&buffer, 13), "│  >══ Compaction ═════════  │");
+    assert_eq!(row_text(&buffer, 12), "│  ▒╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │");
 }
 
 #[test]
 fn a_selected_row_of_the_unfocused_pane_is_bold_secondary_foreground_not_inverted() {
-    for (entry, row) in [(0, 5), (1, 7), (4, 13)] {
+    for (entry, row) in [(0, 4), (1, 6), (4, 12)] {
         let mut sidebar = selected(entry, false);
         let buffer = draw(&mut sidebar, 30, 20);
         let secondary = theme().role(Role::SecondaryForeground);
         let text = row_text(&buffer, row);
-        assert_eq!(text.chars().nth(3), Some('>'), "{text}");
+        assert_eq!(text.chars().nth(3), Some('▒'), "{text}");
         let marker = &buffer[(3, row)];
         assert_eq!((marker.fg, marker.modifier), (secondary, Modifier::empty()));
         for x in 4..=26 {
@@ -728,10 +727,10 @@ fn only_the_selected_row_changes_with_the_selection() {
     let plain = draw(&mut plain, 30, 20);
     let mut selected = selected(2, true);
     let selected = draw(&mut selected, 30, 20);
-    for y in (0..20).filter(|&y| y != 9) {
+    for y in (0..20).filter(|&y| y != 8) {
         assert_eq!(row_text(&plain, y), row_text(&selected, y), "row {y}");
     }
-    assert_eq!(row_text(&selected, 9), "│  >   User                  │");
+    assert_eq!(row_text(&selected, 8), "│  ▒   User                  │");
 }
 
 #[test]
@@ -756,18 +755,18 @@ fn a_transparent_theme_leaves_the_pane_unpainted() {
     let transparent = theme().with_transparent_background(true);
     let mut sidebar = TurnSidebar::new(transparent).with_rows(rows_of(&wireframe()));
     let buffer = draw(&mut sidebar, 30, 20);
-    for (x, y) in [(1, 1), (15, 10), (28, 18), (5, 5), (10, 13)] {
+    for (x, y) in [(1, 1), (15, 10), (28, 18), (5, 4), (10, 12)] {
         assert_eq!(buffer[(x, y)].bg, Color::Reset, "({x}, {y})");
     }
     // The text is still drawn, and a band is still inverted.
-    assert_eq!(row_text(&buffer, 5), "│  ●   User                  │");
+    assert_eq!(row_text(&buffer, 4), "│  ├   User                  │");
     let mut selected = TurnSidebar::new(theme().with_transparent_background(true))
         .with_rows(rows_of(&wireframe()))
         .with_selected(Some(0))
         .focused(true);
     let buffer = draw(&mut selected, 30, 20);
-    assert_eq!(modifier(&buffer, 10, 5), Modifier::REVERSED);
-    assert_eq!(buffer[(10, 5)].bg, Color::Reset);
+    assert_eq!(modifier(&buffer, 10, 4), Modifier::REVERSED);
+    assert_eq!(buffer[(10, 4)].bg, Color::Reset);
 }
 
 // -- attributes
@@ -844,7 +843,7 @@ fn the_theme_focus_and_key_are_set_and_queried_through_attributes() {
     let value = sidebar.query(THEME_ATTR).unwrap().into_attr();
     assert_eq!(theme_from_value(&value), Some(other.clone()));
     let buffer = draw(&mut sidebar, 30, 20);
-    assert_eq!(fg(&buffer, 3, 3), other.role(Role::MutedForeground));
+    assert_eq!(fg(&buffer, 3, 2), other.role(Role::MutedForeground));
     sidebar.attr(Attribute::Focus, AttrValue::Flag(true));
     assert_eq!(
         sidebar.query(Attribute::Focus).unwrap().into_attr(),
@@ -1077,9 +1076,9 @@ fn the_cmds_move_and_submit() {
 #[test]
 fn a_move_keeps_the_selected_row_visible() {
     use tuirealm::event::Key;
-    // A 20-row pane shows 16 list rows.
+    // A 20-row pane shows 17 list rows.
     let mut sidebar = sidebar(&long_session(40)).focused(true);
-    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(16));
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(17));
     for _ in 0..30 {
         sidebar.on(&key(Key::Down));
     }
@@ -1087,7 +1086,7 @@ fn a_move_keeps_the_selected_row_visible() {
     assert_eq!(entry, 29);
     let row = TurnRows::row_of_entry(entry);
     let offset = sidebar.offset(20);
-    assert!((offset..offset + 16).contains(&row), "{offset} for {row}");
+    assert!((offset..offset + 17).contains(&row), "{offset} for {row}");
 }
 
 #[test]
@@ -1116,24 +1115,24 @@ fn the_title_reads_just_turns_when_the_action_has_no_key() {
 
 #[test]
 fn the_list_scrolls_only_as_far_as_needed_to_keep_the_selection_visible() {
-    // A 20-row pane shows 16 list rows.
+    // A 20-row pane shows 17 list rows.
     let mut sidebar = sidebar(&long_session(40));
-    sidebar.cursor.set_visible(16);
+    sidebar.cursor.set_visible(17);
     assert_eq!(sidebar.offset(20), 0);
-    // The entry on list row 14 is visible without scrolling.
-    sidebar.attr(SELECTED_ATTR, selected_value(Some(6)));
-    assert_eq!(sidebar.offset(20), 0);
-    // Entry 7 is on list row 16, just below the 16 rows shown.
+    // The entry on list row 16 is visible without scrolling.
     sidebar.attr(SELECTED_ATTR, selected_value(Some(7)));
-    assert_eq!(sidebar.offset(20), 1);
+    assert_eq!(sidebar.offset(20), 0);
+    // Entry 8 is on list row 18, just below the 17 rows shown.
+    sidebar.attr(SELECTED_ATTR, selected_value(Some(8)));
+    assert_eq!(sidebar.offset(20), 2);
     // Moving back up inside the window does not scroll.
     sidebar.attr(SELECTED_ATTR, selected_value(Some(5)));
-    assert_eq!(sidebar.offset(20), 1);
+    assert_eq!(sidebar.offset(20), 2);
     sidebar.attr(SELECTED_ATTR, selected_value(Some(0)));
-    assert_eq!(sidebar.offset(20), 1, "row 2 is still in the window");
+    assert_eq!(sidebar.offset(20), 2, "row 2 is still in the window");
     // Far down, the selected row is the last one shown.
     sidebar.attr(SELECTED_ATTR, selected_value(Some(15)));
-    assert_eq!(sidebar.offset(20), 2 * 16 + 1 - 16);
+    assert_eq!(sidebar.offset(20), 2 * 16 + 1 - 17);
     // Above the window it scrolls up to the selected row.
     sidebar.attr(SELECTED_ATTR, selected_value(Some(5)));
     assert_eq!(sidebar.offset(20), 2 * 6);
@@ -1143,15 +1142,15 @@ fn the_list_scrolls_only_as_far_as_needed_to_keep_the_selection_visible() {
 fn start_and_end_scroll_with_the_list() {
     let mut sidebar = sidebar(&long_session(40));
     let top = draw(&mut sidebar, 30, 20);
-    assert!(row_text(&top, 3).contains("Start"));
+    assert!(row_text(&top, 2).contains("Start"));
     assert!(!(0..20).any(|y| row_text(&top, y).contains("End")));
     let last_entry = sidebar.rows().entry_count() - 1;
     sidebar.attr(SELECTED_ATTR, selected_value(Some(last_entry)));
     let end = draw(&mut sidebar, 30, 20);
     assert!(!(0..20).any(|y| row_text(&end, y).contains("Start")));
     // The least scrolling shows the last entry (a Compaction, selected) on the
-    // last row; End is a blank row and a row further.
-    assert_eq!(row_text(&end, 18), "│  >══ Compaction ═════════  │");
+    // last row; End is a connector and a row further.
+    assert_eq!(row_text(&end, 18), "│  ▒╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │");
 }
 
 #[test]
@@ -1159,17 +1158,17 @@ fn the_list_can_be_scrolled_to_show_end_on_the_last_row() {
     let mut sidebar = sidebar(&long_session(40));
     let rows = sidebar.rows().row_count();
     for _ in 0..rows {
-        sidebar.cursor.scroll(true, 16);
+        sidebar.cursor.scroll(true, 17);
     }
     let buffer = draw(&mut sidebar, 30, 20);
-    assert_eq!(row_text(&buffer, 18), "│  ●   End                   │");
+    assert_eq!(row_text(&buffer, 18), "│  ┴   End                   │");
     assert_eq!(row_text(&buffer, 19), format!("╰{}╯", "─".repeat(28)));
 }
 
 #[test]
 fn a_selection_is_never_off_screen_after_updates() {
     let mut sidebar = sidebar(&long_session(40));
-    sidebar.cursor.set_visible(16);
+    sidebar.cursor.set_visible(17);
     sidebar.attr(SELECTED_ATTR, selected_value(Some(30)));
     for i in 0..10 {
         sidebar.attr(
@@ -1181,7 +1180,7 @@ fn a_selection_is_never_off_screen_after_updates() {
         );
         let buffer = draw(&mut sidebar, 30, 20);
         assert!(
-            (3..19).any(|y| row_text(&buffer, y).chars().nth(3) == Some('>')),
+            (2..19).any(|y| row_text(&buffer, y).chars().nth(3) == Some('▒')),
             "{}",
             buffer_to_text(&buffer)
         );
@@ -1262,18 +1261,18 @@ fn selecting_a_turn_scrolls_the_list_by_the_least_needed() {
     );
     sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(9));
     sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u0")));
-    assert_eq!(sidebar.offset(13), 0);
+    assert_eq!(sidebar.offset(12), 0);
     // Entry 3 is on row 8, the last visible row: no scroll yet.
     sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u3")));
-    assert_eq!(sidebar.offset(13), 0);
+    assert_eq!(sidebar.offset(12), 0);
     // Entry 4 is on row 10: the list scrolls two rows.
     sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u4")));
-    assert_eq!(sidebar.offset(13), 2);
+    assert_eq!(sidebar.offset(12), 2);
     // Back up to the first visible row: no scroll; one above it: scrolls.
     sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u1")));
-    assert_eq!(sidebar.offset(13), 2);
+    assert_eq!(sidebar.offset(12), 2);
     sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u0")));
-    assert_eq!(sidebar.offset(13), 2, "row 2 is the first visible row");
+    assert_eq!(sidebar.offset(12), 2, "row 2 is the first visible row");
 }
 
 #[test]
@@ -1284,9 +1283,9 @@ fn rows_set_after_an_uncover_bring_back_the_selection_and_offset_of_the_covered_
     sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(9));
     sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u10")));
     // Row 22 is the last visible row: the offset is 14.
-    assert_eq!(sidebar.offset(13), 14);
+    assert_eq!(sidebar.offset(12), 14);
     sidebar.attr(SELECTED_TURN_ATTR, payload_value(id("u7")));
-    assert_eq!(sidebar.offset(13), 14, "row 16: still visible");
+    assert_eq!(sidebar.offset(12), 14, "row 16: still visible");
     // A transcript of two turns covers it.
     sidebar.attr(COVER_ATTR, AttrValue::Flag(true));
     sidebar.attr(
@@ -1294,12 +1293,12 @@ fn rows_set_after_an_uncover_bring_back_the_selection_and_offset_of_the_covered_
         payload_value(rows_of(&[user("s1"), assistant("s2", 1)])),
     );
     assert_eq!(sidebar.selected_entry(), None);
-    assert_eq!(sidebar.offset(13), 0);
+    assert_eq!(sidebar.offset(12), 0);
     // It is closed: the parent's rows, as they are now, with its pane.
     sidebar.attr(COVER_ATTR, AttrValue::Flag(false));
     sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
     assert_eq!(sidebar.selected_entry(), Some(7));
-    assert_eq!(sidebar.offset(13), 14);
+    assert_eq!(sidebar.offset(12), 14);
 }
 
 #[test]
@@ -1323,7 +1322,7 @@ fn a_restored_selection_scrolls_the_least_needed_and_covers_nest() {
     sidebar.attr(TURN_ROWS_ATTR, payload_value(rows_of(&turns)));
     assert_eq!(sidebar.selected_entry(), Some(10));
     assert_eq!(
-        sidebar.offset(9),
+        sidebar.offset(8),
         18,
         "row 22 on the last of 5 visible rows"
     );
@@ -1336,8 +1335,8 @@ mod mouse {
 
     use super::*;
 
-    /// The size of the pane the events are routed in: 30 x 14 shows ten list
-    /// rows (rows 3..13 of the pane).
+    /// The size of the pane the events are routed in: 30 x 14 shows eleven
+    /// list rows (rows 2..13 of the pane).
     const PANE: Size = Size::new(30, 14);
 
     fn routed(kind: MouseEventKind, column: u16, row: u16, area: Size) -> Event<UserEvent> {
@@ -1363,7 +1362,7 @@ mod mouse {
     }
 
     /// The wireframe's list rows: 0 Start, 1 |, 2 u1, 3 |, 4 a1, 5 |, 6 u2,
-    /// 7 |, 8 a2, 9 blank, 10 c1, 11 blank, 12 a3, 13 |, 14 End.
+    /// 7 |, 8 a2, 9 |, 10 c1, 11 |, 12 a3, 13 |, 14 End.
     fn clicked(turn: &str) -> Option<Msg> {
         Some(Msg::TurnClicked(id(turn)))
     }
@@ -1371,14 +1370,14 @@ mod mouse {
     #[test]
     fn a_left_press_on_an_entrys_row_names_its_turn_wherever_in_the_row() {
         let mut sidebar = sidebar_of(&wireframe());
-        // The list starts at pane row 3 and has no offset: the entries are on
-        // rows 5, 7, 9 and 11 (list rows 2, 4, 6 and 8).
+        // The list starts at pane row 2 and has no offset: the entries are on
+        // rows 4, 6, 8 and 10 (list rows 2, 4, 6 and 8).
         for column in [1, 2, 3, 7, 15, 28] {
-            assert_eq!(sidebar.on(&press(column, 5)), clicked("u1"), "{column}");
+            assert_eq!(sidebar.on(&press(column, 4)), clicked("u1"), "{column}");
         }
-        assert_eq!(sidebar.on(&press(10, 7)), clicked("a1"));
-        assert_eq!(sidebar.on(&press(10, 9)), clicked("u2"));
-        assert_eq!(sidebar.on(&press(10, 11)), clicked("a2"));
+        assert_eq!(sidebar.on(&press(10, 6)), clicked("a1"));
+        assert_eq!(sidebar.on(&press(10, 8)), clicked("u2"));
+        assert_eq!(sidebar.on(&press(10, 10)), clicked("a2"));
         // The pane does not move its selection: the `App` decides.
         assert_eq!(sidebar.selected_entry(), None);
     }
@@ -1388,13 +1387,12 @@ mod mouse {
         let mut sidebar = sidebar_of(&wireframe());
         let nothing = [
             (10, 0, "top border"),
-            (10, 1, "first blank row"),
-            (10, 2, "second blank row"),
-            (10, 3, "Start"),
-            (10, 4, "connector"),
-            (10, 6, "connector"),
-            (0, 5, "left border"),
-            (29, 5, "right border"),
+            (10, 1, "blank row"),
+            (10, 2, "Start"),
+            (10, 3, "connector"),
+            (10, 5, "connector"),
+            (0, 4, "left border"),
+            (29, 4, "right border"),
             (10, 13, "the bottom border"),
             (10, 100, "far below"),
         ];
@@ -1406,22 +1404,22 @@ mod mouse {
         let bottom = routed(MouseEventKind::Down(MouseButton::Left), 10, 39, tall);
         assert_eq!(sidebar.on(&bottom), None);
         // `End` and the row above it.
-        let end = routed(MouseEventKind::Down(MouseButton::Left), 10, 3 + 14, tall);
+        let end = routed(MouseEventKind::Down(MouseButton::Left), 10, 2 + 14, tall);
         assert_eq!(sidebar.on(&end), None, "End");
-        let above = routed(MouseEventKind::Down(MouseButton::Left), 10, 3 + 13, tall);
+        let above = routed(MouseEventKind::Down(MouseButton::Left), 10, 2 + 13, tall);
         assert_eq!(sidebar.on(&above), None, "the connector above End");
-        let entry = routed(MouseEventKind::Down(MouseButton::Left), 10, 3 + 12, tall);
+        let entry = routed(MouseEventKind::Down(MouseButton::Left), 10, 2 + 12, tall);
         assert_eq!(sidebar.on(&entry), clicked("a3"));
     }
 
     #[test]
-    fn a_blank_row_next_to_a_compaction_is_not_an_entry_and_the_compaction_is() {
+    fn a_connector_next_to_a_compaction_is_not_an_entry_and_the_compaction_is() {
         let mut sidebar = sidebar_of(&wireframe());
         let tall = Size::new(30, 40);
-        let at = |row: u16| routed(MouseEventKind::Down(MouseButton::Left), 10, 3 + row, tall);
-        assert_eq!(sidebar.on(&at(9)), None, "blank above the Compaction");
+        let at = |row: u16| routed(MouseEventKind::Down(MouseButton::Left), 10, 2 + row, tall);
+        assert_eq!(sidebar.on(&at(9)), None, "connector above the Compaction");
         assert_eq!(sidebar.on(&at(10)), clicked("c1"));
-        assert_eq!(sidebar.on(&at(11)), None, "blank below the Compaction");
+        assert_eq!(sidebar.on(&at(11)), None, "connector below the Compaction");
     }
 
     #[test]
@@ -1443,15 +1441,15 @@ mod mouse {
 
     #[test]
     fn a_row_is_found_by_the_scroll_offset() {
-        // Ten rows are shown in a pane of 14; selecting entry 20 of a long
+        // Eleven rows are shown in a pane of 14; selecting entry 20 of a long
         // list scrolls it.
         let turns = long_session(30);
         let mut sidebar = sidebar_of(&turns).with_selected(Some(20));
         let offset = sidebar.offset(PANE.height);
         assert!(offset > 0, "the list is scrolled");
-        // Entry `e` is on list row `2 (e + 1)`, at pane row `3 + row - offset`.
+        // Entry `e` is on list row `2 (e + 1)`, at pane row `2 + row - offset`.
         let pane_row =
-            |entry: usize| u16::try_from(3 + TurnRows::row_of_entry(entry) - offset).unwrap();
+            |entry: usize| u16::try_from(2 + TurnRows::row_of_entry(entry) - offset).unwrap();
         for entry in [18, 19, 20] {
             assert_eq!(
                 sidebar.on(&press(10, pane_row(entry))),
@@ -1469,17 +1467,17 @@ mod mouse {
     }
 
     #[test]
-    fn the_pane_row_of_the_first_list_row_is_the_fourth() {
-        // `Start` is list row 0 at pane row 3, the first entry two rows
+    fn the_pane_row_of_the_first_list_row_is_the_third() {
+        // `Start` is list row 0 at pane row 2, the first entry two rows
         // below, whatever the pane's height.
         for height in [8, 12, 40] {
             let mut sidebar = sidebar_of(&wireframe());
             let size = Size::new(30, height);
             let press = |row| routed(MouseEventKind::Down(MouseButton::Left), 10, row, size);
-            assert_eq!(sidebar.on(&press(3)), None, "{height}: Start");
-            assert_eq!(sidebar.on(&press(4)), None, "{height}: connector");
-            let shown = height.saturating_sub(4);
-            let first = sidebar.on(&press(5));
+            assert_eq!(sidebar.on(&press(2)), None, "{height}: Start");
+            assert_eq!(sidebar.on(&press(3)), None, "{height}: connector");
+            let shown = height.saturating_sub(3);
+            let first = sidebar.on(&press(4));
             if shown >= 3 {
                 assert_eq!(first, clicked("u1"), "{height}");
             } else {
@@ -1494,10 +1492,10 @@ mod mouse {
         for size in [
             Size::new(0, 0),
             Size::new(2, 10),
-            Size::new(30, 4),
+            Size::new(30, 3),
             Size::new(1, 1),
         ] {
-            for (column, row) in [(0, 0), (1, 3), (1, 5), (5, 5)] {
+            for (column, row) in [(0, 0), (1, 2), (1, 4), (5, 4)] {
                 let event = routed(MouseEventKind::Down(MouseButton::Left), column, row, size);
                 assert_eq!(sidebar.on(&event), None, "{size:?} ({column}, {row})");
             }

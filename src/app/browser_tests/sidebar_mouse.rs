@@ -87,7 +87,7 @@ impl Rig {
         let (width, height) = self.app.size();
         let row = pane_rows(self, width, height)
             .iter()
-            .position(|row| row.chars().nth(3) == Some('>'))
+            .position(|row| row.chars().nth(3) == Some('▒'))
             .expect("the selected row is on screen");
         u16::try_from(row).unwrap()
     }
@@ -118,8 +118,9 @@ impl Rig {
 }
 
 /// A rig whose sidebar is as high as the list: `u0 a0 [compaction] u1 a1`.
-/// Rows: 0 Start, 1 connector, 2 `u0`, 3 connector, 4 `a0`, 5 blank, 6
-/// Compaction, 7 blank, 8 `u1`, 9 connector, 10 `a1`, 11 connector, 12 End.
+/// Rows: 0 Start, 1 connector, 2 `u0`, 3 connector, 4 `a0`, 5 connector, 6
+/// Compaction, 7 connector, 8 `u1`, 9 connector, 10 `a1`, 11 connector, 12
+/// End.
 fn compaction_rig() -> Rig {
     let mut turns = long_turns(2);
     turns.insert(2, arc(with_id(blocks::compaction("A summary."), "c1")));
@@ -185,7 +186,7 @@ fn a_click_selects_the_row_wherever_in_the_row_it_lands() {
 #[test]
 fn a_click_on_a_compaction_row_selects_it() {
     let mut rig = compaction_rig();
-    rig.press_pane(10, 3 + 6);
+    rig.press_pane(10, 2 + 6);
     assert_eq!(sidebar_entry(&rig.app), Some(2));
     assert_eq!(turn_of(&rig.app), Some("c1".to_owned()));
     assert!(sidebar_focused(&rig));
@@ -313,27 +314,26 @@ fn two_clicks_further_apart_than_the_double_click_time_are_not_a_double_click() 
 // -- presses that are not on a row
 
 /// Where the presses that are on no entry land, in [`compaction_rig`]'s pane
-/// (from its top left): the border, the blank rows above the list, `Start`,
-/// a connector, a blank row next to the Compaction, `End`, below the list,
+/// (from its top left): the border, the blank row above the list, `Start`,
+/// a connector, a connector next to the Compaction, `End`, below the list,
 /// and the gap after the pane.
 fn dead_spots() -> Vec<(&'static str, u16, u16)> {
     vec![
         ("top border", 10, 0),
         ("blank row above the list", 10, 1),
-        ("second blank row", 10, 2),
-        ("Start", 10, 3),
-        ("Start, its marker", 3, 3),
-        ("connector", 3, 4),
-        ("connector, to the side", 20, 4),
-        ("blank row before the Compaction", 10, 3 + 5),
-        ("blank row after the Compaction", 10, 3 + 7),
-        ("End", 10, 3 + 12),
-        ("below the list", 10, 3 + 13),
+        ("Start", 10, 2),
+        ("Start, its marker", 3, 2),
+        ("connector", 3, 3),
+        ("connector, to the side", 20, 3),
+        ("connector before the Compaction", 10, 2 + 5),
+        ("connector after the Compaction", 10, 2 + 7),
+        ("End", 10, 2 + 12),
+        ("below the list", 10, 2 + 13),
         ("bottom border", 10, 29),
-        ("left border", 0, 3 + 2),
-        ("right border", 29, 3 + 2),
-        ("left border, on Start", 0, 3),
-        ("the gap after the pane", 30, 3 + 2),
+        ("left border", 0, 2 + 2),
+        ("right border", 29, 2 + 2),
+        ("left border, on Start", 0, 2),
+        ("the gap after the pane", 30, 2 + 2),
     ]
 }
 
@@ -576,7 +576,7 @@ fn the_wheel_scrolls_the_pane_to_keep_the_selection_visible() {
     assert_eq!(sidebar_entry(&rig.app), Some(30));
     let marked: Vec<String> = pane_rows(&mut rig, 120, 20)
         .into_iter()
-        .filter(|row| row.chars().nth(3) == Some('>'))
+        .filter(|row| row.chars().nth(3) == Some('▒'))
         .collect();
     assert_eq!(marked.len(), 1, "{marked:?}");
 }

@@ -4,27 +4,27 @@ expression: buffer_to_styled(&buffer)
 ---
 ╭─ [1] Turns  ───────────────╮
 │                            │
-│                            │
-│  ═══ Compaction ═════════  │
-│                            │
-│  ●   User                  │
 │  │                         │
-│  ●   Assistant    34m 27s  │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │
 │  │                         │
-│  ●   User                  │
+│  ├   User                  │
 │  │                         │
-│  ●   Assistant    37m 41s  │
+│  ├   Assistant    34m 27s  │
 │  │                         │
-│  ●   User                  │
+│  ├   User                  │
 │  │                         │
-│  >   Assistant    40m 55s  │
+│  ├   Assistant    37m 41s  │
+│  │                         │
+│  ├   User                  │
+│  │                         │
+│  ▒   Assistant    40m 55s  │
 ╰────────────────────────────╯
 --- styles (fg/bg/modifiers) ---
 0: 0..2 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 2..14 Rgb(250, 250, 250)/Rgb(10, 10, 10)/NONE | 14..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
 1: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
-2: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
+2: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..3 Reset/Rgb(10, 10, 10)/NONE | 3..4 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 4..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
 3: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..3 Reset/Rgb(10, 10, 10)/NONE | 3..27 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 27..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
-4: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
+4: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..3 Reset/Rgb(10, 10, 10)/NONE | 3..4 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 4..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
 5: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..3 Reset/Rgb(10, 10, 10)/NONE | 3..27 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 27..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
 6: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..3 Reset/Rgb(10, 10, 10)/NONE | 3..4 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 4..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE
 7: 0..1 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE | 1..3 Reset/Rgb(10, 10, 10)/NONE | 3..27 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 27..29 Reset/Rgb(10, 10, 10)/NONE | 29..30 Rgb(207, 207, 207)/Rgb(10, 10, 10)/NONE

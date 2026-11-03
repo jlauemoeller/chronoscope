@@ -9,28 +9,28 @@ expression: after
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ │                                                                                       │
 │                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│                            │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  ●   Start                 │ │                                                                                       │
-│  │                         │ │   The extension units are listed under VideoControl:                                  │
-│  ●   User                  │ │                                                                                       │
-│  │                         │ │   • one for exposure                                                                  │
-│  ●   Assistant      5m 2s  │ │   • one for pan and tilt                                                              │
+│  ┬   Start                 │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  │                         │ │                                                                                       │
-│  ●   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  │                         │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  ●   Assistant      5m 2s  │ │                                                                                       │
-│                            │ │   That is everything the camera exposes over plain UVC. Anything beyond that needs    │
-│  ═══ Compaction ═════════  │ │   the vendor protocol, which is not documented.                                       │
-│                            │ │                                                                                       │
-│  ●   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  │                         │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  ●   Assistant             │ │                                                                                       │
-│  │                         │ │   I will ask the story writer.                                                        │
-│  ●   Assistant             │ │                                                                                       │
-│  │                         │ ▒ ▼ Ask story-writer (story-writer)                                                     │
-│  >   Assistant             │ ▒                                                                                       │
-│  │                         │ ▒   Prompt:                                                                             │
-│  ●   End                   │ ▒                                                                                       │
+│  ├   User                  │ │   The extension units are listed under VideoControl:                                  │
+│  │                         │ │                                                                                       │
+│  ├   Assistant      5m 2s  │ │   • one for exposure                                                                  │
+│  │                         │ │   • one for pan and tilt                                                              │
+│  ├   User                  │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ├   Assistant      5m 2s  │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  │                         │ │                                                                                       │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ │   That is everything the camera exposes over plain UVC. Anything beyond that needs    │
+│  │                         │ │   the vendor protocol, which is not documented.                                       │
+│  ├   User                  │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ├   Assistant             │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  │                         │ │                                                                                       │
+│  ├   Assistant             │ │   I will ask the story writer.                                                        │
+│  │                         │ │                                                                                       │
+│  ▒   Assistant             │ ▒ ▼ Ask story-writer (story-writer)                                                     │
+│  │                         │ ▒                                                                                       │
+│  ┴   End                   │ ▒   Prompt:                                                                             │
+│                            │ ▒                                                                                       │
 │                            │ ▒      Write a short story                                                              │
 │                            │ ▒                                                                                       │
 │                            │ ▒   Result:                                                                             │

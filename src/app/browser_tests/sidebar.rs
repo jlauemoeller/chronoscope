@@ -97,7 +97,7 @@ fn below_90_columns_it_is_not_in_the_layout_and_the_transcript_has_the_full_widt
     assert_eq!(transcript_viewport(&rig.app), Size::new(89, 23));
     let text = screen_text(&mut rig, 89, 30);
     assert!(!text.contains("Turns"), "{text}");
-    assert!(!text.contains("●   Start"), "{text}");
+    assert!(!text.contains("┬   Start"), "{text}");
     let row: String = text.lines().nth(5).unwrap().chars().collect();
     assert!(row.starts_with("╭─ User "), "the transcript from column 0");
 }
@@ -145,8 +145,8 @@ fn the_sidebar_is_told_how_many_list_rows_its_pane_shows() {
         AttrValue::Length(n) => n,
         other => panic!("{other:?}"),
     };
-    // A 33-row pane: the border, two blank rows, the list, the border.
-    assert_eq!(rows(&rig), 29);
+    // A 33-row pane: the border, a blank row, the list, the border.
+    assert_eq!(rows(&rig), 30);
     assert_eq!(rows(&rig), sidebar_list_rows(33));
     resize(&mut rig, 100, 24);
     assert_eq!(rows(&rig), sidebar_list_rows(17));
@@ -167,7 +167,7 @@ fn it_is_not_drawn_when_the_empty_session_replaces_the_transcript() {
     let text = screen_text(&mut rig, 120, 40);
     assert!(text.contains("Session file is empty"));
     assert!(!text.contains("Turns"), "{text}");
-    assert!(!text.contains("●   Start"), "{text}");
+    assert!(!text.contains("┬   Start"), "{text}");
 }
 
 #[test]
@@ -269,10 +269,10 @@ fn it_lists_the_turns_of_the_loaded_session() {
     );
     let pane = pane_rows(&mut rig, 120, 40);
     assert_eq!(pane[0], "╭─ [1] Turns  ───────────────╮");
-    assert_eq!(pane[3], "│  ●   Start                 │");
-    assert_eq!(pane[7], "│  ●   Assistant      5m 2s  │");
-    assert!(pane.iter().any(|r| r.contains("═══ Compaction ═")));
-    assert!(pane.iter().any(|r| r.contains("●   End")));
+    assert_eq!(pane[2], "│  ┬   Start                 │");
+    assert_eq!(pane[6], "│  ├   Assistant      5m 2s  │");
+    assert!(pane.iter().any(|r| r.contains("├╶╶ Compaction ╶")));
+    assert!(pane.iter().any(|r| r.contains("┴   End")));
     assert_eq!(pane[32], "╰────────────────────────────╯");
 }
 
@@ -405,8 +405,8 @@ fn an_open_subagent_shows_its_turns_and_going_back_shows_the_parents_including_l
         [EntryKind::User, EntryKind::Assistant]
     );
     let pane = pane_rows(&mut rig, 120, 40);
-    assert_eq!(pane[3], "│  ●   Start                 │");
-    assert!(pane[9].contains("●   End"), "{pane:?}");
+    assert_eq!(pane[2], "│  ┬   Start                 │");
+    assert!(pane[8].contains("┴   End"), "{pane:?}");
     // The parent receives turns while it is covered: the sidebar still shows
     // the subagent's.
     rig.harness.send(
@@ -508,10 +508,10 @@ fn previewing_a_theme_changes_the_cells_of_the_sidebar() {
     rig.open_themes();
     rig.move_to(Key::Down, "terminal");
     let during = screen_buffer(&mut rig, 120, 40);
-    // The pane's `●` on its first row: muted foreground in each theme.
-    assert_ne!(before[(3, 8)].fg, during[(3, 8)].fg);
+    // The pane's `┬` on its first list row: muted foreground in each theme.
+    assert_ne!(before[(3, 7)].fg, during[(3, 7)].fg);
     assert_eq!(
-        during[(3, 8)].fg,
+        during[(3, 7)].fg,
         rig.app.theme().role(crate::theme::Role::MutedForeground)
     );
 }

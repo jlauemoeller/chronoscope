@@ -9,26 +9,26 @@ expression: text
 ╰───────────────────│    ━━━━━━━━━━                                                                                                                                                │───────────────────╯
 ╭─ [1] Turns  ──────│                                                                                                                                                              │6-10-21 08:35:15Z ─╮
 │                   │   ╭─ Projects ───────────────────────╮ ╭─ Sessions in BRIO ──────────────────────────────────────────────────────────────────────────────────────────────╮   │                   │
-│                   │   │                                  │ │                                                                                                                 │   │ settings that     │
-│  ●   Start        │   │  > BRIO                          │ │    2026-10-28 09:00Z    Add the pan and tilt controls                                                           │   │investigate wha…   │
-│  │                │   │    Agentmon                      │ │  > 2026-10-21 08:35Z    Investigate the camera profiles                                                         │   │                   │
-│  >   User         │   │                                  │ │                                                                                                                 │   │───────────────────╯
-│  │                │   │                                  │ │                                                                                                                 │   │6-10-21 08:35:18Z ─╮
-│  ●   Assistant    │   │                                  │ │                                                                                                                 │   │                   │
+│  ┬   Start        │   │                                  │ │                                                                                                                 │   │ settings that     │
+│  │                │   │  > BRIO                          │ │    2026-10-28 09:00Z    Add the pan and tilt controls                                                           │   │investigate wha…   │
+│  ▒   User         │   │    Agentmon                      │ │  > 2026-10-21 08:35Z    Investigate the camera profiles                                                         │   │                   │
+│  │                │   │                                  │ │                                                                                                                 │   │───────────────────╯
+│  ├   Assistant    │   │                                  │ │                                                                                                                 │   │6-10-21 08:35:18Z ─╮
 │  │                │   │                                  │ │                                                                                                                 │   │                   │
-│  ●   User         │   │                                  │ │                                                                                                                 │   │                   │
+│  ├   User         │   │                                  │ │                                                                                                                 │   │                   │
 │  │                │   │                                  │ │                                                                                                                 │   │                   │
-│  ●   Assistant    │   │                                  │ │                                                                                                                 │   │                   │
+│  ├   Assistant    │   │                                  │ │                                                                                                                 │   │                   │
+│  │                │   │                                  │ │                                                                                                                 │   │                   │
+│  ├╶╶ Compaction ╶╶│   │                                  │ │                                                                                                                 │   │                   │
+│  │                │   │                                  │ │                                                                                                                 │   │                   │
+│  ├   User         │   │                                  │ │                                                                                                                 │   │                   │
+│  │                │   │                                  │ │                                                                                                                 │   │                   │
+│  ├   Assistant    │   │                                  │ │                                                                                                                 │   │                   │
+│  │                │   │                                  │ │                                                                                                                 │   │                   │
+│  ├   Assistant    │   │                                  │ │                                                                                                                 │   │                   │
+│  │                │   │                                  │ │                                                                                                                 │   │                   │
+│  ┴   End          │   │                                  │ │                                                                                                                 │   │                   │
 │                   │   │                                  │ │                                                                                                                 │   │                   │
-│  ═══ Compaction ══│   │                                  │ │                                                                                                                 │   │                   │
-│                   │   │                                  │ │                                                                                                                 │   │                   │
-│  ●   User         │   │                                  │ │                                                                                                                 │   │                   │
-│  │                │   │                                  │ │                                                                                                                 │   │                   │
-│  ●   Assistant    │   │                                  │ │                                                                                                                 │   │                   │
-│  │                │   │                                  │ │                                                                                                                 │   │                   │
-│  ●   Assistant    │   │                                  │ │                                                                                                                 │   │                   │
-│  │                │   │                                  │ │                                                                                                                 │   │                   │
-│  ●   End          │   │                                  │ │                                                                                                                 │   │                   │
 │                   │   │                                  │ │                                                                                                                 │   │                   │
 │                   │   │                                  │ │                                                                                                                 │   │                   │
 │                   │   │                                  │ │                                                                                                                 │   │                   │

@@ -398,7 +398,7 @@ fn the_selected_row_stays_visible_while_moving_through_a_long_list() {
     let marked: Vec<&str> = text
         .lines()
         .skip(5)
-        .filter(|row| row.chars().nth(3) == Some('>'))
+        .filter(|row| row.chars().nth(3) == Some('▒'))
         .collect();
     assert_eq!(marked.len(), 1, "{text}");
 }
@@ -1205,7 +1205,7 @@ fn the_focused_pane_has_the_ring_border_and_the_selected_row_is_one_inverted_ban
     // The marker is `primary` in column 3; the band runs from column 4 to
     // column 26 and is reversed.
     let selected_row = (5..38)
-        .find(|&y| buffer[(3, y)].symbol() == ">")
+        .find(|&y| buffer[(3, y)].symbol() == "▒")
         .expect("a marker");
     assert_eq!(buffer[(3, selected_row)].fg, theme.role(Role::Primary));
     for x in 4..=26 {

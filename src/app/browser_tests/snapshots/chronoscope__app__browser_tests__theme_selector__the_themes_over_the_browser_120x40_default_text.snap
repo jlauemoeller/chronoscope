@@ -9,26 +9,26 @@ expression: text
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
 │                            │ │                                                                                       │
-│                            │ ▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
-│  ●   Start                 │ ▒   - both camera and microphone - but I don't have a way to access settings that…      │
+│  ┬   Start                 │ ▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
+│  │                         │ ▒   - both camera and microphone - but I don't have a way to access settings that…      │
+│  ▒   User                  │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ├   Assistant      5m 2s  │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  │                         │ │                                                                                       │
-│  >   User                  │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  │                         │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  ●   Assistant      5m 2s  │ │                                                                                       │
-│  │                         │ │   I'll start by looking at what the camera exposes over USB:                          │
-│  ●   User                  │ │       ╭─ Themes ──────────────────────────────╮                                       │
-│  │                         │ │   • Ch│                                       │                                       │
-│  ●   Assistant      5m 2s  │ │   • Lo│  > Default                            │                                       │
-│                            │ │       │    Terminal                           │                                       │
-│  ═══ Compaction ═════════  │ │   Then│    Catppuccin                         │                                       │
-│                            │ │       │    Gruvbox                            │                                       │
-│  ●   User                  │ │ ▶ Thin│    Nord                               │its. Start with lsusb.                 │
-│  │                         │ │       │    Tokyo Night                        │                                       │
-│  ●   Assistant             │ │ ▶ Find│    Solarized                          │s                                      │
-│  │                         │ │       │                                       │                                       │
-│  ●   Assistant             │ │ ▶ Dump│ ENTER to select | ESC to cancel       │                                       │
-│  │                         │ │       ╰───────────────────────────────────────╯                                       │
-│  ●   End                   │ │   model → claude-sonnet-5.5                                                           │
+│  ├   User                  │ │   I'll start by looking at what the camera exposes over USB:                          │
+│  │                         │ │       ╭─ Themes ──────────────────────────────╮                                       │
+│  ├   Assistant      5m 2s  │ │   • Ch│                                       │                                       │
+│  │                         │ │   • Lo│  > Default                            │                                       │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ │       │    Terminal                           │                                       │
+│  │                         │ │   Then│    Catppuccin                         │                                       │
+│  ├   User                  │ │       │    Gruvbox                            │                                       │
+│  │                         │ │ ▶ Thin│    Nord                               │its. Start with lsusb.                 │
+│  ├   Assistant             │ │       │    Tokyo Night                        │                                       │
+│  │                         │ │ ▶ Find│    Solarized                          │s                                      │
+│  ├   Assistant             │ │       │                                       │                                       │
+│  │                         │ │ ▶ Dump│ ENTER to select | ESC to cancel       │                                       │
+│  ┴   End                   │ │       ╰───────────────────────────────────────╯                                       │
+│                            │ │   model → claude-sonnet-5.5                                                           │
 │                            │ │                                                                                       │
 │                            │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
 │                            │ │                                                                                       │

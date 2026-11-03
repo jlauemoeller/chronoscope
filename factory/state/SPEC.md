@@ -245,22 +245,22 @@ A sidebar in the session browser lists the session's turns and compaction events
 ```
 ╭─ [1] Turns  ───────────────╮
 │                            │
+│  ┬   Start                 │
+│  │                         │
+│  ├   User                  │
+│  │                         │
+│  ├   Assistant      4m 3s  │
+│  │                         │
+│  ├   User                  │
+│  │                         │
+│  ├   Assistant      3h 4m  │
+│  │                         │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │
+│  │                         │
+│  ├   Assistant     2h 45m  │
+│  │                         │
+│  ┴   End                   │
 │                            │
-│  ●   Start                 │
-│  │                         │
-│  ●   User                  │
-│  │                         │
-│  ●   Assistant      4m 3s  │
-│  │                         │
-│  ●   User                  │
-│  │                         │
-│  ●   Assistant      3h 4m  │
-│                            │
-│  ═══ Compaction ═════════  │
-│                            │
-│  ●   Assistant     2h 45m  │
-│  │                         │
-│  ●   End                   │
 │                            │
 ╰────────────────────────────╯
 ```
@@ -281,27 +281,26 @@ There is one entry per turn with at least one non-system section, in transcript 
 
 | Row | Content | Selectable |
 |---|---|---|
-| `● Start` | First row of the list | No: it has no block |
-| `● User` | A User turn | Yes |
-| `● Assistant` | An Assistant turn, with its duration (§6.5) | Yes |
-| `═══ Compaction ═══` | A Compaction turn; `═` fills to the right margin | Yes |
-| `● End` | Last row of the list | No: it has no block |
+| `┬ Start` | First row of the list | No: it has no block |
+| `├ User` | A User turn | Yes |
+| `├ Assistant` | An Assistant turn, with its duration (§6.5) | Yes |
+| `├╶╶ Compaction ╶╶╶` | A Compaction turn; `╶` fills to the right margin | Yes |
+| `┴ End` | Last row of the list | No: it has no block |
 
-- Columns (from 0): `●`, `═` and the marker in column 3; labels in column 7, except that the Compaction rule runs from column 3; the right margin is two cells before the border, as in the selector.
-- Between two `●` rows there is one row with `│` in column 3.
-- A Compaction row has a blank row above and below it instead of `│`, so the timeline visibly breaks.
-- The list starts two rows below the top border.
-- Unselected rows, `●`, `│` and `═` use `muted_foreground`.
-- Long lists scroll by rows. `Start` and `End` scroll with the list. Connector and blank rows cannot be selected or clicked.
+- Columns (from 0): `┬`, `├`, `┴` and the marker in column 3; labels in column 7, with the Compaction rule running from column 4; the right margin is two cells before the border, as in the selector.
+- Between two rows of the list there is one row with `│` in column 3, so the timeline runs unbroken through a Compaction too.
+- One blank row separates the list from the top border.
+- Unselected rows, `┬`, `├`, `┴`, `│` and `╶` use `muted_foreground`.
+- Long lists scroll by rows. `Start` and `End` scroll with the list. Connector rows cannot be selected or clicked.
 
 ### 6.3 Selection and highlighting
 
-Selection looks and behaves like the session selector's lists (base spec §8.2, §4.1). Reuse `list_pane` where it fits.
+Selection looks and behaves like the session selector's lists (base spec §8.2, §4.1), except that its marker is `▒`. Reuse `list_pane` where it fits.
 
 | State | Appearance |
 |---|---|
-| Selected, sidebar focused | `>` in `primary` replaces the `●` (or the first `═`) in column 3, never inverted. Everything after it is one inverted band (`foreground` with reverse video, not bold) up to the right margin; the label, gaps and duration all take the band's style |
-| Selected, sidebar unfocused | `>` in `secondary_foreground`, text bold in `secondary_foreground`, not inverted |
+| Selected, sidebar focused | `▒` in `primary` replaces the `├` in column 3, never inverted. Everything after it is one inverted band (`foreground` with reverse video, not bold) up to the right margin; the label, gaps and duration all take the band's style |
+| Selected, sidebar unfocused | `▒` in `secondary_foreground`, text bold in `secondary_foreground`, not inverted |
 | Border | `ring` when focused, `border` otherwise |
 
 - The list never wraps around.

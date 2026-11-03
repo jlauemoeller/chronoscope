@@ -51,12 +51,12 @@ fn assert_follows(app: &App, what: &str) -> usize {
     expected
 }
 
-/// The row of the pane (counted from the first list row) that shows the `>`.
+/// The row of the pane (counted from the first list row) that shows the `▒`.
 fn marker_row(rig: &mut Rig, width: u16, height: u16) -> Option<usize> {
     pane_rows(rig, width, height)
         .iter()
-        .skip(3)
-        .position(|row| row.chars().nth(3) == Some('>'))
+        .skip(2)
+        .position(|row| row.chars().nth(3) == Some('▒'))
 }
 
 /// Turns `u0`, `a0`, `u1`, `a1`, …: `pairs` of a prompt and a reply, each a
@@ -296,7 +296,7 @@ fn a_nested_subagent_and_each_way_back_follow_the_transcript_on_top() {
 
 #[test]
 fn a_turn_appended_while_away_from_the_end_adds_a_row_and_changes_neither_selection_nor_offset() {
-    // 13 list rows: far fewer than the 43 the list has.
+    // 14 list rows: far fewer than the 43 the list has.
     let mut rig = long_rig(10, 100, 24);
     for _ in 0..9 {
         rig.press(Key::Char(']'));
@@ -369,7 +369,7 @@ fn a_new_turn_the_selection_is_not_on_changes_nothing_in_the_selection() {
 
 #[test]
 fn the_selected_row_stays_visible_and_the_pane_scrolls_by_the_least_needed() {
-    // The pane shows 13 list rows, that is the rows 0..=12, of 83.
+    // The pane shows 14 list rows, that is the rows 0..=13, of 83.
     let mut rig = long_rig(20, 100, 24);
     let area = rig.app.routing().area(Id::TurnSidebar).unwrap();
     assert_eq!(area, Rect::new(0, 5, 30, 17));
@@ -382,9 +382,9 @@ fn the_selected_row_stays_visible_and_the_pane_scrolls_by_the_least_needed() {
         assert_eq!(assert_follows(&rig.app, "down"), n);
         let now = marker_row(&mut rig, 100, 24).unwrap_or_else(|| panic!("hidden at {n}"));
         // One entry is two rows: the marker moves two rows down until the
-        // last row, where the list scrolls two rows and the marker stays.
-        assert_eq!(now, (at + 2).min(12), "entry {n}");
-        scrolled += usize::from(at + 2 > 12);
+        // last row, where the list scrolls and the marker stays.
+        assert_eq!(now, (at + 2).min(13), "entry {n}");
+        scrolled += usize::from(at + 2 > 13);
         at = now;
         assert_eq!(rig.app.routing().area(Id::TurnSidebar), Some(area));
     }
@@ -624,7 +624,7 @@ fn the_selection_on_a_compaction_row_120x40_styled() {
 
 #[test]
 fn a_long_list_scrolled_to_keep_the_selected_row_visible_120x40_text() {
-    // 40 entries: 83 rows against the 29 the pane shows.
+    // 40 entries: 83 rows against the 30 the pane shows.
     let mut rig = long_rig(20, 120, 40);
     for _ in 0..22 {
         rig.press(Key::Char(']'));
@@ -648,12 +648,12 @@ fn a_long_list_scrolled_to_keep_the_selected_row_visible_120x40_styled() {
 
 #[test]
 fn going_back_from_a_subagent_shows_the_pane_as_it_was_with_a_list_longer_than_the_pane() {
-    // 29 list rows against 90 rows; the selected row is not on the last one.
+    // 30 list rows against 90 rows; the selected row is not on the last one.
     let mut rig = subagent_rig_after(long_turns(20), 120, 30);
     let _ = screen_text(&mut rig, 120, 40);
     let before = screen_text(&mut rig, 120, 40);
     let at = marker_row(&mut rig, 120, 40).expect("the selected row is shown");
-    assert!(0 < at && at < 28, "away from both edges: {at}");
+    assert!(0 < at && at < 29, "away from both edges: {at}");
     let entry = sidebar_entry(&rig.app);
 
     rig.open_subagent(1);
@@ -678,7 +678,7 @@ fn going_back_scrolls_the_least_needed_when_the_pane_shrank_while_it_was_covered
     let _ = screen_text(&mut rig, 120, 24);
     rig.back_to(0);
     assert_eq!(sidebar_entry(&rig.app), entry);
-    assert_eq!(marker_row(&mut rig, 120, 24), Some(12), "on the last row");
+    assert_eq!(marker_row(&mut rig, 120, 24), Some(13), "on the last row");
 }
 
 #[test]

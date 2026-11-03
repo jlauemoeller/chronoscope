@@ -9,20 +9,20 @@ expression: "buffer_to_styled(& screen_buffer(& mut rig, 90, 24))"
 ╰────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ ╭─ Compaction ───────────────────── 2026-10-21 09:00:00Z ─╮
 │                            │ │                                                         │
-│                            │ ▒ ▶ ── context compacted ──                               │
-│  ●   Start                 │ │                                                         │
+│  ┬   Start                 │ ▒ ▶ ── context compacted ──                               │
+│  │                         │ │                                                         │
+│  ├   User                  │ ╰─────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ User ─────────────────────────── 2026-10-21 08:35:15Z ─╮
+│  ├   Assistant      5m 2s  │ │                                                         │
+│  │                         │ │ ▶ file: /home/jacob/notes.md                            │
+│  ├   User                  │ │                                                         │
+│  │                         │ │ ▶ Continue with the extension units.                    │
+│  ├   Assistant      5m 2s  │ │                                                         │
 │  │                         │ ╰─────────────────────────────────────────────────────────╯
-│  ●   User                  │ ╭─ User ─────────────────────────── 2026-10-21 08:35:15Z ─╮
+│  ▒╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ ╭─ Assistant ── claude-opus-5.5 ─── 2026-10-21 08:35:18Z ─╮
 │  │                         │ │                                                         │
-│  ●   Assistant      5m 2s  │ │ ▶ file: /home/jacob/notes.md                            │
+│  ├   User                  │ │   The extension units are listed under VideoControl:    │
 │  │                         │ │                                                         │
-│  ●   User                  │ │ ▶ Continue with the extension units.                    │
-│  │                         │ │                                                         │
-│  ●   Assistant      5m 2s  │ ╰─────────────────────────────────────────────────────────╯
-│                            │ ╭─ Assistant ── claude-opus-5.5 ─── 2026-10-21 08:35:18Z ─╮
-│  >══ Compaction ═════════  │ │                                                         │
-│                            │ │   The extension units are listed under VideoControl:    │
-│  ●   User                  │ │                                                         │
 ╰────────────────────────────╯ │   • one for exposure                                    │
                                                                                           
  ENTER to go to block | TAB to switch to transcript                                       
@@ -34,20 +34,20 @@ expression: "buffer_to_styled(& screen_buffer(& mut rig, 90, 24))"
 4: 0..90 DarkGray/Reset/NONE
 5: 0..2 White/Reset/NONE | 2..14 Reset/Reset/NONE | 14..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..33 DarkGray/Reset/NONE | 33..45 Gray/Reset/NONE | 45..66 DarkGray/Reset/NONE | 66..88 Gray/Reset/NONE | 88..90 DarkGray/Reset/NONE
 6: 0..1 White/Reset/NONE | 1..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-7: 0..1 White/Reset/NONE | 1..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 White/Reset/NONE | 32..33 Reset/Reset/NONE | 33..58 Gray/Reset/BOLD | 58..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-8: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-9: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..90 DarkGray/Reset/NONE
-10: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..33 DarkGray/Reset/NONE | 33..39 White/Reset/NONE | 39..66 DarkGray/Reset/NONE | 66..88 Gray/Reset/NONE | 88..90 DarkGray/Reset/NONE
-11: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-12: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..61 Gray/Reset/NONE | 61..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-13: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-14: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..69 Gray/Reset/NONE | 69..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-15: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-16: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..90 DarkGray/Reset/NONE
-17: 0..1 White/Reset/NONE | 1..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..33 DarkGray/Reset/NONE | 33..44 LightMagenta/Reset/NONE | 44..46 DarkGray/Reset/NONE | 46..63 LightMagenta/Reset/NONE | 63..66 DarkGray/Reset/NONE | 66..88 Gray/Reset/NONE | 88..90 DarkGray/Reset/NONE
-18: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 White/Reset/NONE | 4..27 Reset/Reset/REVERSED | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-19: 0..1 White/Reset/NONE | 1..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..85 Gray/Reset/NONE | 85..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
-20: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+7: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 White/Reset/NONE | 32..33 Reset/Reset/NONE | 33..58 Gray/Reset/BOLD | 58..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+8: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+9: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..90 DarkGray/Reset/NONE
+10: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..33 DarkGray/Reset/NONE | 33..39 White/Reset/NONE | 39..66 DarkGray/Reset/NONE | 66..88 Gray/Reset/NONE | 88..90 DarkGray/Reset/NONE
+11: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+12: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..61 Gray/Reset/NONE | 61..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+13: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+14: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..69 Gray/Reset/NONE | 69..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+15: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+16: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..90 DarkGray/Reset/NONE
+17: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 White/Reset/NONE | 4..27 Reset/Reset/REVERSED | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..33 DarkGray/Reset/NONE | 33..44 LightMagenta/Reset/NONE | 44..46 DarkGray/Reset/NONE | 46..63 LightMagenta/Reset/NONE | 63..66 DarkGray/Reset/NONE | 66..88 Gray/Reset/NONE | 88..90 DarkGray/Reset/NONE
+18: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+19: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..85 Gray/Reset/NONE | 85..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+20: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
 21: 0..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..53 Gray/Reset/NONE | 53..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
 22: 0..90 Reset/Reset/NONE
 23: 0..1 Reset/Reset/NONE | 1..6 White/Reset/NONE | 6..24 Gray/Reset/NONE | 24..27 White/Reset/NONE | 27..51 Gray/Reset/NONE | 51..90 Reset/Reset/NONE

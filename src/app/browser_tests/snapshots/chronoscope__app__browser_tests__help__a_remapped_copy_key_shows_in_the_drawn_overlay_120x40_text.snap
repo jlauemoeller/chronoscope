@@ -9,26 +9,26 @@ expression: text
 ╰───────────────────────│                                                                      │───────────────────────╯
 ╭─ [1] Turns  ──────────│    Up / k                            Previous section                │ 2026-10-21 08:35:15Z ─╮
 │                       │    Down / j                          Next section                    │                       │
-│                       │    [                                 Previous turn                   │a USB. It works fine   │
-│  ●   Start            │    ]                                 Next turn                       │ss settings that…      │
-│  │                    │    Ctrl-u                            Scroll half a page up           │                       │
-│  >   User             │    Ctrl-d                            Scroll half a page down         │───────────────────────╯
-│  │                    │    PgUp                              Scroll a page up                │ 2026-10-21 08:35:18Z ─╮
-│  ●   Assistant      5m│    PgDn                              Scroll a page down              │                       │
-│  │                    │    g / Home                          Jump to start                   │                       │
-│  ●   User             │    G / End                           Jump to end and follow          │                       │
-│  │                    │                                                                      │                       │
-│  ●   Assistant      5m│  Sections                                                            │                       │
-│                       │                                                                      │                       │
-│  ═══ Compaction ══════│    ENTER / SPACE                     Fold or unfold current section  │                       │
-│                       │    Left / h                          Fold current section            │                       │
-│  ●   User             │    Right / l                         Unfold current section          │lsusb.                 │
-│  │                    │    -                                 Fold all sections               │                       │
-│  ●   Assistant        │    + / =                             Unfold all sections             │                       │
-│  │                    │    s                                 Show or hide system content     │                       │
-│  ●   Assistant        │    c                                 Copy section as displayed       │                       │
-│  │                    │    Y                                 Copy full section               │                       │
-│  ●   End              │    w / Ctrl-s                        Save section as displayed       │                       │
+│  ┬   Start            │    [                                 Previous turn                   │a USB. It works fine   │
+│  │                    │    ]                                 Next turn                       │ss settings that…      │
+│  ▒   User             │    Ctrl-u                            Scroll half a page up           │                       │
+│  │                    │    Ctrl-d                            Scroll half a page down         │───────────────────────╯
+│  ├   Assistant      5m│    PgUp                              Scroll a page up                │ 2026-10-21 08:35:18Z ─╮
+│  │                    │    PgDn                              Scroll a page down              │                       │
+│  ├   User             │    g / Home                          Jump to start                   │                       │
+│  │                    │    G / End                           Jump to end and follow          │                       │
+│  ├   Assistant      5m│                                                                      │                       │
+│  │                    │  Sections                                                            │                       │
+│  ├╶╶ Compaction ╶╶╶╶╶╶│                                                                      │                       │
+│  │                    │    ENTER / SPACE                     Fold or unfold current section  │                       │
+│  ├   User             │    Left / h                          Fold current section            │                       │
+│  │                    │    Right / l                         Unfold current section          │lsusb.                 │
+│  ├   Assistant        │    -                                 Fold all sections               │                       │
+│  │                    │    + / =                             Unfold all sections             │                       │
+│  ├   Assistant        │    s                                 Show or hide system content     │                       │
+│  │                    │    c                                 Copy section as displayed       │                       │
+│  ┴   End              │    Y                                 Copy full section               │                       │
+│                       │    w / Ctrl-s                        Save section as displayed       │                       │
 │                       │    W                                 Save full section               │                       │
 │                       │    i                                 Show section details            │                       │
 │                       │                                                                      │                       │

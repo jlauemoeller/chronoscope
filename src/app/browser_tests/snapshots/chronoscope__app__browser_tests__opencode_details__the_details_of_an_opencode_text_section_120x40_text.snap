@@ -9,18 +9,18 @@ expression: "screen(120, 40)"
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ ╭─ User╭─ Details ────────────────────────────────╮────────────── 2026-10-28 09:00:01Z ─╮
 │                            │ │      │                                          │                                     │
-│                            │ │ ▶ syn│  Turn                                    │ed the file src/settings.rs.</sys…   │
-│  ●   Start                 │ │      │                                          │                                     │
-│  │                         │ │ ▶ sys│    model           acme/coder-1          │ce                                   │
-│  ●   User                  │ │      │    effort          high                  │                                     │
-│  │                         │ │ ▶ Add│    start           2026-10-28 09:00:03Z  │                                     │
-│  >   Assistant        17s  │ │      │    duration        17s                   │                                     │
-│  │                         │ ╰──────│    messages        2                     │─────────────────────────────────────╯
-│  ●   User                  │ ╭─ Assi│    input tokens    3.0k                  │────────────── 2026-10-28 09:00:03Z ─╮
-│  │                         │ │      │    output tokens   300                   │                                     │
-│  ●   Assistant        39s  │ │ ▶ Thi│    cost            $0.03                 │ first.                              │
-│  │                         │ │      │    provider        acme                  │                                     │
-│  ●   End                   │ ▒   Let│    agent           build                 │                                     │
+│  ┬   Start                 │ │ ▶ syn│  Turn                                    │ed the file src/settings.rs.</sys…   │
+│  │                         │ │      │                                          │                                     │
+│  ├   User                  │ │ ▶ sys│    model           acme/coder-1          │ce                                   │
+│  │                         │ │      │    effort          high                  │                                     │
+│  ▒   Assistant        17s  │ │ ▶ Add│    start           2026-10-28 09:00:03Z  │                                     │
+│  │                         │ │      │    duration        17s                   │                                     │
+│  ├   User                  │ ╰──────│    messages        2                     │─────────────────────────────────────╯
+│  │                         │ ╭─ Assi│    input tokens    3.0k                  │────────────── 2026-10-28 09:00:03Z ─╮
+│  ├   Assistant        39s  │ │      │    output tokens   300                   │                                     │
+│  │                         │ │ ▶ Thi│    cost            $0.03                 │ first.                              │
+│  ┴   End                   │ │      │    provider        acme                  │                                     │
+│                            │ ▒   Let│    agent           build                 │                                     │
 │                            │ │      │                                          │                                     │
 │                            │ │ ▶ Rea│  Message                                 │                                     │
 │                            │ │      │                                          │                                     │
