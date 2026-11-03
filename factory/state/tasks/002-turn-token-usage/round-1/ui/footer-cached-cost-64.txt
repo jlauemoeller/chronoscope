@@ -1,9 +1,0 @@
-Assistant block, footer with cached and cost, block width 64 (TestBackend, default theme).
-╭─ Assistant ── claude-opus-5.5 @ high ─ 2026-10-21 08:35:18Z ─╮
-│                                                              │
-│   All done.                                                  │
-│                                                              │
-│   5m 2s · 112 messages · 45.2k tokens · 359.4M cached        │
-│   · $0.42                                                    │
-│                                                              │
-╰──────────────────────────────────────────────────────────────╯

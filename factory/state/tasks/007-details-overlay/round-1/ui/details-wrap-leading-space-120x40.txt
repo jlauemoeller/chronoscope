@@ -1,4 +1,0 @@
-# Committed snapshot notice_120x40_default, Message group: the continuation starts with the space the break fell on, so its text is one column right of the value column.
-  │    rawFinish           stop_sequence                                                                             │
-  │    error               APIError: 529 overloaded_error: Overloaded. The model is receiving more requests than it  │
-  │                         can serve right now, retry later.                                                        │
