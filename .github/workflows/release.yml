@@ -69,11 +69,7 @@ jobs:
           else
             cp "target/${TARGET}/release/chronoscope" "dist/${name}/"
           fi
-          cp README.md THIRD-PARTY-NOTICES.md "dist/${name}/"
-          # The project's own licence file is shipped once there is one.
-          for licence in LICENSE*; do
-            if [ -f "${licence}" ]; then cp "${licence}" "dist/${name}/"; fi
-          done
+          cp README.md THIRD-PARTY-NOTICES.md LICENSE "dist/${name}/"
           cd dist
           if [ "${RUNNER_OS}" = "Windows" ]; then
             powershell -NoProfile -Command "Compress-Archive -Path '${name}' -DestinationPath '${name}.zip'"

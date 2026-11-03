@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "A terminal viewer for AI coding-agent session histories"
+license = "MIT"
 publish = false
 
 [lib]

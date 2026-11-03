@@ -447,7 +447,10 @@ sessions are written to the log.
   (`session_pending` type `compaction`) is still unverified.
 - The reasoning-effort field in OpenCode (`model.variant`?).
 
-The project's own licence is still to be chosen.
+## Licence
+
+chronoscope is released under the MIT licence. See [LICENSE](LICENSE) for the
+full text.
 
 ## Acknowledgements
 
