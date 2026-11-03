@@ -265,7 +265,7 @@ copy_full = "Y"
 search = "/"
 
 [keys.turns]                   # the turns sidebar while it has focus
-open = ["enter", "o"]
+open = "enter"
 ```
 
 | Key | Default | Meaning |

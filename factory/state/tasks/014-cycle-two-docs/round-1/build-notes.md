@@ -21,6 +21,8 @@ Documentation only. No file under `src/` or `tests/` and no snapshot changed.
 - The fixture changed (toolUseResult repeats each output, so the mixed session now has 48 large outputs, 312 turns; dense 6 856 turns). "Unfolding the slowest large output" now takes 116 to 173 ms (it was 8 to 12 ms). I ran the pre-cycle-2 code (worktree at `6bd3595`, deleted since) against the new fixture and got 116 ms, and 8 ms against the old fixture: it is the fixture, not a regression of cycle 2. It is a one-off key press outside the per-frame budget, but it is over a frame; the doc says so. I did not investigate why this fixture is slower to unfold.
 - Full parse is about 40 ms (mixed, 96 -> 136 ms) and 33 ms (dense, 264 -> 297 ms) slower than before cycle 2 on the same fixtures (one baseline run each). Budgets unchanged and met by 7x or more.
 
+- The planner note on §9.2: re-read after the new figures. The four budgets are unchanged and still met on both sessions (4 runs). I extended §9.2 with the detail-field, sidebar and typed-head bullets and said the budgets are measured by `docs/performance.md`; the budget values were not touched. The 16 ms frame budget is read as scrolled frames (as the test asserts), so unfolding a large output (116 to 173 ms) and expanding it (37 to 56 ms) are one-off reference figures, reported as such in `docs/performance.md`.
+
 ## Self-check
 - AC: §3.1/§3.2 list fields now read — `doc/SPEC.md` §3.1, §3.2 (read by hand against `wire.rs`, `opencode/assemble.rs`, `details.rs`)
 - AC: §5.1 model and rule 6 — `doc/SPEC.md` §5.1, checked against `src/model/mod.rs`, `claude/assemble.rs` (`on_turn_duration`, `message_notice`)

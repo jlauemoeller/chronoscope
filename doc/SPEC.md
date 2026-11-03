@@ -47,7 +47,7 @@ trait Harness {
 ```
 
 - The UI is a tui-realm `Application` (§2) driven by a single-threaded loop: the loop calls `Application::tick`, passes every returned `Msg` to `App::update`, and redraws only when something changed (at most every 50 ms, §7.1).
-- Parsing, watching, stats computation and search indexing run on worker threads. (Reading the details of one section for the overlay is the exception: it re-reads one or two lines on the UI thread, as unfolding a large output does, §9.2.) Their results come back over channels, which sync Ports (`Poll`) read and turn into `Event::User` events. No async runtime is required; tui-realm's async ports (tokio) are not used.
+- Parsing, watching, stats computation and search indexing run on worker threads. Their results come back over channels, which sync Ports (`Poll`) read and turn into `Event::User` events. No async runtime is required; tui-realm's async ports (tokio) are not used. (Reading the details of one section for the overlay is the exception: it re-reads one or two lines or rows on the UI thread, §9.2.)
 
 ### 1.2 Application structure
 
@@ -160,7 +160,7 @@ Candidate crates: `tuirealm` (with the `crossterm` feature), `ratatui`, `crosste
 - Message types: `user`, `assistant`, `synthetic`, `system`, `idle`. Assistant `data` has `agent`, `model {id, providerID, variant}`, `time {created, streamed, completed}`, `cost`, `tokens {input, output, reasoning, cache {read, write}}`, `finish`, `rawFinish`, `error {type, message}`, and a `content` array of `text` / `tool` parts.
   - `tokens.reasoning` is separate from `tokens.output`; the adapter adds it to `output` (§5.1).
   - A row with `finish: "error"` has empty content. Its `error` is shown as a notice (§5.2).
-  - A tool part's `state.time` gives the duration of the call.
+  - A tool part's `time` (`created` and `completed`) gives the duration of the call.
   - The details overlay (§4.3) reads the row again when it opens: its id, `time.*`, `finish`, `rawFinish`, `error`, `model.providerID`, `agent`, a tool part's `time.created`, and `snapshot.start` and `snapshot.end`. A turn keeps only the id of the row (§5.1).
 - Subagent sessions are linked via `session_v2.parent_id`.
 
@@ -283,7 +283,7 @@ A sidebar lists the session's turns and compaction events, so the shape of a lon
 ### 4.3 Overlays
 
 - **Help overlay** (`?`): grouped keybindings as in ui-sketch.md, generated from the active keymap. `Esc` / `?` closes it.
-- **Details overlay** (`i`, the `details` action of `[keys.browser]`): the metadata of the selected section, so that blocks stay uncluttered. See below.
+- **Details overlay** (`i`, the `details` action of `[keys.browser]`, listed as "Show section details" in the help overlay's Sections group): the metadata of the selected section, so that blocks stay uncluttered. See below.
 - **Theme selector** (`t`): see §8.4.
 - **Confirmation prompts** (overwrite file, resume in harness) appear in the help line as `y/n` questions, not as dialogs.
 
@@ -764,7 +764,7 @@ copy_full = "Y"
 search = "/"
 
 [keys.turns]                   # the turns sidebar while it has focus
-open = ["enter", "o"]
+open = "enter"
 ```
 
 Key bindings are grouped in contexts, one `[keys.<context>]` table each: `global` (quit, help, theme selector, open the selector), `browser`, `selector`, `overlay` (the help and details overlays and the theme selector) and `turns` (the turns sidebar, §6.3). Apart from the global keys, components resolve a key in their own context only, which is why the same key (`1`, `Tab`) can mean different things in the browser and in the selector. The `turns` defaults match the selector's lists:
@@ -807,7 +807,7 @@ Rules that keep tiers 2–3 cheap:
 Target: sessions up to **~100 MB** stay smooth.
 - Parsing is streaming (line by line for JSONL, paged queries for SQLite) and runs off the UI thread. The UI shows a loading state and becomes interactive as soon as the first screen of content is parsed.
 - Large tool outputs: the model stores line counts and byte ranges up front. The full text is materialised only when the section is unfolded, searched, copied or exported.
-- Detail fields are not parsed while assembling. A turn keeps only a byte range or row id per section (§5.1), and opening the details overlay re-reads one or two lines on the UI thread, which stays far under a frame. `toolUseResult`, which can hold whole files, is read through a typed head and never loaded as a whole value.
+- Detail fields are not parsed while assembling. A turn keeps only a byte range or row id per section (§5.1), and opening the details overlay re-reads one or two lines (Claude) or rows (OpenCode) on the UI thread, which takes about a millisecond even for a 2 MB result line (measured for Claude). `toolUseResult`, which can hold whole files, is read through a typed head and never loaded as a whole value.
 - The turns sidebar (§4.2) builds its rows from the section derivation, never from a layout or a render, and a turn update rebuilds only the rows it names. A key press in the sidebar (selection, transcript scroll and frame) is held to the frame budget below.
 - Layout is computed lazily per block for the current width. Only blocks overlapping the viewport are rendered.
 - Session list stats are computed in the background and cached in `$XDG_CACHE_HOME/chronoscope/`, keyed by (path, size, mtime) or by (db, session id, `time_updated`).

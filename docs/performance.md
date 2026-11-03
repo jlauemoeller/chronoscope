@@ -79,7 +79,8 @@ More numbers from the same runs:
   (mixed, 312 turns) and 309 ms (dense, 6 856 turns).
 - The numbers move between runs: over four runs the mixed full parse (worst of
   five loads) took 133 to 140 ms and its slowest frame 3.1 to 4.9 ms, the
-  dense full parse 297 to 444 ms; the margins are 4x or more either way.
+  dense full parse 297 to 444 ms; the margins are 3x or more either way (the
+  tightest is the slowest mixed frame, 4.9 ms against 16 ms).
 - Heap held once the load is done: 0.09x the file (mixed), 0.61x (dense). The
   mixed session is small because the lazy outputs stay on disk.
 - Median frame: 0.37 to 0.55 ms (mixed), 0.55 ms (dense).
