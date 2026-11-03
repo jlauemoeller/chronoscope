@@ -611,7 +611,7 @@ If a session id is ambiguous (prefix matches several sessions), the selector ope
 | Harness | Change detection | Incremental read |
 |---|---|---|
 | Claude | `notify` watch on the session `.jsonl` (and its `subagents/` dir) | Read from the last byte offset. New lines go through the same turn assembly (§5.1), so a line extending an existing `message.id` or delivering a `tool_result` updates sections in place. Keep a trailing partial line in a buffer until its newline arrives. If the file shrinks or is replaced (size < offset or inode change), reload it. |
-| OpenCode | `notify` watch on `opencode.db` and `opencode.db-wal`, debounced 200 ms; fallback poll every 1 s if watching fails | `SELECT … FROM session_message WHERE session_id = ? AND seq > ?`, plus re-reading rows whose `time_updated` changed (streaming messages are updated in place) |
+| OpenCode | `notify` watch on `opencode.db` and `opencode.db-wal`, debounced 200 ms; poll every 1 s if watching fails, and always on macOS, where writes to a file that stays open raise no events (the session index polls there too) | `SELECT … FROM session_message WHERE session_id = ? AND seq > ?`, plus re-reading rows whose `time_updated` changed (streaming messages are updated in place) |
 
 - The database is opened read-only (`SQLITE_OPEN_READ_ONLY`). Chronoscope never writes to any harness store.
 - Watch events are coalesced. Workers parse new data off the UI thread and send `ModelUpdate`s; the UI thread applies them (§1.4) and redraws at most every 50 ms.

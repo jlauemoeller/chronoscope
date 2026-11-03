@@ -66,7 +66,8 @@ pub enum IndexEvent {
 pub struct Timing {
     /// How long file events are collected before a harness is rebuilt.
     pub coalesce: Duration,
-    /// How often a harness that cannot be watched is rebuilt.
+    /// How often a harness that cannot be watched, or whose database's file
+    /// events miss writes, is rebuilt.
     pub poll: Duration,
     /// The shortest time between two saves of the stats cache.
     pub save_interval: Duration,

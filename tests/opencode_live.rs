@@ -376,10 +376,9 @@ fn a_row_of_an_earlier_turn_updates_that_turn_only() {
     assert_eq!(turns[2..], before[2..]);
 }
 
-#[test]
-fn an_update_within_the_same_millisecond_is_seen_too() {
+fn an_update_within_the_same_millisecond_is_seen_too(harness: impl Fn(&Env) -> OpenCodeHarness) {
     let env = env();
-    let mut live = Live::start(&env.harness(), "ses_long");
+    let mut live = Live::start(&harness(&env), "ses_long");
     let before = live.clear();
     // `msg_long_01` has the greatest time_updated; only its data changes.
     env.rewrite(
@@ -394,6 +393,16 @@ fn an_update_within_the_same_millisecond_is_seen_too() {
     };
     assert_eq!(user.text, "Edited prompt");
     assert_eq!(before.len(), 1);
+}
+
+#[test]
+fn an_update_within_the_same_millisecond_is_seen_when_watching() {
+    an_update_within_the_same_millisecond_is_seen_too(Env::harness);
+}
+
+#[test]
+fn an_update_within_the_same_millisecond_is_seen_when_polling() {
+    an_update_within_the_same_millisecond_is_seen_too(Env::polling);
 }
 
 // -- debounce
@@ -717,6 +726,7 @@ fn a_write_ahead_log_database_is_followed_through_its_wal() {
 }
 
 #[test]
+#[cfg_attr(target_os = "macos", ignore = "the index polls a database on macOS")]
 fn the_index_follows_a_write_ahead_log_database_through_file_events() {
     let env = env().wal();
     let cache = tempfile::tempdir().unwrap();
@@ -760,6 +770,7 @@ fn the_index_follows_a_write_ahead_log_database_through_file_events() {
 }
 
 #[test]
+#[cfg_attr(target_os = "macos", ignore = "the index polls a database on macOS")]
 fn the_index_keeps_following_after_the_wal_is_deleted_and_created_again() {
     let Env { _dir, path, writer } = env().wal();
     let wal = path.with_file_name("opencode.db-wal");

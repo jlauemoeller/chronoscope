@@ -22,6 +22,12 @@ use crate::model::{
 /// Result type of harness operations.
 pub use anyhow::Result;
 
+/// Whether writing to a file that stays open produces a file event. On macOS
+/// the kernel reports a change to a file's content only when the file is
+/// closed, and SQLite keeps its files open, so a database has to be polled
+/// there.
+pub(crate) const WRITES_TO_OPEN_FILES_RAISE_EVENTS: bool = !cfg!(target_os = "macos");
+
 /// A coding-agent harness whose sessions can be browsed (SPEC §1.1).
 ///
 /// Harnesses are shared with the index worker threads, hence `Send + Sync`.

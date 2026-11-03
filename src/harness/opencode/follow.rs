@@ -65,13 +65,15 @@ impl Cursor {
     }
 }
 
-/// What polling compares: the extremes of the session's rows and the session
-/// row's times. A rewrite of a row's `data` that leaves its `time_updated`
-/// (to the millisecond) and the extremes alone is not seen by polling.
+/// What polling compares: the extremes of the session's rows, the size of the
+/// newest ones and the session row's times. The size catches a rewrite within
+/// the same millisecond, as the comparison in [`Follower::refresh`] does; a
+/// rewrite that also keeps the size is not seen by either.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Signature {
     max_seq: Option<i64>,
     max_updated: Option<i64>,
+    newest_bytes: Option<i64>,
     rows: i64,
     session_updated: Option<i64>,
     session_idle: Option<i64>,
@@ -139,6 +141,9 @@ impl<'a> Follower<'a> {
             .select_one(
                 "SELECT (SELECT max(seq) FROM session_message WHERE session_id = ?1), \
                         (SELECT max(time_updated) FROM session_message WHERE session_id = ?1), \
+                        (SELECT sum(length(CAST(data AS BLOB))) FROM session_message \
+                         WHERE session_id = ?1 AND time_updated = \
+                         (SELECT max(time_updated) FROM session_message WHERE session_id = ?1)), \
                         (SELECT count(*) FROM session_message WHERE session_id = ?1), \
                         (SELECT time_updated FROM session_v2 WHERE id = ?1), \
                         (SELECT time_idle FROM session_v2 WHERE id = ?1)",
@@ -147,9 +152,10 @@ impl<'a> Follower<'a> {
                     Ok(Signature {
                         max_seq: row.get(0)?,
                         max_updated: row.get(1)?,
-                        rows: row.get(2)?,
-                        session_updated: row.get(3)?,
-                        session_idle: row.get(4)?,
+                        newest_bytes: row.get(2)?,
+                        rows: row.get(3)?,
+                        session_updated: row.get(4)?,
+                        session_idle: row.get(5)?,
                     })
                 },
             )

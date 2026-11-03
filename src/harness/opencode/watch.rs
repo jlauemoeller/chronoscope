@@ -8,7 +8,8 @@
 //! then reads once. A stream of writes that never pauses (a long streaming
 //! message) would postpone that forever, so a read is made at the latest
 //! [`MAX_WAIT`] after the first event. When `notify` cannot be started, the
-//! worker polls the session's extremes every [`POLL_EVERY`] instead.
+//! worker polls the session's extremes every [`POLL_EVERY`] instead. It always
+//! polls on macOS, where writes to the open database produce no events.
 //!
 //! The database is only ever read (see [`super::db`]).
 
@@ -18,6 +19,8 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+
+use crate::harness::WRITES_TO_OPEN_FILES_RAISE_EVENTS;
 
 use super::db::wal_path;
 use super::follow::Follower;
@@ -38,7 +41,12 @@ const TICK: Duration = Duration::from_millis(50);
 /// Runs the watch loop until the worker is stopped (or the receiver is
 /// gone). `follower` is the state after the initial load.
 pub(super) fn run(job: &Job, mut follower: Follower<'_>) {
-    if job.mode == WatchMode::Notify {
+    if !WRITES_TO_OPEN_FILES_RAISE_EVENTS {
+        log::info!(
+            "file events miss database writes on this platform: polling {} every {POLL_EVERY:?}",
+            job.db_path.display()
+        );
+    } else if job.mode == WatchMode::Notify {
         match start_notify(&job.db_path) {
             Ok((_watcher, events)) => {
                 // Whatever was written since the initial read would not

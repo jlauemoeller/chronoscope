@@ -361,6 +361,11 @@ impl Coordinator {
         }
         let paths = state.harness.watch_paths();
         let files = state.harness.watch_files();
+        // Watched files are databases, and writes to them may raise no events.
+        if !crate::harness::WRITES_TO_OPEN_FILES_RAISE_EVENTS && !files.is_empty() {
+            state.poll_at = Some(Instant::now() + self.timing.poll);
+            return;
+        }
         match watch(&paths, &files, i, self.ctl_tx.clone()) {
             Ok(watcher) => {
                 state.watcher = Some(watcher);
