@@ -337,7 +337,11 @@ fn a_path_may_be_absolute() {
     let path = path_str(&dir, "absolute.txt");
     rig.submit(&path);
     assert!(dir.path().join("absolute.txt").is_file());
-    assert_eq!(rig.shown_toast(), Some(format!("Saved to {path}")));
+    // The toast cuts a long path at its start, and the temporary directory can
+    // be long enough for that, as it is on macOS.
+    let toast = rig.shown_toast().expect("a toast");
+    assert!(toast.starts_with("Saved to "), "{toast}");
+    assert!(toast.ends_with("/absolute.txt"), "{toast}");
 }
 
 #[test]
