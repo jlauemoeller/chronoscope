@@ -102,10 +102,10 @@ the active keymap, so it always shows your remappings.
 The tables list every default binding. The first column is the action name
 that `[keys.<context>]` in the config file uses; the second column is the keys,
 written in the config file's key syntax. The contexts are `global`, `browser`,
-`selector`, `turns` (the turns sidebar) and `overlay`. Apart from the global keys, a key is looked up only
-in the context of the component that has the focus, which is why `1` and `Tab`
-focus the turns sidebar in the browser and still switch harness and pane in the
-selector.
+`selector`, `turns` (the turns sidebar) and `overlay`. Apart from the global
+keys, a key is looked up only in the context of the component that has the
+focus, which is why `1` and `Tab` focus the turns sidebar in the browser and
+still switch harness and pane in the selector.
 
 ### Global (`[keys.global]`)
 

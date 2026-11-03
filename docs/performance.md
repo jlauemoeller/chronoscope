@@ -11,8 +11,8 @@ a line count and a byte range, layout per block and lazily, only the blocks in
 the viewport drawn). Measuring found nothing to fix: every budget is met with a
 wide margin, so no hot path was changed for that task. The figures below were
 measured again after the second round of features (tool call durations, notices,
-the details overlay and the turns sidebar), and the budgets are still met by the
-same margin.
+the details overlay and the turns sidebar), and the budgets are still met with a
+wide margin.
 
 ## The fixture
 
@@ -85,17 +85,23 @@ More numbers from the same runs:
   mixed session is small because the lazy outputs stay on disk.
 - Median frame: 0.37 to 0.55 ms (mixed), 0.55 ms (dense).
 - One turn of 100 000 rounds (70 MB): full parse 665 to 677 ms.
-- Unfolding the slowest of the 48 large outputs (1.5 MB, in a line of about 3 MB
-  that has to be read and parsed again) takes 116 to 173 ms. That is one key press,
-  not part of a scroll, so it is outside the per-frame budget, but it is more
-  than a frame. The figure comes from the fixture and not from the
-  application: the same measurement with the code from before the second round
-  of features, on this fixture, took 116 ms, and on the previous fixture (an
-  output of 2.0 MB) 8 ms.
+- Unfolding a large output (the output is read and parsed again) takes up to
+  about 10 ms: the slowest unfold, made before anything is expanded, took
+  10.3 ms (1.9 MB), and the others 0.2 to 7 ms when they were timed one by one.
+  That is one key press, not part of a scroll, and it is under a frame.
+- The reference line "unfolding the slowest large output" is printed after the
+  budget test has expanded one large output (next bullet), and it reads 116 to
+  173 ms (1.5 MB, 21 865 lines). That output is in the same turn as the
+  expanded one, and unfolding invalidates the layout of the whole block, so
+  the figure is the cost of laying out the already expanded output of about
+  20 000 lines again, not the cost of unfolding. The budget test on the code
+  from before the second round of features printed the same 116 ms for this
+  fixture.
 - Expanding the unfolded large output past `truncate_output_lines` (`Enter` on
   the `... N more lines` row) lays out all of its lines: 37 to 56 ms, once
-  (23 ms on the previous fixture). This is the other interaction that takes
-  more than a frame. It is not a scrolled frame, so it is outside the budget,
+  (23 ms on the previous fixture). This, and laying out a block that holds an
+  expanded output again, are the interactions that take more than a frame. They
+  are not scrolled frames, so it is outside the budget,
   and the frames after it are as fast as before. Both are printed by the budget
   test as "reference" lines.
 
@@ -176,14 +182,16 @@ Opening the overlay re-reads the section's line, and a tool call's result line.
 The budget test prints a reference line for the worst case, the tool call with
 the largest result (2 033 269 bytes): reading its details took 1.1 to 1.6 ms.
 The dense session's largest result (3 084 bytes) took 0.1 ms. It runs on the
-UI thread, and is far under a frame.
+UI thread, like unfolding a large output, and only the details read is known
+to be far under a frame (the unfold is up to 10 ms).
 
 ## The turns sidebar (task 010)
 
 The turns sidebar (SPEC §4.2) keeps one slot per turn and the list of turns that
 have an entry, and derives only the sections of a turn (`derive_sections`),
 never a layout or a render. The budget test builds its rows during the load, as
-the application does, and draws the pane after each of 100 selection moves (four runs):
+the application does, and draws the pane after each of 100 selection moves
+(four runs):
 
 | session | turns  | load incl. rows | slowest sidebar frame (30x43) |
 |---------|--------|-----------------|-------------------------------|
@@ -237,9 +245,11 @@ and CI runners vary. Run it in release mode; `--nocapture` shows the numbers:
 cargo test --release -- --ignored budgets --nocapture
 ```
 
-It fails when any of the four budgets is missed on either session, or when a
-sidebar key press or frame takes 16 ms or more, and lists which. CI runs `cargo bench --no-run` so that the benchmarks keep compiling,
-but not the benchmarks or the budget test themselves.
+It fails when any of the four budgets is missed on either session, when a
+sidebar key press or frame takes 16 ms or more, or when the one endless turn
+(70 MB, 100 000 rounds) takes 2 s or more to parse, and lists which. CI runs
+`cargo bench --no-run` so that the benchmarks keep compiling, but not the
+benchmarks or the budget test themselves.
 
 The generator and the instruments have their own tests, which run with the
 normal `cargo test`: a 5 MB session parses with no unparsed entries, and a
