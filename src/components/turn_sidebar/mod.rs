@@ -31,7 +31,16 @@
 //! [`Msg::FocusTranscript`]. Which component has focus is the `App`'s to
 //! decide; the pane only draws it (`Attribute::Focus`).
 //!
-//! The pane takes no mouse yet.
+//! # Mouse
+//!
+//! `on` takes the `App`'s [`RoutedMouse`] (a `UserEvent::Mouse`, in the
+//! pane's own coordinates) and never the raw `Event::Mouse` that goes to the
+//! focused component in screen coordinates. The wheel selects the previous or
+//! next entry like `Up` / `Down` (no wrap-around) and answers
+//! [`Msg::TurnSelected`]; it does not ask for the focus. A left press on an
+//! entry's row answers [`Msg::TurnClicked`] with its turn; a press anywhere
+//! else (`Start`, `End`, a connector or blank row, the border, the margin,
+//! below the last row) answers nothing.
 
 mod line;
 mod rows;
@@ -46,12 +55,12 @@ mod tests;
 use std::sync::Arc;
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Rect, Size};
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Paragraph};
 use tuirealm::command::{Cmd, CmdResult, Direction};
 use tuirealm::component::{AppComponent, Component};
-use tuirealm::event::Event;
+use tuirealm::event::{Event, MouseEventKind};
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
@@ -62,7 +71,7 @@ use super::{
     MODEL_UPDATE_ATTR, SELECTED_ATTR, THEME_ATTR, VISIBLE_ROWS_ATTR, payload_from_value,
     payload_value, selected_from_value, selected_value, theme_from_value, theme_value,
 };
-use crate::app::{Msg, UserEvent};
+use crate::app::{Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
 use crate::model::{ModelUpdate, TurnId};
 use crate::theme::{Role, Theme};
@@ -194,6 +203,22 @@ impl TurnSidebar {
         self.selected
             .as_ref()
             .and_then(|id| self.rows.entry_index(id))
+    }
+
+    /// The turn of the entry whose row is at (`column`, `row`) of a pane of
+    /// `size` (as drawn: the border, two blank rows, then the list from its
+    /// scroll offset), or `None` on the border, the blank rows, the margin,
+    /// below the last row and on `Start`, `End`, a connector and a blank row.
+    pub fn turn_at(&self, column: u16, row: u16, size: Size) -> Option<&TurnId> {
+        let line = usize::from(row.checked_sub(ROWS_ABOVE_LIST)?);
+        let inside = column >= 1 && column < size.width.saturating_sub(1);
+        let shown = sidebar_list_rows(size.height);
+        if !inside || line >= shown {
+            return None;
+        }
+        let index = self.cursor.offset_for(shown) + line;
+        let entry = self.rows.entry_at_row(index)?;
+        self.rows.entry(entry).map(|(id, _)| id)
     }
 
     /// The first list row drawn in a pane of `pane_height` rows.
@@ -441,15 +466,43 @@ impl TurnSidebar {
     fn selected_msg(&self, msg: fn(TurnId) -> Msg) -> Option<Msg> {
         self.selected.clone().map(msg)
     }
+
+    /// `Up` / `Down` for [`Msg::TurnSelected`]: the message when the
+    /// selection moved.
+    fn moved(&mut self, direction: Direction) -> Option<Msg> {
+        match self.perform(Cmd::Move(direction)) {
+            CmdResult::Changed(_) => self.selected_msg(Msg::TurnSelected),
+            _ => None,
+        }
+    }
+
+    /// The wheel selects the previous or next entry; a left press on an
+    /// entry's row names its turn. The selection itself is moved by the
+    /// `App` on a press.
+    fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => self.moved(Direction::Up),
+            MouseEventKind::ScrollDown => self.moved(Direction::Down),
+            _ if mouse.is_left_press() => self
+                .turn_at(mouse.column, mouse.row, mouse.area)
+                .cloned()
+                .map(Msg::TurnClicked),
+            _ => None,
+        }
+    }
 }
 
 impl AppComponent<Msg, UserEvent> for TurnSidebar {
     /// Resolves the key in the `turns` context. `Up` / `Down` answer
     /// [`Msg::TurnSelected`] when the selection moved, `Open`
     /// [`Msg::OpenTurn`] for the selected turn, and the pane keys and
-    /// `focus_transcript` [`Msg::FocusTranscript`]. Anything else, the mouse
-    /// included, answers nothing.
+    /// `focus_transcript` [`Msg::FocusTranscript`]. A routed mouse event is
+    /// as described in the module's Mouse section. Anything else, the raw
+    /// mouse events included, answers nothing.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
+        if let Event::User(UserEvent::Mouse(mouse)) = ev {
+            return self.on_mouse(mouse);
+        }
         let Event::Keyboard(key) = ev else {
             return None;
         };
@@ -457,17 +510,8 @@ impl AppComponent<Msg, UserEvent> for TurnSidebar {
             return None;
         };
         match action {
-            Action::Up | Action::Down => {
-                let direction = if action == Action::Up {
-                    Direction::Up
-                } else {
-                    Direction::Down
-                };
-                match self.perform(Cmd::Move(direction)) {
-                    CmdResult::Changed(_) => self.selected_msg(Msg::TurnSelected),
-                    _ => None,
-                }
-            }
+            Action::Up => self.moved(Direction::Up),
+            Action::Down => self.moved(Direction::Down),
             Action::Open => match self.perform(Cmd::Submit) {
                 CmdResult::Submit(_) => self.selected_msg(Msg::OpenTurn),
                 _ => None,

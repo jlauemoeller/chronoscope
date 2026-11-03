@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ratatui::buffer::Buffer;
+use ratatui::layout::Size;
 use ratatui::style::{Color, Modifier};
 
 use super::fixtures::*;
@@ -978,7 +979,7 @@ fn the_pane_keys_ask_for_the_transcripts_focus_and_leave_the_selection() {
 }
 
 #[test]
-fn the_other_keys_do_nothing_and_neither_does_the_mouse() {
+fn the_other_keys_do_nothing_and_neither_does_a_raw_mouse_event() {
     use tuirealm::event::{Key, MouseEvent, MouseEventKind};
     let mut sidebar = selected(2, true);
     for event in [
@@ -995,13 +996,23 @@ fn the_other_keys_do_nothing_and_neither_does_the_mouse() {
     ] {
         assert_eq!(sidebar.on(&event), None, "{event:?}");
     }
-    let click = Event::Mouse(MouseEvent {
-        kind: MouseEventKind::Down(tuirealm::event::MouseButton::Left),
-        modifiers: tuirealm::event::KeyModifiers::NONE,
-        column: 3,
-        row: 6,
-    });
-    assert_eq!(sidebar.on(&click), None);
+    // Raw mouse events (screen coordinates, for the focused component) are
+    // not the `App`'s routed ones: they do nothing, wherever they land.
+    for kind in [
+        MouseEventKind::Down(tuirealm::event::MouseButton::Left),
+        MouseEventKind::ScrollDown,
+        MouseEventKind::ScrollUp,
+    ] {
+        for (column, row) in [(3, 6), (10, 5), (10, 3), (1, 1)] {
+            let raw = Event::Mouse(MouseEvent {
+                kind,
+                modifiers: tuirealm::event::KeyModifiers::NONE,
+                column,
+                row,
+            });
+            assert_eq!(sidebar.on(&raw), None, "{kind:?} at ({column}, {row})");
+        }
+    }
     assert_eq!(sidebar.on(&Event::Tick), None);
     assert_eq!(sidebar.selected_entry(), Some(2));
 }
@@ -1316,4 +1327,233 @@ fn a_restored_selection_scrolls_the_least_needed_and_covers_nest() {
         18,
         "row 22 on the last of 5 visible rows"
     );
+}
+
+// -- the mouse
+
+mod mouse {
+    use tuirealm::event::{MouseButton, MouseEventKind};
+
+    use super::*;
+
+    /// The size of the pane the events are routed in: 30 x 14 shows ten list
+    /// rows (rows 3..13 of the pane).
+    const PANE: Size = Size::new(30, 14);
+
+    fn routed(kind: MouseEventKind, column: u16, row: u16, area: Size) -> Event<UserEvent> {
+        Event::User(UserEvent::Mouse(RoutedMouse {
+            kind,
+            column,
+            row,
+            area,
+        }))
+    }
+
+    fn press(column: u16, row: u16) -> Event<UserEvent> {
+        routed(MouseEventKind::Down(MouseButton::Left), column, row, PANE)
+    }
+
+    fn wheel(down: bool) -> Event<UserEvent> {
+        let kind = if down {
+            MouseEventKind::ScrollDown
+        } else {
+            MouseEventKind::ScrollUp
+        };
+        routed(kind, 10, 5, PANE)
+    }
+
+    /// The wireframe's list rows: 0 Start, 1 |, 2 u1, 3 |, 4 a1, 5 |, 6 u2,
+    /// 7 |, 8 a2, 9 blank, 10 c1, 11 blank, 12 a3, 13 |, 14 End.
+    fn clicked(turn: &str) -> Option<Msg> {
+        Some(Msg::TurnClicked(id(turn)))
+    }
+
+    #[test]
+    fn a_left_press_on_an_entrys_row_names_its_turn_wherever_in_the_row() {
+        let mut sidebar = sidebar_of(&wireframe());
+        // The list starts at pane row 3 and has no offset: the entries are on
+        // rows 5, 7, 9 and 11 (list rows 2, 4, 6 and 8).
+        for column in [1, 2, 3, 7, 15, 28] {
+            assert_eq!(sidebar.on(&press(column, 5)), clicked("u1"), "{column}");
+        }
+        assert_eq!(sidebar.on(&press(10, 7)), clicked("a1"));
+        assert_eq!(sidebar.on(&press(10, 9)), clicked("u2"));
+        assert_eq!(sidebar.on(&press(10, 11)), clicked("a2"));
+        // The pane does not move its selection: the `App` decides.
+        assert_eq!(sidebar.selected_entry(), None);
+    }
+
+    #[test]
+    fn a_press_elsewhere_in_the_pane_answers_nothing() {
+        let mut sidebar = sidebar_of(&wireframe());
+        let nothing = [
+            (10, 0, "top border"),
+            (10, 1, "first blank row"),
+            (10, 2, "second blank row"),
+            (10, 3, "Start"),
+            (10, 4, "connector"),
+            (10, 6, "connector"),
+            (0, 5, "left border"),
+            (29, 5, "right border"),
+            (10, 13, "the bottom border"),
+            (10, 100, "far below"),
+        ];
+        for (column, row, what) in nothing {
+            assert_eq!(sidebar.on(&press(column, row)), None, "{what}");
+        }
+        // The bottom border of a pane that shows all the rows.
+        let tall = Size::new(30, 40);
+        let bottom = routed(MouseEventKind::Down(MouseButton::Left), 10, 39, tall);
+        assert_eq!(sidebar.on(&bottom), None);
+        // `End` and the row above it.
+        let end = routed(MouseEventKind::Down(MouseButton::Left), 10, 3 + 14, tall);
+        assert_eq!(sidebar.on(&end), None, "End");
+        let above = routed(MouseEventKind::Down(MouseButton::Left), 10, 3 + 13, tall);
+        assert_eq!(sidebar.on(&above), None, "the connector above End");
+        let entry = routed(MouseEventKind::Down(MouseButton::Left), 10, 3 + 12, tall);
+        assert_eq!(sidebar.on(&entry), clicked("a3"));
+    }
+
+    #[test]
+    fn a_blank_row_next_to_a_compaction_is_not_an_entry_and_the_compaction_is() {
+        let mut sidebar = sidebar_of(&wireframe());
+        let tall = Size::new(30, 40);
+        let at = |row: u16| routed(MouseEventKind::Down(MouseButton::Left), 10, 3 + row, tall);
+        assert_eq!(sidebar.on(&at(9)), None, "blank above the Compaction");
+        assert_eq!(sidebar.on(&at(10)), clicked("c1"));
+        assert_eq!(sidebar.on(&at(11)), None, "blank below the Compaction");
+    }
+
+    #[test]
+    fn the_other_buttons_and_mouse_events_answer_nothing() {
+        let mut sidebar = sidebar_of(&wireframe());
+        for kind in [
+            MouseEventKind::Down(MouseButton::Right),
+            MouseEventKind::Down(MouseButton::Middle),
+            MouseEventKind::Up(MouseButton::Left),
+            MouseEventKind::Drag(MouseButton::Left),
+            MouseEventKind::Moved,
+            MouseEventKind::ScrollLeft,
+            MouseEventKind::ScrollRight,
+        ] {
+            assert_eq!(sidebar.on(&routed(kind, 10, 5, PANE)), None, "{kind:?}");
+        }
+        assert_eq!(sidebar.selected_entry(), None);
+    }
+
+    #[test]
+    fn a_row_is_found_by_the_scroll_offset() {
+        // Ten rows are shown in a pane of 14; selecting entry 20 of a long
+        // list scrolls it.
+        let turns = long_session(30);
+        let mut sidebar = sidebar_of(&turns).with_selected(Some(20));
+        let offset = sidebar.offset(PANE.height);
+        assert!(offset > 0, "the list is scrolled");
+        // Entry `e` is on list row `2 (e + 1)`, at pane row `3 + row - offset`.
+        let pane_row =
+            |entry: usize| u16::try_from(3 + TurnRows::row_of_entry(entry) - offset).unwrap();
+        for entry in [18, 19, 20] {
+            assert_eq!(
+                sidebar.on(&press(10, pane_row(entry))),
+                Some(Msg::TurnClicked(
+                    sidebar.rows().entry(entry).unwrap().0.clone()
+                )),
+                "entry {entry}"
+            );
+        }
+        // The connector between two of them is not an entry.
+        assert_eq!(sidebar.on(&press(10, pane_row(19) + 1)), None);
+        assert_eq!(sidebar.on(&press(10, pane_row(19) - 1)), None);
+        // And the rows that are scrolled away are not under the pointer.
+        assert_eq!(sidebar.selected_entry(), Some(20));
+    }
+
+    #[test]
+    fn the_pane_row_of_the_first_list_row_is_the_fourth() {
+        // `Start` is list row 0 at pane row 3, the first entry two rows
+        // below, whatever the pane's height.
+        for height in [8, 12, 40] {
+            let mut sidebar = sidebar_of(&wireframe());
+            let size = Size::new(30, height);
+            let press = |row| routed(MouseEventKind::Down(MouseButton::Left), 10, row, size);
+            assert_eq!(sidebar.on(&press(3)), None, "{height}: Start");
+            assert_eq!(sidebar.on(&press(4)), None, "{height}: connector");
+            let shown = height.saturating_sub(4);
+            let first = sidebar.on(&press(5));
+            if shown >= 3 {
+                assert_eq!(first, clicked("u1"), "{height}");
+            } else {
+                assert_eq!(first, None, "{height}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_pane_too_small_to_show_a_row_gives_no_click() {
+        let mut sidebar = sidebar_of(&wireframe());
+        for size in [
+            Size::new(0, 0),
+            Size::new(2, 10),
+            Size::new(30, 4),
+            Size::new(1, 1),
+        ] {
+            for (column, row) in [(0, 0), (1, 3), (1, 5), (5, 5)] {
+                let event = routed(MouseEventKind::Down(MouseButton::Left), column, row, size);
+                assert_eq!(sidebar.on(&event), None, "{size:?} ({column}, {row})");
+            }
+        }
+    }
+
+    #[test]
+    fn the_wheel_selects_the_next_and_previous_entry_like_the_keys() {
+        let mut sidebar = selected(1, false);
+        assert_eq!(
+            sidebar.on(&wheel(true)),
+            Some(Msg::TurnSelected(turn_of(2)))
+        );
+        assert_eq!(sidebar.selected_entry(), Some(2));
+        assert_eq!(
+            sidebar.on(&wheel(true)),
+            Some(Msg::TurnSelected(turn_of(3)))
+        );
+        assert_eq!(
+            sidebar.on(&wheel(false)),
+            Some(Msg::TurnSelected(turn_of(2)))
+        );
+        assert_eq!(sidebar.selected_entry(), Some(2));
+        // It does not need the focus, and does not take it.
+        assert_eq!(
+            sidebar.query(Attribute::Focus).map(|q| q.into_attr()),
+            Some(AttrValue::Flag(false))
+        );
+    }
+
+    #[test]
+    fn the_wheel_selects_the_first_entry_when_nothing_is_selected() {
+        for down in [true, false] {
+            let mut sidebar = sidebar_of(&wireframe());
+            assert_eq!(
+                sidebar.on(&wheel(down)),
+                Some(Msg::TurnSelected(turn_of(0)))
+            );
+        }
+    }
+
+    #[test]
+    fn the_wheel_does_not_wrap_around() {
+        let mut sidebar = selected(0, false);
+        assert_eq!(sidebar.on(&wheel(false)), None);
+        assert_eq!(sidebar.selected_entry(), Some(0));
+        let last = sidebar.rows().entry_count() - 1;
+        let mut sidebar = selected(last, false);
+        assert_eq!(sidebar.on(&wheel(true)), None);
+        assert_eq!(sidebar.selected_entry(), Some(last));
+    }
+
+    #[test]
+    fn the_wheel_over_an_empty_list_answers_nothing() {
+        let mut sidebar = sidebar_of(&[]);
+        assert_eq!(sidebar.on(&wheel(true)), None);
+        assert_eq!(sidebar.on(&wheel(false)), None);
+    }
 }

@@ -77,7 +77,7 @@ const SIDEBAR_HINTS: &str = "ENTER to go to block | TAB to switch to transcript"
 
 impl Rig {
     /// Presses `1` and waits until the sidebar has the focus.
-    fn focus_sidebar(&mut self) {
+    pub(super) fn focus_sidebar(&mut self) {
         self.press(Key::Char('1'));
         self.pump_until(|app| app.application().focus() == Some(&Id::TurnSidebar));
     }
@@ -89,7 +89,7 @@ impl Rig {
     }
 
     /// Presses `j` `n` times, each time waiting for the sidebar's selection.
-    fn select_down(&mut self, n: usize) {
+    pub(super) fn select_down(&mut self, n: usize) {
         for _ in 0..n {
             let before = sidebar_entry(&self.app);
             self.press(Key::Char('j'));
@@ -143,7 +143,7 @@ fn first_transcript_row(rig: &mut Rig, width: u16, height: u16) -> String {
 /// A prompt whose text renders no rows (a link reference definition): the
 /// sidebar lists an entry for the turn, but the transcript has nothing to
 /// select in it.
-fn hidden(id: &str) -> Arc<Turn> {
+pub(super) fn hidden(id: &str) -> Arc<Turn> {
     arc(prompt(id, "[//]: # (nothing to see here)"))
 }
 

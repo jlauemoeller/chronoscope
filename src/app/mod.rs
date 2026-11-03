@@ -264,6 +264,10 @@ pub enum Msg {
     /// A key in the turns sidebar selected the entry of this turn: scroll the
     /// transcript to its block.
     TurnSelected(TurnId),
+    /// A left press on the entry of this turn in the turns sidebar (routed
+    /// by the `App`): focus the sidebar, select the entry and scroll the
+    /// transcript to its block; a double-click does what `Enter` does.
+    TurnClicked(TurnId),
     /// `Enter` in the turns sidebar on the entry of this turn: scroll the
     /// transcript to its block and focus it.
     OpenTurn(TurnId),
@@ -756,6 +760,7 @@ impl App {
             Msg::FocusTranscript => self.focus_transcript_from_sidebar(),
             Msg::TurnSelected(id) => self.go_to_turn(&id, false),
             Msg::OpenTurn(id) => self.go_to_turn(&id, true),
+            Msg::TurnClicked(id) => self.turn_clicked(id),
             Msg::Mouse(event) => self.mouse(event),
         }
         // Any message may have moved the transcript's selection, or the focus.
