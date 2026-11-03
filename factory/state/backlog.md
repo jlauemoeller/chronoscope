@@ -13,6 +13,6 @@
 | 009-opencode-detail-sources | Complete |
 | 010-turn-sidebar-pane | Complete |
 | 011-sidebar-follows-transcript | Complete |
-| 012-turn-sidebar-keys | In progress |
+| 012-turn-sidebar-keys | Complete |
 | 013-turn-sidebar-mouse | Planned |
 | 014-cycle-two-docs | Planned |
