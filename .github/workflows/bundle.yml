@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       # Build the exact commit that went green, not whatever main points at now.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
@@ -41,7 +41,7 @@ jobs:
       - name: Build .deb and .rpm packages
         run: scripts/package.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: chronoscope-${{ github.event.workflow_run.head_sha || github.sha }}
           path: |
