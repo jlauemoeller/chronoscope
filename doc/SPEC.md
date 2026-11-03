@@ -822,7 +822,7 @@ Target: sessions up to **~100 MB** stay smooth.
 ### 9.3 CI & releases
 
 - Hosted on GitHub.
-- CI: a GitHub Actions matrix of `ubuntu-latest` and `macos-latest` runs `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test`.
+- CI: GitHub Actions runs `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test` on `ubuntu-latest`, and separately on `macos-latest`. Only the Linux result gates test bundles and releases, because macOS runners are often unavailable; a release without a macOS result has no macOS files.
 - Releases: tagged builds run CI, then produce binaries for x86_64 Linux and aarch64/x86_64 macOS, plus `.deb` and `.rpm` packages for Linux, and attach them to a draft release (see `doc/releasing.md`).
 
 ### 9.4 Terminal environment

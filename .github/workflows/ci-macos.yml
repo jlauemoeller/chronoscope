@@ -1,0 +1,19 @@
+name: CI (macOS)
+
+# The checks in ci.yml, run on macOS in a workflow of their own. GitHub's macOS
+# runners are often short of capacity: a job can queue for 15 minutes and then be
+# cancelled without having started. As a separate workflow, this can fail without
+# failing CI, so Bundle neither waits for it nor is skipped because of it. A
+# failure still shows as a red run of this workflow.
+
+on:
+  # Branches only: for a tag, release.yml runs these checks itself.
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+    with:
+      os: macos-latest

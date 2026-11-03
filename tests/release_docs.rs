@@ -390,36 +390,88 @@ fn release_workflow_builds_and_uploads_all_three_targets_on_version_tags() {
     assert!(on["push"].get("branches").is_none(), "no branch trigger");
     assert_eq!(on.as_mapping().unwrap().len(), 1, "only the push trigger");
 
-    let build = &workflow["jobs"]["build"];
-    assert_eq!(build["needs"].as_str(), Some("ci"));
-    let mut targets: Vec<&str> = build["strategy"]["matrix"]["include"]
-        .as_sequence()
-        .expect("matrix.include")
-        .iter()
-        .map(|entry| entry["target"].as_str().expect("target"))
-        .collect();
-    targets.sort_unstable();
+    let linux = &workflow["jobs"]["build-linux"];
+    let macos = &workflow["jobs"]["build-macos"];
+    assert_eq!(linux["needs"].as_str(), Some("ci"));
+    assert_eq!(macos["needs"].as_str(), Some("ci-macos"));
     assert_eq!(
-        targets,
-        [
-            "aarch64-apple-darwin",
-            "x86_64-apple-darwin",
-            "x86_64-unknown-linux-gnu",
-        ]
+        linux["env"]["TARGET"].as_str(),
+        Some("x86_64-unknown-linux-gnu")
+    );
+    let macos_targets: Vec<&str> = macos["strategy"]["matrix"]["target"]
+        .as_sequence()
+        .expect("matrix.target")
+        .iter()
+        .filter_map(|target| target.as_str())
+        .collect();
+    assert_eq!(
+        macos_targets,
+        ["aarch64-apple-darwin", "x86_64-apple-darwin"]
     );
 
-    let steps = serde_yaml_ng::to_string(&build["steps"]).unwrap();
-    assert!(steps.contains("cargo build --release --locked --target"));
-    assert!(steps.contains("README.md THIRD-PARTY-NOTICES.md"));
-    assert!(steps.contains(".tar.gz") && steps.contains(".deb") && steps.contains(".rpm"));
-    assert!(steps.contains("actions/upload-artifact"));
+    for build in [linux, macos] {
+        let steps = serde_yaml_ng::to_string(&build["steps"]).unwrap();
+        assert!(steps.contains("cargo build --release --locked --target"));
+        assert!(steps.contains("README.md THIRD-PARTY-NOTICES.md"));
+        assert!(steps.contains(".tar.gz"));
+        assert!(steps.contains("actions/upload-artifact"));
+    }
+    let steps = serde_yaml_ng::to_string(&linux["steps"]).unwrap();
+    assert!(steps.contains(".deb") && steps.contains(".rpm"));
 
     let release = &workflow["jobs"]["release"];
-    assert_eq!(release["needs"].as_str(), Some("build"));
+    let needs: Vec<&str> = release["needs"]
+        .as_sequence()
+        .expect("release.needs")
+        .iter()
+        .filter_map(|job| job.as_str())
+        .collect();
+    assert_eq!(needs, ["build-linux", "build-macos"]);
+    assert_eq!(
+        release["if"].as_str(),
+        Some("always() && needs.build-linux.result == 'success'"),
+        "a macOS job that fails or gets no runner must not stop the release"
+    );
     assert_eq!(release["permissions"]["contents"].as_str(), Some("write"));
     let steps = serde_yaml_ng::to_string(&release["steps"]).unwrap();
     assert!(steps.contains("gh release upload"));
     assert!(steps.contains("--draft"));
+}
+
+#[test]
+fn the_macos_checks_are_a_workflow_that_bundle_does_not_wait_for() {
+    let parse = |path: &str| -> serde_yaml_ng::Value {
+        serde_yaml_ng::from_str(&read(path)).expect("valid YAML")
+    };
+
+    let ci = parse(".github/workflows/ci.yml");
+    assert_eq!(ci["name"].as_str(), Some("CI"));
+    assert_eq!(
+        ci["jobs"]["check"]["runs-on"].as_str(),
+        Some("${{ inputs.os || 'ubuntu-latest' }}")
+    );
+    assert!(
+        ci["jobs"]["check"].get("strategy").is_none(),
+        "CI itself must only run on Linux"
+    );
+
+    let macos = parse(".github/workflows/ci-macos.yml");
+    let check = &macos["jobs"]["check"];
+    assert_eq!(check["uses"].as_str(), Some("./.github/workflows/ci.yml"));
+    assert_eq!(check["with"]["os"].as_str(), Some("macos-latest"));
+
+    let bundle = parse(".github/workflows/bundle.yml");
+    let on = bundle
+        .get("on")
+        .or_else(|| bundle.get(serde_yaml_ng::Value::Bool(true)))
+        .expect("an `on` trigger");
+    let watched: Vec<&str> = on["workflow_run"]["workflows"]
+        .as_sequence()
+        .expect("workflow_run.workflows")
+        .iter()
+        .filter_map(|name| name.as_str())
+        .collect();
+    assert_eq!(watched, ["CI"]);
 }
 
 #[test]

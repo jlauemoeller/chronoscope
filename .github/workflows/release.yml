@@ -8,6 +8,11 @@ name: Release
 # so that the binary needs only glibc 2.35. There is deliberately no build
 # cache: release builds are rare, and a cache written by another ref should not
 # flow into the published binaries.
+#
+# Linux decides whether there is a release. macOS only decides whether it has
+# macOS files, because GitHub's macOS runners are often short of capacity (see
+# ci-macos.yml). Without them the draft is still created, this run shows as
+# failed, and re-running the failed jobs adds the files to the draft.
 
 on:
   push:
@@ -40,20 +45,62 @@ jobs:
     needs: version
     uses: ./.github/workflows/ci.yml
 
-  build:
-    name: build (${{ matrix.target }})
+  ci-macos:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      os: macos-latest
+
+  build-linux:
+    name: build (x86_64-unknown-linux-gnu)
     needs: ci
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Build
+        run: cargo build --release --locked --target "${TARGET}"
+
+      - uses: ./.github/actions/packaging-tools
+
+      - name: Build .deb and .rpm packages
+        run: scripts/package.sh "${TARGET}"
+
+      - name: Package
+        run: |
+          name="chronoscope-${GITHUB_REF_NAME}-${TARGET}"
+          mkdir -p "dist/${name}"
+          cp "target/${TARGET}/release/chronoscope" "dist/${name}/"
+          cp README.md THIRD-PARTY-NOTICES.md LICENSE "dist/${name}/"
+          cp "target/${TARGET}/debian/"*.deb "target/${TARGET}/generate-rpm/"*.rpm dist/
+          cd dist
+          tar -czf "${name}.tar.gz" "${name}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TARGET }}
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+
+  build-macos:
+    name: build (${{ matrix.target }})
+    needs: ci-macos
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    env:
+      TARGET: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,43 +109,30 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build
-        run: cargo build --release --locked --target "${{ matrix.target }}"
-
-      - if: runner.os == 'Linux'
-        uses: ./.github/actions/packaging-tools
-
-      - name: Build .deb and .rpm packages
-        if: runner.os == 'Linux'
-        env:
-          TARGET: ${{ matrix.target }}
-        run: scripts/package.sh "${TARGET}"
+        run: cargo build --release --locked --target "${TARGET}"
 
       - name: Package
-        env:
-          TARGET: ${{ matrix.target }}
         run: |
           name="chronoscope-${GITHUB_REF_NAME}-${TARGET}"
           mkdir -p "dist/${name}"
           cp "target/${TARGET}/release/chronoscope" "dist/${name}/"
           cp README.md THIRD-PARTY-NOTICES.md LICENSE "dist/${name}/"
-          if [ "${RUNNER_OS}" = "Linux" ]; then
-            cp "target/${TARGET}/debian/"*.deb "target/${TARGET}/generate-rpm/"*.rpm dist/
-          fi
           cd dist
           tar -czf "${name}.tar.gz" "${name}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: |
-            dist/*.tar.gz
-            dist/*.deb
-            dist/*.rpm
+          path: dist/*.tar.gz
           if-no-files-found: error
 
   release:
     name: upload to the GitHub release
-    needs: build
+    # build-macos is listed although it may fail, so that re-running it also
+    # re-runs this job, which adds its files to the release. Only `always()`
+    # lets this job run after a macOS job was cancelled for lack of a runner.
+    needs: [build-linux, build-macos]
+    if: always() && needs.build-linux.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -107,6 +141,10 @@ jobs:
         with:
           path: assets
           merge-multiple: true
+
+      - name: Warn that macOS files are missing
+        if: needs.build-macos.result != 'success'
+        run: echo "::warning title=macOS files missing::Some macOS jobs did not succeed. Re-run the failed jobs to add their files to the release; see doc/releasing.md."
 
       - name: Create a draft release if needed and upload the files
         env:

@@ -60,13 +60,17 @@ is what starts the release.
 
 ### 6. Wait for the Release workflow
 
-Follow it in the **Actions** tab of the repository. It runs these jobs in order,
-and a failure stops the jobs after it:
+Follow it in the **Actions** tab of the repository. It runs these jobs in order:
 
 1. Compare the tag with the version in `Cargo.toml`.
-2. Run the full CI workflow (formatting, clippy, tests) on Linux and macOS.
-3. Build for every platform.
+2. Run the CI checks (formatting, clippy, tests) on Linux and on macOS.
+3. Build for each platform whose checks passed.
 4. Create the draft release and upload the files.
+
+A Linux failure stops the release. A macOS failure only leaves out the macOS
+files: the draft is still created, and the run shows as failed. GitHub's macOS
+runners are often short of capacity, so a job may queue for 15 minutes and then
+be cancelled.
 
 ### 7. Check the draft and publish it
 
@@ -79,6 +83,9 @@ Open the **Releases** page of the repository. The draft should have these files:
 | `chronoscope-v0.2.0-x86_64-unknown-linux-gnu.tar.gz` | Other Linux |
 | `chronoscope-v0.2.0-aarch64-apple-darwin.tar.gz` | macOS, Apple silicon |
 | `chronoscope-v0.2.0-x86_64-apple-darwin.tar.gz` | macOS, Intel |
+
+If a macOS file is missing, see [If something goes wrong](#if-something-goes-wrong)
+before you publish.
 
 Download a package and try it:
 
@@ -94,6 +101,17 @@ release**.
 
 **A job failed for a passing reason, such as a network error.** Open the run in
 the Actions tab and choose **Re-run failed jobs**. You don't need a new tag.
+
+**The macOS files are missing from the draft.** Open the run and look at the
+macOS job that failed:
+
+- `The job was not acquired by Runner` means GitHub had no machine free. Choose
+  **Re-run failed jobs**, which adds the files to the existing draft. If it keeps
+  happening, try again later, or publish without the macOS files and re-run the
+  jobs afterwards, which adds them to the published release.
+- A failing test or build step is a real problem in the macOS code. Fix it and
+  start again as described next, or publish for Linux only and fix it in the
+  next version.
 
 **The tag is wrong, or a job found a real problem, and the release is not
 published yet.** Remove the tag, and the draft if there is one, and start again
@@ -132,10 +150,11 @@ again. If the candidate needs fixing, use `0.2.0-rc.2` next.
 
 ## Test builds between releases
 
-For every commit on `main` that passes CI, the Bundle workflow builds the `.deb`
-and `.rpm` and keeps them as artifacts. You'll find them on that workflow's run
-in the Actions tab, inside a zip file. `scripts/package.sh` builds the same
-packages locally.
+For every commit on `main` that passes the `CI` workflow, which checks Linux, the
+Bundle workflow builds the `.deb` and `.rpm` and keeps them as artifacts. You'll
+find them on that workflow's run in the Actions tab, inside a zip file.
+`scripts/package.sh` builds the same packages locally. The separate `CI (macOS)`
+workflow has no effect on these builds.
 
 These builds all carry the version from `Cargo.toml`, as does a local build. If
 that version is already installed, `dnf install` reports `Nothing to do` and

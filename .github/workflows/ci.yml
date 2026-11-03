@@ -1,23 +1,27 @@
 name: CI
 
+# Checks a commit on Linux. ci-macos.yml calls this workflow to run the same
+# checks on macOS, and explains why that is separate.
+
 on:
   # Branches only: for a tag, release.yml runs this workflow itself.
   push:
     branches: ["**"]
   pull_request:
   workflow_call:
+    inputs:
+      os:
+        description: The runner to check on, if not Linux.
+        type: string
+        required: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   check:
-    name: check (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    name: check (${{ inputs.os || 'ubuntu-latest' }})
+    runs-on: ${{ inputs.os || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
