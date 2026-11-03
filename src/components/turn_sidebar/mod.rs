@@ -20,7 +20,18 @@
 //!
 //! The pane paints its own area only; the column after it is `SidebarGap`'s.
 //!
-//! The pane cannot take focus yet: it handles no keys and no mouse.
+//! # Keys
+//!
+//! `on` resolves a key with the shared [`Keymap`] for the `turns` context.
+//! `Up` / `Down` are `Cmd::Move`s that `perform` handles: they select the
+//! previous or next entry (the first one when nothing is selected, never
+//! wrapping) and answer [`Msg::TurnSelected`] with the turn's id; at either
+//! end, or on an empty list, they answer nothing. `Open` answers
+//! [`Msg::OpenTurn`] for the selected turn, and the pane keys
+//! [`Msg::FocusTranscript`]. Which component has focus is the `App`'s to
+//! decide; the pane only draws it (`Attribute::Focus`).
+//!
+//! The pane takes no mouse yet.
 
 mod line;
 mod rows;
@@ -38,7 +49,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Paragraph};
-use tuirealm::command::{Cmd, CmdResult};
+use tuirealm::command::{Cmd, CmdResult, Direction};
 use tuirealm::component::{AppComponent, Component};
 use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
@@ -52,6 +63,7 @@ use super::{
     payload_value, selected_from_value, selected_value, theme_from_value, theme_value,
 };
 use crate::app::{Msg, UserEvent};
+use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
 use crate::model::{ModelUpdate, TurnId};
 use crate::theme::{Role, Theme};
 
@@ -68,7 +80,7 @@ pub const SELECTED_TURN_ATTR: Attribute = Attribute::Custom("selected_turn");
 /// selection and offset back, so the pane is as it was left).
 pub const COVER_ATTR: Attribute = Attribute::Custom("sidebar_cover");
 /// The label of the key that focuses the pane, shown in its title (a
-/// string).
+/// string; empty when the action has no key: the title is then just `Turns`).
 pub const KEY_LABEL_ATTR: Attribute = Attribute::Custom("sidebar_key");
 
 /// The key label the title shows until another is set.
@@ -98,6 +110,10 @@ pub struct TurnSidebar {
     theme: Theme,
     focused: bool,
     key_label: String,
+    /// The key bindings of the `turns` context.
+    keymap: Keymap,
+    /// Resolves keys; remembers the first key of a chord.
+    resolver: KeyResolver,
     rows: TurnRows,
     /// The selected turn. It always has an entry.
     selected: Option<TurnId>,
@@ -119,6 +135,8 @@ impl TurnSidebar {
             theme,
             focused: false,
             key_label: DEFAULT_KEY_LABEL.to_owned(),
+            keymap: Keymap::default(),
+            resolver: KeyResolver::new(Context::Turns),
             rows: TurnRows::default(),
             selected: None,
             cursor: ListCursor::default(),
@@ -140,6 +158,14 @@ impl TurnSidebar {
     #[must_use]
     pub fn key_label(mut self, label: impl Into<String>) -> Self {
         self.key_label = label.into();
+        self
+    }
+
+    /// Sets the keymap keys are resolved with (default: the built-in one).
+    #[must_use]
+    pub fn keymap(mut self, keymap: Keymap) -> Self {
+        self.keymap = keymap;
+        self.resolver.reset();
         self
     }
 
@@ -217,6 +243,22 @@ impl TurnSidebar {
             self.selected = Some(id.clone());
             self.sync();
         }
+    }
+
+    /// Selects the previous or next entry (`down`): the first when nothing is
+    /// selected, in either direction. It never wraps, so at the first or last
+    /// entry, or on an empty list, nothing changes. `Changed` when the
+    /// selection moved.
+    fn step(&mut self, down: bool) -> CmdResult {
+        let entries = self.rows.entry_count();
+        let next = match (self.selected_entry(), down) {
+            (None, _) if entries > 0 => 0,
+            (Some(entry), true) if entry + 1 < entries => entry + 1,
+            (Some(entry), false) if entry > 0 => entry - 1,
+            _ => return CmdResult::NoChange,
+        };
+        self.select(Some(next));
+        CmdResult::Changed(Component::state(self))
     }
 
     /// Applies a model update: `Appended`, `Updated` and `Reset` change the
@@ -300,7 +342,11 @@ impl Component for TurnSidebar {
             return;
         }
         self.paint_background(frame, area);
-        let title = format!("[{}] Turns ", self.key_label);
+        let title = if self.key_label.is_empty() {
+            "Turns ".to_owned()
+        } else {
+            format!("[{}] Turns ", self.key_label)
+        };
         frame.render_widget(
             titled_block(&self.theme, &title, border_role(self.focused)),
             area,
@@ -373,15 +419,63 @@ impl Component for TurnSidebar {
             .map_or(State::None, |e| State::Single(StateValue::Usize(e)))
     }
 
-    /// The pane handles no `Cmd` yet.
+    /// `Move(Up)` and `Move(Down)` select the previous and next entry:
+    /// `Changed` with the new state when the selection moved, else
+    /// `NoChange`. `Submit` is `Submit` with the state of the selected entry
+    /// (`NoChange` with none).
     fn perform(&mut self, cmd: Cmd) -> CmdResult {
-        CmdResult::Invalid(cmd)
+        match cmd {
+            Cmd::Move(Direction::Up) => self.step(false),
+            Cmd::Move(Direction::Down) => self.step(true),
+            Cmd::Submit => match self.selected_entry() {
+                Some(entry) => CmdResult::Submit(State::Single(StateValue::Usize(entry))),
+                None => CmdResult::NoChange,
+            },
+            other => CmdResult::Invalid(other),
+        }
+    }
+}
+
+impl TurnSidebar {
+    /// The selected turn as a [`Msg`] built by `msg`.
+    fn selected_msg(&self, msg: fn(TurnId) -> Msg) -> Option<Msg> {
+        self.selected.clone().map(msg)
     }
 }
 
 impl AppComponent<Msg, UserEvent> for TurnSidebar {
-    /// The pane takes no keys and no mouse yet.
-    fn on(&mut self, _ev: &Event<UserEvent>) -> Option<Msg> {
-        None
+    /// Resolves the key in the `turns` context. `Up` / `Down` answer
+    /// [`Msg::TurnSelected`] when the selection moved, `Open`
+    /// [`Msg::OpenTurn`] for the selected turn, and the pane keys and
+    /// `focus_transcript` [`Msg::FocusTranscript`]. Anything else, the mouse
+    /// included, answers nothing.
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
+        let Event::Keyboard(key) = ev else {
+            return None;
+        };
+        let Resolved::Action(action) = self.resolver.feed(&self.keymap, key) else {
+            return None;
+        };
+        match action {
+            Action::Up | Action::Down => {
+                let direction = if action == Action::Up {
+                    Direction::Up
+                } else {
+                    Direction::Down
+                };
+                match self.perform(Cmd::Move(direction)) {
+                    CmdResult::Changed(_) => self.selected_msg(Msg::TurnSelected),
+                    _ => None,
+                }
+            }
+            Action::Open => match self.perform(Cmd::Submit) {
+                CmdResult::Submit(_) => self.selected_msg(Msg::OpenTurn),
+                _ => None,
+            },
+            Action::NextPane | Action::PrevPane | Action::FocusTranscript => {
+                Some(Msg::FocusTranscript)
+            }
+            _ => None,
+        }
     }
 }

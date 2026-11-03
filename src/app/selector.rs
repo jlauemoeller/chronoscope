@@ -1131,16 +1131,11 @@ impl App {
     }
 
     /// Tells the turns sidebar how many list rows its pane shows. A sidebar
-    /// that is hidden (`sidebar` is `None`) cannot keep the focus: it goes to
-    /// the transcript on top.
+    /// that is hidden (`sidebar` is `None`) has nothing to tell; if it has the
+    /// focus, [`release_hidden_sidebar`](App::release_hidden_sidebar) takes it
+    /// away.
     fn push_sidebar_viewport(&mut self, sidebar: Option<ratatui::layout::Rect>) {
         let Some(sidebar) = sidebar else {
-            if self.application.focus() == Some(&Id::TurnSidebar) {
-                let top = self.top_transcript();
-                if let Err(err) = self.application.active(&top) {
-                    log::warn!("could not return the focus to {top:?}: {err}");
-                }
-            }
             return;
         };
         self.set_attr(

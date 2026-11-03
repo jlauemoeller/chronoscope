@@ -18,7 +18,7 @@ use crate::components::{
 // -- what the tests read
 
 /// The entry the sidebar has selected.
-fn sidebar_entry(app: &App) -> Option<usize> {
+pub(super) fn sidebar_entry(app: &App) -> Option<usize> {
     let value = app
         .application()
         .query(&Id::TurnSidebar, SELECTED_ATTR)
@@ -29,7 +29,7 @@ fn sidebar_entry(app: &App) -> Option<usize> {
 }
 
 /// The selected section of the transcript on top.
-fn section(app: &App) -> Option<SectionId> {
+pub(super) fn section(app: &App) -> Option<SectionId> {
     let value = app
         .application()
         .query(&app.top_transcript(), SELECTED_SECTION_ATTR)
@@ -61,7 +61,7 @@ fn marker_row(rig: &mut Rig, width: u16, height: u16) -> Option<usize> {
 
 /// Turns `u0`, `a0`, `u1`, `a1`, …: `pairs` of a prompt and a reply, each a
 /// single section, so that `j` and `]` do the same.
-fn long_turns(pairs: usize) -> Vec<Arc<Turn>> {
+pub(super) fn long_turns(pairs: usize) -> Vec<Arc<Turn>> {
     (0..pairs)
         .flat_map(|i| {
             [
@@ -74,7 +74,7 @@ fn long_turns(pairs: usize) -> Vec<Arc<Turn>> {
 
 impl Rig {
     /// Opens the BRIO session with `turns`, loaded.
-    fn open_turns(&mut self, turns: Vec<Arc<Turn>>) {
+    pub(super) fn open_turns(&mut self, turns: Vec<Arc<Turn>>) {
         self.harness.script(
             BRIO_SESSION,
             vec![
@@ -87,11 +87,11 @@ impl Rig {
         self.open(BRIO_SESSION);
     }
 
-    fn press_ctrl(&self, c: char) {
+    pub(super) fn press_ctrl(&self, c: char) {
         self.key(Key::Char(c), KeyModifiers::CONTROL);
     }
 
-    fn wheel(&mut self, kind: MouseEventKind) {
+    pub(super) fn wheel(&mut self, kind: MouseEventKind) {
         let area = self.app.routing().area(Id::Transcript).unwrap();
         self.app.update(Msg::Mouse(MouseEvent {
             kind,
@@ -102,7 +102,7 @@ impl Rig {
     }
 }
 
-fn long_rig(pairs: usize, width: u16, height: u16) -> Rig {
+pub(super) fn long_rig(pairs: usize, width: u16, height: u16) -> Rig {
     let mut rig = rig_with(theme("default"), width, height);
     rig.open_turns(long_turns(pairs));
     rig

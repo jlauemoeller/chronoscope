@@ -31,7 +31,7 @@ const fn row(
     }
 }
 
-use Context::{Browser, Global, Overlay, Selector};
+use Context::{Browser, Global, Overlay, Selector, Turns};
 
 const APP: &str = "Application";
 const SESSIONS: &str = "Sessions";
@@ -40,6 +40,7 @@ const SECTIONS: &str = "Sections";
 const SEARCH: &str = "Search";
 const SELECTOR: &str = "Session selector";
 const OVERLAYS: &str = "Overlays";
+const TURNS: &str = "Turns sidebar";
 
 pub(super) const DEFAULTS: &[DefaultBinding] = &[
     row(
@@ -308,6 +309,30 @@ pub(super) const DEFAULTS: &[DefaultBinding] = &[
         "Export full session",
     ),
     row(
+        Browser,
+        Action::FocusTurns,
+        "focus_turns",
+        &["1"],
+        TURNS,
+        "Focus turns sidebar",
+    ),
+    row(
+        Browser,
+        Action::NextPane,
+        "next_pane",
+        &["tab"],
+        TURNS,
+        "Next pane",
+    ),
+    row(
+        Browser,
+        Action::PrevPane,
+        "prev_pane",
+        &["shift-tab"],
+        TURNS,
+        "Previous pane",
+    ),
+    row(
         Selector,
         Action::Harness1,
         "harness_1",
@@ -453,4 +478,52 @@ pub(super) const DEFAULTS: &[DefaultBinding] = &[
         "Scroll a page down",
     ),
     row(Overlay, Action::Close, "close", &["esc"], OVERLAYS, "Close"),
+    row(
+        Turns,
+        Action::Up,
+        "up",
+        &["up", "k"],
+        TURNS,
+        "Previous entry",
+    ),
+    row(
+        Turns,
+        Action::Down,
+        "down",
+        &["down", "j"],
+        TURNS,
+        "Next entry",
+    ),
+    row(
+        Turns,
+        Action::Open,
+        "open",
+        &["enter"],
+        TURNS,
+        "Go to block",
+    ),
+    row(
+        Turns,
+        Action::NextPane,
+        "next_pane",
+        &["tab"],
+        TURNS,
+        "Next pane",
+    ),
+    row(
+        Turns,
+        Action::PrevPane,
+        "prev_pane",
+        &["shift-tab"],
+        TURNS,
+        "Previous pane",
+    ),
+    row(
+        Turns,
+        Action::FocusTranscript,
+        "focus_transcript",
+        &["right", "l"],
+        TURNS,
+        "Focus transcript",
+    ),
 ];

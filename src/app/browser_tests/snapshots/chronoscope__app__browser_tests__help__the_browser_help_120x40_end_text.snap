@@ -4,32 +4,32 @@ expression: text
 ---
 ╭─ Project BRIO ──────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
 │                       ╭─ Keybindings ─────────────────────────────────────────────── ↑ more ─╮                       │
-│ /home/user/projects/br│                                                                      │                       │
-│                       │    ENTER / SPACE                     Fold or unfold current section  │                       │
-╰───────────────────────│    Left / h                          Fold current section            │───────────────────────╯
-╭─ [1] Turns  ──────────│    Right / l                         Unfold current section          │ 2026-10-21 08:35:15Z ─╮
-│                       │    -                                 Fold all sections               │                       │
-│                       │    + / =                             Unfold all sections             │a USB. It works fine   │
-│  ●   Start            │    s                                 Show or hide system content     │ss settings that…      │
-│  │                    │    y                                 Copy section as displayed       │                       │
-│  >   User             │    Y                                 Copy full section               │───────────────────────╯
-│  │                    │    w / Ctrl-s                        Save section as displayed       │ 2026-10-21 08:35:18Z ─╮
-│  ●   Assistant      5m│    W                                 Save full section               │                       │
-│  │                    │    i                                 Show section details            │                       │
-│  ●   User             │                                                                      │                       │
-│  │                    │  Search                                                              │                       │
-│  ●   Assistant      5m│                                                                      │                       │
-│                       │    /                                 Search transcript               │                       │
-│  ═══ Compaction ══════│    n                                 Next match                      │                       │
-│                       │    N                                 Previous match                  │                       │
-│  ●   User             │    ESC                               Clear search                    │lsusb.                 │
+│ /home/user/projects/br│    W                                 Save full section               │                       │
+│                       │    i                                 Show section details            │                       │
+╰───────────────────────│                                                                      │───────────────────────╯
+╭─ [1] Turns  ──────────│  Search                                                              │ 2026-10-21 08:35:15Z ─╮
+│                       │                                                                      │                       │
+│                       │    /                                 Search transcript               │a USB. It works fine   │
+│  ●   Start            │    n                                 Next match                      │ss settings that…      │
+│  │                    │    N                                 Previous match                  │                       │
+│  >   User             │    ESC                               Clear search                    │───────────────────────╯
+│  │                    │                                                                      │ 2026-10-21 08:35:18Z ─╮
+│  ●   Assistant      5m│  Sessions                                                            │                       │
 │  │                    │                                                                      │                       │
-│  ●   Assistant        │  Sessions                                                            │                       │
-│  │                    │                                                                      │                       │
-│  ●   Assistant        │    a                                 Open subagent transcript        │                       │
+│  ●   User             │    a                                 Open subagent transcript        │                       │
 │  │                    │    Backspace                         Back to parent session          │                       │
-│  ●   End              │    R                                 Resume in harness               │                       │
+│  ●   Assistant      5m│    R                                 Resume in harness               │                       │
 │                       │    Ctrl-o                            Open another session            │                       │
+│  ═══ Compaction ══════│                                                                      │                       │
+│                       │  Turns sidebar                                                       │                       │
+│  ●   User             │                                                                      │lsusb.                 │
+│  │                    │    1                                 Focus turns sidebar             │                       │
+│  ●   Assistant        │    TAB                               Next pane                       │                       │
+│  │                    │    Shift-TAB                         Previous pane                   │                       │
+│  ●   Assistant        │    Up / k                            Previous entry                  │                       │
+│  │                    │    Down / j                          Next entry                      │                       │
+│  ●   End              │    ENTER                             Go to block                     │                       │
+│                       │    Right / l                         Focus transcript                │                       │
 │                       │                                                                      │                       │
 │                       │  Application                                                         │                       │
 │                       │                                                                      │───────────────────────╯

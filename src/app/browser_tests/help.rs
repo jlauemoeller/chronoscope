@@ -9,7 +9,7 @@ use crate::keymap::Keymap;
 
 impl Rig {
     /// Presses `?` and waits until the overlay is up.
-    fn open_help(&mut self) {
+    pub(super) fn open_help(&mut self) {
         self.press(Key::Char('?'));
         self.pump_until(|app| app.application().mounted(&Id::HelpOverlay));
     }
@@ -253,7 +253,10 @@ fn the_interior_follows_the_overlay_and_the_terminal_size() {
     rig.app.update(Msg::Resized(80, 24));
     assert_eq!(interior(&rig.app), Size::new(70, 20));
     rig.app.update(Msg::Resized(200, 60));
-    assert_eq!(interior(&rig.app), Size::new(70, 51));
+    // The overlay wants 63 rows (61 inside), more than the screen has.
+    assert_eq!(interior(&rig.app), Size::new(70, 56));
+    rig.app.update(Msg::Resized(200, 70));
+    assert_eq!(interior(&rig.app), Size::new(70, 61));
 }
 
 #[test]
@@ -269,10 +272,10 @@ fn the_scroll_keys_move_the_overlay_through_the_app() {
     rig.press(Key::Char('k'));
     rig.pump_until(|app| offset(app) == 0);
     rig.press(Key::PageDown);
-    rig.pump_until(|app| offset(app) == 15);
+    rig.pump_until(|app| offset(app) == 25);
     rig.press(Key::PageDown);
     rig.settle();
-    assert_eq!(offset(&rig.app), 15, "clamped at the end: 51 - 36");
+    assert_eq!(offset(&rig.app), 25, "clamped at the end: 61 - 36");
     rig.press(Key::PageUp);
     rig.pump_until(|app| offset(app) == 0);
     // The transcript behind did not scroll or select.
@@ -306,8 +309,8 @@ fn scroll_to_end(rig: &mut Rig) {
     for _ in 0..4 {
         rig.press(Key::PageDown);
     }
-    // 51 rows in a 36 row interior: the last offset.
-    rig.pump_until(|app| offset(app) == 15);
+    // 61 rows in a 36 row interior: the last offset.
+    rig.pump_until(|app| offset(app) == 25);
 }
 
 #[test]
@@ -348,8 +351,9 @@ fn the_browser_help_80x24_text() {
 fn the_browser_help_200x60_text() {
     let mut rig = open_at(200, 60);
     let text = screen_text(&mut rig, 200, 60);
-    assert!(!text.contains("more"), "everything fits");
-    assert!(text.contains("Hold Shift to select text with the mouse"));
+    // The 63 rows the help wants do not fit in 58: it scrolls.
+    assert!(text.contains("↓ more"), "the end is below");
+    assert!(text.contains("Turns sidebar"));
     insta::assert_snapshot!(text);
 }
 
@@ -401,10 +405,10 @@ fn a_remapped_copy_key_shows_in_the_drawn_overlay_120x40_text() {
 fn the_shift_note_is_drawn_only_when_the_mouse_is_on() {
     for (mouse, shown) in [(true, true), (false, false)] {
         let mut rig = rig_with_keymap(Keymap::default(), mouse);
-        rig.app.update(Msg::Resized(200, 60));
+        rig.app.update(Msg::Resized(200, 70));
         rig.open_loaded();
         rig.open_help();
-        let text = screen_text(&mut rig, 200, 60);
+        let text = screen_text(&mut rig, 200, 70);
         assert_eq!(text.contains("Hold Shift to select text"), shown, "{mouse}");
     }
 }

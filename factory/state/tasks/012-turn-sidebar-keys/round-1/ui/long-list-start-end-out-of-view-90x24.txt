@@ -1,0 +1,52 @@
+# Last entry selected: End is scrolled out, and no key reveals it
+╭─ Project BRIO ──────────────────────────────────────────────────────────── s1-session ─╮
+│                                                                                        │
+│ /home/user/projects/brio                                                               │
+│                                                                                        │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ │ ▶ Prompt number 29                                      │
+│                            │ │   with a second paragraph                               │
+│                            │ │                                                         │
+│  ●   User                  │ ╰─────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 ─── 2026-10-21 08:35:18Z ─╮
+│  ●   Assistant         3s  │ │                                                         │
+│                            │ ▒   Reply number 29                                       │
+│  ═══ Compaction ═════════  │ ▒                                                         │
+│                            │ ▒   line                                                  │
+│  ●   User                  │ ▒                                                         │
+│  │                         │ ▒   line                                                  │
+│  ●   Assistant      3h 3m  │ ▒                                                         │
+│  │                         │ ▒   line                                                  │
+│  ●   User                  │ │                                                         │
+│  │                         │ │   6h 6m · 12 messages                                   │
+│  >   Assistant      6h 6m  │ │                                                         │
+╰────────────────────────────╯ ╰─────────────────────────────────────────────────────────╯
+                                                                                          
+ ENTER to go to block | TAB to switch to transcript                                       
+
+# First entry after coming back up: Start is scrolled out, and no key reveals it
+╭─ Project BRIO ──────────────────────────────────────────────────────────── s1-session ─╮
+│                                                                                        │
+│ /home/user/projects/brio                                                               │
+│                                                                                        │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ ╭─ User ─────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                            │ │                                                         │
+│                            │ ▒ ▶ Prompt number 0                                       │
+│  >   User                  │ ▒   with a second paragraph                               │
+│  │                         │ │                                                         │
+│  ●   Assistant         3s  │ ╰─────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 ─── 2026-10-21 08:35:18Z ─╮
+│  ●   User                  │ │                                                         │
+│  │                         │ │   Reply number 0                                        │
+│  ●   Assistant      3h 3m  │ │                                                         │
+│  │                         │ │   line                                                  │
+│  ●   User                  │ │                                                         │
+│  │                         │ │   line                                                  │
+│  ●   Assistant      6h 6m  │ │                                                         │
+│  │                         │ │   line                                                  │
+│  ●   User                  │ │                                                         │
+╰────────────────────────────╯ │   3s · 12 messages                                      │
+                                                                                          
+ ENTER to go to block | TAB to switch to transcript                                       
+

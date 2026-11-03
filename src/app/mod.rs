@@ -25,6 +25,7 @@ pub mod search;
 pub mod search_worker;
 pub mod selector;
 pub mod session_port;
+mod sidebar;
 pub mod startup;
 pub mod theme_selector;
 pub mod transcript_search;
@@ -67,7 +68,7 @@ use crate::config::{Config, ConfigWarning};
 use crate::harness::Harness;
 use crate::index::{IndexEvent, IndexHandle};
 use crate::keymap::Keymap;
-use crate::model::{HarnessId, SessionId, ToolCallId};
+use crate::model::{HarnessId, SessionId, ToolCallId, TurnId};
 use crate::theme::{TerminalEnv, Theme, ThemeRegistry};
 use crate::timestamp::{DisplayTz, TimestampFormatter};
 use crate::transcript_search::{SearchCorpus, SearchMatches, SearchPosition};
@@ -254,6 +255,18 @@ pub enum Msg {
     /// the session of that harness the selector has selected; `None` (the
     /// browser) is the open session, whatever transcript is on top.
     RequestResume(Option<(HarnessId, SessionId)>),
+    /// `1`, `Tab` or `Shift-Tab` in the transcript: focus the turns sidebar.
+    /// Nothing happens while the sidebar is hidden.
+    FocusTurns,
+    /// `Tab`, `Shift-Tab`, `→` or `l` in the turns sidebar: focus the
+    /// transcript on top, leaving it as it is.
+    FocusTranscript,
+    /// A key in the turns sidebar selected the entry of this turn: scroll the
+    /// transcript to its block.
+    TurnSelected(TurnId),
+    /// `Enter` in the turns sidebar on the entry of this turn: scroll the
+    /// transcript to its block and focus it.
+    OpenTurn(TurnId),
     /// A left press or a wheel step at this position of the screen (only
     /// with `mouse = true`). The `App` routes it to the component under the
     /// pointer.
@@ -739,10 +752,15 @@ impl App {
             Msg::OpenSelector => self.open_selector(),
             Msg::CloseSelector => self.close_selector(),
             Msg::Session { generation, update } => self.session_update(generation, &update),
+            Msg::FocusTurns => self.focus_turns(),
+            Msg::FocusTranscript => self.focus_transcript_from_sidebar(),
+            Msg::TurnSelected(id) => self.go_to_turn(&id, false),
+            Msg::OpenTurn(id) => self.go_to_turn(&id, true),
             Msg::Mouse(event) => self.mouse(event),
         }
-        // Any message may have moved the transcript's selection.
+        // Any message may have moved the transcript's selection, or the focus.
         self.sync_sidebar_selection();
+        self.refresh_hints();
         // Any message may have changed the screen, an overlay or the prompt.
         self.refresh_routing();
     }
@@ -754,6 +772,8 @@ impl App {
     fn resized(&mut self, width: u16, height: u16) {
         self.size = (width, height);
         self.push_viewports();
+        // A sidebar that is now hidden cannot keep the focus.
+        self.release_hidden_sidebar();
         self.request_redraw(RedrawRequest::Resized);
     }
 

@@ -1,0 +1,25 @@
+╭─ Project BRIO ──────────────────────────────────────────────────────────── s1-session ─╮
+│                                                                                        │
+│ /home/user/projects/brio                                                               │
+│                                                                                        │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [Ctrl-Shift-F12 Ctrl-Shift╮ ╭─ User ─────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                            │ │                                                         │
+│                            │ ▒ ▶ Prompt number 0                                       │
+│  ●   Start                 │ ▒   with a second paragraph                               │
+│  │                         │ │                                                         │
+│  >   User                  │ ╰─────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 ─── 2026-10-21 08:35:18Z ─╮
+│  ●   Assistant         3s  │ │                                                         │
+│  │                         │ │   Reply number 0                                        │
+│  ●   End                   │ │                                                         │
+│                            │ │   line                                                  │
+│                            │ │                                                         │
+│                            │ │   line                                                  │
+│                            │ │                                                         │
+│                            │ │   line                                                  │
+│                            │ │                                                         │
+╰────────────────────────────╯ │   3s · 12 messages                                      │
+                                                                                          
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings   
+

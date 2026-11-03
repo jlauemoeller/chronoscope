@@ -70,6 +70,25 @@ pub fn browser_hints_at(keymap: &Keymap, depth: usize) -> Vec<Hint> {
         .collect()
 }
 
+/// The hints of the turns sidebar while it has the focus, from the active
+/// keymap so remapped keys show up: go to the block, switch to the
+/// transcript. Actions without a key are left out.
+///
+/// With the default keys they read `ENTER to go to block | TAB to switch to
+/// transcript`.
+pub fn turns_hints(keymap: &Keymap) -> Vec<Hint> {
+    [
+        (Action::Open, "to go to block"),
+        (Action::NextPane, "to switch to transcript"),
+    ]
+    .into_iter()
+    .filter_map(|(action, text)| {
+        let key = keymap.label(Context::Turns, action)?;
+        Some(Hint::new(key, text))
+    })
+    .collect()
+}
+
 /// The key of the startup warnings about the command line as a whole. Like
 /// `--theme`, it starts with `--`: such warnings name the option in their
 /// message and are shown without the `Config: ` prefix.
@@ -197,6 +216,38 @@ mod tests {
     fn the_back_hint_follows_a_remapped_back_key() {
         let keymap = keymap_with("browser", "back", "z");
         assert!(rendered(&browser_hints_at(&keymap, 1)).contains("z to go back"));
+    }
+
+    #[test]
+    fn default_turns_hints_read_as_in_the_spec() {
+        assert_eq!(
+            rendered(&turns_hints(&Keymap::default())),
+            "ENTER to go to block | TAB to switch to transcript"
+        );
+    }
+
+    #[test]
+    fn remapped_turns_keys_show_in_the_hints() {
+        let hints = turns_hints(&keymap_with("turns", "open", "o"));
+        assert_eq!(hints[0], Hint::new("o", "to go to block"));
+        assert_eq!(hints[1].key, "TAB");
+        let hints = turns_hints(&keymap_with("turns", "next_pane", "ctrl-n"));
+        assert_eq!(hints[1], Hint::new("Ctrl-n", "to switch to transcript"));
+        assert_eq!(hints[0].key, "ENTER");
+    }
+
+    #[test]
+    fn an_unbound_turns_action_has_no_hint() {
+        let mut raw = RawKeys::new();
+        raw.entry("turns".to_owned())
+            .or_default()
+            .insert("open".to_owned(), Vec::new());
+        let (keymap, warnings) = Keymap::from_config(&raw);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(
+            rendered(&turns_hints(&keymap)),
+            "TAB to switch to transcript"
+        );
     }
 
     #[test]

@@ -33,15 +33,18 @@ pub enum Context {
     Selector,
     /// The help overlay and the theme selector.
     Overlay,
+    /// The turns sidebar of the browser.
+    Turns,
 }
 
 impl Context {
     /// All contexts, `Global` first.
-    pub const ALL: [Context; 4] = [
+    pub const ALL: [Context; 5] = [
         Context::Global,
         Context::Browser,
         Context::Selector,
         Context::Overlay,
+        Context::Turns,
     ];
 
     /// The name used in `[keys.<name>]`.
@@ -51,6 +54,7 @@ impl Context {
             Self::Browser => "browser",
             Self::Selector => "selector",
             Self::Overlay => "overlay",
+            Self::Turns => "turns",
         }
     }
 
@@ -61,7 +65,7 @@ impl Context {
 
     /// Whether user config may bind two-key chords here.
     pub fn supports_chords(self) -> bool {
-        matches!(self, Self::Browser | Self::Selector)
+        matches!(self, Self::Browser | Self::Selector | Self::Turns)
     }
 
     fn index(self) -> usize {
@@ -109,6 +113,7 @@ pub enum Action {
     Resume,
     Export,
     ExportFull,
+    FocusTurns,
     // Selector.
     Harness1,
     Harness2,
@@ -122,6 +127,8 @@ pub enum Action {
     Down,
     Open,
     Cancel,
+    // Turns sidebar (plus `Up`, `Down`, `Open`, `NextPane` and `PrevPane`).
+    FocusTranscript,
     // Overlay (plus `Up` and `Down`).
     Select,
     Close,
@@ -151,13 +158,13 @@ pub struct HelpEntry {
 /// The active key bindings of every context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Keymap {
-    contexts: [Vec<Binding>; 4],
+    contexts: [Vec<Binding>; 5],
 }
 
 impl Default for Keymap {
     /// The default keymap of SPEC §6.
     fn default() -> Self {
-        let mut contexts: [Vec<Binding>; 4] = Default::default();
+        let mut contexts: [Vec<Binding>; 5] = Default::default();
         for d in DEFAULTS {
             let keys = d
                 .keys
@@ -199,7 +206,7 @@ impl Keymap {
                 warnings.push(warning(
                     &format!("keys.{name}"),
                     format!(
-                        "unknown context \"{name}\" (known: global, browser, selector, overlay); ignoring it"
+                        "unknown context \"{name}\" (known: global, browser, selector, overlay, turns); ignoring it"
                     ),
                 ));
             }
@@ -368,7 +375,7 @@ impl Keymap {
                 skip(
                     warnings,
                     format!(
-                        "chord \"{seq}\" is not supported in the {} context (only in browser and selector)",
+                        "chord \"{seq}\" is not supported in the {} context (only in browser, selector and turns)",
                         context.name()
                     ),
                 );
@@ -449,7 +456,7 @@ impl Keymap {
             .iter()
             .flat_map(|b| b.keys.iter().map(|k| (b.name, *k)))
             .collect();
-        for context in [Context::Browser, Context::Selector, Context::Overlay] {
+        for context in Context::ALL.into_iter().filter(|&c| c != Context::Global) {
             for binding in &mut self.contexts[context.index()] {
                 let name = binding.name;
                 binding.keys.retain(|k| {

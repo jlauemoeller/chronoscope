@@ -56,11 +56,12 @@ pub struct HelpGroup {
 }
 
 /// The groups of the browser, in the order they are listed.
-const BROWSER_GROUPS: [&str; 5] = [
+const BROWSER_GROUPS: [&str; 6] = [
     "Navigation",
     "Sections",
     "Search",
     "Sessions",
+    "Turns sidebar",
     "Application",
 ];
 /// The groups of the selector.
@@ -94,9 +95,11 @@ impl HelpContent {
         registered: &[HarnessId],
         mouse: bool,
     ) -> Self {
-        let (own, titles): (Context, &[&str]) = match context {
-            HelpContext::Browser => (Context::Browser, &BROWSER_GROUPS),
-            HelpContext::Selector => (Context::Selector, &SELECTOR_GROUPS),
+        // The browser's help also lists the keys of the turns sidebar, which
+        // is part of the browser.
+        let (own, also, titles): (Context, Option<Context>, &[&str]) = match context {
+            HelpContext::Browser => (Context::Browser, Some(Context::Turns), &BROWSER_GROUPS),
+            HelpContext::Selector => (Context::Selector, None, &SELECTOR_GROUPS),
         };
         let global = |group: &str| {
             GLOBAL_ACTIONS
@@ -112,12 +115,20 @@ impl HelpContent {
         let groups = titles
             .iter()
             .map(|&title| {
-                let mut rows: Vec<HelpRow> = keymap
-                    .bindings(own)
-                    .iter()
-                    .filter(|b| b.group == title && is_listed(b.action, registered))
-                    .map(|b| row_of(keymap, own, b))
-                    .collect();
+                let mut rows: Vec<HelpRow> = Vec::new();
+                for context in std::iter::once(own).chain(also) {
+                    for binding in keymap.bindings(context) {
+                        if binding.group != title || !is_listed(binding.action, registered) {
+                            continue;
+                        }
+                        let row = row_of(keymap, context, binding);
+                        // `Tab` focusing the sidebar and `Tab` focusing the
+                        // transcript read the same: listed once.
+                        if !rows.contains(&row) {
+                            rows.push(row);
+                        }
+                    }
+                }
                 rows.extend(global(title));
                 rows.retain(|row| !row.keys.is_empty());
                 HelpGroup { title, rows }
@@ -308,8 +319,57 @@ mod tests {
                 "Sections",
                 "Search",
                 "Sessions",
+                "Turns sidebar",
                 "Application"
             ]
+        );
+    }
+
+    #[test]
+    fn the_turns_sidebar_group_lists_the_browser_and_sidebar_keys_once_each() {
+        let content = browser(&Keymap::default(), true);
+        let row = |keys: &str, description| (keys.to_owned(), description);
+        assert_eq!(
+            rows(&content, "Turns sidebar"),
+            [
+                row("1", "Focus turns sidebar"),
+                row("TAB", "Next pane"),
+                row("Shift-TAB", "Previous pane"),
+                row("Up / k", "Previous entry"),
+                row("Down / j", "Next entry"),
+                row("ENTER", "Go to block"),
+                row("Right / l", "Focus transcript"),
+            ],
+            "TAB and Shift-TAB are in the browser's and the sidebar's keys: once"
+        );
+        // The selector's help has no such group.
+        assert!(!titles(&selector(&ALL)).contains(&"Turns sidebar"));
+    }
+
+    #[test]
+    fn the_turns_sidebar_group_follows_the_active_keymap() {
+        let mut raw = RawKeys::new();
+        let turns = raw.entry("turns".to_owned()).or_default();
+        turns.insert("down".to_owned(), vec!["s".to_owned(), "ctrl-n".to_owned()]);
+        turns.insert("next_pane".to_owned(), vec!["n".to_owned()]);
+        turns.insert("focus_transcript".to_owned(), Vec::new());
+        let browser_keys = raw.entry("browser".to_owned()).or_default();
+        browser_keys.insert("focus_turns".to_owned(), vec!["f".to_owned()]);
+        let (keymap, warnings) = Keymap::from_config(&raw);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let row = |keys: &str, description| (keys.to_owned(), description);
+        assert_eq!(
+            rows(&browser(&keymap, true), "Turns sidebar"),
+            [
+                row("f", "Focus turns sidebar"),
+                row("TAB", "Next pane"),
+                row("Shift-TAB", "Previous pane"),
+                row("Up / k", "Previous entry"),
+                row("s / Ctrl-n", "Next entry"),
+                row("ENTER", "Go to block"),
+                row("n", "Next pane"),
+            ],
+            "a sidebar key that reads differently is listed too; an unbound action is left out"
         );
     }
 
@@ -324,6 +384,7 @@ mod tests {
             "Sections",
             "Search",
             "Sessions",
+            "Turns sidebar",
             "Application",
         ] {
             let expected: Vec<(String, &str)> = keymap
@@ -336,7 +397,9 @@ mod tests {
             assert_eq!(&shown[..expected.len()], &expected[..], "{group}");
         }
         let total: usize = content.groups().iter().map(|g| g.rows.len()).sum();
-        assert_eq!(total, keymap.bindings(Context::Browser).len() + 4);
+        // The four global rows, and the sidebar's own keys the browser's do not
+        // read the same as (`TAB` and `Shift-TAB` are listed once).
+        assert_eq!(total, keymap.bindings(Context::Browser).len() + 4 + 4);
         // The global ones come after the group's own rows.
         let sessions = rows(&content, "Sessions");
         assert_eq!(
@@ -482,7 +545,7 @@ mod tests {
                 .collect()
         };
         assert_eq!(text(&with).last().unwrap().trim(), SHIFT_NOTE);
-        assert!(!text(&without).iter().any(|l| l.contains("Shift")));
+        assert!(!text(&without).iter().any(|l| l.contains(SHIFT_NOTE)));
         assert_eq!(with.row_count(), without.row_count() + 1);
         assert!(!text(&selector(&ALL)).is_empty());
     }
@@ -511,7 +574,7 @@ mod tests {
         ] {
             assert_eq!(content.lines(&theme).len(), content.row_count());
         }
-        assert_eq!(browser(&Keymap::default(), true).row_count(), 51);
+        assert_eq!(browser(&Keymap::default(), true).row_count(), 61);
     }
 
     #[test]
@@ -519,7 +582,7 @@ mod tests {
         let content = browser(&Keymap::default(), true);
         // "q / Ctrl-q / Ctrl-w / Ctrl-c" (28) + 6, then the longest
         // description "Fold or unfold current section" (30) + 8.
-        assert_eq!(content.desired_size(), Size::new(28 + 6 + 30 + 8, 53));
+        assert_eq!(content.desired_size(), Size::new(28 + 6 + 30 + 8, 63));
     }
 
     #[test]

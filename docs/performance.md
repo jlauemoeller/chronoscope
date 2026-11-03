@@ -159,6 +159,25 @@ the application does, and draws the pane after each of 100 selection moves:
 A pane draws only the rows it shows (`lines_built` in its tests), and a turn
 update derives one entry.
 
+### A key press in the sidebar (task 012)
+
+A key in the focused sidebar selects an entry, and the transcript goes to the
+entry's block (the scroll `]` / `[` give, through one entry point) and draws.
+The budget test times the whole press: the pane's `on`, the transcript's
+`GO_TO_TURN_ATTR`, and a frame of each, on a 200x50 screen (a 169x43
+transcript beside the 30x43 pane). It presses `j` 100 times from the first
+entry, which lays out one new block each time, and `k` 100 times from the last,
+and checks the slowest press against the 16 ms frame budget:
+
+| session | entries | slowest `j` | slowest `k` |
+|---------|---------|-------------|-------------|
+| mixed   | 312     | 2.4 ms      | 2.5 ms      |
+| dense   | 6 856   | 1.6 ms      | 2.1 ms      |
+
+The first press far from the top would lay out every block above it; that is a
+one-off, as it is for `G` and the page keys, and the test leaves it out by
+starting at the ends of the list.
+
 ## Running them
 
 Benchmarks (criterion; each prints its time and keeps a report under

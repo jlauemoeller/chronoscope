@@ -1,0 +1,53 @@
+---
+source: src/app/browser_tests/sidebar_keys.rs
+expression: "buffer_to_styled(& screen_buffer(& mut rig, 90, 24))"
+---
+╭─ Project BRIO ────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                                                                                        │
+│ /home/user/projects/brio                                                               │
+│                                                                                        │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ ╭─ User ─────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                            │ │                                                         │
+│                            │ ▒ ▶ Dump the full descriptors and look for extension      │
+│  ●   Start                 │ ▒   units.                                                │
+│  │                         │ │                                                         │
+│  ●   User                  │ ╰─────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 … ─ 2026-10-21 08:35:18Z ─╮
+│  ●   Assistant      5m 2s  │ │                                                         │
+│  │                         │ │   Reading the dump now.                                 │
+│  >   User                  │ │                                                         │
+│  │                         │ │ ▶ Thinking: Look for the Logitech XU GUIDs.             │
+│  ●   Assistant      5m 2s  │ │                                                         │
+│                            │ │ ▶ Read the UVC descriptor dump                          │
+│  ═══ Compaction ═════════  │ │                                                         │
+│                            │ │   5m 2s · 112 messages · 45.2k tokens                   │
+│  ●   User                  │ │                                                         │
+╰────────────────────────────╯ ╰─────────────────────────────────────────────────────────╯
+                                                                                          
+ ENTER to go to block | TAB to switch to transcript                                       
+--- styles (fg/bg/modifiers) ---
+0: 0..2 DarkGray/Reset/NONE | 2..11 Gray/Reset/NONE | 11..15 Reset/Reset/BOLD | 15..16 Gray/Reset/NONE | 16..50 DarkGray/Reset/NONE | 50..88 Gray/Reset/NONE | 88..90 DarkGray/Reset/NONE
+1: 0..1 DarkGray/Reset/NONE | 1..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+2: 0..1 DarkGray/Reset/NONE | 1..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+3: 0..1 DarkGray/Reset/NONE | 1..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+4: 0..90 DarkGray/Reset/NONE
+5: 0..2 White/Reset/NONE | 2..14 Reset/Reset/NONE | 14..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..33 DarkGray/Reset/NONE | 33..39 White/Reset/NONE | 39..66 DarkGray/Reset/NONE | 66..88 Gray/Reset/NONE | 88..90 DarkGray/Reset/NONE
+6: 0..1 White/Reset/NONE | 1..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+7: 0..1 White/Reset/NONE | 1..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 White/Reset/NONE | 32..33 Reset/Reset/NONE | 33..83 Reset/Reset/BOLD | 83..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+8: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 White/Reset/NONE | 32..33 Reset/Reset/NONE | 33..41 Reset/Reset/BOLD | 41..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+9: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+10: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..90 DarkGray/Reset/NONE
+11: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..33 DarkGray/Reset/NONE | 33..44 LightMagenta/Reset/NONE | 44..46 DarkGray/Reset/NONE | 46..65 LightMagenta/Reset/NONE | 65..66 DarkGray/Reset/NONE | 66..88 Gray/Reset/NONE | 88..90 DarkGray/Reset/NONE
+12: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+13: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..56 Gray/Reset/NONE | 56..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+14: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 White/Reset/NONE | 4..27 Reset/Reset/REVERSED | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+15: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..4 Gray/Reset/NONE | 4..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..76 Gray/Reset/NONE | 76..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+16: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+17: 0..1 White/Reset/NONE | 1..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..63 Gray/Reset/NONE | 63..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+18: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+19: 0..1 White/Reset/NONE | 1..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..33 Reset/Reset/NONE | 33..70 Gray/Reset/NONE | 70..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+20: 0..1 White/Reset/NONE | 1..3 Reset/Reset/NONE | 3..27 Gray/Reset/NONE | 27..29 Reset/Reset/NONE | 29..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..32 DarkGray/Reset/NONE | 32..89 Reset/Reset/NONE | 89..90 DarkGray/Reset/NONE
+21: 0..30 White/Reset/NONE | 30..31 Reset/Reset/NONE | 31..90 DarkGray/Reset/NONE
+22: 0..90 Reset/Reset/NONE
+23: 0..1 Reset/Reset/NONE | 1..6 White/Reset/NONE | 6..24 Gray/Reset/NONE | 24..27 White/Reset/NONE | 27..51 Gray/Reset/NONE | 51..90 Reset/Reset/NONE

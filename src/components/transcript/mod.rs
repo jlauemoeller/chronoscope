@@ -73,6 +73,10 @@
 //! expands the output on a `… N more lines` row; the borders, the padding and
 //! the blank rows are not sections.
 //!
+//! The keys that focus the turns sidebar are not `Cmd`s either: they answer
+//! [`Msg::FocusTurns`]. The sidebar's selection reaches the transcript through
+//! [`GO_TO_TURN_ATTR`], which goes to a block the way `]` / `[` do.
+//!
 //! The subagent keys are not `Cmd`s either: `a` on a subagent section
 //! answers [`Msg::OpenSubagent`] (nothing on any other), and the back key of
 //! a [`nested`](Transcript::nested) transcript [`Msg::CloseSubagent`].
@@ -136,7 +140,7 @@ use crate::app::{Msg, UserEvent};
 use crate::components::turn_block::SectionId;
 use crate::components::turn_block::export::ExportMeta;
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
-use crate::model::{ModelUpdate, Turn};
+use crate::model::{ModelUpdate, Turn, TurnId};
 use crate::theme::{Role, Theme};
 use crate::timestamp::TimestampFormatter;
 use crate::transcript_search::SearchMatches;
@@ -171,6 +175,11 @@ pub const SELECTED_SECTION_ATTR: Attribute = Attribute::Custom("selected_section
 /// What the transcript keeps of its presentation: the scroll offset, the
 /// selected section and the fold states (a payload; query only).
 pub const PRESENTATION_ATTR: Attribute = Attribute::Custom("presentation");
+/// The turn whose block to go to (a [`TurnId`] payload; set only): the same
+/// scroll and selection as `]` / `[` give, for the turns sidebar. A key
+/// reports its changes as a `Msg`; an attribute cannot, so the App reads the
+/// count of new sections with [`NEW_SECTIONS_ATTR`] afterwards.
+pub const GO_TO_TURN_ATTR: Attribute = Attribute::Custom("go_to_turn");
 /// The [`Size`] of the area the transcript is drawn in (a payload).
 pub const VIEWPORT_ATTR: Attribute = Attribute::Custom("viewport");
 
@@ -607,6 +616,10 @@ impl Component for Transcript {
             if let Some(update) = payload_from_value::<Arc<ModelUpdate>>(&value) {
                 self.apply_update(&update);
             }
+        } else if attr == GO_TO_TURN_ATTR {
+            if let Some(id) = payload_from_value::<TurnId>(&value) {
+                self.go_to_turn(&id);
+            }
         } else if attr == SEARCH_QUERY_ATTR {
             if let Some(start) = payload_from_value::<SearchStart>(&value) {
                 self.begin_search(start);
@@ -710,6 +723,11 @@ impl AppComponent<Msg, UserEvent> for Transcript {
             Action::ExportFull => return Some(self.export_msg(true)),
             Action::Resume => return Some(Msg::RequestResume(None)),
             Action::Details => return self.details_msg(),
+            // The keys that hand the focus to the turns sidebar; the App
+            // decides whether there is one.
+            Action::FocusTurns | Action::NextPane | Action::PrevPane => {
+                return Some(Msg::FocusTurns);
+            }
             _ => {}
         }
         let cmd = keys::cmd_for(action)?;

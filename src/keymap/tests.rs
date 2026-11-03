@@ -3,7 +3,7 @@ use std::path::Path;
 use tuirealm::event::{Key, KeyEvent, KeyModifiers};
 
 use super::Action::*;
-use super::Context::{Browser, Global, Overlay, Selector};
+use super::Context::{Browser, Global, Overlay, Selector, Turns};
 use super::*;
 use crate::config::Config;
 
@@ -80,6 +80,9 @@ const EXPECTED: &[Row] = &[
     (Browser, "resume", Resume, &["R"], "Sessions", "Resume in harness"),
     (Browser, "export", Export, &["e", "ctrl-e"], "Application", "Export session as folded"),
     (Browser, "export_full", ExportFull, &["E"], "Application", "Export full session"),
+    (Browser, "focus_turns", FocusTurns, &["1"], "Turns sidebar", "Focus turns sidebar"),
+    (Browser, "next_pane", NextPane, &["tab"], "Turns sidebar", "Next pane"),
+    (Browser, "prev_pane", PrevPane, &["shift-tab"], "Turns sidebar", "Previous pane"),
     (Selector, "harness_1", Harness1, &["1"], "Session selector", "Switch to Claude"),
     (Selector, "harness_2", Harness2, &["2"], "Session selector", "Switch to OpenCode"),
     (Selector, "harness_3", Harness3, &["3"], "Session selector", "Switch to Codex"),
@@ -100,6 +103,12 @@ const EXPECTED: &[Row] = &[
     (Overlay, "page_up", PageUp, &["pgup"], "Overlays", "Scroll a page up"),
     (Overlay, "page_down", PageDown, &["pgdn"], "Overlays", "Scroll a page down"),
     (Overlay, "close", Close, &["esc"], "Overlays", "Close"),
+    (Turns, "up", Up, &["up", "k"], "Turns sidebar", "Previous entry"),
+    (Turns, "down", Down, &["down", "j"], "Turns sidebar", "Next entry"),
+    (Turns, "open", Open, &["enter"], "Turns sidebar", "Go to block"),
+    (Turns, "next_pane", NextPane, &["tab"], "Turns sidebar", "Next pane"),
+    (Turns, "prev_pane", PrevPane, &["shift-tab"], "Turns sidebar", "Previous pane"),
+    (Turns, "focus_transcript", FocusTranscript, &["right", "l"], "Turns sidebar", "Focus transcript"),
 ];
 
 // ---- defaults ----
@@ -152,7 +161,7 @@ fn defaults_do_not_collide_within_or_across_contexts() {
             seen.push(*k);
         }
     }
-    for ctx in [Browser, Selector, Overlay] {
+    for ctx in [Browser, Selector, Overlay, Turns] {
         for k in km.bindings(ctx).iter().flat_map(|b| &b.keys) {
             for g in km.bindings(Global).iter().flat_map(|b| &b.keys) {
                 assert_ne!(k, g, "{ctx:?} collides with global");
@@ -421,6 +430,19 @@ fn unknown_context_warns_and_keeps_defaults() {
 }
 
 #[test]
+fn the_warning_for_an_unknown_context_lists_the_known_ones_with_turns() {
+    let (_, warnings) = keymap("[keys.nowhere]\ncopy = \"x\"\n");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0]
+            .message
+            .contains("(known: global, browser, selector, overlay, turns)"),
+        "{}",
+        warnings[0]
+    );
+}
+
+#[test]
 fn unparsable_key_warns_naming_it_and_keeps_the_default() {
     assert_default_with_one_warning(
         "[keys.browser]\ncopy = \"foo\"\n",
@@ -525,10 +547,10 @@ fn collision_removes_only_the_shared_key() {
 
 #[test]
 fn same_key_in_different_contexts_is_fine() {
-    let (km, warnings) = keymap("[keys.browser]\ncopy = \"1\"\n");
+    let (km, warnings) = keymap("[keys.browser]\ncopy = \"2\"\n");
     assert!(warnings.is_empty(), "{warnings:?}");
-    assert_eq!(km.resolve(Browser, &ch('1')), Some(Copy));
-    assert_eq!(km.resolve(Selector, &ch('1')), Some(Harness1));
+    assert_eq!(km.resolve(Browser, &ch('2')), Some(Copy));
+    assert_eq!(km.resolve(Selector, &ch('2')), Some(Harness2));
 }
 
 #[test]
@@ -740,7 +762,8 @@ fn help_entries_follow_table_order_and_groups() {
             "Sections",
             "Search",
             "Sessions",
-            "Application"
+            "Application",
+            "Turns sidebar"
         ]
     );
     assert_eq!(entries[0].keys, "Up / k");
@@ -807,4 +830,98 @@ fn context_names_round_trip() {
         assert_eq!(Context::from_name(ctx.name()), Some(ctx));
     }
     assert_eq!(Context::from_name("nope"), None);
+}
+
+// ---- the turns sidebar ----
+
+#[test]
+fn one_and_tab_act_on_the_selector_there_and_focus_the_sidebar_in_the_browser() {
+    let tab = ev(Key::Tab, NONE);
+    let back = ev(Key::BackTab, NONE);
+    // The selector keeps them: `1` switches harness, `Tab` switches pane.
+    assert_eq!(resolve(Selector, ch('1')), Some(Harness1));
+    assert_eq!(resolve(Selector, tab), Some(NextPane));
+    assert_eq!(resolve(Selector, back), Some(PrevPane));
+    // The browser focuses the sidebar with them.
+    assert_eq!(resolve(Browser, ch('1')), Some(FocusTurns));
+    assert_eq!(resolve(Browser, tab), Some(NextPane));
+    assert_eq!(resolve(Browser, back), Some(PrevPane));
+    // Nothing leaks the other way.
+    assert_eq!(resolve(Selector, ch('l')), Some(FocusSessions));
+    assert_eq!(resolve(Browser, ch('l')), Some(Unfold));
+    assert_eq!(resolve(Turns, ch('l')), Some(FocusTranscript));
+}
+
+#[test]
+fn the_sidebar_keys_are_the_selectors_and_one_and_left_do_nothing_there() {
+    let key = |code| ev(code, NONE);
+    assert_eq!(resolve(Turns, key(Key::Up)), Some(Up));
+    assert_eq!(resolve(Turns, ch('k')), Some(Up));
+    assert_eq!(resolve(Turns, key(Key::Down)), Some(Down));
+    assert_eq!(resolve(Turns, ch('j')), Some(Down));
+    assert_eq!(resolve(Turns, key(Key::Enter)), Some(Open));
+    assert_eq!(resolve(Turns, key(Key::Tab)), Some(NextPane));
+    assert_eq!(resolve(Turns, key(Key::BackTab)), Some(PrevPane));
+    assert_eq!(resolve(Turns, key(Key::Right)), Some(FocusTranscript));
+    assert_eq!(resolve(Turns, ch('1')), None);
+    assert_eq!(resolve(Turns, key(Key::Left)), None);
+    assert_eq!(resolve(Turns, ch('h')), None);
+    assert_eq!(resolve(Turns, ch('/')), None);
+}
+
+#[test]
+fn the_turns_context_can_be_remapped_like_any_other() {
+    let (km, warnings) = keymap(
+        "[keys.turns]\nup = \"w\"\ndown = [\"s\", \"ctrl-n\"]\nopen = \"o\"\nfocus_transcript = \"x\"\nnext_pane = \"n\"\n[keys.browser]\nfocus_turns = \"f\"\n",
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(km.resolve(Turns, &ch('w')), Some(Up));
+    assert_eq!(km.resolve(Turns, &ch('k')), None, "the default is replaced");
+    assert_eq!(km.resolve(Turns, &ch('s')), Some(Down));
+    assert_eq!(km.resolve(Turns, &ev(Key::Char('n'), CTRL)), Some(Down));
+    assert_eq!(km.resolve(Turns, &ch('o')), Some(Open));
+    assert_eq!(km.resolve(Turns, &ch('x')), Some(FocusTranscript));
+    assert_eq!(km.resolve(Turns, &ch('n')), Some(NextPane));
+    assert_eq!(km.resolve(Turns, &ev(Key::Tab, NONE)), None);
+    assert_eq!(km.resolve(Browser, &ch('f')), Some(FocusTurns));
+    assert_eq!(km.resolve(Browser, &ch('1')), None);
+    // The other contexts are untouched.
+    assert_eq!(km.resolve(Selector, &ch('1')), Some(Harness1));
+    assert_eq!(km.resolve(Selector, &ch('k')), Some(Up));
+    assert_eq!(km.labels(Turns, Down).as_deref(), Some("s / Ctrl-n"));
+    assert_eq!(km.label(Browser, FocusTurns).as_deref(), Some("f"));
+}
+
+#[test]
+fn a_turns_binding_that_collides_with_a_global_key_is_refused() {
+    assert_default_with_one_warning("[keys.turns]\nup = \"t\"\n", "keys.turns.up", "theme");
+    let (km, warnings) = keymap("[keys.global]\nhelp = \"j\"\n");
+    assert!(
+        warnings.iter().any(|w| w.key == "keys.turns.down"),
+        "{warnings:?}"
+    );
+    assert_eq!(km.resolve(Turns, &ch('j')), None);
+}
+
+#[test]
+fn a_chord_in_the_turns_context_works() {
+    let (km, warnings) = keymap("[keys.turns]\nopen = \"g g\"\n");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let mut r = KeyResolver::new(Turns);
+    assert_eq!(feed(&mut r, &km, 'g'), Resolved::Pending);
+    assert_eq!(feed(&mut r, &km, 'g'), Resolved::Action(Open));
+}
+
+#[test]
+fn an_action_of_the_browser_is_unknown_in_the_turns_context_and_the_other_way_round() {
+    assert_default_with_one_warning(
+        "[keys.turns]\nfocus_turns = \"x\"\n",
+        "keys.turns.focus_turns",
+        "focus_turns",
+    );
+    assert_default_with_one_warning(
+        "[keys.browser]\nfocus_transcript = \"x\"\n",
+        "keys.browser.focus_transcript",
+        "focus_transcript",
+    );
 }

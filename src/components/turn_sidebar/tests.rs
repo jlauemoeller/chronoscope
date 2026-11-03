@@ -855,15 +855,250 @@ fn the_theme_focus_and_key_are_set_and_queried_through_attributes() {
     assert_eq!(fg(&buffer, 0, 5), other.role(Role::Ring));
 }
 
+// -- keys
+
+fn key(code: tuirealm::event::Key) -> Event<UserEvent> {
+    Event::Keyboard(tuirealm::event::KeyEvent::new(
+        code,
+        tuirealm::event::KeyModifiers::NONE,
+    ))
+}
+
+fn ch(c: char) -> Event<UserEvent> {
+    key(tuirealm::event::Key::Char(c))
+}
+
+/// The turn of entry `entry` of the wireframe.
+fn turn_of(entry: usize) -> TurnId {
+    id(["u1", "a1", "u2", "a2", "c1", "a3"][entry])
+}
+
 #[test]
-fn the_sidebar_takes_no_keys_and_no_mouse_yet() {
-    use tuirealm::event::{Key, KeyEvent, KeyModifiers};
+fn down_and_up_select_the_next_and_previous_entry_and_name_its_turn() {
+    use tuirealm::event::Key;
     let mut sidebar = selected(1, true);
-    for code in [Key::Down, Key::Up, Key::Char('j'), Key::Enter] {
-        let key = Event::Keyboard(KeyEvent::new(code, KeyModifiers::NONE));
-        assert_eq!(sidebar.on(&key), None);
+    for event in [key(Key::Down), ch('j')] {
+        let before = sidebar.selected_entry().unwrap();
+        assert_eq!(
+            sidebar.on(&event),
+            Some(Msg::TurnSelected(turn_of(before + 1)))
+        );
+        assert_eq!(sidebar.selected_entry(), Some(before + 1));
+    }
+    assert_eq!(sidebar.selected_entry(), Some(3));
+    for event in [key(Key::Up), ch('k')] {
+        let before = sidebar.selected_entry().unwrap();
+        assert_eq!(
+            sidebar.on(&event),
+            Some(Msg::TurnSelected(turn_of(before - 1)))
+        );
     }
     assert_eq!(sidebar.selected_entry(), Some(1));
+}
+
+#[test]
+fn the_list_never_wraps_around() {
+    use tuirealm::event::Key;
+    let mut sidebar = selected(0, true);
+    assert_eq!(sidebar.on(&key(Key::Up)), None);
+    assert_eq!(sidebar.on(&ch('k')), None);
+    assert_eq!(sidebar.selected_entry(), Some(0));
+    let mut sidebar = selected(5, true);
+    assert_eq!(sidebar.on(&key(Key::Down)), None);
+    assert_eq!(sidebar.on(&ch('j')), None);
+    assert_eq!(sidebar.selected_entry(), Some(5));
+}
+
+#[test]
+fn with_no_selection_the_first_move_in_either_direction_selects_the_first_entry() {
+    for event in [ch('j'), ch('k')] {
+        let mut sidebar = sidebar(&wireframe()).focused(true);
+        assert_eq!(sidebar.selected_entry(), None);
+        assert_eq!(sidebar.on(&event), Some(Msg::TurnSelected(turn_of(0))));
+        assert_eq!(sidebar.selected_entry(), Some(0));
+    }
+    // The second move goes on from there.
+    let mut sidebar = sidebar(&wireframe()).focused(true);
+    sidebar.on(&ch('k'));
+    assert_eq!(
+        sidebar.on(&ch('k')),
+        None,
+        "the first entry has no previous"
+    );
+    assert_eq!(sidebar.on(&ch('j')), Some(Msg::TurnSelected(turn_of(1))));
+}
+
+#[test]
+fn the_keys_do_nothing_on_an_empty_list() {
+    use tuirealm::event::Key;
+    let mut sidebar = TurnSidebar::new(theme()).focused(true);
+    for event in [
+        key(Key::Down),
+        key(Key::Up),
+        ch('j'),
+        ch('k'),
+        key(Key::Enter),
+    ] {
+        assert_eq!(sidebar.on(&event), None);
+    }
+    assert_eq!(sidebar.selected_entry(), None);
+    // A list of turns with no entry is empty too.
+    let mut sidebar = sidebar_of(&[system_only("s1")]);
+    assert_eq!(sidebar.on(&ch('j')), None);
+    assert_eq!(sidebar.on(&key(Key::Enter)), None);
+}
+
+fn sidebar_of(turns: &[Turn]) -> TurnSidebar {
+    sidebar(turns).focused(true)
+}
+
+#[test]
+fn enter_names_the_selected_turn_and_does_not_move_the_selection() {
+    use tuirealm::event::Key;
+    let mut sidebar = selected(4, true);
+    assert_eq!(
+        sidebar.on(&key(Key::Enter)),
+        Some(Msg::OpenTurn(turn_of(4)))
+    );
+    assert_eq!(sidebar.selected_entry(), Some(4));
+    // With nothing selected it has no block to go to.
+    let mut sidebar = sidebar_of(&wireframe());
+    assert_eq!(sidebar.on(&key(Key::Enter)), None);
+}
+
+#[test]
+fn the_pane_keys_ask_for_the_transcripts_focus_and_leave_the_selection() {
+    use tuirealm::event::{Key, KeyEvent, KeyModifiers};
+    let mut sidebar = selected(2, true);
+    let shift_tab = Event::Keyboard(KeyEvent::new(Key::BackTab, KeyModifiers::SHIFT));
+    for event in [key(Key::Tab), shift_tab, key(Key::Right), ch('l')] {
+        assert_eq!(sidebar.on(&event), Some(Msg::FocusTranscript));
+    }
+    assert_eq!(sidebar.selected_entry(), Some(2));
+}
+
+#[test]
+fn the_other_keys_do_nothing_and_neither_does_the_mouse() {
+    use tuirealm::event::{Key, MouseEvent, MouseEventKind};
+    let mut sidebar = selected(2, true);
+    for event in [
+        ch('1'),
+        key(Key::Left),
+        ch('h'),
+        ch('/'),
+        ch('y'),
+        ch('g'),
+        key(Key::Esc),
+        key(Key::PageDown),
+        ch(' '),
+        ch('q'),
+    ] {
+        assert_eq!(sidebar.on(&event), None, "{event:?}");
+    }
+    let click = Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(tuirealm::event::MouseButton::Left),
+        modifiers: tuirealm::event::KeyModifiers::NONE,
+        column: 3,
+        row: 6,
+    });
+    assert_eq!(sidebar.on(&click), None);
+    assert_eq!(sidebar.on(&Event::Tick), None);
+    assert_eq!(sidebar.selected_entry(), Some(2));
+}
+
+#[test]
+fn the_keys_come_from_the_keymap_it_is_given() {
+    use tuirealm::event::Key;
+    let mut raw = crate::config::RawKeys::new();
+    let turns = raw.entry("turns".to_owned()).or_default();
+    turns.insert("down".to_owned(), vec!["s".to_owned()]);
+    turns.insert("open".to_owned(), vec!["o".to_owned()]);
+    turns.insert("focus_transcript".to_owned(), vec!["x".to_owned()]);
+    let (keymap, warnings) = Keymap::from_config(&raw);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let mut sidebar = selected(1, true).keymap(keymap);
+    assert_eq!(sidebar.on(&ch('j')), None, "the default is replaced");
+    assert_eq!(sidebar.on(&key(Key::Down)), None);
+    assert_eq!(sidebar.on(&ch('s')), Some(Msg::TurnSelected(turn_of(2))));
+    assert_eq!(sidebar.on(&ch('o')), Some(Msg::OpenTurn(turn_of(2))));
+    assert_eq!(sidebar.on(&ch('x')), Some(Msg::FocusTranscript));
+    assert_eq!(sidebar.on(&ch('l')), None);
+    // Untouched actions keep their keys.
+    assert_eq!(sidebar.on(&ch('k')), Some(Msg::TurnSelected(turn_of(1))));
+}
+
+#[test]
+fn a_chord_in_the_turns_context_works() {
+    let mut raw = crate::config::RawKeys::new();
+    raw.entry("turns".to_owned())
+        .or_default()
+        .insert("down".to_owned(), vec!["g g".to_owned()]);
+    let (keymap, warnings) = Keymap::from_config(&raw);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let mut sidebar = selected(0, true).keymap(keymap);
+    assert_eq!(sidebar.on(&ch('g')), None, "the prefix waits");
+    assert_eq!(sidebar.selected_entry(), Some(0));
+    assert_eq!(sidebar.on(&ch('g')), Some(Msg::TurnSelected(turn_of(1))));
+}
+
+#[test]
+fn the_cmds_move_and_submit() {
+    let mut sidebar = selected(1, true);
+    assert_eq!(
+        sidebar.perform(Cmd::Move(Direction::Down)),
+        CmdResult::Changed(State::Single(StateValue::Usize(2)))
+    );
+    assert_eq!(
+        sidebar.perform(Cmd::Submit),
+        CmdResult::Submit(State::Single(StateValue::Usize(2)))
+    );
+    assert_eq!(
+        sidebar.perform(Cmd::Scroll(Direction::Down)),
+        CmdResult::Invalid(Cmd::Scroll(Direction::Down))
+    );
+    let mut sidebar = selected(5, true);
+    assert_eq!(
+        sidebar.perform(Cmd::Move(Direction::Down)),
+        CmdResult::NoChange
+    );
+}
+
+#[test]
+fn a_move_keeps_the_selected_row_visible() {
+    use tuirealm::event::Key;
+    // A 20-row pane shows 16 list rows.
+    let mut sidebar = sidebar(&long_session(40)).focused(true);
+    sidebar.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(16));
+    for _ in 0..30 {
+        sidebar.on(&key(Key::Down));
+    }
+    let entry = sidebar.selected_entry().unwrap();
+    assert_eq!(entry, 29);
+    let row = TurnRows::row_of_entry(entry);
+    let offset = sidebar.offset(20);
+    assert!((offset..offset + 16).contains(&row), "{offset} for {row}");
+}
+
+#[test]
+fn a_key_that_moves_the_selection_lays_out_and_renders_no_block() {
+    use tuirealm::event::Key;
+    let mut sidebar = sidebar(&long_session(60)).focused(true);
+    let before = (block_work(), entry_builds());
+    for _ in 0..20 {
+        sidebar.on(&key(Key::Down));
+    }
+    draw(&mut sidebar, 30, 20);
+    assert_eq!((block_work(), entry_builds()), before);
+}
+
+#[test]
+fn the_title_reads_just_turns_when_the_action_has_no_key() {
+    let mut sidebar = TurnSidebar::new(theme()).key_label("");
+    let buffer = draw(&mut sidebar, 30, 8);
+    assert_eq!(row_text(&buffer, 0), "╭─ Turns  ───────────────────╮");
+    sidebar.attr(KEY_LABEL_ATTR, AttrValue::String("F2".into()));
+    let buffer = draw(&mut sidebar, 30, 8);
+    assert_eq!(row_text(&buffer, 0), "╭─ [F2] Turns  ──────────────╮");
 }
 
 // -- scrolling

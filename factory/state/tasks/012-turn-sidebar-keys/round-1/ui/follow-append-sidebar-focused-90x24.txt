@@ -1,0 +1,52 @@
+# Before the turn arrives (following, sidebar focused)
+╭─ Project BRIO ──────────────────────────────────────────────────────────── s1-session ─╮
+│                                                                                        │
+│ /home/user/projects/brio                                                               │
+│                                                                                        │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ │ ▶ Prompt number 2                                       │
+│                            │ │   with a second paragraph                               │
+│                            │ │                                                         │
+│  ●   Start                 │ ╰─────────────────────────────────────────────────────────╯
+│  │                         │ ╭─ Assistant ── claude-opus-5.5 ─── 2026-10-21 08:35:18Z ─╮
+│  ●   User                  │ │                                                         │
+│  │                         │ │   Reply number 2                                        │
+│  ●   Assistant         3s  │ │                                                         │
+│  │                         │ │   line                                                  │
+│  ●   User                  │ │                                                         │
+│  │                         │ │   line                                                  │
+│  ●   Assistant      3h 3m  │ │                                                         │
+│  │                         │ │   line                                                  │
+│  ●   User                  │ │                                                         │
+│  │                         │ ▒   6h 6m · 12 messages                                   │
+│  >   Assistant      6h 6m  │ │                                                         │
+╰────────────────────────────╯ ╰─────────────────────────────────────────────────────────╯
+                                                                                          
+ ENTER to go to block | TAB to switch to transcript                                       
+
+# After: the transcript moved and its selection is on the new turn; the sidebar row did not
+╭─ Project BRIO ──────────────────────────────────────────────────────────── s1-session ─╮
+│                                                                                        │
+│ /home/user/projects/brio                                                               │
+│                                                                                        │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ │   Reply number 2                                        │
+│                            │ │                                                         │
+│                            │ │   line                                                  │
+│  ●   Start                 │ │                                                         │
+│  │                         │ │   line                                                  │
+│  ●   User                  │ │                                                         │
+│  │                         │ │   line                                                  │
+│  ●   Assistant         3s  │ │                                                         │
+│  │                         │ │   6h 6m · 12 messages                                   │
+│  ●   User                  │ │                                                         │
+│  │                         │ ╰─────────────────────────────────────────────────────────╯
+│  ●   Assistant      3h 3m  │ ╭─ User ─────────────────────────── 2026-10-21 08:35:15Z ─╮
+│  │                         │ │                                                         │
+│  ●   User                  │ ▒ ▶ new one                                               │
+│  │                         │ ▒   more…                                                 │
+│  >   Assistant      6h 6m  │ │                                                         │
+╰────────────────────────────╯ ╰─────────────────────────────────────────────────────────╯
+                                                                                          
+ ENTER to go to block | TAB to switch to transcript                                       
+

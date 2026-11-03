@@ -128,6 +128,9 @@ written in the config file's key syntax.
 | `resume` | `R` | Resume in harness |
 | `export` | `e`, `ctrl-e` | Export session as folded |
 | `export_full` | `E` | Export full session |
+| `focus_turns` | `1` | Focus turns sidebar |
+| `next_pane` | `tab` | Next pane |
+| `prev_pane` | `shift-tab` | Previous pane |
 
 ### Session selector (`[keys.selector]`)
 
@@ -147,6 +150,25 @@ written in the config file's key syntax.
 | `open` | `enter` | Open session |
 | `cancel` | `esc` | Clear search, close or quit |
 | `resume` | `R` | Resume in harness |
+
+### Turns sidebar (`[keys.turns]`)
+
+The keys of the turns sidebar while it has focus. `focus_turns`, `next_pane`
+and `prev_pane` in the browser table above focus it; the sidebar is hidden
+below 90 columns, and then they do nothing.
+
+| Action | Keys | Description |
+|---|---|---|
+| `up` | `up`, `k` | Previous entry |
+| `down` | `down`, `j` | Next entry |
+| `open` | `enter` | Go to block |
+| `next_pane` | `tab` | Next pane |
+| `prev_pane` | `shift-tab` | Previous pane |
+| `focus_transcript` | `right`, `l` | Focus transcript |
+
+Selecting an entry scrolls the transcript to its block. `Enter` does the same
+and moves focus to the transcript; `Tab`, `Shift-Tab` and `→` / `l` move focus
+to the transcript and leave it as it is.
 
 ### Overlays (`[keys.overlay]`)
 

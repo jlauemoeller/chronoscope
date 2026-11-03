@@ -138,7 +138,7 @@ mod tests {
     use tuirealm::event::{Key, KeyEvent, KeyModifiers, MouseEventKind};
 
     /// The rows of the browser's help with the mouse note.
-    const ROWS: usize = 51;
+    const ROWS: usize = 61;
 
     fn overlay_with(keymap: Keymap, mouse: bool) -> HelpOverlay {
         let content = HelpContent::new(&keymap, HelpContext::Browser, &[HarnessId::Claude], mouse);
@@ -293,9 +293,13 @@ mod tests {
         assert_eq!(press(&mut overlay, Key::PageDown), Some(Msg::HelpScrolled));
         assert_eq!(offset(&overlay), 20);
         press(&mut overlay, Key::PageDown);
+        assert_eq!(offset(&overlay), 40);
+        press(&mut overlay, Key::PageDown);
         assert_eq!(offset(&overlay), ROWS - 20, "clamped to the last page");
         press(&mut overlay, Key::PageUp);
         assert_eq!(offset(&overlay), ROWS - 40);
+        press(&mut overlay, Key::PageUp);
+        assert_eq!(offset(&overlay), 1);
         press(&mut overlay, Key::PageUp);
         assert_eq!(offset(&overlay), 0);
         assert_eq!(press(&mut overlay, Key::PageUp), None);
@@ -321,7 +325,7 @@ mod tests {
         let mut overlay = overlay();
         assert_eq!(press(&mut overlay, Key::Down), None, "no interior yet");
         assert_eq!(press(&mut overlay, Key::PageDown), None);
-        let mut fits = with_interior(60);
+        let mut fits = with_interior(u16::try_from(ROWS).unwrap());
         assert_eq!(press(&mut fits, Key::Down), None);
         assert_eq!(press(&mut fits, Key::PageDown), None);
         assert_eq!(offset(&fits), 0);
@@ -333,12 +337,13 @@ mod tests {
     #[test]
     fn a_taller_interior_pulls_the_offset_back_into_range() {
         let mut overlay = with_interior(20);
-        press(&mut overlay, Key::PageDown);
-        press(&mut overlay, Key::PageDown);
+        for _ in 0..3 {
+            press(&mut overlay, Key::PageDown);
+        }
         assert_eq!(offset(&overlay), ROWS - 20);
         overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, 45)));
         assert_eq!(offset(&overlay), ROWS - 45);
-        overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, 60)));
+        overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, 61)));
         assert_eq!(offset(&overlay), 0);
     }
 
@@ -396,8 +401,9 @@ mod tests {
     #[test]
     fn the_end_shows_an_up_indicator_and_the_shift_note() {
         let mut overlay = with_interior(20);
-        press(&mut overlay, Key::PageDown);
-        press(&mut overlay, Key::PageDown);
+        for _ in 0..3 {
+            press(&mut overlay, Key::PageDown);
+        }
         let rows = text_of(&mut overlay, 20);
         assert!(rows[1].contains(" ↑ more ─╮"), "{}", rows[1]);
         assert!(!rows[22].contains("↓ more"), "{}", rows[22]);

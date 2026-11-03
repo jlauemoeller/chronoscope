@@ -1361,5 +1361,6 @@ mod save;
 mod search;
 mod sidebar;
 mod sidebar_follow;
+mod sidebar_keys;
 mod subagent;
 mod theme_selector;
