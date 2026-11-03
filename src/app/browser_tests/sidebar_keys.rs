@@ -1032,6 +1032,46 @@ fn the_help_overlay_lists_the_sidebars_keys_in_a_group_before_application() {
     assert_eq!(tab_rows, 1, "TAB is listed once");
 }
 
+// -- subagents
+
+fn presentation_of(app: &App, id: Id) -> Presentation {
+    let value = app
+        .application()
+        .query(&id, PRESENTATION_ATTR)
+        .unwrap()
+        .unwrap()
+        .into_attr();
+    payload_from_value(&value).unwrap()
+}
+
+#[test]
+fn in_a_subagent_the_sidebar_scrolls_the_transcript_on_top_and_the_hints_keep_the_depth() {
+    use super::subagent::subagent_rig;
+    let mut rig = subagent_rig(120, 40);
+    rig.open_subagent(1);
+    assert_eq!(rig.focus(), Some(Id::Subagent(1)));
+    let parent = presentation_of(&rig.app, Id::Transcript);
+    let depth_one = hint_line(&rig.app);
+    assert!(depth_one.contains("Backspace to go back"), "{depth_one}");
+
+    rig.focus_sidebar();
+    assert_eq!(hint_line(&rig.app), SIDEBAR_HINTS);
+    let start = presentation_of(&rig.app, Id::Subagent(1));
+    rig.select_down(1);
+    let moved = presentation_of(&rig.app, Id::Subagent(1));
+    assert_ne!(moved.selected, start.selected, "the subagent's transcript");
+    assert_eq!(
+        presentation_of(&rig.app, Id::Transcript),
+        parent,
+        "the parent's was not touched"
+    );
+
+    rig.leave_sidebar_by(Key::Tab, KeyModifiers::NONE);
+    assert_eq!(rig.focus(), Some(Id::Subagent(1)));
+    assert_eq!(hint_line(&rig.app), depth_one);
+    assert_eq!(presentation_of(&rig.app, Id::Subagent(1)), moved);
+}
+
 // -- the screens
 
 macro_rules! focused_sidebar_screen {

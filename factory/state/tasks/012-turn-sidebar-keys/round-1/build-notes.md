@@ -34,6 +34,7 @@ STATUS: DONE
 - AC: budgets — `cargo test --release -- --ignored budgets --nocapture` passes; sidebar key presses (worst): mixed 2.39 ms `j` / 2.51 ms `k`, dense 1.59 ms / 2.05 ms (budget 16 ms); `the_sidebar_key_scenario_moves_the_selection_and_the_transcript_one_block_at_a_time` tests the instrument
 - AC: snapshot changes limited — new files only for the 12 sidebar screens; changed existing `.snap`: `help__the_browser_help_120x40_end_text`, `help__the_browser_help_200x60_text` (the help overlay gained the group)
 - UI: focused sidebar on User / Assistant / Compaction @ 120x40 and 90x24, `default` and `terminal` — `the_focused_sidebar_on_{a_user,an_assistant,a_compaction}_{120x40,90x24}_{default,terminal}_styled`; ring border and inverted band — `the_focused_pane_has_the_ring_border_and_the_selected_row_is_one_inverted_band`
+- AC (extra): subagent depth — `in_a_subagent_the_sidebar_scrolls_the_transcript_on_top_and_the_hints_keep_the_depth`
 - UI: help line, title, help overlay — `the_hints_are_the_sidebars_...`, `the_title_shows_the_key_that_focuses_the_pane_and_just_turns_without_one`, the two updated help snapshots
 
 ## Things to know
@@ -44,4 +45,4 @@ STATUS: DONE
 ## Test gate
 - cargo fmt --check: pass
 - cargo clippy --all-targets -- -D warnings: pass
-- cargo test: pass (2718 passed in the library, 0 failed; every other test binary passes)
+- cargo test: pass (3138 passed, 0 failed across all test binaries; 2719 of them in the library)
