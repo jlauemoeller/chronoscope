@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "A terminal viewer for AI coding-agent session histories"
+authors = ["Jacob Lauemøller <jacob.lauemoeller@iteray.com>"]
+repository = "https://github.com/jlauemoeller/chronoscope"
 license = "MIT"
 publish = false
 
@@ -67,3 +69,27 @@ harness = false
 [[bench]]
 name = "selector_index"
 harness = false
+
+[profile.release]
+strip = true
+
+# Packaging, see scripts/package.sh. With `--target`, both tools look for
+# `target/release/chronoscope` under `target/<triple>/release/` instead.
+[package.metadata.deb]
+section = "utils"
+license-file = "LICENSE"
+# Without this, cargo-deb puts the whole README in the package description.
+extended-description = "Lists the sessions of your projects and opens one as a transcript of turns that you can fold, search, copy, save and export, with live updates while the session is still running."
+assets = [
+    ["target/release/chronoscope", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/chronoscope/", "644"],
+    ["THIRD-PARTY-NOTICES.md", "usr/share/doc/chronoscope/", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/chronoscope", dest = "/usr/bin/chronoscope", mode = "755" },
+    { source = "LICENSE", dest = "/usr/share/licenses/chronoscope/LICENSE", mode = "644" },
+    { source = "README.md", dest = "/usr/share/doc/chronoscope/README.md", mode = "644" },
+    { source = "THIRD-PARTY-NOTICES.md", dest = "/usr/share/doc/chronoscope/THIRD-PARTY-NOTICES.md", mode = "644" },
+]

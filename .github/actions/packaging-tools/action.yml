@@ -1,0 +1,14 @@
+name: Install packaging tools
+description: What scripts/package.sh needs on an Ubuntu runner. Needs a Rust toolchain.
+
+runs:
+  using: composite
+  steps:
+    # The tool versions are pinned because their output is published.
+    # dpkg-dev provides dpkg-shlibdeps: without it, cargo-deb only warns and
+    # leaves the Depends field of the .deb empty.
+    - shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends dpkg-dev
+        cargo install --locked cargo-deb@3.8.0 cargo-generate-rpm@0.21.1

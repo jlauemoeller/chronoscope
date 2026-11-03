@@ -29,6 +29,14 @@ binary somewhere on your `PATH`. Release builds exist for:
 | macOS, Intel | `x86_64-apple-darwin` |
 | Windows, x86_64 | `x86_64-pc-windows-msvc` (`.zip`; the others are `.tar.gz`) |
 
+The Linux builds are also published as `.deb` and `.rpm` packages, which you
+install with your package manager:
+
+```sh
+sudo apt install ./chronoscope_<version>-1_amd64.deb
+sudo dnf install ./chronoscope-<version>-1.x86_64.rpm
+```
+
 Linux is the primary platform. macOS is built and tested in CI. Windows is
 best effort: it is built and tested in CI, but features that need substantial
 platform-specific work may be degraded.
@@ -42,6 +50,23 @@ git clone <this repository>
 cd <the clone>
 cargo install --path .
 ```
+
+### As a package built from source
+
+To build the `.rpm` and `.deb` packages yourself:
+
+```sh
+cargo install --locked cargo-deb cargo-generate-rpm
+scripts/package.sh
+sudo dnf install ./target/generate-rpm/chronoscope-<version>-1.x86_64.rpm
+```
+
+The `.deb` is in `target/debian/`. Build it on Debian or Ubuntu: elsewhere its
+dependencies are left out, because working them out needs `dpkg-shlibdeps`.
+
+The packages install to `/usr/bin`. A copy from `cargo install` in
+`~/.cargo/bin` usually comes first on your `PATH`, so remove it with
+`cargo uninstall chronoscope`.
 
 ## Usage
 
