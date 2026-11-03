@@ -725,7 +725,7 @@ Layout per [theme-selector.md](theme-selector.md):
 
 ### 8.5 Config file
 
-- Location: `$XDG_CONFIG_HOME/chronoscope/config.toml` (`~/.config/chronoscope/config.toml`), via `etcetera`. On macOS the XDG-style path is used as well, so dotfiles stay portable. On Windows: `%APPDATA%\chronoscope\config.toml`.
+- Location: `$XDG_CONFIG_HOME/chronoscope/config.toml` (`~/.config/chronoscope/config.toml`), via `etcetera`. On macOS the XDG-style path is used as well, so dotfiles stay portable.
 - All keys are optional. A missing file means defaults.
 - Unknown keys produce a warning (shown once as a toast), not an error.
 - Invalid values fall back to the default with a warning.
@@ -794,12 +794,13 @@ Key syntax: `a`, `A`, `ctrl-d`, `shift-tab`, `enter`, `esc`, `pgdn`, `f5`, and t
 |---|---|---|
 | 1 | Linux | Primary development and manual testing. |
 | 2 | macOS | CI build + full test suite; platform bugs fixed; manual smoke test when hardware is available. |
-| 3 | Windows | Best effort: CI build + test suite; features needing substantial platform-specific work may be degraded. |
 
-Rules that keep tiers 2–3 cheap:
+Windows is not supported.
+
+Rules that keep tier 2 cheap:
 - No direct OS APIs; only cross-platform crates (crossterm, notify, arboard, rusqlite bundled, etcetera).
 - All filesystem paths are `PathBuf`; no hard-coded `/` separators or `~` expansion by string concatenation.
-- Harness data locations are resolved from a per-platform candidate list and can be overridden in config. The Claude location is `~/.claude/projects` on all platforms. The OpenCode location on macOS and Windows is **unverified** and must be confirmed before tier-2/3 release.
+- Harness data locations are resolved from a per-platform candidate list and can be overridden in config. The Claude location is `~/.claude/projects` on all platforms. The OpenCode location on macOS is **unverified** and must be confirmed before tier-2 release.
 - Every harness adapter is tested against recorded fixture sessions (trimmed copies of real sessions), so parsing is verified on every OS in CI.
 
 ### 9.2 Scale & performance
@@ -821,8 +822,8 @@ Target: sessions up to **~100 MB** stay smooth.
 ### 9.3 CI & releases
 
 - Hosted on GitHub.
-- CI: a GitHub Actions matrix of `ubuntu-latest`, `macos-latest` and `windows-latest` runs `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test`.
-- Releases: tagged builds produce binaries for x86_64/aarch64 Linux, aarch64/x86_64 macOS and x86_64 Windows (e.g. via `cargo-dist`).
+- CI: a GitHub Actions matrix of `ubuntu-latest` and `macos-latest` runs `cargo fmt --check`, `cargo clippy -- -D warnings` and `cargo test`.
+- Releases: tagged builds run CI, then produce binaries for x86_64 Linux and aarch64/x86_64 macOS, plus `.deb` and `.rpm` packages for Linux, and attach them to a draft release (see `doc/releasing.md`).
 
 ### 9.4 Terminal environment
 
@@ -873,7 +874,7 @@ Explicit non-goals:
 
 ## 11. Open items to verify
 
-- OpenCode data directory on macOS and Windows (§9.1).
+- OpenCode data directory on macOS (§9.1).
 - OpenCode resume flag (`opencode --session <id>`) (§6.7).
 - herdr OSC52 / clipboard passthrough behaviour (§9.4).
 - Claude compaction format (no compacted session available locally to sample) (`system` `compact_boundary` + summary entry) and OpenCode compaction (`session_pending` type `compaction`) (§5.2).

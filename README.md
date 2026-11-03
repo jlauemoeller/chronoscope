@@ -24,12 +24,10 @@ binary somewhere on your `PATH`. Release builds exist for:
 | Platform | Target |
 |---|---|
 | Linux, x86_64 | `x86_64-unknown-linux-gnu` |
-| Linux, aarch64 | `aarch64-unknown-linux-gnu` |
 | macOS, Apple silicon | `aarch64-apple-darwin` |
 | macOS, Intel | `x86_64-apple-darwin` |
-| Windows, x86_64 | `x86_64-pc-windows-msvc` (`.zip`; the others are `.tar.gz`) |
 
-The Linux builds are also published as `.deb` and `.rpm` packages, which you
+The Linux build is also published as `.deb` and `.rpm` packages, which you
 install with your package manager:
 
 ```sh
@@ -37,9 +35,8 @@ sudo apt install ./chronoscope_<version>-1_amd64.deb
 sudo dnf install ./chronoscope-<version>-1.x86_64.rpm
 ```
 
-Linux is the primary platform. macOS is built and tested in CI. Windows is
-best effort: it is built and tested in CI, but features that need substantial
-platform-specific work may be degraded.
+Linux is the primary platform. macOS is built and tested in CI. Windows is not
+supported.
 
 ### From source
 
@@ -243,7 +240,6 @@ The config file is `config.toml` in the Chronoscope config directory:
 |---|---|
 | Linux | `$XDG_CONFIG_HOME/chronoscope/config.toml` (`~/.config/chronoscope/config.toml`) |
 | macOS | the same XDG-style path, `~/.config/chronoscope/config.toml`, so that dotfiles stay portable |
-| Windows | `%APPDATA%\chronoscope\config.toml` |
 
 `--config <path>` reads another file instead.
 
@@ -336,8 +332,7 @@ of your terminal.
 ### User themes
 
 A user theme is a TOML file `themes/<name>.toml` in the config directory
-(`~/.config/chronoscope/themes/<name>.toml`; `%APPDATA%\chronoscope\themes\`
-on Windows). The file name without `.toml` is the theme id. A user theme with
+(`~/.config/chronoscope/themes/<name>.toml`). The file name without `.toml` is the theme id. A user theme with
 the same id as a built-in one replaces it. A user theme that fails to load
 shows up in the theme selector as invalid, with the reason; it is also
 written to the log.
@@ -450,20 +445,20 @@ Chronoscope reads the session data of the harnesses and never writes to it.
 | Harness | Location | Notes |
 |---|---|---|
 | Claude Code | `~/.claude/projects` on all platforms | Override with `harness.claude.data_dir`. |
-| OpenCode | `$XDG_DATA_HOME/opencode/opencode.db`, else `~/.local/share/opencode/opencode.db`; on Windows also `%LOCALAPPDATA%\opencode\opencode.db` | The database is opened read-only. Override with `harness.opencode.db_path`. The macOS and Windows locations are unverified. |
+| OpenCode | `$XDG_DATA_HOME/opencode/opencode.db`, else `~/.local/share/opencode/opencode.db` | The database is opened read-only. Override with `harness.opencode.db_path`. The macOS location is unverified. |
 
 Saving a section (`w`, `W`) and exporting a session (`e`, `E`) ask for a path
 and refuse to write into the data of a harness. Besides those files,
 Chronoscope writes only its own files: the theme choice in `config.toml`, a
 cache of session statistics (`$XDG_CACHE_HOME/chronoscope/`, i.e.
-`~/.cache/chronoscope/`; `%LOCALAPPDATA%\chronoscope\` on Windows) and a log
+`~/.cache/chronoscope/`) and a log
 file (`chronoscope.log`, in `$XDG_STATE_HOME/chronoscope/`, or in the cache
-directory where there is no state directory, as on Windows). Warnings about the config file and problems loading themes or
+directory where there is no state directory). Warnings about the config file and problems loading themes or
 sessions are written to the log.
 
 ## Open items to verify
 
-- OpenCode data directory on macOS and Windows.
+- OpenCode data directory on macOS.
 - The OpenCode resume flag (`opencode --session <id>`).
 - herdr OSC52 / clipboard passthrough behaviour.
 - Compaction. The Claude Code fixture (`system` `compact_boundary` followed by

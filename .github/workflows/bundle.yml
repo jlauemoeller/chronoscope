@@ -1,8 +1,10 @@
 name: Bundle
 
 # Builds the .deb and .rpm packages for every commit on main that passed CI and
-# keeps them as workflow artifacts. The targets and runners match the Linux
-# builds in release.yml, and as there, there is deliberately no build cache.
+# keeps them as workflow artifacts, for trying out a commit without a release.
+# The runner matches the Linux build in release.yml. Unlike there, a build cache
+# is fine, because nothing built here is published. It also keeps the packaging
+# tools, so rust-cache has to come before they are installed.
 
 on:
   workflow_run:
@@ -19,20 +21,11 @@ permissions:
 
 jobs:
   bundle:
-    name: bundle (${{ matrix.target }})
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-22.04-arm
+    runs-on: ubuntu-22.04
     steps:
       # Build the exact commit that went green, not whatever main points at now.
       - uses: actions/checkout@v4
@@ -40,20 +33,18 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
 
       - uses: ./.github/actions/packaging-tools
 
       - name: Build .deb and .rpm packages
-        env:
-          TARGET: ${{ matrix.target }}
-        run: scripts/package.sh "${TARGET}"
+        run: scripts/package.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: chronoscope-${{ github.event.workflow_run.head_sha || github.sha }}-${{ matrix.target }}
+          name: chronoscope-${{ github.event.workflow_run.head_sha || github.sha }}
           path: |
-            target/${{ matrix.target }}/debian/*.deb
-            target/${{ matrix.target }}/generate-rpm/*.rpm
+            target/debian/*.deb
+            target/generate-rpm/*.rpm
           if-no-files-found: error

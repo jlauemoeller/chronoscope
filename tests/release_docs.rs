@@ -345,7 +345,7 @@ fn readme_lists_the_open_items() {
         .and_then(|rest| rest.split("\n## ").next())
         .expect("open items section");
     for needle in [
-        "OpenCode data directory on macOS and Windows",
+        "OpenCode data directory on macOS",
         "opencode --session <id>",
         "herdr OSC52",
         "Claude Code",
@@ -371,7 +371,7 @@ fn readme_credits_ratcn_and_points_to_the_notices() {
 }
 
 #[test]
-fn release_workflow_builds_and_uploads_all_five_targets_on_version_tags() {
+fn release_workflow_builds_and_uploads_all_three_targets_on_version_tags() {
     let text = read(".github/workflows/release.yml");
     let workflow: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).expect("valid YAML");
 
@@ -391,6 +391,7 @@ fn release_workflow_builds_and_uploads_all_five_targets_on_version_tags() {
     assert_eq!(on.as_mapping().unwrap().len(), 1, "only the push trigger");
 
     let build = &workflow["jobs"]["build"];
+    assert_eq!(build["needs"].as_str(), Some("ci"));
     let mut targets: Vec<&str> = build["strategy"]["matrix"]["include"]
         .as_sequence()
         .expect("matrix.include")
@@ -402,9 +403,7 @@ fn release_workflow_builds_and_uploads_all_five_targets_on_version_tags() {
         targets,
         [
             "aarch64-apple-darwin",
-            "aarch64-unknown-linux-gnu",
             "x86_64-apple-darwin",
-            "x86_64-pc-windows-msvc",
             "x86_64-unknown-linux-gnu",
         ]
     );
@@ -412,7 +411,7 @@ fn release_workflow_builds_and_uploads_all_five_targets_on_version_tags() {
     let steps = serde_yaml_ng::to_string(&build["steps"]).unwrap();
     assert!(steps.contains("cargo build --release --locked --target"));
     assert!(steps.contains("README.md THIRD-PARTY-NOTICES.md"));
-    assert!(steps.contains(".tar.gz") && steps.contains(".zip"));
+    assert!(steps.contains(".tar.gz") && steps.contains(".deb") && steps.contains(".rpm"));
     assert!(steps.contains("actions/upload-artifact"));
 
     let release = &workflow["jobs"]["release"];
@@ -420,6 +419,7 @@ fn release_workflow_builds_and_uploads_all_five_targets_on_version_tags() {
     assert_eq!(release["permissions"]["contents"].as_str(), Some("write"));
     let steps = serde_yaml_ng::to_string(&release["steps"]).unwrap();
     assert!(steps.contains("gh release upload"));
+    assert!(steps.contains("--draft"));
 }
 
 #[test]
