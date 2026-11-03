@@ -16,8 +16,8 @@
 use std::time::{Duration, Instant};
 
 use chronoscope::bench_support::{
-    CountingAlloc, FIXTURE_BYTES, Fixture, FrameScenario, LARGE_PERCENT, SEED, SidebarScenario,
-    cached_fixture, fixture_cache_dir, load_with_sidebar, run_load,
+    CountingAlloc, FIXTURE_BYTES, Fixture, FrameScenario, LARGE_PERCENT, SEED, SidebarKeyScenario,
+    SidebarScenario, cached_fixture, fixture_cache_dir, load_with_sidebar, run_load,
 };
 use chronoscope::components::Transcript;
 use chronoscope::components::turn_block::{SectionId, SectionKey};
@@ -138,6 +138,40 @@ fn expand_large_output(scenario: &mut FrameScenario) -> Option<Duration> {
     Some(start.elapsed())
 }
 
+/// Times `FRAMES` presses of `j` from the first entry and `FRAMES` of `k`
+/// from the last, each moving the selection, scrolling the transcript to the
+/// block and drawing both, against the frame budget. Returns the failures.
+fn sidebar_key_failures(label: &str, mut keys: SidebarKeyScenario) -> Vec<String> {
+    let entries = keys.sidebar.rows().entry_count();
+    let mut failures = Vec::new();
+    for (name, down) in [("j from the first entry", true), ("k from the last", false)] {
+        if !down {
+            keys.to_end();
+        }
+        let presses: Vec<Duration> = (0..FRAMES)
+            .map(|_| keys.press_and_draw(down).expect("an entry to move to"))
+            .collect();
+        let worst = *presses.iter().max().unwrap();
+        let mut sorted = presses.clone();
+        sorted.sort();
+        println!(
+            "sidebar key presses ({name}), {FRAMES} of {entries} entries at {}x{}: \
+             worst {:.2} ms, median {:.2} ms (budget {:.0} ms)",
+            SIZE.width,
+            SIZE.height,
+            ms(worst),
+            ms(sorted[sorted.len() / 2]),
+            ms(FRAME)
+        );
+        if worst >= FRAME {
+            failures.push(format!(
+                "{label}: the slowest sidebar key press ({name}) took {worst:?}"
+            ));
+        }
+    }
+    failures
+}
+
 /// Measures `fixture` against the four budgets and returns the failures.
 fn check(label: &str, fixture: &Fixture) -> Vec<String> {
     let session = &fixture.session;
@@ -219,6 +253,15 @@ fn check(label: &str, fixture: &Fixture) -> Vec<String> {
         transcript.turn_count(),
         "the sidebar has a slot for every turn"
     );
+
+    // A key press in the turns sidebar: it selects an entry, the transcript
+    // goes to the entry's block, and both are drawn. First from the top of the
+    // session, down one block at a time (each press lays out the next block),
+    // then from the end, up.
+    failures.extend(sidebar_key_failures(
+        label,
+        SidebarKeyScenario::new(transcript.clone(), sidebar.clone()),
+    ));
 
     // Frames: scroll down through the middle of the session, through a large
     // output that is unfolded.

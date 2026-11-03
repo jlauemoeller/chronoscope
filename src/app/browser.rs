@@ -15,7 +15,7 @@ use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 use tuirealm::props::{AttrValue, PropPayload};
 
-use super::hints::{browser_hints, browser_hints_at};
+use super::hints::browser_hints;
 use super::layout::Screen;
 use super::redraw::RedrawRequest;
 use super::selector::{SELECTOR_IDS, mount_selector};
@@ -24,10 +24,10 @@ use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
     BREADCRUMB_ATTR, BackgroundFill, BrowserHeader, COVER_ATTR, EMPTY_SESSION, EmptyState,
-    HINTS_ATTR, HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR,
+    HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR,
     PARSE_WARNINGS_ATTR, SELECTED_SECTION_ATTR, SELECTED_TURN_ATTR, SESSION_ID_ATTR, STATUS_ATTR,
     SectionId, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, TURN_ROWS_ATTR, Transcript,
-    TurnSidebar, hints_value, payload_from_value, payload_value, status_value,
+    TurnSidebar, payload_from_value, payload_value, status_value,
 };
 use crate::harness::WatchHandle;
 use crate::keymap::{Action, Context};
@@ -129,6 +129,8 @@ pub(super) struct BrowserState {
     /// The transcript's selected section as of the last push to the turns
     /// sidebar.
     sidebar_section: SidebarSection,
+    /// Whether the help line shows the hints of the turns sidebar.
+    pub(super) sidebar_hints: bool,
 }
 
 impl Deref for BrowserState {
@@ -461,7 +463,14 @@ impl App {
         )
         .inset(HELP_LINE_INSET);
         let empty = EmptyState::new(EMPTY_SESSION, self.theme.clone());
-        let sidebar = TurnSidebar::new(self.theme.clone());
+        // `Turns` alone when the action has no key.
+        let key = self
+            .keymap
+            .label(Context::Browser, Action::FocusTurns)
+            .unwrap_or_default();
+        let sidebar = TurnSidebar::new(self.theme.clone())
+            .keymap(self.keymap.clone())
+            .key_label(key);
         let gap = BackgroundFill::new(self.theme.clone());
         self.application
             .mount(Id::BrowserHeader, Box::new(header), Vec::new())?;
@@ -654,11 +663,7 @@ impl App {
             AttrValue::Length(warnings),
         );
         self.set_attr(Id::BrowserHeader, LIVE_ATTR, AttrValue::Flag(live));
-        self.set_attr(
-            Id::BrowserHelpLine,
-            HINTS_ATTR,
-            hints_value(browser_hints_at(&self.keymap, self.browser.depth())),
-        );
+        self.push_hints();
         self.refresh_status();
     }
 
@@ -866,11 +871,12 @@ impl App {
     }
 
     /// Whether the turns sidebar takes its selection from the transcript:
-    /// unless it has the focus itself. A prompt or overlay that has the focus
-    /// does not stop it, so an incremental search moves it. (The overlays the
-    /// sidebar opens will stop it too.)
+    /// unless it has the focus itself, or an overlay or the selector that it
+    /// opened has (see [`sidebar_has_focus`](Self::sidebar_has_focus)). A
+    /// prompt or overlay opened from the transcript does not stop it, so an
+    /// incremental search moves it.
     fn sidebar_follows(&self) -> bool {
-        self.application.focus() != Some(&Id::TurnSidebar)
+        !self.sidebar_has_focus()
     }
 
     /// Keeps the turns sidebar on the turn that contains the selected section
@@ -884,10 +890,15 @@ impl App {
     /// A section in a turn without an entry leaves the sidebar where it is.
     pub(super) fn sync_sidebar_selection(&mut self) {
         let top = self.top_transcript();
-        if !self.application.mounted(&Id::TurnSidebar)
-            || !self.application.mounted(&top)
-            || !self.sidebar_follows()
-        {
+        if !self.application.mounted(&Id::TurnSidebar) || !self.application.mounted(&top) {
+            return;
+        }
+        if !self.sidebar_follows() {
+            // The sidebar moves on its own now. Whatever the transcript's
+            // selection is when the focus comes back is pushed then, even if
+            // it is the one pushed last (an entry with no selectable section
+            // leaves it where it was).
+            self.browser.sidebar_section = SidebarSection::NotPushed;
             return;
         }
         let selected = self
@@ -945,6 +956,8 @@ impl App {
         let empty = self.browser.loaded && matches!(turns, Some(AttrValue::Length(0)));
         if empty != self.browser.empty {
             self.browser.empty = empty;
+            // The sidebar is not drawn for an empty session.
+            self.release_hidden_sidebar();
             self.request_redraw(RedrawRequest::Dirty);
         }
     }

@@ -410,3 +410,40 @@ fn the_dense_mix_has_no_large_outputs() {
     let turns: Vec<Arc<Turn>> = Assembler::from_file(&path).unwrap().into_turns();
     assert!(!turns.is_empty());
 }
+
+#[test]
+fn the_sidebar_key_scenario_moves_the_selection_and_the_transcript_one_block_at_a_time() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (transcript, _) = loaded_transcript(tmp.path(), 4 * MIB);
+    let rows = transcript
+        .query(crate::components::TURN_ROWS_ATTR)
+        .unwrap()
+        .into_attr();
+    let mut sidebar = TurnSidebar::new(builtin::default_theme());
+    sidebar.attr(crate::components::TURN_ROWS_ATTR, rows);
+    let entries = sidebar.rows().entry_count();
+    assert!(entries > 40, "{entries} entries");
+    let (reads, calls) = (source_reads(), text_calls());
+
+    let mut scenario = SidebarKeyScenario::new(transcript, sidebar);
+    let mut offsets = vec![scenario.transcript.offset()];
+    for press in 1..=30 {
+        let took = scenario.press_and_draw(true).expect("an entry below");
+        assert!(took < Duration::from_secs(1), "{took:?}");
+        assert_eq!(scenario.sidebar.selected_entry(), Some(press));
+        offsets.push(scenario.transcript.offset());
+        // The block is at the top of the screen.
+        let screen = scenario.transcript_screen();
+        let first = screen.lines().next().unwrap();
+        assert!(first.starts_with('╭'), "{first}");
+    }
+    assert!(offsets.windows(2).all(|w| w[0] < w[1]), "{offsets:?}");
+
+    // From the end, upwards; and the end of the list does nothing.
+    scenario.to_end();
+    assert_eq!(scenario.press_and_draw(true), None);
+    assert!(scenario.press_and_draw(false).is_some());
+    assert_eq!(scenario.sidebar.selected_entry(), Some(entries - 2));
+    assert_eq!(text_calls(), calls, "the keys materialised an output");
+    assert_eq!(source_reads(), reads, "the keys re-read the transcript");
+}

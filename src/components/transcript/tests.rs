@@ -17,6 +17,7 @@ mod cache_lookup;
 mod copy;
 mod details;
 mod follow;
+mod go_to_turn;
 pub(super) mod keys;
 mod mouse;
 mod notice;

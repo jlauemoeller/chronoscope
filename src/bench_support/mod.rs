@@ -19,9 +19,11 @@ use std::time::{Duration, Instant};
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::layout::Size;
+use ratatui::layout::{Rect, Size};
 use tuirealm::command::Cmd;
-use tuirealm::component::Component;
+use tuirealm::component::{AppComponent, Component};
+use tuirealm::event::{Event, Key, KeyEvent, KeyModifiers};
+use tuirealm::props::AttrValue;
 
 pub use alloc::{CountingAlloc, HeapStats};
 pub use generate::{
@@ -29,8 +31,10 @@ pub use generate::{
     generate_session_with,
 };
 
+use crate::app::Msg;
+use crate::app::layout::browser_areas;
 use crate::components::TurnSidebar;
-use crate::components::transcript::{Transcript, WHEEL_DOWN};
+use crate::components::transcript::{GO_TO_TURN_ATTR, Transcript, WHEEL_DOWN};
 use crate::components::turn_block::{SectionId, SectionKey};
 use crate::harness::Harness;
 use crate::harness::claude::ClaudeHarness;
@@ -325,6 +329,97 @@ impl SidebarScenario {
         self.terminal
             .draw(|frame| sidebar.view(frame, frame.area()))
             .expect("drawing to a TestBackend never fails");
+    }
+}
+
+/// A key press in the turns sidebar beside the transcript, as the
+/// application handles it: the pane's `on` selects the next or previous entry
+/// and names its turn, the transcript goes to that turn's block (the same
+/// scroll `]` / `[` give), and both are drawn (SPEC §6.4, §6.6). The screen is
+/// that of [`FRAME_SCREEN`]: the pane and the transcript take the sizes
+/// [`browser_areas`] gives them.
+pub struct SidebarKeyScenario {
+    /// The transcript the pane scrolls.
+    pub transcript: Transcript,
+    /// The pane with the focus.
+    pub sidebar: TurnSidebar,
+    transcript_terminal: Terminal<TestBackend>,
+    sidebar_terminal: Terminal<TestBackend>,
+}
+
+/// The screen [`SidebarKeyScenario`] lays the pane and the transcript out in.
+pub const FRAME_SCREEN: Size = Size::new(200, 50);
+
+impl SidebarKeyScenario {
+    /// Prepares the scenario for the `transcript` and `sidebar` of one loaded
+    /// session, both at the first entry.
+    pub fn new(mut transcript: Transcript, mut sidebar: TurnSidebar) -> Self {
+        let areas = browser_areas(Rect::new(0, 0, FRAME_SCREEN.width, FRAME_SCREEN.height));
+        let pane = areas.sidebar.expect("a screen wide enough").as_size();
+        let body = areas.transcript.as_size();
+        transcript.set_viewport(body);
+        sidebar.attr(
+            crate::components::VISIBLE_ROWS_ATTR,
+            AttrValue::Length(crate::components::sidebar_list_rows(pane.height)),
+        );
+        sidebar.attr(tuirealm::props::Attribute::Focus, AttrValue::Flag(true));
+        let sidebar_terminal =
+            Terminal::new(TestBackend::new(pane.width, pane.height)).expect("a test backend");
+        let transcript_terminal =
+            Terminal::new(TestBackend::new(body.width, body.height)).expect("a test backend");
+        let mut scenario = Self {
+            transcript,
+            sidebar,
+            transcript_terminal,
+            sidebar_terminal,
+        };
+        scenario.select(0);
+        scenario
+    }
+
+    /// Selects entry `entry` and takes the transcript to its block. Not
+    /// timed: the first jump far down lays out every block above it.
+    pub fn select(&mut self, entry: usize) {
+        self.sidebar.select(Some(entry));
+        if let Some((id, _)) = self.sidebar.rows().entry(entry) {
+            let id = id.clone();
+            self.transcript
+                .attr(GO_TO_TURN_ATTR, crate::components::payload_value(id));
+        }
+    }
+
+    /// Selects the last entry, as `G` followed by the pane's focus would
+    /// leave it. Not timed.
+    pub fn to_end(&mut self) {
+        let last = self.sidebar.rows().entry_count().saturating_sub(1);
+        self.select(last);
+    }
+
+    /// Presses `j` (`down`) or `k`, hands the entry it selects to the
+    /// transcript and draws both; returns how long that took. `None` at the
+    /// end of the list, where the key does nothing.
+    pub fn press_and_draw(&mut self, down: bool) -> Option<Duration> {
+        let code = if down { Key::Char('j') } else { Key::Char('k') };
+        let key = Event::Keyboard(KeyEvent::new(code, KeyModifiers::NONE));
+        let start = Instant::now();
+        let Some(Msg::TurnSelected(id)) = self.sidebar.on(&key) else {
+            return None;
+        };
+        self.transcript
+            .attr(GO_TO_TURN_ATTR, crate::components::payload_value(id));
+        let (transcript, sidebar) = (&mut self.transcript, &mut self.sidebar);
+        self.transcript_terminal
+            .draw(|frame| transcript.view(frame, frame.area()))
+            .expect("drawing to a TestBackend never fails");
+        self.sidebar_terminal
+            .draw(|frame| sidebar.view(frame, frame.area()))
+            .expect("drawing to a TestBackend never fails");
+        Some(start.elapsed())
+    }
+
+    /// The text of the transcript on screen, one line per row.
+    pub fn transcript_screen(&self) -> String {
+        crate::test_support::buffer_to_text(self.transcript_terminal.backend().buffer())
     }
 }
 
