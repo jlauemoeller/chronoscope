@@ -8,6 +8,9 @@ You can export individual sections or the entire transcript as a Markdown docume
 
 **Supported harnesses** are Claude Code (from `~/.claude/projects`) and OpenCode (from its SQLite database)
 
+## Factory Skill
+The project was built using a Claude Code factory skill defined by [factory/factory.md](factory/factory.md). To install this skill, execute the file as a prompt with eg. Opus 5.5 on High. See the prompt file for information on how to use the factory and the associated dashboard.
+
 ### Screenshots
 
 ![transcript](doc/screenshots/transcript.png)
@@ -15,7 +18,6 @@ You can export individual sections or the entire transcript as a Markdown docume
 ![details](doc/screenshots/details.png)
 
 ![themes](doc/screenshots/themes.png)
-
 
 ## Install
 You can install Chronoscope from a relase or by compiling it from source.
