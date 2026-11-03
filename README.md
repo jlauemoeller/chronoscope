@@ -63,10 +63,28 @@ chronoscope --latest                 # open the newest session for $PWD (or --pr
 - `chronoscope --help` and `chronoscope --version` print the usage and the
   version.
 
-In the browser, `R` resumes the session in its harness (after a confirmation).
-It runs `claude --resume {id}` or `opencode --session {id}` in the session's
-working directory, replacing the Chronoscope process. The commands can be
-changed in the config (`resume_command`).
+In the browser:
+
+- A **turns sidebar** at the left lists the session's turns and compaction
+  events, with the duration of each Assistant turn, so you can see the shape
+  of a long session. `1` or `Tab` focuses it, `j` / `k` select an entry and
+  scroll the transcript to its block, and `Enter` moves focus to that block
+  (see [Turns sidebar](#turns-sidebar-keysturns)). It is 30 columns wide and
+  shown from 90 columns of terminal width on; below that the transcript takes
+  the full width.
+- `i` shows the **details** of the selected section: the model, tokens and
+  timings of its turn, the identifiers and stop reason of its message, a tool
+  call's permission decision, and so on, read from the harness's
+  data when the overlay opens. `Esc` or `i` closes it.
+- The footer of an Assistant turn reads like
+  `5m 2s · 12 messages · 45.2k tokens · 359.4M cached`: `tokens` counts input,
+  output and cache writes, and `cached` the cache reads. A finished tool call
+  shows its duration after its description (`· 1.2s`), and an error or an
+  interrupted turn shows a notice.
+- `R` resumes the session in its harness (after a confirmation).
+  It runs `claude --resume {id}` or `opencode --session {id}` in the session's
+  working directory, replacing the Chronoscope process. The commands can be
+  changed in the config (`resume_command`).
 
 ## Keybindings
 
@@ -83,7 +101,11 @@ the active keymap, so it always shows your remappings.
 
 The tables list every default binding. The first column is the action name
 that `[keys.<context>]` in the config file uses; the second column is the keys,
-written in the config file's key syntax.
+written in the config file's key syntax. The contexts are `global`, `browser`,
+`selector`, `turns` (the turns sidebar) and `overlay`. Apart from the global keys, a key is looked up only
+in the context of the component that has the focus, which is why `1` and `Tab`
+focus the turns sidebar in the browser and still switch harness and pane in the
+selector.
 
 ### Global (`[keys.global]`)
 
@@ -129,8 +151,8 @@ written in the config file's key syntax.
 | `export` | `e`, `ctrl-e` | Export session as folded |
 | `export_full` | `E` | Export full session |
 | `focus_turns` | `1` | Focus turns sidebar |
-| `next_pane` | `tab` | Next pane |
-| `prev_pane` | `shift-tab` | Previous pane |
+| `next_pane` | `tab` | Next pane (focuses the turns sidebar) |
+| `prev_pane` | `shift-tab` | Previous pane (focuses the turns sidebar) |
 
 ### Session selector (`[keys.selector]`)
 
@@ -155,7 +177,8 @@ written in the config file's key syntax.
 
 The keys of the turns sidebar while it has focus. `focus_turns`, `next_pane`
 and `prev_pane` in the browser table above focus it; the sidebar is hidden
-below 90 columns, and then they do nothing.
+below 90 columns, and then they do nothing. `1` and `←` / `h` do nothing in
+the sidebar, and no key wraps around at either end of the list.
 
 | Action | Keys | Description |
 |---|---|---|
@@ -166,13 +189,17 @@ below 90 columns, and then they do nothing.
 | `prev_pane` | `shift-tab` | Previous pane |
 | `focus_transcript` | `right`, `l` | Focus transcript |
 
-Selecting an entry scrolls the transcript to its block. `Enter` does the same
-and moves focus to the transcript; `Tab`, `Shift-Tab` and `→` / `l` move focus
-to the transcript and leave it as it is.
+Selecting an entry scrolls the transcript to its block, as `]` / `[` do.
+`Enter` does the same and moves focus to the transcript; `Tab`, `Shift-Tab` and
+`→` / `l` move focus to the transcript and leave it as it is. While the sidebar
+has focus the other browser keys do nothing, but the global keys (`q`, `?`,
+`t`, `Ctrl-o`) still work, and an overlay returns focus to the sidebar when it
+closes.
 
 ### Overlays (`[keys.overlay]`)
 
-The help overlay and the theme selector.
+The help overlay, the details overlay and the theme selector. (`details` in
+the browser table opens the details overlay and closes it again.)
 
 | Action | Keys | Description |
 |---|---|---|
@@ -236,6 +263,9 @@ copy_full = "Y"
 
 [keys.selector]
 search = "/"
+
+[keys.turns]                   # the turns sidebar while it has focus
+open = ["enter", "o"]
 ```
 
 | Key | Default | Meaning |
@@ -257,8 +287,8 @@ search = "/"
 
 Key syntax: `a`, `A`, `ctrl-d`, `shift-tab`, `enter`, `esc`, `pgdn`, `f5`, and
 two-key chords as space-separated keys (`"g g"`; chords work only in user
-config, in the `browser` and `selector` contexts, since no default binding is
-a chord).
+config, in the `browser`, `selector` and `turns` contexts, since no default
+binding is a chord).
 
 ## Themes
 
@@ -343,6 +373,11 @@ The mouse wheel scrolls the transcript or the list under the pointer. A click
 selects a section or a row, and clicking a section's summary line toggles its
 fold. Double-clicking a session opens it. Clicking a harness tab switches to
 it, and a click outside an overlay closes it.
+
+On the turns sidebar the wheel selects the previous or next entry and scrolls
+the transcript to its block. Clicking an entry focuses the sidebar, selects it
+and scrolls the transcript there; double-clicking it also moves focus to the
+transcript, like `Enter`. Clicking the transcript gives it focus.
 
 Mouse capture can be turned off with `mouse = false` in the config. With
 capture on, most terminals still let you select text natively while you hold
