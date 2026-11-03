@@ -812,7 +812,7 @@ Target: sessions up to **~100 MB** stay smooth.
 - Layout is computed lazily per block for the current width. Only blocks overlapping the viewport are rendered.
 - Session list stats are computed in the background and cached in `$XDG_CACHE_HOME/chronoscope/`, keyed by (path, size, mtime) or by (db, session id, `time_updated`).
 - Session discovery reads each Claude transcript at most once per index build. Each file's scan result (cwd, start time, first prompt, last `ai-title`) is kept in memory, keyed by (path, size, mtime). The initial build and live rebuilds rescan only new or changed files, scanning several files in parallel. Results for files that are gone are dropped.
-- Budgets (measured with benchmarks and an ignored budget test on a synthetic 100 MB fixture, `docs/performance.md`):
+- Budgets (measured with benchmarks and an ignored budget test on a synthetic 100 MB fixture, `doc/performance.md`):
   - first content within 300 ms;
   - full parse under 2 s;
   - each frame rendered in under 16 ms;

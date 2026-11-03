@@ -25,5 +25,5 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       # The benchmarks only have to keep compiling; the budgets are checked by
-      # hand (docs/performance.md).
+      # hand (doc/performance.md).
       - run: cargo bench --no-run

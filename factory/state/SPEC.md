@@ -380,4 +380,4 @@ Snapshot changes are limited to the rows a task intends to change. A snapshot ch
   - §1.3, §4.2, §6.3, §6.9: the turns sidebar, its component, keys and mouse behaviour.
   - §8.5: the `[keys.turns]` context.
 - Add `details`, `focus_turns`, `next_pane` and `prev_pane` to the README's browser key table, and add a `[keys.turns]` table.
-- Update `docs/performance.md` if the measured figures change.
+- Update `doc/performance.md` if the measured figures change.

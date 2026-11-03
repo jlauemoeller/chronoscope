@@ -1,7 +1,7 @@
 //! The §9.2 performance budgets on a synthetic 100 MB Claude session.
 //!
 //! Ignored by default because the numbers depend on the machine. Run it in
-//! release mode (see `docs/performance.md`):
+//! release mode (see `doc/performance.md`):
 //!
 //! ```text
 //! cargo test --release -- --ignored budgets --nocapture
