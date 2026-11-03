@@ -1,9 +1,0 @@
-# Markdown widget, source "one two three four five six", area Rect(4,1,20,5) on a 10x3 buffer.
-# The widget intersects the area with buf.area before laying out, so it re-wraps at width 6
-# (one/two) instead of laying out at 20 and clipping (would show 'one tw' / 'five s').
-
-##### offset area past buffer 10x3 (area 4,1 20x5)
-          
-    one   
-    two   
-
