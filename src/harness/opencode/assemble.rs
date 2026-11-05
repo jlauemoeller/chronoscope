@@ -130,23 +130,17 @@ impl Tokens {
     }
 }
 
-/// The one field of an assistant row's `data` that the session's token total
-/// reads.
-#[derive(Deserialize)]
-struct RowTokens {
-    #[serde(default, deserialize_with = "lenient_object")]
-    tokens: Option<Tokens>,
-}
-
 /// The usage of an assistant row's `data` as the assembler reads it (so
-/// `reasoning` is part of `output`), for the session's token total. `None`
-/// when the data does not parse as a JSON object or has no `tokens`: such a
-/// row adds nothing.
+/// `reasoning` is part of `output`), for the session's token total. The row
+/// must parse as the assembler parses it: a JSON object whose known fields
+/// (`time`, `model`, `content`, `cost`) have the expected types. A row the
+/// assembler skips as unparsed adds nothing, and so does a row without
+/// `tokens`; a `tokens` field of the wrong type counts as missing.
 pub(super) fn row_usage(data: &str) -> Option<TokenUsage> {
     if !data.trim_start().starts_with('{') {
         return None;
     }
-    let parsed: RowTokens = serde_json::from_str(data).ok()?;
+    let parsed: AssistantData = serde_json::from_str(data).ok()?;
     parsed.tokens.as_ref().map(Tokens::usage)
 }
 

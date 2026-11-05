@@ -380,7 +380,7 @@ impl Harness for ClaudeHarness {
         vec![self.data_dir.clone()]
     }
 
-    /// Parses the whole transcript with the [`Assembler`] (SPEC §3):
+    /// Parses the whole transcript with the [`Assembler`] (SPEC cycle 3 §3):
     /// - `turns` is the number of User turns;
     /// - `agent_time` is the sum of the Assistant turns' footer durations,
     ///   summed before it is formatted; a turn without a footer adds nothing;
@@ -410,7 +410,8 @@ impl Harness for ClaudeHarness {
                 Turn::Assistant(turn) => turn.stats.as_ref().map(|s| s.duration),
                 _ => None,
             })
-            .sum();
+            // Saturating: crafted `durationMs` values must not panic.
+            .fold(Duration::ZERO, Duration::saturating_add);
         let run_time = match (asm.first_timestamp(), asm.last_timestamp()) {
             (Some(first), Some(last)) => (last - first).to_std().unwrap_or_default(),
             _ => Duration::ZERO,

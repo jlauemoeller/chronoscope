@@ -291,3 +291,73 @@ fn a_session_with_more_rows_than_a_page_is_summed_over_all_pages() {
     assert_eq!(stats.agent_time, Duration::from_secs(14));
     assert_eq!(stats.tokens, usage(7, 7, 0, 0, 0));
 }
+
+#[test]
+fn a_row_the_assembler_skips_for_a_wrong_typed_field_adds_no_tokens() {
+    let db = TempDb::new();
+    add_session(&db, "ses_typed", None, T0, T0 + 5_000);
+    user_row(&db, "t0", "ses_typed", 1, T0);
+    assistant_row(
+        &db,
+        "t1",
+        "ses_typed",
+        2,
+        T0 + 1,
+        1_000,
+        r#"{"input":1,"output":1}"#,
+    );
+    // A known field of another type fails the row, as it does in the loader.
+    add_row(
+        &db,
+        "t2",
+        "ses_typed",
+        "assistant",
+        3,
+        T0 + 2,
+        r#"{"cost":"free","tokens":{"input":100,"output":100}}"#,
+    );
+    add_row(
+        &db,
+        "t3",
+        "ses_typed",
+        "assistant",
+        4,
+        T0 + 3,
+        r#"{"time":"soon","tokens":{"input":1000,"output":1000}}"#,
+    );
+    let h = harness(&db);
+    let footer_tokens: Vec<_> = loaded_turns(&h, "ses_typed")
+        .iter()
+        .filter_map(|turn| match &**turn {
+            Turn::Assistant(t) => t.stats.as_ref().and_then(|s| s.tokens),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(footer_tokens, [usage(1, 1, 0, 0, 0)]);
+    let stats = h.stats(&summary(&h, "ses_typed")).unwrap();
+    assert_eq!(stats.tokens, usage(1, 1, 0, 0, 0));
+}
+
+#[test]
+fn absurd_row_times_saturate_the_agent_time_instead_of_panicking() {
+    let db = TempDb::new();
+    add_session(&db, "ses_big", None, T0, T0 + 5_000);
+    let mut sql = String::from("BEGIN;");
+    for i in 0..2_100_i64 {
+        let data = r#"{"time":{"created":0,"completed":9223372036854775807},"content":[]}"#;
+        sql += &format!(
+            "INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data) \
+             VALUES ('bu{i}', 'ses_big', 'user', {}, {T0}, {T0}, '{{\"time\":{{\"created\":{T0}}},\"text\":\"go\"}}');\
+             INSERT INTO session_message (id, session_id, type, seq, time_created, time_updated, data) \
+             VALUES ('ba{i}', 'ses_big', 'assistant', {}, {T0}, {T0}, '{data}');",
+            2 * i + 1,
+            2 * i + 2,
+        );
+    }
+    sql += "COMMIT;";
+    db.exec(&sql);
+    let h = harness(&db);
+    let stats = h.stats(&summary(&h, "ses_big")).unwrap();
+    assert_eq!(stats.turns, 2_100);
+    assert_eq!(stats.agent_time, Duration::MAX);
+}

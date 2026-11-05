@@ -214,6 +214,47 @@ fn a_session_of_local_commands_only_has_no_turns_and_no_time() {
     assert_eq!(stats.tokens, TokenUsage::default());
 }
 
+#[test]
+fn the_agent_time_of_every_real_fixture_is_the_sum_of_its_loaded_footers() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/claude");
+    let mut with_footers = 0;
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|e| e != "jsonl") {
+            continue;
+        }
+        let rig = Rig::new();
+        rig.write_main(&fs::read_to_string(&path).unwrap());
+        let durations = sidebar(&rig.turns());
+        with_footers += usize::from(!durations.is_empty());
+        assert_eq!(
+            rig.stats().agent_time,
+            durations.iter().sum::<Duration>(),
+            "{}",
+            path.display()
+        );
+    }
+    assert!(with_footers >= 2, "the fixtures have footers to compare");
+}
+
+#[test]
+fn absurd_footers_saturate_the_agent_time_instead_of_panicking() {
+    let rig = Rig::new();
+    // No timestamp on the footer: its own `durationMs` is the duration.
+    let footer = r#"{"type":"system","subtype":"turn_duration","uuid":"d","cwd":"/p","durationMs":18446744073709551615}"#;
+    let mut text = String::new();
+    for i in 0..1_100 {
+        text += &prompt(i * 2);
+        text += &message(i * 2 + 1, &format!("m{i}"), &usage(1, 1));
+        text += footer;
+        text += "\n";
+    }
+    rig.write_main(&text);
+    let stats = rig.stats();
+    assert_eq!(stats.turns, 1_100);
+    assert_eq!(stats.agent_time, Duration::MAX);
+}
+
 // ------------------------------------------------------------- tokens
 
 #[test]

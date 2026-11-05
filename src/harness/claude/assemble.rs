@@ -158,7 +158,7 @@ pub struct Assembler {
     prompt_ts: Option<DateTime<Utc>>,
     /// Latest token usage per message id over the whole transcript, whatever
     /// the turn (a message id can continue after a human prompt). The
-    /// session's token total (SPEC §3.2) sums it, so a turn without a footer
+    /// session's token total (SPEC cycle 3 §3.2) sums it, so a turn without a footer
     /// still counts.
     session_usage: HashMap<String, TokenUsage>,
     /// The `version` last compared against the newest known one.

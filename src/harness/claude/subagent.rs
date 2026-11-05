@@ -144,13 +144,17 @@ pub(super) struct SubagentFile {
 /// match. A symlink to a directory is not followed. A missing directory means
 /// no subagents and logs nothing; a directory that cannot be listed is
 /// logged. A symlink to a file that cannot be stat'ed (a dangling one) is
-/// listed with size 0, so that reading it logs the failure.
+/// listed with size 0, so that reading it logs the failure. Anything that
+/// is demonstrably not a regular file (a FIFO, a socket, a device), which
+/// opening could block on, is left out. The `subagents` directory itself is
+/// not followed when it is a symlink.
 pub(super) fn list_transcripts(session_path: &Path) -> Vec<SubagentFile> {
     let mut found = Vec::new();
-    list_below(
-        &session_path.with_extension("").join("subagents"),
-        &mut found,
-    );
+    let root = session_path.with_extension("").join("subagents");
+    if fs::symlink_metadata(&root).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return found;
+    }
+    list_below(&root, &mut found);
     found.sort_by(|a, b| a.path.cmp(&b.path));
     found
 }
@@ -173,8 +177,12 @@ fn list_below(dir: &Path, found: &mut Vec<SubagentFile>) {
             }
         };
         let path = entry.path();
-        let Ok(kind) = entry.file_type() else {
-            continue;
+        let kind = match entry.file_type() {
+            Ok(kind) => kind,
+            Err(err) => {
+                log::warn!("could not stat {}: {err}", path.display());
+                continue;
+            }
         };
         if kind.is_dir() {
             list_below(&path, found);
@@ -186,14 +194,15 @@ fn list_below(dir: &Path, found: &mut Vec<SubagentFile>) {
             continue;
         }
         let meta = if kind.is_symlink() {
-            match fs::metadata(&path) {
-                Ok(meta) if meta.is_dir() => continue,
-                Ok(meta) => Some(meta),
-                Err(_) => None,
-            }
+            fs::metadata(&path).ok()
         } else {
             entry.metadata().ok()
         };
+        // A directory behind a link is not followed; a FIFO or a device is
+        // not a transcript, and opening it could block.
+        if meta.as_ref().is_some_and(|meta| !meta.is_file()) {
+            continue;
+        }
         found.push(SubagentFile {
             path,
             size: meta.as_ref().map_or(0, fs::Metadata::len),
@@ -420,6 +429,43 @@ mod tests {
             .collect();
         assert_eq!(names, ["agent-gone.jsonl"]);
         assert_eq!(found[0].size, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_subagents_directory_that_is_a_link_is_not_followed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let elsewhere = tmp.path().join("elsewhere");
+        fs::create_dir_all(&elsewhere).unwrap();
+        fs::write(elsewhere.join("agent-z.jsonl"), "{}").unwrap();
+        fs::create_dir_all(tmp.path().join("ses")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, tmp.path().join("ses").join("subagents")).unwrap();
+        assert!(list_transcripts(&tmp.path().join("ses.jsonl")).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_named_like_a_transcript_is_not_listed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("ses").join("subagents");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("agent-ok.jsonl"), "{}").unwrap();
+        let made = std::process::Command::new("mkfifo")
+            .arg(root.join("agent-pipe.jsonl"))
+            .status();
+        if !made.is_ok_and(|status| status.success()) {
+            eprintln!("mkfifo is not available: nothing to test");
+            return;
+        }
+        // A link to the pipe is not a transcript either.
+        std::os::unix::fs::symlink(root.join("agent-pipe.jsonl"), root.join("agent-link.jsonl"))
+            .unwrap();
+        let found = list_transcripts(&tmp.path().join("ses.jsonl"));
+        let names: Vec<_> = found
+            .iter()
+            .map(|f| f.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["agent-ok.jsonl"]);
     }
 
     #[test]

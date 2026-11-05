@@ -9,7 +9,7 @@ use crate::components::format_stats;
 use crate::harness::Harness;
 use crate::harness::claude::ClaudeHarness;
 use crate::index::IndexEvent;
-use crate::model::{HarnessId, SessionId, SessionStats};
+use crate::model::{HarnessId, SessionId, SessionStats, TokenUsage};
 
 const CLAUDE: HarnessId = HarnessId::Claude;
 
@@ -62,11 +62,10 @@ fn the_row_of_a_stats_event_shows_the_agent_time() {
             harness: CLAUDE,
             session: SessionId::from("s1"),
             stats: SessionStats {
+                turns: 6,
+                agent_time: std::time::Duration::from_secs(17 * 3600 + 56 * 60),
                 run_time: std::time::Duration::from_secs(81 * 3600 + 33 * 60),
-                ..match fixtures::stats_event(CLAUDE, "s1", 6, 17 * 3600 + 56 * 60) {
-                    IndexEvent::Stats { stats, .. } => stats,
-                    other => panic!("{other:?}"),
-                }
+                tokens: TokenUsage::default(),
             },
         },
     );

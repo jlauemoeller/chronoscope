@@ -348,7 +348,8 @@ fn agent_time(db: &Db, session: &str, page_size: usize) -> Result<Duration> {
             Turn::Assistant(turn) => turn.stats.as_ref().map(|stats| stats.duration),
             _ => None,
         })
-        .sum())
+        // Saturating: crafted `time` values must not panic.
+        .fold(Duration::ZERO, Duration::saturating_add))
 }
 
 /// The token use of the `assistant` rows of `session` and of all its
