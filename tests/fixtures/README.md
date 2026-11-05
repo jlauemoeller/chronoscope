@@ -147,8 +147,10 @@ Claude Code 2.1.304 to 2.1.311 sessions.
   - `-home-user-alpha/aaaa0001/subagents/agent-a1.jsonl` and
     `agent-a1.meta.json`: a subagent transcript that must not be listed (its
     timestamps are the newest in the tree). It carries no `usage`, so the
-    session's tokens in `tests/index.rs` stay zero; the tests of the totals
-    build their own subagent trees in temporary directories;
+    session's tokens in `tests/index.rs` stay zero until its test of the
+    subagent refresh appends a line with `usage` to its copy; the tests of the
+    totals and of the usage memo build their own subagent trees in temporary
+    directories;
   - `-home-user-my-app/bbbb0001.jsonl` and `-home-user-my.app/bbbb0002.jsonl`:
     two encoded directories (the lossy encoding of `/home/user/my.app`) with
     the same real `cwd`; the first has a prompt but no title;
@@ -198,7 +200,10 @@ Claude Code 2.1.304 to 2.1.311 sessions.
 - **Used by:** `src/harness/opencode/tests.rs`,
   `src/harness/opencode/stats_tests.rs` (which adds a grandchild session and
   other rows with `TempDb::exec`, not here), `src/app/browser_tests/opencode.rs`,
-  `tests/opencode_log.rs` and `tests/harness_registry.rs`.
+  `tests/opencode_log.rs`, `tests/harness_registry.rs` and
+  `tests/index_opencode.rs` (which adds a grandchild session and writes rows
+  to the copy, as OpenCode would; the stats-key tests of
+  `src/harness/opencode/tests.rs` do the same with `TempDb::exec`).
 - **Covers:**
   - the `migration` table, whose newest row is the one the adapter knows;
   - three projects: `prj_alpha` (named `Alpha App`), `prj_beta` (no `name`, so

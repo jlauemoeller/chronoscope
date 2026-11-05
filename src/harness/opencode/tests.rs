@@ -1035,19 +1035,22 @@ fn a_cycle_in_parent_id_does_not_hang_the_index() {
     let h = harness(&db);
     let session = summary(&h, "ses_main");
     let key = h.stats_key(&session);
+    // Two sessions that are each other's parent: no top-level session
+    // reaches them, so the build ends and the keys stay.
     db.exec(&format!(
         "{}{}",
         child_sql("ses_x", "ses_y", 1_793_190_000_000),
         child_sql("ses_y", "ses_x", 1_793_190_000_000)
     ));
-    // Neither is reachable from a top-level session: the keys stay.
     h.refresh().unwrap();
     assert_eq!(h.stats_key(&session), key);
-    // One that is reachable and loops back to its own ancestor still ends.
-    db.exec("UPDATE session_v2 SET parent_id = 'ses_x' WHERE id = 'ses_y'");
-    db.exec(&child_sql("ses_z", "ses_child1", 1_793_190_000_001));
+    // A session has one parent, so a cycle cannot hang off a root: the
+    // recursion starts at the top-level sessions and never meets one. `UNION`
+    // is for the stats of a session inside a cycle (see `stats_tests`).
+    db.exec("UPDATE session_v2 SET time_updated = 1793190000001 WHERE id = 'ses_x'");
     h.refresh().unwrap();
-    assert!(h.stats_key(&session).ends_with(":1793190000001"));
+    assert_eq!(h.stats_key(&session), key);
+    assert!(h.stats(&session).is_ok());
 }
 
 #[test]

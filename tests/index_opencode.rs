@@ -9,7 +9,7 @@ use std::time::Duration;
 use chronoscope::harness::Harness;
 use chronoscope::harness::opencode::OpenCodeHarness;
 use chronoscope::index::{IndexEvent, SessionIndex, SessionMap};
-use chronoscope::model::{SessionId, SessionStats};
+use chronoscope::model::{SessionId, SessionStats, SessionSummary};
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -44,6 +44,8 @@ struct Rig {
     rx: std::sync::mpsc::Receiver<IndexEvent>,
     _handle: chronoscope::index::IndexHandle,
     _cache: TempDir,
+    /// A harness of its own on the database, to look at what the index sees.
+    reader: OpenCodeHarness,
 }
 
 fn rig() -> Rig {
@@ -54,6 +56,7 @@ fn rig() -> Rig {
     writer.execute_batch(grandchild_sql()).unwrap();
     writer.execute_batch("PRAGMA synchronous = OFF").unwrap();
     let cache = tempfile::tempdir().unwrap();
+    let reader = OpenCodeHarness::with_db_path(path.clone(), BTreeMap::new());
     let harness: Arc<dyn Harness> = Arc::new(OpenCodeHarness::with_db_path(path, BTreeMap::new()));
     let mut handle = SessionIndex::start(vec![harness], cache.path().to_owned());
     let rx = handle.take_events().unwrap();
@@ -63,12 +66,27 @@ fn rig() -> Rig {
         rx,
         _handle: handle,
         _cache: cache,
+        reader,
     }
 }
 
 impl Rig {
+    /// The summary of `ses_main` and its stats key, read afresh.
+    fn main_summary_and_key(&self) -> (SessionSummary, String) {
+        self.reader.refresh().unwrap();
+        let project = self.reader.projects().unwrap();
+        let summary = project
+            .iter()
+            .flat_map(|p| self.reader.sessions(&p.id).unwrap())
+            .find(|s| s.id.as_str() == "ses_main")
+            .unwrap();
+        let key = self.reader.stats_key(&summary);
+        (summary, key)
+    }
+
     /// Receives events until the stats of `session` arrive; the sessions of
-    /// every snapshot on the way are returned with them.
+    /// every snapshot on the way are returned with them (none where the index
+    /// polls, as on macOS: it sends a snapshot only when one differs).
     fn next_stats(&self, session: &str) -> (SessionStats, Vec<Arc<SessionMap>>) {
         let mut snapshots = Vec::new();
         loop {
@@ -91,6 +109,7 @@ fn a_write_to_only_a_child_or_grandchild_updates_the_stats_of_the_unchanged_sess
     assert_eq!(listed.values().flatten().count(), TOP_LEVEL);
     // The session's tokens include those of its children.
     let main_input = first.tokens.input;
+    let (summary, key) = rig.main_summary_and_key();
 
     // A child writes: a new row, and the session is bumped past its parent.
     rig.writer
@@ -101,7 +120,9 @@ fn a_write_to_only_a_child_or_grandchild_updates_the_stats_of_the_unchanged_sess
         .unwrap();
     let (second, snapshots) = rig.next_stats("ses_main");
     assert_eq!(second.tokens.input, main_input + 1000);
-    assert!(!snapshots.is_empty(), "the rebuild sent its snapshot");
+    let (summary_2, key_2) = rig.main_summary_and_key();
+    assert_eq!(summary_2, summary, "the summary is unchanged");
+    assert_ne!(key_2, key, "the key changed");
     for sessions in &snapshots {
         assert_eq!(**sessions, *listed, "no session summary changed");
     }
@@ -115,6 +136,9 @@ fn a_write_to_only_a_child_or_grandchild_updates_the_stats_of_the_unchanged_sess
         .unwrap();
     let (third, snapshots) = rig.next_stats("ses_main");
     assert_eq!(third.tokens.input, main_input + 1000 + 20_000);
+    let (summary_3, key_3) = rig.main_summary_and_key();
+    assert_eq!(summary_3, summary, "the summary is unchanged");
+    assert_ne!(key_3, key_2, "the key changed");
     for sessions in &snapshots {
         assert_eq!(**sessions, *listed, "no session summary changed");
     }

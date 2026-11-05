@@ -420,8 +420,7 @@ impl Coordinator {
             // still be out of date: a write to a subagent file or a child
             // row changes a session's key and no summary.
             let sessions = Arc::clone(&last.sessions);
-            // After a failed build the sessions are not known.
-            return !ok || self.schedule_stats(i, &sessions);
+            return self.schedule_stats(i, &sessions);
         }
         let projects = Arc::new(projects);
         let sessions = Arc::new(sessions);
