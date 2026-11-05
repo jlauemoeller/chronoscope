@@ -182,6 +182,33 @@ pub fn stats_event(harness: HarnessId, session: &str, turns: usize, secs: u64) -
     }
 }
 
+/// The stats of the worked example (SPEC §4.2): 81h 33m in all and 17h 56m
+/// of agent time, 15.8k input, 6.3M output (2.2M of it thinking), 862.3M read
+/// from and 30.7M written to the cache.
+pub fn worked_example_stats() -> SessionStats {
+    SessionStats {
+        turns: 6,
+        agent_time: Duration::from_secs(64_560),
+        run_time: Duration::from_secs(293_580),
+        tokens: TokenUsage {
+            input: 15_800,
+            output: 6_300_000,
+            reasoning: 2_200_000,
+            cache_read: 862_300_000,
+            cache_write: 30_700_000,
+        },
+    }
+}
+
+/// An event that brings `stats` for a session.
+pub fn full_stats_event(harness: HarnessId, session: &str, stats: SessionStats) -> IndexEvent {
+    IndexEvent::Stats {
+        harness,
+        session: SessionId::from(session),
+        stats,
+    }
+}
+
 /// A project of `harness` with an explicit working directory.
 pub fn project_in(
     harness: HarnessId,

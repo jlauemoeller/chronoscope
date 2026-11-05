@@ -24,6 +24,7 @@ pub mod save;
 pub mod search;
 pub mod search_worker;
 pub mod selector;
+mod session_panels;
 pub mod session_port;
 mod sidebar;
 pub mod startup;
@@ -46,6 +47,8 @@ mod selector_tests;
 mod selector_totals_tests;
 #[cfg(test)]
 mod session_panels_tests;
+#[cfg(test)]
+mod session_panels_values_tests;
 #[cfg(test)]
 mod tests;
 
@@ -774,6 +777,8 @@ impl App {
         // Any message may have moved the transcript's selection, or the focus.
         self.sync_sidebar_selection();
         self.refresh_hints();
+        // Any message may have selected another session or brought its stats.
+        self.push_session_panels();
         // Any message may have changed the screen, an overlay or the prompt.
         self.refresh_routing();
     }

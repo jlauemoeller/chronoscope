@@ -1,0 +1,11 @@
+---
+source: src/components/session_tokens.rs
+expression: text
+---
+╭─ Session Token╮
+│ Input   15.8k │
+│ Output   6.3M │
+│ Thinking 2.2M │
+│ Cache… 862.3M │
+│ Cache … 30.7M │
+╰───────────────╯

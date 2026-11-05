@@ -80,12 +80,12 @@ pub(super) fn mount_selector(
     )?;
     application.mount(
         Id::SessionTime,
-        Box::new(SessionTime::new(theme.clone())),
+        Box::new(SessionTime::new(None, theme.clone())),
         Vec::new(),
     )?;
     application.mount(
         Id::SessionTokens,
-        Box::new(SessionTokens::new(theme.clone())),
+        Box::new(SessionTokens::new(None, theme.clone())),
         Vec::new(),
     )?;
     application.mount(
@@ -204,6 +204,8 @@ pub(super) struct SelectorState {
     pub(super) filtered: Option<Filter>,
     /// The sessions listed while filtered, in row order.
     pub(super) shown: Vec<SessionId>,
+    /// What the Session Time and Session Tokens panels were last given.
+    pub(super) panels: super::session_panels::PanelValues,
 }
 
 impl SelectorState {
@@ -639,7 +641,7 @@ impl App {
     }
 
     /// The row the Sessions pane has selected, asked of the list.
-    fn selected_filtered_row(&self) -> Option<usize> {
+    pub(super) fn selected_filtered_row(&self) -> Option<usize> {
         let value = self
             .application
             .query(&Id::SessionList, SELECTED_ATTR)
@@ -997,6 +999,8 @@ impl App {
         self.push_projects();
         self.push_sessions();
         self.push_cwd();
+        // Last: the panels follow the session the lists now show.
+        self.push_session_panels();
     }
 
     pub(super) fn push_tabs(&mut self) {

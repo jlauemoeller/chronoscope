@@ -1,0 +1,8 @@
+---
+source: src/components/session_time.rs
+expression: text
+---
+╭─ Session Ti╮
+│ T… 81h 33m │
+│ A… 17h 56m │
+╰────────────╯

@@ -1024,6 +1024,8 @@ impl App {
             self.unmount_selector();
             return;
         }
+        // The new panels are empty.
+        self.forget_pushed_panels();
         self.selector.show_session(open.harness, &open.summary);
         self.set_screen(Screen::BrowserSelector);
         self.push_all();
@@ -1068,6 +1070,7 @@ impl App {
         self.selector.search = None;
         self.selector.filtered = None;
         self.selector.shown.clear();
+        self.forget_pushed_panels();
         // The question was in the prompt that is unmounted.
         self.clear_resume_question();
         for id in SELECTOR_IDS.into_iter().chain([Id::Prompt]) {

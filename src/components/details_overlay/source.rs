@@ -3,13 +3,13 @@
 
 use super::content::{DetailsContent, DetailsGroup, DetailsRow};
 use super::rows::{ENVIRONMENT, MESSAGE, PROMPT, TOOL_CALL, TURN};
-use crate::components::turn_block::renderers::format_tokens;
 use crate::components::turn_block::{SectionContent, SectionId, SectionKey, derive_sections};
 use crate::model::{
     SectionSource, SourceGroup, SourceGroupKind, SourceKey, SourceKind, SourceRow, SourceValue,
     Turn,
 };
 use crate::timestamp::TimestampFormatter;
+use crate::tokens::format_tokens;
 
 /// What the details key asks for: the rows the model knows, and the
 /// references of the section for the harness to read the rest from. The
