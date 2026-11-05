@@ -25,8 +25,8 @@ use crate::components::{
     ProjectList, ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR,
     SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame, SessionList, SessionRow, SessionRows,
     SessionStatsUpdate, SessionTime, SessionTokens, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR,
-    VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value, selected_from_value, selected_value,
-    viewport_value, visible_rows,
+    VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value, selected_value, viewport_value,
+    visible_rows,
 };
 use crate::keymap::Keymap;
 use crate::launch::{HarnessIndex, Preselect, deepest_ancestor};
@@ -596,7 +596,7 @@ impl App {
             return;
         };
         let previous = self
-            .selected_filtered_row()
+            .selected_row()
             .and_then(|row| self.selector.shown.get(row).cloned());
         let now = (self.clock)();
         let harness = self.selector.current;
@@ -638,16 +638,6 @@ impl App {
             harness_empty: false,
         };
         self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
-    }
-
-    /// The row the Sessions pane has selected, asked of the list.
-    pub(super) fn selected_filtered_row(&self) -> Option<usize> {
-        let value = self
-            .application
-            .query(&Id::SessionList, SELECTED_ATTR)
-            .ok()??
-            .into_attr();
-        selected_from_value(&value)?
     }
 
     /// The sessions that show the `●` marker: those of the selected project

@@ -719,6 +719,93 @@ fn clearing_the_query_and_typing_again_shows_the_selection_while_pending() {
     assert_eq!(shown(&mut app), expected(number_of(first.as_str())));
 }
 
+/// Applies the worker's answers until a result is listed. A snapshot sends a
+/// second request, so the first answer can be stale and is ignored.
+fn answer_until_listed(app: &mut App, results: &std::sync::mpsc::Receiver<super::SearchResult>) {
+    for _ in 0..4 {
+        answer(app, results);
+        if !app.search_results().is_empty() {
+            return;
+        }
+    }
+    panic!("no result was listed");
+}
+
+/// The search fixture after `edit` changed the sessions of its first project.
+fn search_snapshot_edited(
+    edit: impl FnOnce(&mut Vec<crate::model::SessionSummary>),
+) -> crate::index::IndexEvent {
+    let mut event = search_snapshot(CLAUDE);
+    if let crate::index::IndexEvent::Snapshot {
+        projects, sessions, ..
+    } = &mut event
+    {
+        let mut map = (**sessions).clone();
+        edit(map.get_mut(&projects[0].id).unwrap());
+        *sessions = map.into();
+    }
+    event
+}
+
+/// Ends a pending-window test: the answer is listed and the panels show the
+/// selected result.
+fn assert_results_shown(app: &mut App, results: &std::sync::mpsc::Receiver<super::SearchResult>) {
+    answer_until_listed(app, results);
+    let first = app.selected_result().expect("a result is selected");
+    assert_eq!(shown(app), expected(number_of(first.as_str())));
+}
+
+#[test]
+fn a_session_added_while_the_first_answer_is_pending_changes_nothing_in_the_panels() {
+    let (mut app, results) = with_worker();
+    type_text(&mut app, "b");
+    send(
+        &mut app,
+        search_snapshot_edited(|sessions| {
+            let mut newer = sessions[0].clone();
+            newer.id = SessionId::from("new1");
+            newer.title = "A session newer than all".to_owned();
+            newer.started_at += chrono::Duration::hours(1);
+            sessions.insert(0, newer);
+        }),
+    );
+    assert_eq!(shown(&mut app), expected(1), "the list still shows s1");
+    stats_of(&mut app, CLAUDE, "new1", 7);
+    assert_eq!(shown(&mut app), expected(1), "stats of another session");
+    assert_results_shown(&mut app, &results);
+}
+
+#[test]
+fn the_highlighted_session_removed_while_the_first_answer_is_pending_leaves_its_row_s_values() {
+    let (mut app, results) = with_worker();
+    type_text(&mut app, "b");
+    send(
+        &mut app,
+        search_snapshot_edited(|sessions| sessions.retain(|s| s.id.as_str() != "s1")),
+    );
+    // The row of s1 is still listed and highlighted, and s1 lost its stats
+    // with the snapshot: not s2's values under it.
+    assert_eq!(shown(&mut app), Vec::new());
+    assert_results_shown(&mut app, &results);
+}
+
+#[test]
+fn a_session_removed_above_the_cursor_keeps_the_highlighted_rows_values() {
+    let (mut app, results) = with_worker();
+    type_text(&mut app, "b");
+    press(&mut app, Key::Down);
+    assert_eq!(shown(&mut app), expected(2));
+    send(
+        &mut app,
+        search_snapshot_edited(|sessions| sessions.retain(|s| s.id.as_str() != "s1")),
+    );
+    assert_eq!(shown(&mut app), expected(2));
+    let rows = shown(&mut app);
+    let agent = rows.iter().find(|(label, _)| label == "Agent").unwrap();
+    assert_eq!(agent.1, row_duration(&mut app, "Brio importer"));
+    assert_results_shown(&mut app, &results);
+}
+
 // -- the filtered selector
 
 fn filtered() -> App {

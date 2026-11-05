@@ -9,7 +9,10 @@
 //! `set_attr` asks for a redraw.
 
 use super::{App, Id};
-use crate::components::{SESSION_TIME_ATTR, SESSION_TOKENS_ATTR, SessionTimes, payload_value};
+use crate::components::{
+    SESSION_ROWS_ATTR, SESSION_TIME_ATTR, SESSION_TOKENS_ATTR, SessionRows, SessionTimes,
+    payload_from_value, payload_value,
+};
 use crate::model::{SessionId, SessionStats, TokenUsage};
 
 /// What the panels show: nothing, or the figures of one session.
@@ -38,23 +41,35 @@ impl App {
     /// While the filtered selector or search results are listed, the list
     /// moves its own cursor over sessions of any project and reports no
     /// message, so it is asked; otherwise the selection is the `App`'s.
-    /// A search whose first answer is pending lists nothing yet, so the
-    /// panels follow the project's sessions then.
+    ///
+    /// A search whose first answer is pending lists nothing yet: the pane
+    /// still holds the rows it was last given and its cursor over them. An
+    /// index snapshot in that window replaces `selector.sessions()` but not
+    /// those rows (the new search request is what refreshes them), so the
+    /// id is taken from the rows the list holds, not from the `App`'s data.
     fn panels_session(&self) -> Option<SessionId> {
         if self.selector.filtered.is_some() {
-            let row = self.selected_filtered_row()?;
+            let row = self.selected_row()?;
             return self.selector.shown.get(row).cloned();
         }
         if self.selector.search_lists_results() {
             return self.selected_result();
         }
         if self.selector.search_shows_results() {
-            // The first answer is still on its way: the pane keeps the
-            // project's sessions, with the cursor where it is.
-            let row = self.selected_row()?;
-            return self.selector.sessions().get(row).map(|s| s.id.clone());
+            let rows = self.session_list_rows()?;
+            return rows.rows.get(rows.selected?).map(|row| row.id.clone());
         }
         self.selector.session.clone()
+    }
+
+    /// The rows the Sessions pane holds, with its cursor.
+    fn session_list_rows(&self) -> Option<SessionRows> {
+        let value = self
+            .application
+            .query(&Id::SessionList, SESSION_ROWS_ATTR)
+            .ok()??
+            .into_attr();
+        payload_from_value(&value)
     }
 
     /// Pushes the stats of the selected session into the panels, or empties

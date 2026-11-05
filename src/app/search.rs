@@ -146,8 +146,10 @@ struct PendingSearch {
 }
 
 impl SelectorState {
-    /// Whether the Sessions pane lists search results: a search is on and
-    /// its query is not empty. Otherwise it shows the selected project.
+    /// Whether a search with a non-empty query is on. Its results replace the
+    /// project's sessions in the Sessions pane once the first answer is
+    /// listed ([`search_lists_results`](Self::search_lists_results)); until
+    /// then the pane keeps what it showed.
     pub(super) fn search_shows_results(&self) -> bool {
         self.search
             .as_ref()
