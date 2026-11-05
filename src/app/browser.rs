@@ -152,7 +152,7 @@ impl DerefMut for BrowserState {
 }
 
 impl BrowserState {
-    /// Whether the transcript is replaced by "Session file is empty".
+    /// Whether the transcript is replaced by the empty state.
     pub(super) fn session_empty(&self) -> bool {
         self.empty
     }
@@ -267,7 +267,8 @@ impl App {
         self.browser.loaded
     }
 
-    /// Whether "Session file is empty" replaces the transcript.
+    /// Whether the empty state ("Session file is empty", or the local commands
+    /// of a session that holds only those) replaces the transcript.
     pub fn session_is_empty(&self) -> bool {
         self.browser.empty
     }

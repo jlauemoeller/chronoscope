@@ -107,8 +107,9 @@ hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
 ## claude/local_commands_only.jsonl
 
 - **Origin:** as `local_commands.jsonl`.
-- **Used by:** `tests/claude_local_commands_only.rs` and the browser snapshots
-  of the local-commands-only empty state.
+- **Used by:** `tests/claude_local_commands_only.rs` and
+  `src/app/browser_tests/local_commands.rs` (the `local_commands_only_*` and
+  `the_first_frame_after_a_turn_arrives_120x40_text` snapshots).
 - **Covers:** SPEC cycle 3 §2.3 and §2.5: a session that holds nothing but
   local commands, so it has no turn: the `<local-command-caveat>` meta entry,
   an `/effort` echo and its `Cancelled` output, a `/clear` echo and a `system`

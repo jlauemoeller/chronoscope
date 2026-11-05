@@ -89,9 +89,7 @@ impl EmptyState {
             Style::new().bg(self.theme.role(Role::Background))
         }
     }
-}
 
-impl EmptyState {
     /// Draws `line` centred on row `row` of `area`.
     fn draw_line(&self, frame: &mut Frame, area: Rect, row: u16, line: &str) {
         let at = Rect {
