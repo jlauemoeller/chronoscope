@@ -7,7 +7,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, TimeDelta, Utc};
 use chronoscope::harness::{Harness, Result, WatchHandle};
@@ -32,6 +32,9 @@ struct Stub {
     /// How long every `stats` call takes.
     delay: Duration,
     calls: AtomicUsize,
+    /// How many builds have started: `refresh` is the first thing the
+    /// coordinator calls in one, and nothing else calls it.
+    builds: AtomicUsize,
     /// When set, the first `stats` call reports on `entered`, then waits for
     /// `gate`.
     block_first: Option<(Sender<()>, Mutex<Receiver<()>>)>,
@@ -56,6 +59,7 @@ impl Stub {
             key_bump: AtomicU32::new(0),
             delay,
             calls: AtomicUsize::new(0),
+            builds: AtomicUsize::new(0),
             block_first: None,
             panic_first: false,
             fail_projects: false,
@@ -97,6 +101,7 @@ impl Harness for Stub {
         true
     }
     fn refresh(&self) -> Result<()> {
+        self.builds.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
     fn watch_paths(&self) -> Vec<PathBuf> {
@@ -236,6 +241,22 @@ fn wait_for_title(rx: &Receiver<IndexEvent>, title: &str) {
     }
 }
 
+/// Waits until a build starts that began after this call: the coordinator
+/// runs one build at a time, so the build running now (if any) has returned
+/// by then, and what the test changes before this call cannot be missed by
+/// the new build. Not a fixed wait: it ends when the new build is seen.
+fn wait_for_next_build(stub: &Stub) {
+    let seen = stub.builds.load(Ordering::SeqCst);
+    let start = Instant::now();
+    while stub.builds.load(Ordering::SeqCst) == seen {
+        assert!(
+            start.elapsed() < WAIT,
+            "no build started within {WAIT:?} (the coordinator is stuck?)"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
 fn next_stats(rx: &Receiver<IndexEvent>) -> SessionStats {
     loop {
         if let IndexEvent::Stats { stats, .. } = rx.recv_timeout(WAIT).unwrap() {
@@ -348,6 +369,10 @@ fn a_stale_result_after_a_revert_to_the_sent_key_is_dropped() {
     entered.recv_timeout(WAIT).unwrap();
     stub.version.store(1, Ordering::SeqCst);
     wait_for_title(&rx, "s v1");
+    // The build that sent that snapshot also records the reverted key, after
+    // the send: once a later build has started, it has returned, and no
+    // store below can reach the key it computed.
+    wait_for_next_build(&stub);
 
     gate.send(()).unwrap();
     // Version 2's result is outdated and older than what is shown. Version
@@ -491,6 +516,10 @@ fn a_failed_poll_after_a_good_snapshot_schedules_no_stats() {
     // The store becomes unreadable and the key changes: the sessions are not
     // known, so nothing is scheduled and no snapshot is sent.
     stub.fail_now.store(true, Ordering::SeqCst);
+    // A build that read the store before it failed may still be running, and
+    // would see the new key: the next build starts after it returned, and
+    // fails before it reads any key.
+    wait_for_next_build(&stub);
     stub.key_bump.store(1, Ordering::SeqCst);
     assert!(stats_without_a_snapshot(&rx, Duration::from_millis(400)).is_empty());
     assert_eq!(stub.calls.load(Ordering::SeqCst), 1);
