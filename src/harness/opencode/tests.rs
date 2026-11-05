@@ -983,6 +983,73 @@ fn the_stats_key_changes_with_time_updated() {
     assert_ne!(h.stats_key(&summary(&h, "ses_untitled")), key);
 }
 
+/// A child session of `parent` that was last updated at `updated`.
+fn child_sql(id: &str, parent: &str, updated: i64) -> String {
+    format!(
+        "INSERT INTO session_v2 (id, project_id, parent_id, slug, directory, title, version, \
+         agent, model, time_created, time_updated, time_idle) VALUES ('{id}', 'prj_alpha', \
+         '{parent}', '{id}', '/home/user/alpha', 'Nested', '1.0.0', NULL, NULL, 1793178400000, \
+         {updated}, NULL);"
+    )
+}
+
+#[test]
+fn the_stats_key_follows_the_newest_time_updated_of_the_descendants() {
+    let db = TempDb::new();
+    let h = harness(&db);
+    let session = summary(&h, "ses_main");
+    let key = h.stats_key(&session);
+    let other = h.stats_key(&summary(&h, "ses_untitled"));
+    let key_with = |updated: i64| format!("opencode:{}:ses_main:{updated}", db.path.display());
+    let main_updated = session.last_activity.timestamp_millis();
+
+    // A child written after its parent changes the key and nothing else.
+    db.exec("UPDATE session_v2 SET time_updated = 1793179900000 WHERE id = 'ses_child1'");
+    h.refresh().unwrap();
+    assert_eq!(summary(&h, "ses_main"), session, "the summary is unchanged");
+    assert_ne!(h.stats_key(&session), key);
+    assert_eq!(h.stats_key(&session), key_with(1_793_179_900_000));
+    // Another session's key does not change with it.
+    assert_eq!(h.stats_key(&summary(&h, "ses_untitled")), other);
+
+    // A grandchild older than the newest descendant changes nothing ...
+    db.exec(&child_sql("ses_grand", "ses_child1", 1_793_178_500_000));
+    h.refresh().unwrap();
+    assert_eq!(h.stats_key(&session), key_with(1_793_179_900_000));
+    // ... and a newer one changes the key.
+    db.exec("UPDATE session_v2 SET time_updated = 1793180000000 WHERE id = 'ses_grand'");
+    h.refresh().unwrap();
+    assert_eq!(summary(&h, "ses_main"), session, "the summary is unchanged");
+    assert_eq!(h.stats_key(&session), key_with(1_793_180_000_000));
+
+    // A descendant older than the session's own time does not lower the key.
+    db.exec("UPDATE session_v2 SET time_updated = 1 WHERE id IN ('ses_child1', 'ses_grand')");
+    h.refresh().unwrap();
+    assert_eq!(h.stats_key(&session), key_with(main_updated));
+    assert_eq!(h.stats_key(&session), key);
+}
+
+#[test]
+fn a_cycle_in_parent_id_does_not_hang_the_index() {
+    let db = TempDb::new();
+    let h = harness(&db);
+    let session = summary(&h, "ses_main");
+    let key = h.stats_key(&session);
+    db.exec(&format!(
+        "{}{}",
+        child_sql("ses_x", "ses_y", 1_793_190_000_000),
+        child_sql("ses_y", "ses_x", 1_793_190_000_000)
+    ));
+    // Neither is reachable from a top-level session: the keys stay.
+    h.refresh().unwrap();
+    assert_eq!(h.stats_key(&session), key);
+    // One that is reachable and loops back to its own ancestor still ends.
+    db.exec("UPDATE session_v2 SET parent_id = 'ses_x' WHERE id = 'ses_y'");
+    db.exec(&child_sql("ses_z", "ses_child1", 1_793_190_000_001));
+    h.refresh().unwrap();
+    assert!(h.stats_key(&session).ends_with(":1793190000001"));
+}
+
 #[test]
 fn the_resume_command_runs_in_the_session_directory() {
     let db = TempDb::new();

@@ -1,10 +1,12 @@
 //! Building the session index over 2 000 small session files, with the scan
 //! cache cold (a new harness) and warm (nothing changed since the last
-//! build). For reference: it has no budget of its own.
+//! build), and the stats keys of those sessions, which the index worker
+//! computes on every rebuild. For reference: it has no budget of its own.
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
 use chronoscope::bench_support::write_small_sessions;
+use chronoscope::harness::Harness;
 use chronoscope::harness::claude::ClaudeHarness;
 
 const SESSIONS: usize = 2_000;
@@ -25,6 +27,21 @@ fn bench(c: &mut Criterion) {
     warm.refresh().expect("the index builds");
     group.bench_function("warm", |b| {
         b.iter(|| warm.refresh().expect("the index builds"));
+    });
+    let sessions: Vec<_> = warm
+        .projects()
+        .expect("projects")
+        .iter()
+        .flat_map(|p| warm.sessions(&p.id).expect("sessions"))
+        .collect();
+    assert_eq!(sessions.len(), SESSIONS);
+    group.bench_function("stats_keys", |b| {
+        b.iter(|| {
+            sessions
+                .iter()
+                .map(|session| warm.stats_key(session).len())
+                .sum::<usize>()
+        });
     });
     group.finish();
 }

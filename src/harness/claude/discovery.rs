@@ -23,13 +23,14 @@ use super::assemble::Assembler;
 use super::load::{self, LoadHook, Tuning, WatchMode};
 use super::resume::{self, DEFAULT_RESUME_COMMAND};
 use super::scan::{FileScan, scan_reader};
-use super::subagent::{self, Opened, SubagentInfo};
+use super::subagent::{self, Opened, SubagentFile, SubagentInfo};
+use super::usage_memo::UsageMemo;
 use crate::config::Config;
 use crate::harness::shared::{UNTITLED, truncate_title};
 use crate::harness::{Harness, Result, WatchHandle};
 use crate::model::{
     HarnessId, ModelUpdate, Project, ProjectId, SectionSource, SessionId, SessionStats,
-    SessionSummary, SourceGroup, ToolCallId, Turn,
+    SessionSummary, SourceGroup, TokenUsage, ToolCallId, Turn,
 };
 
 /// The default data directory: `<home>/.claude/projects` on every platform.
@@ -85,6 +86,12 @@ struct State {
 
 type ScanHook = Box<dyn Fn(&Path) + Send + Sync>;
 
+/// Nanoseconds since the epoch; 0 before it.
+fn nanos(time: SystemTime) -> u128 {
+    time.duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos())
+}
+
 /// The Claude Code adapter's discovery half.
 pub struct ClaudeHarness {
     data_dir: PathBuf,
@@ -94,8 +101,13 @@ pub struct ClaudeHarness {
     max_workers: Option<usize>,
     scans: AtomicUsize,
     stat_parses: AtomicUsize,
+    sub_reads: AtomicUsize,
     state: Mutex<State>,
+    /// The usage of each subagent transcript, by (path, size, mtime). Not
+    /// under the `state` lock: `stats` must run during a `refresh`.
+    usage: UsageMemo,
     on_scan: Option<ScanHook>,
+    on_sub_read: Option<ScanHook>,
     resume_command: String,
     tuning: Tuning,
     on_batch: Option<LoadHook>,
@@ -125,8 +137,11 @@ impl ClaudeHarness {
             max_workers: None,
             scans: AtomicUsize::new(0),
             stat_parses: AtomicUsize::new(0),
+            sub_reads: AtomicUsize::new(0),
             state: Mutex::new(State::default()),
+            usage: UsageMemo::default(),
             on_scan: None,
+            on_sub_read: None,
             resume_command: DEFAULT_RESUME_COMMAND.to_owned(),
             tuning: Tuning::default(),
             on_batch: None,
@@ -197,6 +212,15 @@ impl ClaudeHarness {
         self
     }
 
+    /// Calls `hook` with the path of every subagent transcript just before
+    /// [`stats`](Harness::stats) reads it. A test hook.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_subagent_read_hook(mut self, hook: impl Fn(&Path) + Send + Sync + 'static) -> Self {
+        self.on_sub_read = Some(Box::new(hook));
+        self
+    }
+
     /// The directory the transcripts are read from.
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
@@ -212,6 +236,20 @@ impl ClaudeHarness {
     /// construction. Every parse counts, including one that failed.
     pub fn stats_parse_count(&self) -> usize {
         self.stat_parses.load(Ordering::Relaxed)
+    }
+
+    /// How many subagent transcripts [`stats`](Harness::stats) has read since
+    /// construction. Every read counts, including one that failed; a
+    /// transcript whose usage is remembered is not read.
+    #[doc(hidden)]
+    pub fn subagent_read_count(&self) -> usize {
+        self.sub_reads.load(Ordering::Relaxed)
+    }
+
+    /// How many subagent transcripts have their usage remembered.
+    #[doc(hidden)]
+    pub fn subagent_memo_len(&self) -> usize {
+        self.usage.len()
     }
 
     /// What the last build did.
@@ -261,6 +299,8 @@ impl ClaudeHarness {
             .cache
             .retain(|path, _| present.contains(path.as_path()));
         stats.dropped = before - state.cache.len();
+        // The usage of the subagents of a session that is gone goes with it.
+        self.usage.retain_sessions(&present);
 
         let stale: Vec<&FileMeta> = files
             .iter()
@@ -352,6 +392,15 @@ impl ClaudeHarness {
         Ok((results, workers))
     }
 
+    /// The token use of the subagent transcript `file`.
+    fn read_subagent(&self, file: &SubagentFile) -> io::Result<TokenUsage> {
+        self.sub_reads.fetch_add(1, Ordering::Relaxed);
+        if let Some(hook) = &self.on_sub_read {
+            hook(&file.path);
+        }
+        Assembler::from_file(&file.path).map(|asm| asm.session_tokens())
+    }
+
     fn scan_file(&self, path: &Path) -> io::Result<FileScan> {
         self.scans.fetch_add(1, Ordering::Relaxed);
         if let Some(hook) = &self.on_scan {
@@ -390,7 +439,10 @@ impl Harness for ClaudeHarness {
     ///   entries are ignored (see [`Assembler::first_timestamp`]);
     /// - `tokens` is the whole use of the main transcript and of every
     ///   subagent transcript below `subagents/`; a subagent file that cannot
-    ///   be read is logged and skipped.
+    ///   be read is logged and skipped, and read again next time. The usage
+    ///   of each subagent file is remembered by (path, size, mtime), so a
+    ///   recomputation reads only the files that changed; the entries of
+    ///   files that are gone are dropped.
     ///
     /// Does not take the index lock, so it can run while a
     /// [`refresh`](Harness::refresh) does.
@@ -417,13 +469,27 @@ impl Harness for ClaudeHarness {
             _ => Duration::ZERO,
         };
         let mut tokens = asm.session_tokens();
-        for file in subagent::list_transcripts(&session.path) {
-            match Assembler::from_file(&file.path) {
-                Ok(sub) => tokens.accumulate(&sub.session_tokens()),
-                Err(err) => log::warn!(
-                    "could not read the subagent transcript {}: {err}",
-                    file.path.display()
-                ),
+        // Listed (and stat'ed) before any file is read, so a file that grows
+        // during the read is read again next time.
+        let files = subagent::list_transcripts(&session.path);
+        let known = self.usage.lookup(&session.path, &files);
+        for (file, known) in files.iter().zip(known) {
+            if let Some(usage) = known {
+                tokens.accumulate(&usage);
+                continue;
+            }
+            match self.read_subagent(file) {
+                Ok(usage) => {
+                    self.usage.insert(&session.path, file, usage);
+                    tokens.accumulate(&usage);
+                }
+                Err(err) => {
+                    self.usage.forget(&file.path);
+                    log::warn!(
+                        "could not read the subagent transcript {}: {err}",
+                        file.path.display()
+                    );
+                }
             }
         }
         Ok(SessionStats {
@@ -440,21 +506,28 @@ impl Harness for ClaudeHarness {
         super::details::section_details(source)
     }
 
-    /// `claude:<path>:<size>:<mtime in ns since the epoch>`; a file that
-    /// cannot be stat'ed gives size and mtime `missing`. The subagent
-    /// transcripts that [`stats`](Self::stats) reads are not part of the key
-    /// yet.
+    /// `claude:<path>:<size>:<mtime in ns since the epoch>:<subagent
+    /// transcripts>:<their total size>:<their newest mtime in ns>`, so that a
+    /// write to a subagent file changes the key (`:0:0:0` without subagents;
+    /// `journal.jsonl` and the meta files are not transcripts). A main file
+    /// that cannot be stat'ed gives size and mtime `missing`, and no subagent
+    /// fields. Only stats files: the subagent files are listed, never read.
     fn stats_key(&self, session: &SessionSummary) -> String {
         let path = session.path.display();
         let prefix = HarnessId::Claude.cache_prefix();
         match fs::metadata(&session.path) {
             Ok(meta) => {
-                let nanos = meta
-                    .modified()
-                    .ok()
-                    .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
-                    .map_or(0, |d| d.as_nanos());
-                format!("{prefix}:{path}:{}:{nanos}", meta.len())
+                let mtime = meta.modified().map_or(0, nanos);
+                let files = subagent::list_transcripts(&session.path);
+                let total = files
+                    .iter()
+                    .fold(0_u64, |sum, f| sum.saturating_add(f.size));
+                let newest = files.iter().map(|f| nanos(f.mtime)).max().unwrap_or(0);
+                format!(
+                    "{prefix}:{path}:{}:{mtime}:{}:{total}:{newest}",
+                    meta.len(),
+                    files.len()
+                )
             }
             Err(_) => format!("{prefix}:{path}:missing"),
         }

@@ -8,6 +8,7 @@
 
 mod alloc;
 pub mod generate;
+mod subagents;
 #[cfg(test)]
 mod tests;
 
@@ -29,6 +30,10 @@ pub use alloc::{CountingAlloc, HeapStats};
 pub use generate::{
     LARGE_MAX, LARGE_MIN, LARGE_PERCENT, Rng, SESSION_ID, SyntheticSession, generate_session,
     generate_session_with,
+};
+pub use subagents::{
+    SUBAGENT_BYTES, SUBAGENT_FILES, SUBAGENT_MAIN_BYTES, SubagentFixture, cached_subagent_fixture,
+    generate_subagent_fixture,
 };
 
 use crate::app::Msg;

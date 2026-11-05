@@ -662,3 +662,64 @@ fn claude_stats_keys_start_with_the_cache_prefix_and_change_with_the_file() {
     append(&path, "\n");
     assert_ne!(harness.stats_key(&summary), key);
 }
+
+/// An assistant line of a subagent with `input` input tokens.
+fn subagent_line(id: &str, input: u64) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"sub-{id}","isSidechain":true,"cwd":"/home/user/alpha","sessionId":"aaaa0001","timestamp":"2026-03-01T09:10:00.000Z","message":{{"id":"{id}","model":"x","role":"assistant","content":[{{"type":"text","text":"ok"}}],"usage":{{"input_tokens":{input},"output_tokens":1}}}}}}"#
+    ) + "\n"
+}
+
+#[test]
+fn appending_to_only_a_subagent_file_updates_the_stats_with_the_same_sessions() {
+    let env = env();
+    let harness = claude(&env.data);
+    let (_handle, rx) = start_with(&harness, &env.cache, watching_only());
+    let first = wait_for(&rx, WAIT, snap);
+    let before = collect_stats(&rx, EXPECTED.len());
+    let alpha = SessionId::from("aaaa0001");
+    assert_eq!(before[&alpha].tokens, TokenUsage::default());
+    let sub = env
+        .data
+        .join("-home-user-alpha/aaaa0001/subagents/agent-a1.jsonl");
+    let main = env.data.join("-home-user-alpha/aaaa0001.jsonl");
+    let main_before = fs::metadata(&main).unwrap().modified().unwrap();
+    let key = harness.stats_key(
+        &first
+            .sessions
+            .iter()
+            .find(|s| s.id == alpha)
+            .unwrap()
+            .clone(),
+    );
+
+    append(&sub, &subagent_line("s1", 70));
+    // The snapshot of the rebuild comes first, then the stats.
+    let mut snapshots = Vec::new();
+    let after = wait_for(&rx, WAIT, |event| match event {
+        IndexEvent::Stats { session, stats, .. } if *session == alpha => Some(*stats),
+        other => {
+            snapshots.extend(snap(other).map(|s| s.sessions));
+            None
+        }
+    });
+    assert_eq!(after.tokens.input, 70);
+    assert_eq!(after.tokens.output, 1);
+    // Only the subagent file changed: not the main transcript, so no summary.
+    assert_eq!(
+        fs::metadata(&main).unwrap().modified().unwrap(),
+        main_before
+    );
+    let session = first.sessions.iter().find(|s| s.id == alpha).unwrap();
+    assert_ne!(harness.stats_key(session), key);
+    let sorted = |mut sessions: Vec<SessionSummary>| {
+        sessions.sort_by(|a, b| a.id.cmp(&b.id));
+        sessions
+    };
+    assert!(!snapshots.is_empty(), "the rebuild sent its snapshot");
+    for sessions in snapshots {
+        assert_eq!(sorted(sessions), sorted(first.sessions.clone()));
+    }
+    // The other sessions were not parsed again.
+    assert_eq!(harness.stats_parse_count(), EXPECTED.len() + 1);
+}

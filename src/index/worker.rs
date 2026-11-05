@@ -385,8 +385,8 @@ impl Coordinator {
     }
 
     /// Builds harness `i`'s index and sends the snapshot, then its stats.
-    /// With `dedupe`, an unchanged snapshot is not sent. `false` when the
-    /// receiver is gone.
+    /// With `dedupe`, an unchanged snapshot is not sent, but the stats are
+    /// still scheduled. `false` when the receiver is gone.
     fn build(&mut self, i: usize, dedupe: bool) -> bool {
         let harness = Arc::clone(&self.harnesses[i].harness);
         let built = harness.refresh().and_then(|()| collect(&*harness));
@@ -412,11 +412,16 @@ impl Coordinator {
         let state = &mut self.harnesses[i];
         state.warned_build &= !ok;
         if dedupe
-            && state.last.as_ref().is_some_and(|l| {
+            && let Some(last) = state.last.as_ref().filter(|l| {
                 l.available == available && *l.projects == projects && *l.sessions == sessions
             })
         {
-            return true;
+            // The snapshot is unchanged and not sent again. The stats may
+            // still be out of date: a write to a subagent file or a child
+            // row changes a session's key and no summary.
+            let sessions = Arc::clone(&last.sessions);
+            // After a failed build the sessions are not known.
+            return !ok || self.schedule_stats(i, &sessions);
         }
         let projects = Arc::new(projects);
         let sessions = Arc::new(sessions);

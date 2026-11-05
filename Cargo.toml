@@ -70,6 +70,10 @@ harness = false
 name = "selector_index"
 harness = false
 
+[[bench]]
+name = "session_stats"
+harness = false
+
 [profile.release]
 strip = true
 
