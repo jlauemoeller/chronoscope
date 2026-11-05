@@ -7,8 +7,7 @@
 //! batch is followed by a [`ModelUpdate::Progress`]; the initial stream ends
 //! with `Progress(1.0)`, [`ModelUpdate::LocalCommands`] (only for a session
 //! without turns that ran local commands), [`ModelUpdate::ParseWarnings`],
-//! [`ModelUpdate::Loaded`]
-//! and a first [`ModelUpdate::Activity`]. The worker then keeps the session
+//! [`ModelUpdate::Loaded`] and a first [`ModelUpdate::Activity`]. The worker then keeps the session
 //! live (see [`super::watch`]) until it is stopped.
 //!
 //! A final line without its newline may still be being written: it is kept in
@@ -126,6 +125,8 @@ pub(super) fn load_file<'a>(
             if streamer.has_unsent() {
                 streamer.flush();
             }
+            // The commands of a session without turns are worth showing too.
+            streamer.send_local_commands();
             Err(err)
         }
     }
@@ -262,7 +263,7 @@ impl<'a> Streamer<'a> {
     }
 
     /// The end of the file: sends the last batch, then `Progress(1.0)`, the
-    /// warning count, `Loaded` and the file's `Activity`. `false` when the
+    /// local commands (if the session has no turns), the warning count, `Loaded` and the file's `Activity`. `false` when the
     /// worker should stop.
     fn finish(&mut self) -> bool {
         let updates = self.asm.flush_held();
@@ -333,10 +334,10 @@ impl<'a> Streamer<'a> {
         if commands == self.commands_sent {
             return true;
         }
-        self.commands_sent.clone_from(&commands);
+        self.commands_sent = commands.to_vec();
         self.job
             .tx
-            .send(ModelUpdate::LocalCommands(commands))
+            .send(ModelUpdate::LocalCommands(self.commands_sent.clone()))
             .is_ok()
     }
 

@@ -255,11 +255,11 @@ impl Assembler {
     /// `system` `local_command` entry beside most echoes, so those are
     /// listed (by their `commandRun`) only while the session has no echo at
     /// all. Outputs and the caveat are not commands.
-    pub fn local_commands(&self) -> Vec<String> {
+    pub fn local_commands(&self) -> &[String] {
         if self.echoed_commands.is_empty() {
-            self.system_commands.clone()
+            &self.system_commands
         } else {
-            self.echoed_commands.clone()
+            &self.echoed_commands
         }
     }
 
@@ -417,7 +417,7 @@ impl Assembler {
                             if sub == "local_command"
                                 && let Some(command) = system_command(entry.command_run.as_ref())
                             {
-                                self.system_commands.push(first_line(&command).to_owned());
+                                self.system_commands.push(first_line(&command));
                             }
                             let text = system_text(
                                 sub,

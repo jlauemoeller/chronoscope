@@ -175,6 +175,19 @@ mod tests {
     }
 
     #[test]
+    fn a_three_line_message_text() {
+        let mut component = EmptyState::new(
+            "No turns. Local commands only:\n/effort\n/clear",
+            builtin::default_theme(),
+        );
+        let buffer = render(44, 9, |frame| {
+            let area = frame.area();
+            component.view(frame, area);
+        });
+        insta::assert_snapshot!(buffer_to_text(&buffer));
+    }
+
+    #[test]
     fn too_small_message_styled() {
         insta::assert_snapshot!(buffer_to_styled(&draw(builtin::default_theme(), 40, 9)));
     }

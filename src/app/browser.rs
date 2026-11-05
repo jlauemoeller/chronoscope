@@ -985,7 +985,7 @@ impl App {
     /// changed: the local commands if the session holds only those, else
     /// `Session file is empty`. The view on top decides, so the message is
     /// also brought up to date when a subagent's transcript is closed.
-    pub(super) fn refresh_empty_message(&mut self) {
+    fn refresh_empty_message(&mut self) {
         let message = if self.browser.empty {
             empty_session_message(&self.browser.local_commands)
         } else {
@@ -997,7 +997,7 @@ impl App {
             .ok()
             .flatten()
             .map(tuirealm::props::QueryResult::into_attr);
-        if shown != Some(AttrValue::String(message.clone())) {
+        if !matches!(&shown, Some(AttrValue::String(text)) if *text == message) {
             self.set_attr(
                 Id::EmptySession,
                 Attribute::Text,

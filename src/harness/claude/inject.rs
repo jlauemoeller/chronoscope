@@ -329,8 +329,9 @@ pub(super) fn local_command_display_text(raw: &str) -> String {
 /// The command an echo stands for, if `raw` is an echo (its text starts with
 /// `<command-name>`): `/model opus`, as [`local_command_display_text`] shows
 /// it. An echo with stray text, which is shown as it is, stands for its
-/// `<command-name>` alone; with no closed name it is its first line. `None`
-/// for an output or anything else.
+/// `<command-name>` alone; with a name that is not closed it is the text after
+/// the tag, and with an empty name the body as it is. Only the first line is
+/// kept, with tabs as spaces. `None` for an output or anything else.
 pub(super) fn echo_command(raw: &str) -> Option<String> {
     let text = raw.trim_start();
     if !text.starts_with("<command-name>") {
@@ -342,13 +343,25 @@ pub(super) fn echo_command(raw: &str) -> Option<String> {
                 .map(|(name, _)| name.to_owned())
                 .filter(|name| !name.is_empty())
         })
-        .unwrap_or_else(|| text.to_owned());
-    Some(first_line(&command).to_owned())
+        .unwrap_or_else(|| unclosed_name(text).unwrap_or(text).to_owned());
+    Some(first_line(&command))
 }
 
-/// The first line of `text`, trimmed.
-pub(super) fn first_line(text: &str) -> &str {
-    text.lines().next().unwrap_or_default().trim()
+/// The text after `<command-name>` when the tag is never closed and
+/// something follows it.
+fn unclosed_name(text: &str) -> Option<&str> {
+    let rest = text.strip_prefix("<command-name>")?.trim();
+    (!rest.is_empty() && !text.contains("</command-name>")).then_some(rest)
+}
+
+/// The first line of `text`, trimmed, with tabs as spaces: a row of the list
+/// of local commands, which cannot hold control characters.
+pub(super) fn first_line(text: &str) -> String {
+    text.lines()
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .replace('\t', " ")
 }
 
 #[cfg(test)]
@@ -466,10 +479,25 @@ mod tests {
     fn an_echo_with_stray_text_stands_for_its_name_alone() {
         let stray = "<command-name>/model</command-name>\n<command-args>opus</command-args>\nstray";
         assert_eq!(echo_command(stray).as_deref(), Some("/model"));
-        // No closed name: the first line.
+        // A name that is not closed: the text after the tag, first line.
         assert_eq!(
             echo_command("<command-name>/model\nmore").as_deref(),
-            Some("<command-name>/model")
+            Some("/model")
+        );
+        // An empty name: the body as it is.
+        assert_eq!(
+            echo_command("<command-name></command-name>\nstray").as_deref(),
+            Some("<command-name></command-name>")
+        );
+        assert_eq!(
+            echo_command("<command-name>").as_deref(),
+            Some("<command-name>")
+        );
+        // Tabs are spaces.
+        assert_eq!(
+            echo_command("<command-name>/tabbed</command-name>\n<command-args>a\tb</command-args>")
+                .as_deref(),
+            Some("/tabbed a b")
         );
     }
 

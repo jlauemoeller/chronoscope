@@ -104,7 +104,7 @@ fn assembled(text: &str) -> Assembler {
 }
 
 fn commands_of(text: &str) -> Vec<String> {
-    assembled(text).local_commands()
+    assembled(text).local_commands().to_vec()
 }
 
 // ------------------------------------------------------- what is listed
@@ -164,6 +164,17 @@ fn an_echo_with_stray_text_is_listed_by_its_name_alone() {
         ts(1)
     ) + "\n";
     assert_eq!(commands_of(&text), ["/model"]);
+}
+
+#[test]
+fn tabs_in_the_arguments_are_listed_as_spaces() {
+    let text =
+        echo(1, "tabbed", "a\tb\tc") + &system(2, Some(r#"{"command":"sys","args":"x\ty"}"#));
+    assert_eq!(commands_of(&text), ["/tabbed a b c"]);
+    assert_eq!(
+        commands_of(&system(1, Some(r#"{"command":"sys","args":"x\ty"}"#))),
+        ["/sys x y"]
+    );
 }
 
 #[test]

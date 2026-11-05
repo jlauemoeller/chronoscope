@@ -9,6 +9,7 @@ use tuirealm::props::Attribute;
 
 use super::subagent::subagent_rig;
 use super::*;
+use crate::components::LOCAL_COMMANDS_ONLY;
 use crate::harness::claude::{Assembler, ClaudeHarness};
 use crate::model::Item;
 
@@ -126,7 +127,7 @@ fn the_message_waits_for_the_load_to_end() {
     assert!(!rig.app.session_is_empty(), "still loading");
     assert_eq!(message(&rig.app), "Session file is empty");
     rig.app.update(session_msg(&rig.app, ModelUpdate::Loaded));
-    assert_eq!(message(&rig.app), "No turns. Local commands only:\n/effort");
+    assert_eq!(message(&rig.app), format!("{LOCAL_COMMANDS_ONLY}\n/effort"));
 }
 
 #[test]
@@ -201,8 +202,35 @@ fn a_reset_goes_back_to_the_plain_message_and_the_new_content_shows() {
     rig.pump_until(|app| message(app).ends_with("/model opus"));
     assert_eq!(
         message(&rig.app),
-        "No turns. Local commands only:\n/model opus"
+        format!("{LOCAL_COMMANDS_ONLY}\n/model opus")
     );
+}
+
+/// Between a `Reset` and the end of the reload the list is gone.
+#[test]
+fn a_reset_alone_goes_back_to_the_plain_message() {
+    let mut rig = fixture_rig(theme("default"), 120, 40);
+    rig.harness.send(0, ModelUpdate::Reset);
+    rig.settle();
+    assert_eq!(message(&rig.app), "Session file is empty");
+}
+
+/// A `Reset` that reaches a view covered by a subagent clears that view's
+/// list, so the session shows what it holds now when the subagent closes.
+#[test]
+fn a_reset_of_a_covered_session_clears_its_list() {
+    let mut rig = subagent_rig(120, 40);
+    rig.open_subagent(1);
+    rig.harness.send(0, ModelUpdate::Reset);
+    for update in loaded_with(commands(&["/effort"])) {
+        rig.harness.send(0, update);
+    }
+    rig.harness.send(0, ModelUpdate::Reset);
+    rig.harness.send(0, ModelUpdate::Loaded);
+    rig.settle();
+    rig.back_to(0);
+    assert!(rig.app.session_is_empty());
+    assert_eq!(message(&rig.app), "Session file is empty");
 }
 
 #[test]
@@ -239,7 +267,7 @@ fn a_subagent_without_commands_over_a_session_with_commands_shows_its_own_messag
     assert!(rig.app.session_is_empty(), "the subagent has no turns");
     assert_eq!(message(&rig.app), "Session file is empty");
     rig.back_to(0);
-    assert_eq!(message(&rig.app), "No turns. Local commands only:\n/effort");
+    assert_eq!(message(&rig.app), format!("{LOCAL_COMMANDS_ONLY}\n/effort"));
 }
 
 // -- snapshots

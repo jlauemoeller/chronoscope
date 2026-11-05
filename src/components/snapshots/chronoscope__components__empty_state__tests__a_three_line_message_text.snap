@@ -1,0 +1,10 @@
+---
+source: src/components/empty_state.rs
+expression: buffer_to_text(&buffer)
+---
+                                            
+                                            
+                                            
+       No turns. Local commands only:       
+                   /effort                  
+                   /clear
