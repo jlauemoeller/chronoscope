@@ -107,9 +107,12 @@ hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
 ## claude/local_commands_only.jsonl
 
 - **Origin:** as `local_commands.jsonl`.
-- **Used by:** `tests/claude_local_commands_only.rs` and
+- **Used by:** `tests/claude_local_commands_only.rs`,
   `src/app/browser_tests/local_commands.rs` (the `local_commands_only_*` and
-  `the_first_frame_after_a_turn_arrives_120x40_text` snapshots).
+  `the_first_frame_after_a_turn_arrives_120x40_text` snapshots),
+  `tests/claude_stats.rs` (its row is `0 turns · 0s`, its run time the span of
+  the commands) and `src/app/selector_totals_tests.rs` (the
+  `a_local_commands_only_row_*` snapshots).
 - **Covers:** SPEC cycle 3 §2.3 and §2.5: a session that holds nothing but
   local commands, so it has no turn: the `<local-command-caveat>` meta entry,
   an `/effort` echo and its `Cancelled` output, a `/clear` echo and a `system`
@@ -143,7 +146,9 @@ Claude Code 2.1.304 to 2.1.311 sessions.
     wins) and a prompt; leading `mode` entry without `cwd` or timestamp;
   - `-home-user-alpha/aaaa0001/subagents/agent-a1.jsonl` and
     `agent-a1.meta.json`: a subagent transcript that must not be listed (its
-    timestamps are the newest in the tree);
+    timestamps are the newest in the tree). It carries no `usage`, so the
+    session's tokens in `tests/index.rs` stay zero; the tests of the totals
+    build their own subagent trees in temporary directories;
   - `-home-user-my-app/bbbb0001.jsonl` and `-home-user-my.app/bbbb0002.jsonl`:
     two encoded directories (the lossy encoding of `/home/user/my.app`) with
     the same real `cwd`; the first has a prompt but no title;
@@ -190,7 +195,9 @@ Claude Code 2.1.304 to 2.1.311 sessions.
   `/home/user/...`. The tests build a temporary database from the script with
   `rusqlite` (rollback-journal mode, so read-only opens create no side
   files); no `.db` file is committed.
-- **Used by:** `src/harness/opencode/tests.rs`, `src/app/browser_tests/opencode.rs`,
+- **Used by:** `src/harness/opencode/tests.rs`,
+  `src/harness/opencode/stats_tests.rs` (which adds a grandchild session and
+  other rows with `TempDb::exec`, not here), `src/app/browser_tests/opencode.rs`,
   `tests/opencode_log.rs` and `tests/harness_registry.rs`.
 - **Covers:**
   - the `migration` table, whose newest row is the one the adapter knows;
