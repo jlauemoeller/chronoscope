@@ -57,7 +57,6 @@ pub use list_pane::{
     selected_value, visible_rows,
 };
 pub use overlay_frame::{INTERIOR_ATTR, interior_of, interior_value};
-pub use panel_row::{PanelRow, PanelRows};
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
 pub use prompt::{Prompt, PromptMode, tail_fitting};
 pub use selector_frame::SelectorFrame;

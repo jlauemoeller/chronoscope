@@ -38,13 +38,21 @@ impl App {
     /// While the filtered selector or search results are listed, the list
     /// moves its own cursor over sessions of any project and reports no
     /// message, so it is asked; otherwise the selection is the `App`'s.
-    pub(super) fn panels_session(&self) -> Option<SessionId> {
+    /// A search whose first answer is pending lists nothing yet, so the
+    /// panels follow the project's sessions then.
+    fn panels_session(&self) -> Option<SessionId> {
         if self.selector.filtered.is_some() {
             let row = self.selected_filtered_row()?;
             return self.selector.shown.get(row).cloned();
         }
-        if self.selector.search_shows_results() {
+        if self.selector.search_lists_results() {
             return self.selected_result();
+        }
+        if self.selector.search_shows_results() {
+            // The first answer is still on its way: the pane keeps the
+            // project's sessions, with the cursor where it is.
+            let row = self.selected_row()?;
+            return self.selector.sessions().get(row).map(|s| s.id.clone());
         }
         self.selector.session.clone()
     }

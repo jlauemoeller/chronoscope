@@ -1,4 +1,5 @@
-//! The Session Time panel of the session selector (SPEC §4.2, §4.3): the selected session's run time and agent time, or an empty block.
+//! The Session Time panel of the session selector (SPEC §4.2, §4.3): the
+//! selected session's run time and agent time, or an empty block.
 
 use std::time::Duration;
 

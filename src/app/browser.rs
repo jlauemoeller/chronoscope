@@ -1024,7 +1024,8 @@ impl App {
             self.unmount_selector();
             return;
         }
-        // The new panels are empty.
+        // The new panels are empty. (`unmount_selector` clears the record
+        // too; this keeps the mount correct whatever came before.)
         self.forget_pushed_panels();
         self.selector.show_session(open.harness, &open.summary);
         self.set_screen(Screen::BrowserSelector);

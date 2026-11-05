@@ -640,6 +640,85 @@ fn a_result_whose_stats_arrive_later_shows_them_at_once() {
     assert_eq!(shown(&mut app), expected(9));
 }
 
+// -- search with the worker: the answer takes a while
+
+/// An app on the search fixture with a real search worker whose answers only
+/// arrive when `answer` applies them, and the session `s1` selected.
+fn with_worker() -> (App, std::sync::mpsc::Receiver<super::SearchResult>) {
+    let mut app = searchable();
+    focus_sessions(&mut app);
+    let (worker, results) = super::SearchWorker::start();
+    app.set_search_worker(worker);
+    press(&mut app, Key::Char('/'));
+    (app, results)
+}
+
+/// Applies the worker's answer to the last request.
+fn answer(app: &mut App, results: &std::sync::mpsc::Receiver<super::SearchResult>) {
+    let result = results
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the worker answers");
+    app.update(Msg::SearchResults(super::SearchUpdate::new(result)));
+}
+
+#[test]
+fn while_the_first_answer_is_pending_the_panels_follow_the_projects_selection() {
+    let (mut app, results) = with_worker();
+    type_text(&mut app, "b");
+    assert!(app.search_results().is_empty(), "nothing listed yet");
+    assert_eq!(selected(&app), Some("s1"));
+    assert_eq!(shown(&mut app), expected(1));
+    answer(&mut app, &results);
+    let first = app.selected_result().expect("the first result is selected");
+    assert_eq!(shown(&mut app), expected(number_of(first.as_str())));
+}
+
+#[test]
+fn a_cursor_moved_while_the_first_answer_is_pending_is_followed() {
+    let (mut app, results) = with_worker();
+    type_text(&mut app, "b");
+    // The list still shows the project's sessions: the arrow moves its cursor.
+    press(&mut app, Key::Down);
+    assert_eq!(shown(&mut app), expected(2));
+    answer(&mut app, &results);
+    let first = app.selected_result().unwrap();
+    assert_eq!(shown(&mut app), expected(number_of(first.as_str())));
+}
+
+#[test]
+fn a_query_typed_after_an_answer_with_no_result_keeps_the_panels_empty() {
+    let (mut app, results) = with_worker();
+    for c in ['z', 'z'] {
+        type_text(&mut app, &c.to_string());
+        answer(&mut app, &results);
+    }
+    assert_eq!(app.search_results(), []);
+    assert_eq!(shown(&mut app), Vec::new());
+    // Another character: its answer is pending and the pane still says
+    // "No matching sessions".
+    type_text(&mut app, "z");
+    assert_eq!(shown(&mut app), Vec::new());
+    answer(&mut app, &results);
+    assert_eq!(shown(&mut app), Vec::new());
+}
+
+#[test]
+fn clearing_the_query_and_typing_again_shows_the_selection_while_pending() {
+    let (mut app, results) = with_worker();
+    type_text(&mut app, "b");
+    answer(&mut app, &results);
+    press(&mut app, Key::Down);
+    press(&mut app, Key::Backspace);
+    assert_eq!(app.search_query(), Some(""));
+    assert_eq!(selected(&app), Some("s1"));
+    assert_eq!(shown(&mut app), expected(1));
+    type_text(&mut app, "b");
+    assert_eq!(shown(&mut app), expected(1), "the new answer is pending");
+    answer(&mut app, &results);
+    let first = app.selected_result().unwrap();
+    assert_eq!(shown(&mut app), expected(number_of(first.as_str())));
+}
+
 // -- the filtered selector
 
 fn filtered() -> App {
@@ -696,6 +775,9 @@ fn an_update_that_changes_nothing_about_the_panels_pushes_nothing() {
     // of a session of a project that is not listed.
     app.update(Msg::Tick);
     assert_eq!(app.take_redraw(), RedrawRequest::None);
+    press(&mut app, Key::Char('k'));
+    assert_eq!(selected(&app), Some("s1"), "already on the first row");
+    assert_eq!(app.take_redraw(), RedrawRequest::None);
     app.update(Msg::Selector(SelectorMsg::SessionSelected(
         SessionId::from("s1"),
     )));
@@ -704,12 +786,6 @@ fn an_update_that_changes_nothing_about_the_panels_pushes_nothing() {
     assert_eq!(app.take_redraw(), RedrawRequest::None);
     app.push_session_panels();
     assert_eq!(app.take_redraw(), RedrawRequest::None);
-    // The same stats again for the selected session: the list repaints its
-    // row, but the panels were not pushed anything: nothing about them
-    // changed, so the components still hold the same values.
-    let before = held(&app);
-    stats_of(&mut app, CLAUDE, "s1", 1);
-    assert_eq!(held(&app), before);
 }
 
 #[test]

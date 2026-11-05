@@ -1,4 +1,5 @@
-//! The Session Tokens panel of the session selector (SPEC §4.2, §4.3): the selected session's token counts, or an empty block.
+//! The Session Tokens panel of the session selector (SPEC §4.2, §4.3): the
+//! selected session's token counts, or an empty block.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -213,7 +214,7 @@ mod tests {
         for line in text.lines().skip(1).take(5) {
             assert!(line.contains("  "), "{line}");
         }
-        // A thousand billion tokens of each kind still leaves every label.
+        // A million billion tokens of each kind still leaves every label.
         let big = 1_000_000_000_000_000;
         let largest = TokenUsage {
             input: big,
