@@ -440,7 +440,9 @@ impl Harness for ClaudeHarness {
     }
 
     /// `claude:<path>:<size>:<mtime in ns since the epoch>`; a file that
-    /// cannot be stat'ed gives size and mtime `missing`.
+    /// cannot be stat'ed gives size and mtime `missing`. The subagent
+    /// transcripts that [`stats`](Self::stats) reads are not part of the key
+    /// yet.
     fn stats_key(&self, session: &SessionSummary) -> String {
         let path = session.path.display();
         let prefix = HarnessId::Claude.cache_prefix();
