@@ -13,7 +13,7 @@ use std::ops::{Deref, DerefMut};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
-use tuirealm::props::{AttrValue, PropPayload};
+use tuirealm::props::{AttrValue, Attribute, PropPayload};
 
 use super::hints::browser_hints;
 use super::layout::Screen;
@@ -27,7 +27,7 @@ use crate::components::{
     HelpLine, LIVE_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR, OPEN_SUBAGENT_KEY_ATTR,
     PARSE_WARNINGS_ATTR, SELECTED_SECTION_ATTR, SELECTED_TURN_ATTR, SESSION_ID_ATTR, STATUS_ATTR,
     SectionId, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, TURN_ROWS_ATTR, Transcript,
-    TurnSidebar, payload_from_value, payload_value, status_value,
+    TurnSidebar, empty_session_message, payload_from_value, payload_value, status_value,
 };
 use crate::harness::WatchHandle;
 use crate::keymap::{Action, Context};
@@ -80,6 +80,8 @@ pub(super) struct LoadView {
     live: bool,
     /// How many entries of the session could not be parsed.
     warnings: usize,
+    /// The local commands of a session with no turns, in the order they ran.
+    local_commands: Vec<String>,
     /// The search of the transcript.
     pub(super) search: super::transcript_search::BrowserSearch,
 }
@@ -723,12 +725,18 @@ impl App {
                 self.forward_to_sidebar(update);
                 self.sync_new_sections();
             }
+            ModelUpdate::LocalCommands(commands) => {
+                self.browser.local_commands.clone_from(commands);
+                self.refresh_session_empty();
+            }
             ModelUpdate::Reset => {
+                self.browser.local_commands.clear();
                 self.forward_to_transcript(depth, update);
                 self.forward_to_sidebar(update);
                 self.sync_new_sections();
                 // The matches were of the turns that are gone.
                 self.search_reloaded();
+                self.refresh_empty_message();
             }
             ModelUpdate::Activity {
                 last_modified,
@@ -771,7 +779,15 @@ impl App {
                 view.activity = Some((*last_modified, *idle));
                 false
             }
-            ModelUpdate::Appended(_) | ModelUpdate::Updated(_) | ModelUpdate::Reset => true,
+            ModelUpdate::LocalCommands(commands) => {
+                view.local_commands.clone_from(commands);
+                false
+            }
+            ModelUpdate::Reset => {
+                view.local_commands.clear();
+                true
+            }
+            ModelUpdate::Appended(_) | ModelUpdate::Updated(_) => true,
         };
         if forward {
             self.forward_to_transcript(depth, update);
@@ -945,7 +961,8 @@ impl App {
     }
 
     /// Decides whether the session is empty: loaded, and the transcript
-    /// holds no turn (asked of the transcript, which owns them).
+    /// holds no turn (asked of the transcript, which owns them). Then shows
+    /// what the empty state says.
     pub(super) fn refresh_session_empty(&mut self) {
         let turns = self
             .application
@@ -958,6 +975,33 @@ impl App {
             self.browser.empty = empty;
             // The sidebar is not drawn for an empty session.
             self.release_hidden_sidebar();
+            self.request_redraw(RedrawRequest::Dirty);
+        }
+        self.refresh_empty_message();
+    }
+
+    /// Pushes the message of the empty state to its component when it
+    /// changed: the local commands if the session holds only those, else
+    /// `Session file is empty`. The view on top decides, so the message is
+    /// also brought up to date when a subagent's transcript is closed.
+    pub(super) fn refresh_empty_message(&mut self) {
+        let message = if self.browser.empty {
+            empty_session_message(&self.browser.local_commands)
+        } else {
+            EMPTY_SESSION.to_owned()
+        };
+        let shown = self
+            .application
+            .query(&Id::EmptySession, Attribute::Text)
+            .ok()
+            .flatten()
+            .map(tuirealm::props::QueryResult::into_attr);
+        if shown != Some(AttrValue::String(message.clone())) {
+            self.set_attr(
+                Id::EmptySession,
+                Attribute::Text,
+                AttrValue::String(message),
+            );
             self.request_redraw(RedrawRequest::Dirty);
         }
     }

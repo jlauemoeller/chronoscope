@@ -38,7 +38,10 @@ pub use details_overlay::{
     DESIRED_SIZE_ATTR, DetailsContent, DetailsGroup, DetailsOverlay, DetailsRequest, DetailsRow,
     MAX_WIDTH_ATTR, compose, max_width_value, section_source,
 };
-pub use empty_state::{EMPTY_SESSION, EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL};
+pub use empty_state::{
+    EMPTY_SESSION, EmptyState, LOCAL_COMMANDS_ONLY, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL,
+    empty_session_message,
+};
 pub use global_events::{GlobalEvents, quit_key_events};
 pub use harness_tabs::{HarnessTabs, TABS_ATTR, Tab, Tabs};
 pub use help_line::{HINTS_ATTR, HelpLine, Hint, STATUS_ATTR, hints_value, status_value};

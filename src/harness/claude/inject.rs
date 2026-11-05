@@ -219,6 +219,22 @@ pub(super) fn attachment_text(kind: &str, a: &Value) -> String {
     }
 }
 
+/// The command a `system` `local_command` entry ran, as `/command args`, or
+/// `None` without a `commandRun` that names one.
+pub(super) fn system_command(command_run: Option<&Value>) -> Option<String> {
+    let command = command_run
+        .and_then(|c| str_at(c, "command"))
+        .filter(|c| !c.is_empty())?;
+    let args = command_run
+        .and_then(|c| str_at(c, "args"))
+        .unwrap_or_default();
+    Some(if args.is_empty() {
+        format!("/{command}")
+    } else {
+        format!("/{command} {args}")
+    })
+}
+
 /// The readable text of an injected `system` entry.
 ///
 /// For `local_command` this is the command that was run (`/clear`) followed
@@ -232,20 +248,7 @@ pub(super) fn system_text(
     if subtype != "local_command" {
         return content.to_owned();
     }
-    let command = command_run
-        .and_then(|c| str_at(c, "command"))
-        .filter(|c| !c.is_empty())
-        .map(|command| {
-            let args = command_run
-                .and_then(|c| str_at(c, "args"))
-                .unwrap_or_default();
-            if args.is_empty() {
-                format!("/{command}")
-            } else {
-                format!("/{command} {args}")
-            }
-        });
-    let Some(command) = command else {
+    let Some(command) = system_command(command_run) else {
         return content.to_owned();
     };
     let output = content
@@ -321,6 +324,31 @@ pub(super) fn local_command_display_text(raw: &str) -> String {
         output_text(text).map(str::to_owned)
     };
     shown.unwrap_or_else(|| raw.to_owned())
+}
+
+/// The command an echo stands for, if `raw` is an echo (its text starts with
+/// `<command-name>`): `/model opus`, as [`local_command_display_text`] shows
+/// it. An echo with stray text, which is shown as it is, stands for its
+/// `<command-name>` alone; with no closed name it is its first line. `None`
+/// for an output or anything else.
+pub(super) fn echo_command(raw: &str) -> Option<String> {
+    let text = raw.trim_start();
+    if !text.starts_with("<command-name>") {
+        return None;
+    }
+    let command = echo_text(text)
+        .or_else(|| {
+            element(text, "<command-name>", "</command-name>")
+                .map(|(name, _)| name.to_owned())
+                .filter(|name| !name.is_empty())
+        })
+        .unwrap_or_else(|| text.to_owned());
+    Some(first_line(&command).to_owned())
+}
+
+/// The first line of `text`, trimmed.
+pub(super) fn first_line(text: &str) -> &str {
+    text.lines().next().unwrap_or_default().trim()
 }
 
 #[cfg(test)]
@@ -422,5 +450,54 @@ mod tests {
         ] {
             assert_eq!(local_command_display_text(raw), raw, "{raw:?}");
         }
+    }
+
+    #[test]
+    fn an_echo_stands_for_its_command_and_arguments() {
+        let echo = "<command-name>/model</command-name>\n  <command-message>model</command-message>\n  <command-args>opus</command-args>";
+        assert_eq!(echo_command(echo).as_deref(), Some("/model opus"));
+        assert_eq!(
+            echo_command("  <command-name>/clear</command-name>").as_deref(),
+            Some("/clear")
+        );
+    }
+
+    #[test]
+    fn an_echo_with_stray_text_stands_for_its_name_alone() {
+        let stray = "<command-name>/model</command-name>\n<command-args>opus</command-args>\nstray";
+        assert_eq!(echo_command(stray).as_deref(), Some("/model"));
+        // No closed name: the first line.
+        assert_eq!(
+            echo_command("<command-name>/model\nmore").as_deref(),
+            Some("<command-name>/model")
+        );
+    }
+
+    #[test]
+    fn outputs_and_prompts_are_no_echoes() {
+        for raw in [
+            "<local-command-stdout>Cancelled</local-command-stdout>",
+            "<local-command-stderr>x</local-command-stderr>",
+            "hello",
+            "x <command-name>/a</command-name>",
+        ] {
+            assert_eq!(echo_command(raw), None, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn a_system_command_needs_a_named_command_run() {
+        let run = |json: &str| serde_json::from_str::<Value>(json).unwrap();
+        assert_eq!(
+            system_command(Some(&run(r#"{"command":"clear"}"#))).as_deref(),
+            Some("/clear")
+        );
+        assert_eq!(
+            system_command(Some(&run(r#"{"command":"model","args":"opus"}"#))).as_deref(),
+            Some("/model opus")
+        );
+        assert_eq!(system_command(Some(&run(r#"{"command":""}"#))), None);
+        assert_eq!(system_command(Some(&run(r#"{"args":"x"}"#))), None);
+        assert_eq!(system_command(None), None);
     }
 }

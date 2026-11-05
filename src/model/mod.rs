@@ -571,10 +571,17 @@ pub enum ModelUpdate {
     /// `N entries could not be parsed` note). Sent with [`Loaded`](Self::Loaded)
     /// and again whenever it changes.
     ParseWarnings(usize),
-    /// Clears every turn: the session is being reloaded from scratch. Only
-    /// the transcript consumes it; the App is to forward it to the
-    /// transcript like [`Appended`](Self::Appended).
+    /// Clears every turn, and the local commands: the session is being
+    /// reloaded from scratch. The App forwards it to the transcript like
+    /// [`Appended`](Self::Appended).
     Reset,
+    /// The local commands (`/effort`, `/clear`) of a session that has no
+    /// turn to attach them to, in the order they ran: the whole list, not
+    /// what changed. Sent only while the session has no turns, and only when
+    /// the list differs from the last one sent. It is not a turn: the
+    /// transcript and the turns sidebar ignore it, and so does
+    /// [`apply`](Self::apply).
+    LocalCommands(Vec<String>),
     /// When the session's data last changed, for the browser's `● live`
     /// marker (SPEC §7.2). Sent after the initial load and after every
     /// processed change. `idle` is the harness's own idleness flag
@@ -588,7 +595,7 @@ pub enum ModelUpdate {
 impl ModelUpdate {
     /// Applies the update to `turns`. Updated turns whose id is not present
     /// are ignored. `Reset` clears the turns. `Progress`, `Loaded`,
-    /// `ParseWarnings` and `Activity` do not touch the turns.
+    /// `ParseWarnings`, `LocalCommands` and `Activity` do not touch the turns.
     pub fn apply(&self, turns: &mut Vec<Arc<Turn>>) {
         match self {
             ModelUpdate::Appended(new) => turns.extend(new.iter().cloned()),
@@ -603,6 +610,7 @@ impl ModelUpdate {
             ModelUpdate::Progress(_)
             | ModelUpdate::Loaded
             | ModelUpdate::ParseWarnings(_)
+            | ModelUpdate::LocalCommands(_)
             | ModelUpdate::Activity { .. } => {}
         }
     }

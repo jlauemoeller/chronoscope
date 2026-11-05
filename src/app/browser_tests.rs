@@ -1352,6 +1352,7 @@ mod details_source;
 mod help;
 mod launch;
 mod live;
+mod local_commands;
 mod mouse;
 mod opencode;
 mod opencode_details;

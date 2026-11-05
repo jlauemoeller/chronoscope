@@ -104,6 +104,18 @@ hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
   - a local command (`/exit`, `Bye!`) at the end of the input, which lands in
     the last Assistant turn.
 
+## claude/local_commands_only.jsonl
+
+- **Origin:** as `local_commands.jsonl`.
+- **Used by:** `tests/claude_local_commands_only.rs` and the browser snapshots
+  of the local-commands-only empty state.
+- **Covers:** SPEC cycle 3 §2.3 and §2.5: a session that holds nothing but
+  local commands, so it has no turn: the `<local-command-caveat>` meta entry,
+  an `/effort` echo and its `Cancelled` output, a `/clear` echo and a `system`
+  `local_command` entry for that `/clear` (with a `commandRun`). The commands
+  listed are `/effort` and `/clear`, once each: the output and the caveat are
+  not commands, and the `system` entry repeats the second echo.
+
 ## claude/compaction.jsonl
 
 - **Origin:** hand-written, modelled on a real compaction (`system`

@@ -152,6 +152,7 @@ impl TurnRows {
             ModelUpdate::Progress(_)
             | ModelUpdate::Loaded
             | ModelUpdate::ParseWarnings(_)
+            | ModelUpdate::LocalCommands(_)
             | ModelUpdate::Activity { .. } => {}
         }
     }
