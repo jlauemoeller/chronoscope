@@ -196,7 +196,8 @@ impl Entry {
     /// assembler and session discovery. Not a prompt: entries that carry any
     /// `tool_result` block, compaction summaries, `isMeta` entries (injected,
     /// not typed), entries whose `origin.kind` is not `human`, and, for
-    /// entries without an `origin`, entries without a text block. Human
+    /// entries without an `origin`, entries without a text block, and local
+    /// commands (see [`local_command_text`](Self::local_command_text)). Human
     /// prompts delivered as `queued_command` attachments are separate (see
     /// `queued_prompt_text`).
     pub fn human_prompt_text(&self) -> Option<String> {

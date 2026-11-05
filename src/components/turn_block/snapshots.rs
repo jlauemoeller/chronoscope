@@ -105,6 +105,13 @@ fn local_command_entries_unfolded_at_120() {
 }
 
 #[test]
+fn local_command_entries_unfolded_at_80_styled() {
+    let turn = local_command_turn();
+    let opts = Opts::default().unfold(item_id(&turn, "i1"));
+    insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &opts, 80)));
+}
+
+#[test]
 fn local_command_entries_unfolded_and_selected_at_80_styled() {
     let turn = local_command_turn();
     let opts = Opts::default()

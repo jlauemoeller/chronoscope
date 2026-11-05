@@ -278,6 +278,40 @@ fn a_local_command_in_a_session_that_starts_with_one_opens_the_first_user_turn()
     );
 }
 
+#[test]
+fn a_local_command_between_two_prompts_adds_no_sidebar_row() {
+    let prompt1 = human_user("2026-10-24T08:00:00.000Z", "one");
+    let reply1 = reply("2026-10-24T08:00:01.000Z", "m1");
+    let prompt2 = human_user("2026-10-24T08:00:10.000Z", "two");
+    let reply2 = reply("2026-10-24T08:00:11.000Z", "m2");
+    let with = assemble_lines(&[
+        prompt1.clone(),
+        reply1.clone(),
+        plain_user("2026-10-24T08:00:05.000Z", ECHO_EFFORT),
+        plain_user("2026-10-24T08:00:06.000Z", OUT_CANCELLED),
+        prompt2.clone(),
+        reply2.clone(),
+    ]);
+    let without = assemble_lines(&[prompt1, reply1, prompt2, reply2]);
+    let kinds = |turns: &[Arc<Turn>]| {
+        let rows = TurnRows::from_turns(turns.iter().map(|t| &**t));
+        (0..rows.entry_count())
+            .map(|i| rows.entry(i).unwrap().1.kind)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        kinds(&with),
+        [
+            EntryKind::User,
+            EntryKind::Assistant,
+            EntryKind::User,
+            EntryKind::Assistant
+        ]
+    );
+    assert_eq!(kinds(&with), kinds(&without));
+    assert_eq!(shape(&with), shape(&without));
+}
+
 // ------------------------------------------------------- what stays a prompt
 
 #[test]

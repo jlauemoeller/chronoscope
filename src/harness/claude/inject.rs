@@ -274,7 +274,7 @@ fn between<'a>(value: &'a str, open: &str, close: &str) -> Option<&'a str> {
 /// that matches neither form (no closing tag, no name, text after an output's
 /// closing tag) is returned as it is. The tags are found by their literal
 /// names.
-pub(super) fn local_command_text(raw: &str) -> String {
+pub(super) fn local_command_display_text(raw: &str) -> String {
     let text = raw.trim_start();
     if text.starts_with("<command-name>") {
         if let Some(name) = between(text, "<command-name>", "</command-name>")
@@ -350,19 +350,19 @@ mod tests {
 
     #[test]
     fn an_echo_becomes_the_command_and_its_arguments() {
-        assert_eq!(local_command_text(ECHO), "/model opus");
+        assert_eq!(local_command_display_text(ECHO), "/model opus");
     }
 
     #[test]
     fn an_echo_without_arguments_is_the_bare_command() {
         let empty = "<command-name>/effort</command-name>\n            <command-message>effort</command-message>\n            <command-args></command-args>";
-        assert_eq!(local_command_text(empty), "/effort");
+        assert_eq!(local_command_display_text(empty), "/effort");
         assert_eq!(
-            local_command_text("<command-name>/clear</command-name>"),
+            local_command_display_text("<command-name>/clear</command-name>"),
             "/clear"
         );
         assert_eq!(
-            local_command_text("  \n<command-name>/clear</command-name>"),
+            local_command_display_text("  \n<command-name>/clear</command-name>"),
             "/clear"
         );
     }
@@ -370,21 +370,23 @@ mod tests {
     #[test]
     fn arguments_are_trimmed() {
         let echo = "<command-name>/model</command-name>\n<command-args>  opus \n</command-args>";
-        assert_eq!(local_command_text(echo), "/model opus");
+        assert_eq!(local_command_display_text(echo), "/model opus");
     }
 
     #[test]
     fn an_output_becomes_the_text_inside_its_tags() {
         assert_eq!(
-            local_command_text("<local-command-stdout>Cancelled</local-command-stdout>"),
+            local_command_display_text("<local-command-stdout>Cancelled</local-command-stdout>"),
             "Cancelled"
         );
         assert_eq!(
-            local_command_text("<local-command-stderr> Error: nope\n</local-command-stderr>\n"),
+            local_command_display_text(
+                "<local-command-stderr> Error: nope\n</local-command-stderr>\n"
+            ),
             "Error: nope"
         );
         assert_eq!(
-            local_command_text("<local-command-stdout></local-command-stdout>"),
+            local_command_display_text("<local-command-stdout></local-command-stdout>"),
             ""
         );
     }
@@ -401,7 +403,7 @@ mod tests {
             "  <local-command-stdout>a",
             "plain text",
         ] {
-            assert_eq!(local_command_text(raw), raw, "{raw:?}");
+            assert_eq!(local_command_display_text(raw), raw, "{raw:?}");
         }
     }
 }

@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 
 use super::inject::{
     NEWEST_KNOWN_VERSION, attachment_text, is_injected_attachment, is_injected_system,
-    is_known_noise_attachment, is_metadata_type, is_noise_type, local_command_text,
+    is_known_noise_attachment, is_metadata_type, is_noise_type, local_command_display_text,
     queued_prompt_text, system_text, version_newer,
 };
 use super::tools::{describe, tool_kind};
@@ -737,7 +737,7 @@ impl Assembler {
         // held like any injected entry. `cur` and `prompt_ts` are left alone,
         // so the open Assistant turn continues and keeps its start.
         if let Some(raw) = entry.local_command_text() {
-            let text = local_command_text(&raw);
+            let text = local_command_display_text(&raw);
             self.hold("local_command", ts, text, entry.uuid.as_deref(), range);
             return;
         }
