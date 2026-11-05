@@ -241,10 +241,10 @@ fn wait_for_title(rx: &Receiver<IndexEvent>, title: &str) {
     }
 }
 
-/// Waits until a build starts that began after this call: the coordinator
-/// runs one build at a time, so the build running now (if any) has returned
-/// by then, and what the test changes before this call cannot be missed by
-/// the new build. Not a fixed wait: it ends when the new build is seen.
+/// Waits until a new build starts after this call. Builds run one at a time,
+/// so the build running now (if any) has returned by then, and the new build
+/// sees everything the test changed before this call. Not a fixed wait: it
+/// ends when the new build is seen.
 fn wait_for_next_build(stub: &Stub) {
     let seen = stub.builds.load(Ordering::SeqCst);
     let start = Instant::now();
@@ -366,6 +366,12 @@ fn a_stale_result_after_a_revert_to_the_sent_key_is_dropped() {
     // Version 2 is computed (held); then the session reverts to version 1,
     // whose stats are the ones already shown.
     stub.version.store(2, Ordering::SeqCst);
+    // A build that read the summaries before the store may have queued the
+    // version 2 job without sending "s v2". Seeing "s v2" proves a snapshot
+    // change happened; once a later build has started, the build that sent
+    // it has returned, so the revert below is always sent as a snapshot.
+    wait_for_title(&rx, "s v2");
+    wait_for_next_build(&stub);
     entered.recv_timeout(WAIT).unwrap();
     stub.version.store(1, Ordering::SeqCst);
     wait_for_title(&rx, "s v1");
