@@ -67,6 +67,43 @@ hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
   - the newest `version` in the fixtures (`2.1.314`, the adapter's
     `NEWEST_KNOWN_VERSION`).
 
+## claude/local_commands.jsonl
+
+- **Origin:** hand-written (generated once with a throw-away script that is
+  not part of the repository), following the local-command entries of Claude
+  Code 2.1.x transcripts (string content, the `<command-name>` echo with its
+  `<command-message>` and `<command-args>` tags on the following lines, and
+  the `<local-command-stdout>` output). Nothing was copied.
+- **Used by:** `tests/claude_local_commands.rs` and the browser snapshot
+  `browser_on_the_local_commands_fixture_120x40_text`.
+- **Covers:** the sequence of SPEC cycle 3 §2.5: the `<local-command-caveat>`
+  meta entry, a `/effort` echo, its `Cancelled` output, a `/factory` prompt
+  (`origin.kind` `human`, starting with `<command-message>`) and an Assistant
+  reply with a `turn_duration` footer. One User turn whose injected item holds
+  `meta`, `local_command` (`/effort`) and `local_command` (`Cancelled`), and
+  one Assistant turn.
+
+## claude/local_commands_mixed.jsonl
+
+- **Origin:** as `local_commands.jsonl`.
+- **Used by:** `tests/claude_local_commands.rs`.
+- **Covers:**
+  - a local command (`/model opus` and its output) in the middle of an
+    Assistant turn, which continues after it (one turn with a footer that
+    runs from the first prompt);
+  - an echo of `/clear` followed by a `system` `local_command` entry for the
+    same command (`/clear` with `All clear`): both entries are kept, on
+    purpose, in one injected item;
+  - a local command (`/effort`, `Cancelled`) between two prompts, which lands
+    in the second prompt's User turn;
+  - entries that stay prompts: ` /clear` with a leading space and
+    `origin.kind` `human`, `<command-name>` text with `origin.kind` `human`,
+    and an origin-less `<command-message>` entry (older-format rule);
+  - `!` shell entries (`<bash-input>`, `<bash-stdout>` with `<bash-stderr>`)
+    without `origin`, which keep their User rows;
+  - a local command (`/exit`, `Bye!`) at the end of the input, which lands in
+    the last Assistant turn.
+
 ## claude/compaction.jsonl
 
 - **Origin:** hand-written, modelled on a real compaction (`system`

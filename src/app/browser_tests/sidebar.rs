@@ -633,3 +633,30 @@ fn the_sidebar_stays_mounted_under_the_selector_overlay() {
     rig.pump_until(|app| app.screen() == Screen::BrowserSelector);
     assert!(rig.app.application().mounted(&Id::TurnSidebar), "under it");
 }
+
+/// The cycle 3 fixture `local_commands.jsonl`: the caveat, a `/effort` echo
+/// and its output, a `/factory` prompt and a reply. The local command starts
+/// no turn: the sidebar lists one User and one Assistant row. The turns go
+/// through the fake harness, so the header is the rig's (project BRIO).
+#[test]
+fn browser_on_the_local_commands_fixture_120x40_text() {
+    let bytes = include_bytes!("../../../tests/fixtures/claude/local_commands.jsonl");
+    let session = crate::harness::claude::Assembler::from_memory(Arc::from(&bytes[..]));
+    let mut rig = rig();
+    rig.harness.script(
+        BRIO_SESSION,
+        vec![
+            ModelUpdate::Appended(session.into_turns()),
+            ModelUpdate::Progress(1.0),
+            ModelUpdate::ParseWarnings(0),
+            ModelUpdate::Loaded,
+        ],
+    );
+    rig.open(BRIO_SESSION);
+    assert_eq!(rig.turn_count(), 2);
+    assert_eq!(
+        entry_kinds(&rig.app),
+        [EntryKind::User, EntryKind::Assistant]
+    );
+    insta::assert_snapshot!(screen_text(&mut rig, 120, 40));
+}

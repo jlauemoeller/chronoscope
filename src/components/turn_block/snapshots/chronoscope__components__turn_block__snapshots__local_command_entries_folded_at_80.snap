@@ -1,0 +1,11 @@
+---
+source: src/components/turn_block/snapshots.rs
+expression: "buffer_to_text(&draw(&local_command_turn(), &Opts::default(), 80))"
+---
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                              │
+│ ▶ 3 injected items                                                           │
+│                                                                              │
+│ ▶ <command-message>factory</command-message>                                 │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯

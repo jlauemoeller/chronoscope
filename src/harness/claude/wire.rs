@@ -196,10 +196,14 @@ impl Entry {
     /// assembler and session discovery. Not a prompt: entries that carry any
     /// `tool_result` block, compaction summaries, `isMeta` entries (injected,
     /// not typed), entries whose `origin.kind` is not `human`, and, for
-    /// entries without an `origin`, entries without a text block. Human
+    /// entries without an `origin`, entries without a text block, and local
+    /// commands (see [`is_local_command`](Self::is_local_command)). Human
     /// prompts delivered as `queued_command` attachments are separate (see
     /// `queued_prompt_text`).
     pub fn human_prompt_text(&self) -> Option<String> {
+        if self.is_local_command() {
+            return None;
+        }
         let content = self.message.as_ref()?.content.as_ref()?;
         let blocks: &[Block] = match content {
             Content::Blocks(blocks) => blocks,
@@ -223,6 +227,55 @@ impl Entry {
             None => has_text,
         };
         is_prompt.then(|| content_text(content))
+    }
+
+    /// Whether this entry is local-command content (SPEC cycle 3 §2.1): a
+    /// command echo or its output, handled by the harness and not a prompt to
+    /// the model.
+    ///
+    /// All of these hold: the entry has no `origin` field; it is not `isMeta`,
+    /// not a compact summary and holds no `tool_result`; and its text, with
+    /// leading whitespace trimmed, starts with `<command-name>` (the echo),
+    /// `<local-command-stdout>` or `<local-command-stderr>` (the output).
+    /// Checks the start of the text without building it.
+    pub fn is_local_command(&self) -> bool {
+        if self.origin.is_some()
+            || self.is_meta == Some(true)
+            || self.is_compact_summary == Some(true)
+        {
+            return false;
+        }
+        let Some(content) = self.message.as_ref().and_then(|m| m.content.as_ref()) else {
+            return false;
+        };
+        let start = match content {
+            Content::Text(text) => text.trim_start(),
+            Content::Blocks(blocks) => {
+                if blocks
+                    .iter()
+                    .any(|b| b.kind.as_deref() == Some("tool_result"))
+                {
+                    return false;
+                }
+                // The text is the text blocks joined by newlines, so it
+                // starts at the first non-blank character of a text block.
+                blocks
+                    .iter()
+                    .filter(|b| b.kind.as_deref() == Some("text"))
+                    .filter_map(|b| b.text.as_deref())
+                    .map(str::trim_start)
+                    .find(|text| !text.is_empty())
+                    .unwrap_or_default()
+            }
+            Content::Other(_) => return false,
+        };
+        [
+            "<command-name>",
+            "<local-command-stdout>",
+            "<local-command-stderr>",
+        ]
+        .iter()
+        .any(|tag| start.starts_with(tag))
     }
 
     /// Whether the entry (or its message) is flagged as an API error.
@@ -545,5 +598,96 @@ mod tests {
         ] {
             assert!(!read(raw).is_async_launch(), "{raw}");
         }
+    }
+
+    // -- local-command content (SPEC cycle 3 §2.1)
+
+    fn user_entry(extra: &str, content: &str) -> Entry {
+        let line = format!(
+            r#"{{"type":"user"{extra},"message":{{"role":"user","content":{}}}}}"#,
+            serde_json::to_string(content).unwrap()
+        );
+        read_entry(line.as_bytes()).unwrap()
+    }
+
+    const ECHO: &str = "<command-name>/effort</command-name>\n  <command-args></command-args>";
+
+    #[test]
+    fn an_entry_without_origin_that_starts_with_a_command_tag_is_local_command_content() {
+        for text in [
+            ECHO,
+            "<local-command-stdout>Cancelled</local-command-stdout>",
+            "<local-command-stderr>oops</local-command-stderr>",
+            "  \n\t<command-name>/clear</command-name>",
+        ] {
+            let entry = user_entry("", text);
+            assert!(entry.is_local_command(), "{text:?}");
+            assert_eq!(entry.human_prompt_text(), None, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn an_entry_with_an_origin_is_not_local_command_content() {
+        for origin in [
+            r#","origin":{"kind":"human"}"#,
+            r#","origin":{"kind":"task-notification"}"#,
+            r#","origin":{}"#,
+        ] {
+            let entry = user_entry(origin, ECHO);
+            assert!(!entry.is_local_command(), "{origin}");
+        }
+        // A human prompt that looks like an echo stays a prompt.
+        let human = user_entry(r#","origin":{"kind":"human"}"#, ECHO);
+        assert_eq!(human.human_prompt_text().as_deref(), Some(ECHO));
+    }
+
+    #[test]
+    fn a_meta_entry_a_compact_summary_and_a_tool_result_are_not_local_command_content() {
+        assert!(!user_entry(r#","isMeta":true"#, ECHO).is_local_command());
+        assert!(user_entry(r#","isMeta":false"#, ECHO).is_local_command());
+        assert!(!user_entry(r#","isCompactSummary":true"#, ECHO).is_local_command());
+        let result = format!(
+            r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"t","content":{}}}]}}}}"#,
+            serde_json::to_string(ECHO).unwrap()
+        );
+        let entry = read_entry(result.as_bytes()).unwrap();
+        assert!(!entry.is_local_command());
+        let mixed = format!(
+            r#"{{"type":"user","message":{{"content":[{{"type":"text","text":{}}},{{"type":"tool_result","tool_use_id":"t","content":"x"}}]}}}}"#,
+            serde_json::to_string(ECHO).unwrap()
+        );
+        assert!(!read_entry(mixed.as_bytes()).unwrap().is_local_command());
+    }
+
+    #[test]
+    fn other_text_is_not_local_command_content() {
+        for text in [
+            "<command-message>factory</command-message>\n<command-name>/factory</command-name>",
+            "<bash-input>ls</bash-input>",
+            "<bash-stdout>x</bash-stdout>",
+            "<bash-stderr>x</bash-stderr>",
+            "/clear",
+            "text <command-name>/clear</command-name>",
+            "<local-command-caveat>The command below was run locally.</local-command-caveat>",
+            "",
+        ] {
+            let entry = user_entry("", text);
+            assert!(!entry.is_local_command(), "{text:?}");
+        }
+        // The `<command-message>` echo without `origin` stays a prompt under
+        // the older-format rule.
+        let echo = user_entry("", "<command-message>doctor</command-message>");
+        assert!(echo.human_prompt_text().is_some());
+    }
+
+    #[test]
+    fn the_text_is_read_from_text_blocks_too() {
+        let line = r#"{"type":"user","message":{"content":[{"type":"text","text":"<command-name>/clear</command-name>"}]}}"#;
+        let entry = read_entry(line.as_bytes()).unwrap();
+        assert!(entry.is_local_command());
+        assert_eq!(entry.human_prompt_text(), None);
+        // Blank leading blocks do not hide the tag.
+        let line = r#"{"type":"user","message":{"content":[{"type":"text","text":" "},{"type":"text","text":"\n<local-command-stdout>x</local-command-stdout>"}]}}"#;
+        assert!(read_entry(line.as_bytes()).unwrap().is_local_command());
     }
 }
