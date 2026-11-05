@@ -447,3 +447,60 @@ fn the_sidebar_key_scenario_moves_the_selection_and_the_transcript_one_block_at_
     assert_eq!(text_calls(), calls, "the keys materialised an output");
     assert_eq!(source_reads(), reads, "the keys re-read the transcript");
 }
+
+#[test]
+fn a_subagent_fixture_has_the_requested_files_and_about_the_requested_size() {
+    let tmp = tempfile::tempdir().unwrap();
+    let fixture = generate_subagent_fixture(tmp.path(), MIB, 6, 3 * MIB, SEED).unwrap();
+    assert_eq!(fixture.files.len(), 6);
+    assert!(fixture.files.iter().all(|f| f.is_file()));
+    // Each file ends at the first exchange that reaches its target: never
+    // much less than the sum of the targets.
+    assert!(fixture.bytes >= 2 * MIB, "{}", fixture.bytes);
+    let sizes: BTreeSet<u64> = fixture
+        .files
+        .iter()
+        .map(|f| fs::metadata(f).unwrap().len())
+        .collect();
+    assert!(sizes.len() > 1, "the sizes vary");
+    assert_eq!(
+        fixture.bytes,
+        fixture
+            .files
+            .iter()
+            .map(|f| fs::metadata(f).unwrap().len())
+            .sum::<u64>()
+    );
+
+    // The stats count them all, and a second computation (served from the
+    // memo) reads none of them again.
+    let harness = fixture.fixture.harness();
+    harness.refresh().unwrap();
+    let project = harness.projects().unwrap().remove(0);
+    let session = harness.sessions(&project.id).unwrap().remove(0);
+    let first = harness.stats(&session).unwrap();
+    assert_eq!(harness.subagent_read_count(), 6);
+    assert!(first.tokens.input > 0);
+    assert_eq!(harness.stats(&session).unwrap(), first);
+    assert_eq!(harness.subagent_read_count(), 6);
+    assert_eq!(
+        harness.stats_key(&session).rsplit(':').nth(2),
+        Some("6"),
+        "the key counts the files"
+    );
+}
+
+#[test]
+fn a_cached_subagent_fixture_is_reused_and_describes_the_same_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let first = cached_subagent_fixture(tmp.path(), MIB, 3, MIB, SEED).unwrap();
+    let modified = fs::metadata(&first.files[0]).unwrap().modified().unwrap();
+    let second = cached_subagent_fixture(tmp.path(), MIB, 3, MIB, SEED).unwrap();
+    assert_eq!(
+        fs::metadata(&second.files[0]).unwrap().modified().unwrap(),
+        modified
+    );
+    assert_eq!(first.files, second.files);
+    assert_eq!(first.bytes, second.bytes);
+    assert_eq!(first.fixture.session, second.fixture.session);
+}

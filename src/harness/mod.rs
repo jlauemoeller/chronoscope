@@ -70,11 +70,11 @@ pub trait Harness: Send + Sync {
 
     /// A string identifying the state of `session`'s data that
     /// [`stats`](Self::stats) depends on: it changes whenever the data does
-    /// (Claude: path, size and mtime; OpenCode: db, session id and
-    /// `time_updated`). It keys the stats cache (SPEC §9.2), so equal keys
-    /// must mean equal stats. Cheap: it may stat a file but never parses.
-    /// (Claude's key does not cover the subagent transcripts that its stats
-    /// read yet.)
+    /// (Claude: path, size and mtime, and the count, total size and newest
+    /// mtime of the subagent transcripts; OpenCode: db, session id and the
+    /// newest `time_updated` of the session and its descendants). It keys the
+    /// stats cache (SPEC §9.2), so equal keys must mean equal stats. Cheap: it
+    /// may stat files but never reads them.
     ///
     /// The key starts with [`HarnessId::cache_prefix`] and a colon
     /// (`claude:`): the cache is shared by all harnesses, and each prunes

@@ -26,6 +26,9 @@ struct Stub {
     sessions: Vec<String>,
     /// Appended to every title; changing it changes the snapshot.
     version: AtomicU32,
+    /// Added to the stats key only: changing it changes no summary, as a
+    /// write to a subagent file or a child row does not.
+    key_bump: AtomicU32,
     /// How long every `stats` call takes.
     delay: Duration,
     calls: AtomicUsize,
@@ -36,6 +39,8 @@ struct Stub {
     panic_first: bool,
     /// `projects` fails.
     fail_projects: bool,
+    /// `projects` fails from now on.
+    fail_now: std::sync::atomic::AtomicBool,
 }
 
 impl Stub {
@@ -48,11 +53,13 @@ impl Stub {
             id,
             sessions: names.iter().map(|n| (*n).to_owned()).collect(),
             version: AtomicU32::new(1),
+            key_bump: AtomicU32::new(0),
             delay,
             calls: AtomicUsize::new(0),
             block_first: None,
             panic_first: false,
             fail_projects: false,
+            fail_now: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -96,7 +103,7 @@ impl Harness for Stub {
         Vec::new()
     }
     fn projects(&self) -> Result<Vec<Project>> {
-        if self.fail_projects {
+        if self.fail_projects || self.fail_now.load(Ordering::SeqCst) {
             anyhow::bail!("the store cannot be read");
         }
         Ok(vec![Project {
@@ -138,16 +145,24 @@ impl Harness for Stub {
             }
         }
         std::thread::sleep(self.delay);
+        // The key bump is part of what the computation is for, too.
+        let bump = self.key_bump.load(Ordering::SeqCst);
         Ok(SessionStats {
-            turns: version as usize,
+            turns: version as usize + 100 * bump as usize,
             agent_time: Duration::ZERO,
             run_time: Duration::ZERO,
             tokens: TokenUsage::default(),
         })
     }
     fn stats_key(&self, session: &SessionSummary) -> String {
+        let bump = self.key_bump.load(Ordering::SeqCst);
+        let bump = if bump == 0 {
+            String::new()
+        } else {
+            format!(":k{bump}")
+        };
         format!(
-            "{}:{}:v{}",
+            "{}:{}:v{}{bump}",
             self.id.cache_prefix(),
             session.id,
             self.version.load(Ordering::SeqCst)
@@ -392,4 +407,98 @@ fn cache_entries_of_harnesses_that_are_not_running_are_kept() {
             .unwrap()
             .contains("opencode:old")
     );
+}
+
+/// Receives events for `quiet` and returns the stats events among them; a
+/// snapshot is a failure.
+fn stats_without_a_snapshot(rx: &Receiver<IndexEvent>, quiet: Duration) -> Vec<SessionStats> {
+    let mut stats = Vec::new();
+    let end = std::time::Instant::now() + quiet;
+    while let Some(left) = end.checked_duration_since(std::time::Instant::now()) {
+        match rx.recv_timeout(left) {
+            Ok(IndexEvent::Stats { stats: s, .. }) => stats.push(s),
+            Ok(IndexEvent::Snapshot { .. }) => panic!("a snapshot was sent for an unchanged one"),
+            Err(_) => {}
+        }
+    }
+    stats
+}
+
+#[test]
+fn on_the_poll_path_a_key_that_changes_with_the_snapshot_unchanged_updates_the_stats() {
+    let stub = Stub::new(HarnessId::Claude, &["s"], Duration::ZERO);
+    let cache = tempfile::tempdir().unwrap();
+    let harness: Arc<dyn Harness> = stub.clone();
+    let mut handle =
+        SessionIndex::start_with_timing(vec![harness], cache.path().to_owned(), poll_50ms());
+    let rx = handle.take_events().unwrap();
+
+    assert!(matches!(
+        rx.recv_timeout(WAIT).unwrap(),
+        IndexEvent::Snapshot { .. }
+    ));
+    assert_eq!(next_stats(&rx).turns, 1);
+    // Polling rebuilds with nothing changed: no event of any kind, and the
+    // cached stats are not computed again.
+    assert!(stats_without_a_snapshot(&rx, Duration::from_millis(300)).is_empty());
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 1);
+
+    // The key changes, the sessions do not.
+    stub.key_bump.store(1, Ordering::SeqCst);
+    let stats = stats_without_a_snapshot(&rx, Duration::from_millis(500));
+    assert_eq!(stats.len(), 1, "one new Stats event and no Snapshot");
+    assert_eq!(stats[0].turns, 101);
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 2);
+    handle.shutdown();
+}
+
+#[test]
+fn a_failed_poll_schedules_no_stats() {
+    // The store cannot be read: the empty snapshot is sent once, and no
+    // stats are scheduled, now or on the later polls.
+    let mut stub = Stub::plain(HarnessId::Claude, &["s"], Duration::ZERO);
+    stub.fail_projects = true;
+    let stub = Arc::new(stub);
+    let cache = tempfile::tempdir().unwrap();
+    let harness: Arc<dyn Harness> = stub.clone();
+    let mut handle =
+        SessionIndex::start_with_timing(vec![harness], cache.path().to_owned(), poll_50ms());
+    let rx = handle.take_events().unwrap();
+    match rx.recv_timeout(WAIT).unwrap() {
+        IndexEvent::Snapshot { sessions, .. } => assert!(sessions.is_empty()),
+        other => panic!("{other:?}"),
+    }
+    stub.key_bump.store(1, Ordering::SeqCst);
+    assert!(stats_without_a_snapshot(&rx, Duration::from_millis(300)).is_empty());
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 0);
+    handle.shutdown();
+}
+
+#[test]
+fn a_failed_poll_after_a_good_snapshot_schedules_no_stats() {
+    let stub = Arc::new(Stub::plain(HarnessId::Claude, &["s"], Duration::ZERO));
+    let cache = tempfile::tempdir().unwrap();
+    let harness: Arc<dyn Harness> = stub.clone();
+    let mut handle =
+        SessionIndex::start_with_timing(vec![harness], cache.path().to_owned(), poll_50ms());
+    let rx = handle.take_events().unwrap();
+    assert!(matches!(
+        rx.recv_timeout(WAIT).unwrap(),
+        IndexEvent::Snapshot { .. }
+    ));
+    assert_eq!(next_stats(&rx).turns, 1);
+
+    // The store becomes unreadable and the key changes: the sessions are not
+    // known, so nothing is scheduled and no snapshot is sent.
+    stub.fail_now.store(true, Ordering::SeqCst);
+    stub.key_bump.store(1, Ordering::SeqCst);
+    assert!(stats_without_a_snapshot(&rx, Duration::from_millis(400)).is_empty());
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 1);
+
+    // Readable again: the stats follow.
+    stub.fail_now.store(false, Ordering::SeqCst);
+    let stats = stats_without_a_snapshot(&rx, Duration::from_millis(400));
+    assert_eq!(stats.len(), 1);
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 2);
+    handle.shutdown();
 }

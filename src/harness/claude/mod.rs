@@ -9,6 +9,7 @@ mod resume;
 mod scan;
 mod subagent;
 pub mod tools;
+mod usage_memo;
 mod watch;
 mod wire;
 
