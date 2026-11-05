@@ -5,8 +5,9 @@
 //! assembler's updates are coalesced into batches: the first one goes out as
 //! soon as there is something to show, later ones every couple of MiB. Each
 //! batch is followed by a [`ModelUpdate::Progress`]; the initial stream ends
-//! with `Progress(1.0)`, [`ModelUpdate::ParseWarnings`], [`ModelUpdate::Loaded`]
-//! and a first [`ModelUpdate::Activity`]. The worker then keeps the session
+//! with `Progress(1.0)`, [`ModelUpdate::LocalCommands`] (only for a session
+//! without turns that ran local commands), [`ModelUpdate::ParseWarnings`],
+//! [`ModelUpdate::Loaded`] and a first [`ModelUpdate::Activity`]. The worker then keeps the session
 //! live (see [`super::watch`]) until it is stopped.
 //!
 //! A final line without its newline may still be being written: it is kept in
@@ -124,6 +125,8 @@ pub(super) fn load_file<'a>(
             if streamer.has_unsent() {
                 streamer.flush();
             }
+            // The commands of a session without turns are worth showing too.
+            streamer.send_local_commands();
             Err(err)
         }
     }
@@ -182,6 +185,8 @@ pub(super) struct Streamer<'a> {
     done: bool,
     /// The last warning count sent.
     warnings_sent: Option<usize>,
+    /// The last list of local commands sent (none: empty).
+    commands_sent: Vec<String>,
 }
 
 impl<'a> Streamer<'a> {
@@ -200,6 +205,7 @@ impl<'a> Streamer<'a> {
             dirty: HashSet::new(),
             done: false,
             warnings_sent: None,
+            commands_sent: Vec::new(),
         }
     }
 
@@ -257,7 +263,7 @@ impl<'a> Streamer<'a> {
     }
 
     /// The end of the file: sends the last batch, then `Progress(1.0)`, the
-    /// warning count, `Loaded` and the file's `Activity`. `false` when the
+    /// local commands (if the session has no turns), the warning count, `Loaded` and the file's `Activity`. `false` when the
     /// worker should stop.
     fn finish(&mut self) -> bool {
         let updates = self.asm.flush_held();
@@ -266,7 +272,8 @@ impl<'a> Streamer<'a> {
         if !self.flush() {
             return false;
         }
-        self.send_warnings()
+        self.send_local_commands()
+            && self.send_warnings()
             && self.job.tx.send(ModelUpdate::Loaded).is_ok()
             && self.send_activity()
     }
@@ -293,7 +300,9 @@ impl<'a> Streamer<'a> {
         if self.job.stop.load(Ordering::Relaxed) {
             return Ok(false);
         }
-        Ok((!self.has_unsent() || self.send_batch()) && self.send_warnings())
+        Ok((!self.has_unsent() || self.send_batch())
+            && self.send_local_commands()
+            && self.send_warnings())
     }
 
     /// Feeds bytes read from the end of the file: complete lines go to the
@@ -312,6 +321,24 @@ impl<'a> Streamer<'a> {
         }
         buf.drain(..consumed);
         self.partial = buf;
+    }
+
+    /// Sends the local commands when the session has no turns to attach them
+    /// to and the list differs from the last one sent. Once a turn exists
+    /// they are part of it.
+    fn send_local_commands(&mut self) -> bool {
+        if !self.asm.turns().is_empty() {
+            return true;
+        }
+        let commands = self.asm.local_commands();
+        if commands == self.commands_sent {
+            return true;
+        }
+        self.commands_sent = commands.to_vec();
+        self.job
+            .tx
+            .send(ModelUpdate::LocalCommands(self.commands_sent.clone()))
+            .is_ok()
     }
 
     /// Sends the warning count when it differs from the last one sent.

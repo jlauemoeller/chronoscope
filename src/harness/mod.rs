@@ -83,7 +83,9 @@ pub trait Harness: Send + Sync {
     ///
     /// The worker streams the parse over `tx` as [`ModelUpdate`]s: batches of
     /// turns (the first one early), a [`Progress`](ModelUpdate::Progress)
-    /// after each, then [`ParseWarnings`](ModelUpdate::ParseWarnings) and
+    /// after each, then, for a session without turns that ran local commands,
+    /// [`LocalCommands`](ModelUpdate::LocalCommands) (sent again when the list
+    /// changes), then [`ParseWarnings`](ModelUpdate::ParseWarnings) and
     /// [`Loaded`](ModelUpdate::Loaded) and an
     /// [`Activity`](ModelUpdate::Activity). The worker then keeps the session
     /// live: appended data arrives as `Appended` and `Updated` batches, each

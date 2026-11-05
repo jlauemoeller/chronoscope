@@ -15,9 +15,9 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 
 use super::inject::{
-    NEWEST_KNOWN_VERSION, attachment_text, is_injected_attachment, is_injected_system,
-    is_known_noise_attachment, is_metadata_type, is_noise_type, local_command_display_text,
-    queued_prompt_text, system_text, version_newer,
+    NEWEST_KNOWN_VERSION, attachment_text, echo_command, first_line, is_injected_attachment,
+    is_injected_system, is_known_noise_attachment, is_metadata_type, is_noise_type,
+    local_command_display_text, queued_prompt_text, system_command, system_text, version_newer,
 };
 use super::tools::{describe, tool_kind};
 use super::wire::{Block, Content, Entry, Head, Usage, content_text, read_entry, result_text};
@@ -160,6 +160,10 @@ pub struct Assembler {
     last_version: Option<String>,
     /// Whether the newer-version warning has been logged.
     warned_version: bool,
+    /// The command of each echo (`/model opus`), in the order they ran.
+    echoed_commands: Vec<String>,
+    /// The command of each `system` `local_command` entry that names one.
+    system_commands: Vec<String>,
 }
 
 impl Assembler {
@@ -190,6 +194,8 @@ impl Assembler {
             prompt_ts: None,
             last_version: None,
             warned_version: false,
+            echoed_commands: Vec::new(),
+            system_commands: Vec::new(),
         }
     }
 
@@ -242,6 +248,19 @@ impl Assembler {
     /// [`first_timestamp`](Self::first_timestamp) for which entries count.
     pub fn last_timestamp(&self) -> Option<DateTime<Utc>> {
         self.last_ts
+    }
+
+    /// The local commands the session ran so far, in the order they ran, as
+    /// `/command args`: the command of each echo. Claude Code writes a
+    /// `system` `local_command` entry beside most echoes, so those are
+    /// listed (by their `commandRun`) only while the session has no echo at
+    /// all. Outputs and the caveat are not commands.
+    pub fn local_commands(&self) -> &[String] {
+        if self.echoed_commands.is_empty() {
+            &self.system_commands
+        } else {
+            &self.echoed_commands
+        }
     }
 
     /// The session cwd, if known.
@@ -395,6 +414,11 @@ impl Assembler {
                         "turn_duration" => self.on_turn_duration(&entry, range),
                         "compact_boundary" => self.on_compact_boundary(&entry, ts, range),
                         _ => {
+                            if sub == "local_command"
+                                && let Some(command) = system_command(entry.command_run.as_ref())
+                            {
+                                self.system_commands.push(first_line(&command));
+                            }
                             let text = system_text(
                                 sub,
                                 entry.content.as_ref(),
@@ -737,7 +761,11 @@ impl Assembler {
         // held like any injected entry. `cur` and `prompt_ts` are left alone,
         // so the open Assistant turn continues and keeps its start.
         if entry.is_local_command() {
-            let text = local_command_display_text(&content_text(content));
+            let raw = content_text(content);
+            if let Some(command) = echo_command(&raw) {
+                self.echoed_commands.push(command);
+            }
+            let text = local_command_display_text(&raw);
             self.hold("local_command", ts, text, entry.uuid.as_deref(), range);
             return;
         }

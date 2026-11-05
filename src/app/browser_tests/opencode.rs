@@ -266,6 +266,31 @@ fn an_opencode_session_opens_in_the_browser_and_renders_its_turns() {
     assert!(rig.rig.harness.loads().is_empty());
 }
 
+/// OpenCode records no local commands: its empty session keeps the plain
+/// message.
+#[test]
+fn an_opencode_session_without_rows_still_says_the_file_is_empty() {
+    let mut rig = two_tabs();
+    press_in_selector(&mut rig.rig.app, Key::Char('2'));
+    rig.open("ses_blank");
+    assert!(rig.rig.app.session_is_empty());
+    let message = rig
+        .rig
+        .app
+        .application()
+        .query(&Id::EmptySession, tuirealm::props::Attribute::Text)
+        .unwrap()
+        .unwrap()
+        .into_attr();
+    assert_eq!(
+        message,
+        AttrValue::String("Session file is empty".to_owned())
+    );
+    let screen = screen_text(&mut rig.rig, 120, 40);
+    assert!(screen.contains("Session file is empty"), "{screen}");
+    assert!(!screen.contains("Local commands"), "{screen}");
+}
+
 #[test]
 fn a_non_default_variant_is_shown_in_the_title_and_default_is_not() {
     let mut rig = two_tabs();

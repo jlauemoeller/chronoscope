@@ -24,6 +24,7 @@ impl Transcript {
             ModelUpdate::Loaded => self.finish_loading(),
             ModelUpdate::Progress(_)
             | ModelUpdate::ParseWarnings(_)
+            | ModelUpdate::LocalCommands(_)
             | ModelUpdate::Activity { .. } => {}
         }
     }
