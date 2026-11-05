@@ -16,6 +16,8 @@ mod project_list;
 mod prompt;
 mod selector_frame;
 mod session_list;
+mod session_time;
+mod session_tokens;
 mod theme_selector;
 mod toast;
 pub mod transcript;
@@ -61,6 +63,8 @@ pub use session_list::{
     ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_FILTERED_ATTR, SESSION_ROWS_ATTR,
     SESSION_STATS_ATTR, SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_stats,
 };
+pub use session_time::SessionTime;
+pub use session_tokens::SessionTokens;
 pub use theme_selector::{ThemeItem, ThemeRows, ThemeSelector, theme_items};
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 pub use transcript::{

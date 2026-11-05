@@ -24,8 +24,9 @@ use crate::components::{
     ACTIVE_ATTR, ActiveSessions, CWD_ATTR, HINTS_ATTR, HarnessTabs, HelpLine, PROJECT_ROWS_ATTR,
     ProjectList, ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR,
     SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame, SessionList, SessionRow, SessionRows,
-    SessionStatsUpdate, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir,
-    hints_value, payload_value, selected_from_value, selected_value, viewport_value, visible_rows,
+    SessionStatsUpdate, SessionTime, SessionTokens, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR,
+    VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value, selected_from_value, selected_value,
+    viewport_value, visible_rows,
 };
 use crate::keymap::Keymap;
 use crate::launch::{HarnessIndex, Preselect, deepest_ancestor};
@@ -37,11 +38,13 @@ use crate::model::{
 };
 
 /// The components of the selector overlay, in drawing order.
-pub(super) const SELECTOR_IDS: [Id; 6] = [
+pub(super) const SELECTOR_IDS: [Id; 8] = [
     Id::SelectorFrame,
     Id::HarnessTabs,
     Id::ProjectList,
     Id::SessionList,
+    Id::SessionTime,
+    Id::SessionTokens,
     Id::WorkingDir,
     Id::HelpLine,
 ];
@@ -73,6 +76,16 @@ pub(super) fn mount_selector(
     application.mount(
         Id::SessionList,
         Box::new(SessionList::new(keymap.clone(), theme.clone())),
+        Vec::new(),
+    )?;
+    application.mount(
+        Id::SessionTime,
+        Box::new(SessionTime::new(theme.clone())),
+        Vec::new(),
+    )?;
+    application.mount(
+        Id::SessionTokens,
+        Box::new(SessionTokens::new(theme.clone())),
         Vec::new(),
     )?;
     application.mount(
@@ -1105,8 +1118,14 @@ impl App {
                 .routing
                 .area(Id::SelectorFrame)
                 .unwrap_or_default();
-            let rows = visible_rows(selector_areas(overlay).projects.height);
-            for id in [Id::ProjectList, Id::SessionList] {
+            let areas = selector_areas(overlay);
+            // Each list gets the height of its own pane: the Sessions pane
+            // is shorter while the panels are shown.
+            for (id, pane) in [
+                (Id::ProjectList, areas.projects),
+                (Id::SessionList, areas.sessions),
+            ] {
+                let rows = visible_rows(pane.height);
                 self.set_attr(id, VISIBLE_ROWS_ATTR, AttrValue::Length(rows));
             }
         }

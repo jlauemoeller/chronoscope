@@ -20,12 +20,12 @@ expression: text
 │   │                    │    Left / h                          Focus Projects               │                     │   │
 │   │                    │    Right / l                         Focus Sessions               │                     │   │
 │   │                    │    Up / k                            Move up                      │                     │   │
-│   │                    │    Down / j                          Move down                    │                     │   │
-│   │                    │    /                                 Search sessions              │                     │   │
+│   │                    │    Down / j                          Move down                    │─────────────────────╯   │
+│   │                    │    /                                 Search sessions              │─────────────────────╮   │
 │   │                    │    ENTER                             Open session                 │                     │   │
 │   │                    │    ESC                               Clear search, close or quit  │                     │   │
-│   │                    │    R                                 Resume in harness            │                     │   │
-│   │                    │                                                                   │                     │   │
+│   │                    │    R                                 Resume in harness            │─────────────────────╯   │
+│   │                    │                                                                   │─────────────────────╮   │
 │   │                    │  Application                                                      │                     │   │
 │   │                    │                                                                   │                     │   │
 │   │                    │    t                                 Choose theme                 │                     │   │

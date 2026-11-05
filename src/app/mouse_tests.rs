@@ -137,7 +137,22 @@ fn hit_testing_maps_points_to_components_at_200x50() {
     assert_eq!(hit(&l, 59, 39), Some(Id::ProjectList));
     assert_eq!(hit(&l, 60, 20), Some(Id::SelectorFrame), "the gap");
     assert_eq!(hit(&l, 61, 20), Some(Id::SessionList));
-    assert_eq!(hit(&l, 175, 39), Some(Id::SessionList));
+    assert_eq!(hit(&l, 175, 28), Some(Id::SessionList), "last Sessions row");
+    // The panels: Session Time rows 29..33, Session Tokens rows 33..40.
+    assert_eq!(hit(&l, 61, 29), Some(Id::SessionTime));
+    assert_eq!(hit(&l, 175, 32), Some(Id::SessionTime));
+    assert_eq!(hit(&l, 61, 33), Some(Id::SessionTokens));
+    assert_eq!(hit(&l, 175, 39), Some(Id::SessionTokens));
+    assert_eq!(
+        hit(&l, 60, 35),
+        Some(Id::SelectorFrame),
+        "the gap beside them"
+    );
+    assert_eq!(
+        hit(&l, 176, 35),
+        Some(Id::SelectorFrame),
+        "the margin beside them"
+    );
     assert_eq!(hit(&l, 25, 3), Some(Id::HarnessTabs));
     assert_eq!(hit(&l, 30, 40), Some(Id::WorkingDir));
     assert_eq!(hit(&l, 30, 46), Some(Id::HelpLine));
@@ -306,7 +321,15 @@ fn the_routing_areas_follow_the_size() {
     );
     assert_eq!(
         app.routing().area(Id::SessionList),
-        Some(Rect::new(61, 6, 115, 34))
+        Some(Rect::new(61, 6, 115, 23))
+    );
+    assert_eq!(
+        app.routing().area(Id::SessionTime),
+        Some(Rect::new(61, 29, 115, 4))
+    );
+    assert_eq!(
+        app.routing().area(Id::SessionTokens),
+        Some(Rect::new(61, 33, 115, 7))
     );
     app.update(Msg::Resized(40, 10));
     assert_eq!(app.routing().area(Id::ProjectList), None);

@@ -433,11 +433,13 @@ fn session_msg(app: &App, update: ModelUpdate) -> Msg {
     }
 }
 
-const SELECTOR_IDS: [Id; 6] = [
+const SELECTOR_IDS: [Id; 8] = [
     Id::SelectorFrame,
     Id::HarnessTabs,
     Id::ProjectList,
     Id::SessionList,
+    Id::SessionTime,
+    Id::SessionTokens,
     Id::WorkingDir,
     Id::HelpLine,
 ];
@@ -835,6 +837,29 @@ fn the_selector_remembers_the_session_when_another_project_was_selected_before()
         rig.app.selected_session().map(SessionId::as_str),
         Some(BRIO_SESSION)
     );
+}
+
+#[test]
+fn the_session_panels_are_mounted_with_the_selector_over_the_browser_and_unmounted_with_it() {
+    let mut rig = rig();
+    rig.open_loaded();
+    for id in [Id::SessionTime, Id::SessionTokens] {
+        assert!(!rig.app.application().mounted(&id), "{id:?} in the browser");
+        assert!(rig.app.routing().area(id).is_none());
+    }
+    rig.ctrl_o();
+    rig.pump_until(|app| app.screen() == Screen::BrowserSelector);
+    for id in [Id::SessionTime, Id::SessionTokens] {
+        assert!(rig.app.application().mounted(&id), "{id:?}");
+        assert!(rig.app.routing().area(id).is_some(), "{id:?} is routed");
+        assert_ne!(rig.focus(), Some(id));
+    }
+    rig.press(Key::Esc);
+    rig.pump_until(|app| app.screen() == Screen::Browser);
+    for id in [Id::SessionTime, Id::SessionTokens] {
+        assert!(!rig.app.application().mounted(&id), "{id:?} after Esc");
+        assert!(rig.app.routing().area(id).is_none());
+    }
 }
 
 #[test]

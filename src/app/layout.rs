@@ -30,6 +30,17 @@ pub const PANES_ROW: u16 = 5;
 pub const PANES_HEIGHT_CHROME: u16 = 14;
 /// The Working Directory box is this many rows high.
 pub const WORKING_DIR_HEIGHT: u16 = 5;
+/// The Session Time panel is this many rows high: two borders and two text
+/// rows.
+pub const SESSION_TIME_HEIGHT: u16 = 4;
+/// The Session Tokens panel is this many rows high: two borders and five text
+/// rows.
+pub const SESSION_TOKENS_HEIGHT: u16 = 7;
+/// The rows the two panels take from the Sessions pane.
+pub const SESSION_PANELS_HEIGHT: u16 = SESSION_TIME_HEIGHT + SESSION_TOKENS_HEIGHT;
+/// The Sessions pane keeps at least this many rows when the panels are shown:
+/// two borders and three list rows.
+pub const MIN_SESSIONS_HEIGHT_WITH_PANELS: u16 = 6;
 /// The Projects pane is at least this wide.
 pub const MIN_PROJECTS_WIDTH: u16 = 20;
 /// The Projects pane is at most this wide.
@@ -195,6 +206,14 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
             (Id::HarnessTabs, selector.tabs),
             (Id::ProjectList, selector.projects),
             (Id::SessionList, selector.sessions),
+        ]);
+        if let Some(panels) = selector.panels {
+            areas.extend([
+                (Id::SessionTime, panels.session_time),
+                (Id::SessionTokens, panels.session_tokens),
+            ]);
+        }
+        areas.extend([
             (Id::WorkingDir, selector.working_dir),
             (bottom, selector.help_line),
         ]);
@@ -277,13 +296,29 @@ pub fn browser_areas(area: Rect) -> BrowserAreas {
     }
 }
 
+/// The two panels below the Sessions pane (SPEC §4.1). They come as a pair, so
+/// one cannot be present without the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionPanelAreas {
+    /// `Session Time`, directly below the Sessions pane.
+    pub session_time: Rect,
+    /// `Session Tokens`, directly below `Session Time`; its bottom is the
+    /// Projects pane's.
+    pub session_tokens: Rect,
+}
+
 /// The areas inside the selector overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SelectorAreas {
     /// The tab labels and, below them, the underline: two rows.
     pub tabs: Rect,
     pub projects: Rect,
+    /// The Sessions pane: shorter than the Projects pane by the height of the
+    /// panels when they are shown.
     pub sessions: Rect,
+    /// The session panels, when the Sessions pane keeps three list rows
+    /// without the rows they take.
+    pub panels: Option<SessionPanelAreas>,
     pub working_dir: Rect,
     pub help_line: Rect,
 }
@@ -296,6 +331,11 @@ pub struct SelectorAreas {
 /// width (at least 20, at most 36 columns), then one column of gap, then the
 /// Sessions pane. The Working Directory box follows directly, five rows
 /// high.
+///
+/// When the panes are at least 17 rows high, the Sessions pane gives its last
+/// 11 rows to `Session Time` (4 rows) and `Session Tokens` (7 rows), stacked
+/// directly below it at its x and width. Below that neither is placed and the
+/// Sessions pane keeps its full height.
 pub fn selector_areas(overlay: Rect) -> SelectorAreas {
     let content_x = overlay.x + CONTENT_INSET;
     let content_width = overlay.width.saturating_sub(2 * CONTENT_INSET);
@@ -305,6 +345,25 @@ pub fn selector_areas(overlay: Rect) -> SelectorAreas {
     let sessions_width = content_width.saturating_sub(projects_width + PANE_GAP);
     let panes_y = overlay.y + PANES_ROW;
     let panes_height = overlay.height.saturating_sub(PANES_HEIGHT_CHROME);
+    let sessions_x = content_x + projects_width + PANE_GAP;
+    let panels =
+        (panes_height >= MIN_SESSIONS_HEIGHT_WITH_PANELS + SESSION_PANELS_HEIGHT).then(|| {
+            let time_y = panes_y + panes_height - SESSION_PANELS_HEIGHT;
+            SessionPanelAreas {
+                session_time: Rect::new(sessions_x, time_y, sessions_width, SESSION_TIME_HEIGHT),
+                session_tokens: Rect::new(
+                    sessions_x,
+                    time_y + SESSION_TIME_HEIGHT,
+                    sessions_width,
+                    SESSION_TOKENS_HEIGHT,
+                ),
+            }
+        });
+    let sessions_height = if panels.is_some() {
+        panes_height - SESSION_PANELS_HEIGHT
+    } else {
+        panes_height
+    };
     SelectorAreas {
         tabs: Rect::new(
             overlay.x + TABS_COLUMN,
@@ -313,12 +372,8 @@ pub fn selector_areas(overlay: Rect) -> SelectorAreas {
             2,
         ),
         projects: Rect::new(content_x, panes_y, projects_width, panes_height),
-        sessions: Rect::new(
-            content_x + projects_width + PANE_GAP,
-            panes_y,
-            sessions_width,
-            panes_height,
-        ),
+        sessions: Rect::new(sessions_x, panes_y, sessions_width, sessions_height),
+        panels,
         working_dir: Rect::new(
             content_x,
             panes_y + panes_height,
@@ -483,7 +538,8 @@ mod tests {
         assert_eq!(a.sessions.width, 75);
         assert_eq!(a.projects.width + PANE_GAP + a.sessions.width, 112);
         assert_eq!(a.projects.height, 24);
-        assert_eq!(a.sessions.height, 24);
+        // The two panels take 11 rows of the Sessions pane.
+        assert_eq!(a.sessions.height, 13);
         assert_eq!(a.working_dir.width, 112);
     }
 
@@ -512,7 +568,10 @@ mod tests {
         let a = selector_areas(overlay);
         assert_eq!(a.tabs, Rect::new(5, 3, 110, 2));
         assert_eq!(a.projects, Rect::new(4, 6, 36, 24));
-        assert_eq!(a.sessions, Rect::new(41, 6, 75, 24));
+        assert_eq!(a.sessions, Rect::new(41, 6, 75, 13));
+        let panels = a.panels.unwrap();
+        assert_eq!(panels.session_time, Rect::new(41, 19, 75, 4));
+        assert_eq!(panels.session_tokens, Rect::new(41, 23, 75, 7));
         assert_eq!(a.working_dir, Rect::new(4, 30, 112, 5));
         assert_eq!(a.sessions.right(), overlay.right() - 4);
     }
@@ -536,7 +595,25 @@ mod tests {
 
     #[test]
     fn the_layout_lists_the_selector_components_in_drawing_order() {
-        let ids: Vec<Id> = at(80, 24).areas().iter().map(|(id, _)| *id).collect();
+        let ids: Vec<Id> = at(80, 40).areas().iter().map(|(id, _)| *id).collect();
+        assert_eq!(
+            ids,
+            [
+                Id::SelectorFrame,
+                Id::HarnessTabs,
+                Id::ProjectList,
+                Id::SessionList,
+                Id::SessionTime,
+                Id::SessionTokens,
+                Id::WorkingDir,
+                Id::HelpLine
+            ]
+        );
+    }
+
+    #[test]
+    fn without_the_panels_the_layout_lists_neither() {
+        let ids: Vec<Id> = at(80, 32).areas().iter().map(|(id, _)| *id).collect();
         assert_eq!(
             ids,
             [
@@ -790,6 +867,8 @@ mod tests {
                 Id::HarnessTabs,
                 Id::ProjectList,
                 Id::SessionList,
+                Id::SessionTime,
+                Id::SessionTokens,
                 Id::WorkingDir,
                 Id::HelpLine,
                 Id::Toast
@@ -1097,5 +1176,186 @@ mod tests {
     #[test]
     fn too_small_screen_shows_no_toast() {
         assert_eq!(with_toast(59, 24, 5).area(Id::Toast), None);
+    }
+
+    // -- the session panels (SPEC §4.1)
+
+    fn panels(width: u16, height: u16) -> SessionPanelAreas {
+        areas(width, height).panels.expect("the panels are shown")
+    }
+
+    #[test]
+    fn the_panels_are_stacked_below_the_sessions_pane_at_its_x_and_width() {
+        for (w, h) in [
+            (60, 33),
+            (80, 40),
+            (120, 40),
+            (160, 50),
+            (200, 50),
+            (201, 60),
+        ] {
+            let a = areas(w, h);
+            let p = panels(w, h);
+            assert_eq!(p.session_time.x, a.sessions.x, "{w}x{h}");
+            assert_eq!(p.session_time.width, a.sessions.width, "{w}x{h}");
+            assert_eq!(p.session_tokens.x, a.sessions.x, "{w}x{h}");
+            assert_eq!(p.session_tokens.width, a.sessions.width, "{w}x{h}");
+            assert_eq!(p.session_time.y, a.sessions.bottom(), "{w}x{h}: no gap");
+            assert_eq!(p.session_tokens.y, p.session_time.bottom(), "{w}x{h}");
+            assert_eq!(p.session_tokens.bottom(), a.projects.bottom(), "{w}x{h}");
+        }
+    }
+
+    #[test]
+    fn session_time_is_4_rows_and_session_tokens_7_and_the_sessions_pane_loses_11() {
+        assert_eq!(SESSION_TIME_HEIGHT, 4);
+        assert_eq!(SESSION_TOKENS_HEIGHT, 7);
+        for (w, h) in [(60, 33), (80, 40), (120, 40), (200, 50), (160, 60)] {
+            let a = areas(w, h);
+            let p = panels(w, h);
+            assert_eq!(p.session_time.height, 4, "{w}x{h}");
+            assert_eq!(p.session_tokens.height, 7, "{w}x{h}");
+            assert_eq!(a.sessions.height + 11, a.projects.height, "{w}x{h}");
+        }
+    }
+
+    #[test]
+    fn sizes_of_the_sessions_pane_with_the_panels() {
+        let a = areas(160, 50);
+        assert_eq!((a.sessions.width, a.sessions.height), (115, 23));
+        let a = areas(120, 40);
+        assert_eq!((a.sessions.width, a.sessions.height), (75, 13));
+        let a = areas(60, 33);
+        assert_eq!((a.sessions.width, a.sessions.height), (31, 6));
+    }
+
+    #[test]
+    fn at_33_rows_both_panels_are_shown_with_3_list_rows() {
+        let a = areas(60, 33);
+        assert_eq!(a.projects.height, 17);
+        assert_eq!(a.sessions.height, 6);
+        assert_eq!(crate::components::visible_rows(a.sessions.height), 3);
+        assert!(a.panels.is_some());
+    }
+
+    #[test]
+    fn at_32_rows_neither_panel_is_shown_and_the_sessions_pane_keeps_its_height() {
+        let a = areas(60, 32);
+        assert_eq!(a.panels, None);
+        assert_eq!(a.sessions.height, a.projects.height);
+        assert_eq!(a.sessions.height, 16);
+        let l = at(60, 32);
+        assert_eq!(l.area(Id::SessionTime), None);
+        assert_eq!(l.area(Id::SessionTokens), None);
+        let l = at(60, 33);
+        assert!(l.area(Id::SessionTime).is_some());
+        assert!(l.area(Id::SessionTokens).is_some());
+    }
+
+    #[test]
+    fn one_panel_is_never_present_without_the_other() {
+        for w in [60, 120, 200] {
+            for h in MIN_HEIGHT..=60 {
+                let l = at(w, h);
+                assert_eq!(
+                    l.area(Id::SessionTime).is_some(),
+                    l.area(Id::SessionTokens).is_some(),
+                    "{w}x{h}"
+                );
+                assert_eq!(
+                    l.area(Id::SessionTime).is_some(),
+                    h >= 33,
+                    "{w}x{h}: shown from 33 rows"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_other_areas_do_not_move_with_the_panels() {
+        // The same overlay, with the room for the panels and without: the
+        // panes' height is what decides, so compare against the geometry.
+        for (w, h) in [(60, 32), (60, 33), (120, 40), (200, 50), (200, 60)] {
+            let l = at(w, h);
+            let overlay = l.area(Id::SelectorFrame).unwrap();
+            let a = selector_areas(overlay);
+            let panes_height = overlay.height - PANES_HEIGHT_CHROME;
+            assert_eq!(a.projects.height, panes_height, "{w}x{h}");
+            assert_eq!(a.projects.y, overlay.y + PANES_ROW, "{w}x{h}");
+            assert_eq!(a.working_dir.y, overlay.y + PANES_ROW + panes_height);
+            assert_eq!(a.working_dir.height, WORKING_DIR_HEIGHT);
+            assert_eq!(
+                a.help_line.y,
+                overlay.bottom() - HELP_LINE_ROWS_FROM_BOTTOM,
+                "{w}x{h}"
+            );
+            assert_eq!(a.sessions.y, a.projects.y, "{w}x{h}");
+        }
+    }
+
+    fn selector_rects(a: &SelectorAreas) -> Vec<(&'static str, Rect)> {
+        let mut rects = vec![
+            ("tabs", a.tabs),
+            ("projects", a.projects),
+            ("sessions", a.sessions),
+            ("working_dir", a.working_dir),
+            ("help_line", a.help_line),
+        ];
+        if let Some(p) = a.panels {
+            rects.push(("session_time", p.session_time));
+            rects.push(("session_tokens", p.session_tokens));
+        }
+        rects
+    }
+
+    #[test]
+    fn no_selector_areas_overlap_at_any_size() {
+        for w in MIN_WIDTH..=200 {
+            for h in MIN_HEIGHT..=60 {
+                let overlay = at(w, h).area(Id::SelectorFrame).unwrap();
+                let a = selector_areas(overlay);
+                let rects = selector_rects(&a);
+                for (i, (name, rect)) in rects.iter().enumerate() {
+                    assert!(
+                        overlay.contains((rect.x, rect.y).into())
+                            && rect.right() <= overlay.right()
+                            && rect.bottom() <= overlay.bottom(),
+                        "{name} outside the overlay at {w}x{h}"
+                    );
+                    for (other_name, other) in &rects[i + 1..] {
+                        assert!(
+                            !rect.intersects(*other),
+                            "{name} {rect:?} overlaps {other_name} {other:?} at {w}x{h}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_panels_follow_a_centred_overlay_on_a_wide_terminal() {
+        let l = at(200, 50);
+        let overlay = l.area(Id::SelectorFrame).unwrap();
+        assert_eq!(overlay.x, 20);
+        let sessions = l.area(Id::SessionList).unwrap();
+        let time = l.area(Id::SessionTime).unwrap();
+        let tokens = l.area(Id::SessionTokens).unwrap();
+        assert_eq!(sessions.x, 20 + 4 + 36 + 1);
+        assert_eq!((time.x, time.width), (sessions.x, sessions.width));
+        assert_eq!((tokens.x, tokens.width), (sessions.x, sessions.width));
+        assert_eq!(tokens.right(), overlay.right() - 4);
+        assert_eq!(tokens.bottom(), l.area(Id::ProjectList).unwrap().bottom());
+    }
+
+    #[test]
+    fn the_layout_follows_the_area_origin_for_the_panels() {
+        let l = layout(&LayoutInput::default(), Rect::new(3, 2, 80, 40));
+        let sessions = l.area(Id::SessionList).unwrap();
+        let time = l.area(Id::SessionTime).unwrap();
+        assert_eq!(
+            time,
+            Rect::new(sessions.x, sessions.bottom(), sessions.width, 4)
+        );
     }
 }

@@ -1,0 +1,19 @@
+---
+source: src/components/session_tokens.rs
+expression: "buffer_to_styled(&draw(31, builtin::default_theme()))"
+---
+╭─ Session Tokens ────────────╮
+│                             │
+│                             │
+│                             │
+│                             │
+│                             │
+╰─────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..18 Rgb(250, 250, 250)/Reset/NONE | 18..31 Rgb(94, 94, 94)/Reset/NONE
+1: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..30 Reset/Reset/NONE | 30..31 Rgb(94, 94, 94)/Reset/NONE
+2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..30 Reset/Reset/NONE | 30..31 Rgb(94, 94, 94)/Reset/NONE
+3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..30 Reset/Reset/NONE | 30..31 Rgb(94, 94, 94)/Reset/NONE
+4: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..30 Reset/Reset/NONE | 30..31 Rgb(94, 94, 94)/Reset/NONE
+5: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..30 Reset/Reset/NONE | 30..31 Rgb(94, 94, 94)/Reset/NONE
+6: 0..31 Rgb(94, 94, 94)/Reset/NONE

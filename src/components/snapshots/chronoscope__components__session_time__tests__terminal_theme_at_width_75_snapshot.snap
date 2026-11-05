@@ -1,0 +1,13 @@
+---
+source: src/components/session_time.rs
+expression: "buffer_to_styled(&draw(75, builtin::terminal_theme()))"
+---
+╭─ Session Time ──────────────────────────────────────────────────────────╮
+│                                                                         │
+│                                                                         │
+╰─────────────────────────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 DarkGray/Reset/NONE | 2..16 Reset/Reset/NONE | 16..75 DarkGray/Reset/NONE
+1: 0..1 DarkGray/Reset/NONE | 1..74 Reset/Reset/NONE | 74..75 DarkGray/Reset/NONE
+2: 0..1 DarkGray/Reset/NONE | 1..74 Reset/Reset/NONE | 74..75 DarkGray/Reset/NONE
+3: 0..75 DarkGray/Reset/NONE

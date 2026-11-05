@@ -1,0 +1,13 @@
+---
+source: src/components/session_time.rs
+expression: "buffer_to_styled(&draw(75, builtin::default_theme()))"
+---
+╭─ Session Time ──────────────────────────────────────────────────────────╮
+│                                                                         │
+│                                                                         │
+╰─────────────────────────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..16 Rgb(250, 250, 250)/Reset/NONE | 16..75 Rgb(94, 94, 94)/Reset/NONE
+1: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..74 Reset/Reset/NONE | 74..75 Rgb(94, 94, 94)/Reset/NONE
+2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..74 Reset/Reset/NONE | 74..75 Rgb(94, 94, 94)/Reset/NONE
+3: 0..75 Rgb(94, 94, 94)/Reset/NONE
