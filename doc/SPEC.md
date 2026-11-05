@@ -84,6 +84,8 @@ Components (each is its own type and module):
 | `HarnessTabs` | Selector | Harness tabs; click switches tab (§6.6) | No |
 | `ProjectList` | Selector | Projects pane, selection rules of §4.1 | Yes |
 | `SessionList` | Selector | Sessions pane, including search results with the project prefix and the `●` marker | Yes |
+| `SessionTime` | Selector | The `Session Time` panel below the Sessions pane: the selected session's total and agent time (§4.1) | No |
+| `SessionTokens` | Selector | The `Session Tokens` panel below `Session Time`: the selected session's token totals (§4.1) | No |
 | `WorkingDir` | Selector | Working Directory box | No |
 | `BrowserHeader` | Browser | Project and session titles, cwd, `● live`, breadcrumb, parse-warning note | No |
 | `TurnSidebar` | Browser | The turns and compaction events of the open transcript, with selection and mouse (§4.2, §6.3, §6.9) | Yes |
@@ -96,7 +98,9 @@ Components (each is its own type and module):
 | `DetailsOverlay` | Overlay | The metadata of the selected section (§4.3) | Yes |
 | `ThemeSelector` | Overlay | §8.4 | Yes |
 | `GlobalEvents` | Both | Nothing drawn; turns global keys and worker events into `Msg`s (§1.4) | No |
-| `EmptyState` | Both | "Terminal too small", "No sessions for this harness", "Session file is empty" | No |
+| `EmptyState` | Both | "Terminal too small", "No sessions for this harness", "No matching sessions", "Session file is empty", and for a session of local commands only the multi-line "No turns. Local commands only:" and the commands (§4.2) | No |
+
+`SessionTime` and `SessionTokens` are two components, not one, and each owns only what it displays. They share a small helper that draws one label and value row (`PanelRow`, and `PanelRows` for all the rows of a panel), and `format_tokens`, the one formatter of token counts (§5.2), lives in `src/tokens.rs` beside the duration formatter, so that neither the panels nor the renderers depend on another component's internals.
 
 The `Transcript` is **one** mounted component, because it is virtualised and can hold thousands of sections (§9.2). It does not mount one tui-realm component per section. It is still built from small parts rather than one large render function: a `TurnBlock` widget (rounded block, titles, selection marker), one renderer per section kind (§5.2), one body renderer per `ToolKind` (§5.3), the markdown renderer (§5.5) and the layout cache. Each is its own type with its own tests. Opening a subagent (§5.4) mounts a new `Transcript`. The parent's stays mounted but is not drawn, so `Backspace` returns to it unchanged.
 
@@ -112,7 +116,7 @@ The `TurnSidebar` is likewise one mounted instance. It keeps no turns, only the 
   - While an overlay is open (selector, help, details, theme selector), the components under it get no mouse events, and a click outside the overlay closes it.
   - Component areas come from a pure layout function that `App::view` also uses. Subscriptions are refreshed from it when the screen or terminal size changes, never from inside `view`.
 - **Ticks:** `Event::Tick` drives toast expiry, the `● live` marker and the redraw limit (§7.1).
-- **Worker results** take one path: Port → `Event::User` → `GlobalEvents` (subscribed to all user events) turns it into a `Msg` → `App::update` applies it to domain state and pushes what changed to the components that display it (rows and stats to `ProjectList` / `SessionList`, `ModelUpdate`s to `Transcript` and `TurnSidebar`). Other components don't subscribe to worker events.
+- **Worker results** take one path: Port → `Event::User` → `GlobalEvents` (subscribed to all user events) turns it into a `Msg` → `App::update` applies it to domain state and pushes what changed to the components that display it (rows and stats to `ProjectList` / `SessionList`, the selected session's stats to `SessionTime` and `SessionTokens`, `ModelUpdate`s to `Transcript` and `TurnSidebar`, and the local commands of a session without turns to the `EmptyState` of the browser; `Transcript` and `TurnSidebar` ignore the `LocalCommands` update). The panels are pushed only when their values change, and also when the selection changes by any route, so they never show the previous session's values under a new selection. Other components don't subscribe to worker events.
 
 ## 2. Tech stack
 
@@ -138,6 +142,7 @@ Candidate crates: `tuirealm` (with the `crossterm` feature), `ratatui`, `crosste
 - Directory name is a lossy encoding of the cwd (`/` and `.` → `-`); the real cwd is in each entry's `cwd` field.
 - Subagent transcripts: `<session-uuid>/subagents/agent-<agentId>.jsonl` (entries have `isSidechain: true`) + `agent-<agentId>.meta.json` (`agentType`, `description`, `toolUseId`).
   - Linkage: the parent's `Agent` `tool_use.id` equals `meta.toolUseId`, and the matching `tool_result` entry's `toolUseResult.agentId` names the file.
+  - **Subagent files read for tokens.** The session's token total (§5.1) reads the main transcript and every `agent-*.jsonl` found recursively below `<session file without extension>/subagents/`. Workflow runs nest theirs under `subagents/workflows/<run>/`. Other files there, such as `journal.jsonl` and the `.meta.json` files, are not transcripts and are not read. Links to directories (and a `subagents` directory that is itself a link) are not followed, and entries that are not regular files are left out. A missing `subagents` directory means no subagents. A file that cannot be read is logged and skipped, and the rest still count. Each message counts once per file, using its latest usage, keyed by message id (a message appeared in only one file in all 20 973 messages checked, so nothing is deduplicated across files).
 - Relevant entry types: `user`, `assistant`, `system` (e.g. `turn_duration`), `attachment`, `ai-title`, `last-prompt`, `cost-state`.
   Noise to skip: `api-request*`, `mode`, `permission-mode`, `atis-latch`, `file-history-*`.
 - Assistant entries carry `message.model`, `effort` / `perTurnEffort`, `timestamp`, `message.usage`, `message.stop_reason` and, for an API error, `isApiErrorMessage: true`.
@@ -152,6 +157,7 @@ Candidate crates: `tuirealm` (with the `crossterm` feature), `ratatui`, `crosste
 - Every one of these fields is optional. The details overlay's re-read treats a field of an unexpected type as missing and only drops its row; what assembling does with a wrong type is in §9.5.
 - **One JSONL line per content block:** an assistant API response is split over several `assistant` lines sharing `message.id` (BRIO session: 195 lines → 73 messages, up to 16 lines per message).
 - **Most `user` entries are not human prompts:** in the BRIO session, 80 of 92 `user` entries only carry `tool_result` blocks. Human prompts have `origin.kind == "human"` and no `tool_result`. Entries with `isMeta: true` are injected, not typed.
+- **Local commands.** A local command (`/effort`, `/model`, `/clear`, …) is handled by the harness and is not a prompt to the model. It is recorded as `user` entries, and it never starts a turn. A `user` entry is local-command content when all of these hold: it has no `origin` field; it is not `isMeta`, not a compact summary and holds no `tool_result`; and its text, with leading whitespace trimmed, starts with `<command-name>` (the echo), `<local-command-stdout>` or `<local-command-stderr>` (the output). The rule needs only the entry itself, so the transcript scan applies it line by line, with the same prompt rule as the assembler (§5.1). It was checked against 61 local sessions: all 45 local-command echoes have no `origin` and start with `<command-name>`, and all 30 echoes of commands that do reach the model (`/factory`, `/statusline`, `/doctor`) have `origin.kind` `human` and start with `<command-message>`, so they stay prompts. Not local commands: a prompt typed with a leading space, such as ` /clear` (sent to the model, recorded with `origin.kind` `human`, and a turn); `!` shell commands (`<bash-input>`, `<bash-stdout>`, `<bash-stderr>`), whose output reaches the model and which keep their rows; and OpenCode, which records no local commands. The `<local-command-caveat>` meta entry is an ordinary `isMeta` entry.
 
 ### 3.2 OpenCode
 
@@ -163,23 +169,28 @@ Candidate crates: `tuirealm` (with the `crossterm` feature), `ratatui`, `crosste
   - A tool part's `time` (`created` and `completed`) gives the duration of the call.
   - The details overlay (§4.3) reads the row again when it opens: its id, `time.*`, `finish`, `rawFinish`, `error`, `model.providerID`, `agent`, a tool part's `time.created`, and `snapshot.start` and `snapshot.end`. A turn keeps only the id of the row (§5.1).
 - Subagent sessions are linked via `session_v2.parent_id`.
+- **Descendant rows read for tokens.** The session's token total (§5.1) sums the `tokens` of the `assistant` rows of the session and of every descendant session, following `parent_id` at any depth (only one level exists locally, but the rule is not limited to it), with `reasoning` added to `output` as the assembler does. Only rows the assembler parses count, so a row it skips for a wrong-typed field adds no tokens. The `session_v2.tokens_*` columns are not read: they differ from the row sums in 4 of 160 local sessions, and the rows are what the footers use.
 
 ## 4. Screens
 
 ### 4.1 Session selector overlay
 
-Layout as in ui-sketch.md: harness tabs, Projects list, Sessions list, Working Directory box, and help/search line.
+Layout as in ui-sketch.md: harness tabs, Projects list, Sessions list, the Session Time and Session Tokens panels below it, Working Directory box, and help/search line.
 
 Sizing:
 - Width: the full terminal width, up to 160 columns; on wider terminals it is 160 columns wide and centred horizontally. Height: the terminal height minus one row above and one below.
 - The Projects pane takes a third of the content width, but at least 20 and at most 36 columns. The Sessions pane gets the rest, so extra width mainly goes to the session list.
+- The two panels (below) are stacked directly below the Sessions pane, `Session Time` first, with no gaps, and each is as wide as the Sessions pane. The bottom border of `Session Tokens` is on the same row as the Projects pane's. `Session Time` is 4 rows high (two borders and two text rows) and `Session Tokens` is 7 rows high (two borders and five text rows), 11 rows in total, with no blank rows. The Sessions pane loses those rows. Projects, the Working Directory box and the help line do not move.
+- **Short terminals.** The panels are shown only when the Sessions pane keeps at least 3 list rows (a pane height of 6). That needs panes of 17 rows, so a terminal of at least 33 rows. Below that, neither panel is drawn and the Sessions pane has its full height. One panel is never drawn without the other.
+- The list's visible rows, paging, scrolling and mouse hit area all follow its pane's height. The selected row stays visible when the terminal is resized and the panels appear or disappear.
 
-Session row format: `<local start timestamp>  <title>` on the left, plus muted stats on the right (turn count · duration). The model is not shown: the browser shows it on every Assistant turn.
-- Title: Claude `ai-title` → OpenCode `session_v2.title` → first user prompt (truncated) → `(untitled)`.
-- Stats are computed in the background and cached (§9.2). Until they are ready, the row shows just timestamp + title. The cache stores the duration in milliseconds, so the display format can change without invalidating it.
+Session row format: `<local start timestamp>  <title>` on the left, plus muted stats on the right (`<n> turns · <duration>`, `1 turn` for one). The model is not shown: the browser shows it on every Assistant turn.
+- Title: Claude `ai-title` → OpenCode `session_v2.title` → first user prompt (truncated) → `(untitled)`. The first prompt is the first prompt of the browser's turns (§5.1), so a local command (§3.1) is never a session's first prompt: a session without an `ai-title` that began with `/effort` is titled from its next real prompt, and one with only local commands is `(untitled)`. Search over the first prompt follows.
+- `<n>` is the number of User turns on Claude (§5.1) and the number of `user` rows on OpenCode, so it equals the number of `User` rows of the turns sidebar. `<duration>` is the session's **agent time** in the shared format below: the sum of the durations of the Assistant turns, summed exactly from the durations the sidebar shows (§5.1, rule 6), and only then formatted. Summing first matters, because the formatter truncates and adding the displayed values by hand can differ by up to a minute per turn from the total. A turn without a footer (one still running, or interrupted before its first `turn_duration`) shows no duration in the sidebar and adds nothing. Subagent time is not added, so that the row matches the sidebar. A session that holds only local commands has no turns to attach to, and its row reads `0 turns · 0s`.
+- Stats are computed in the background and cached (§9.2). Until they are ready, the row shows just timestamp + title. The cache stores both durations in milliseconds, so the display format can change without invalidating it.
 - The title gets the room the stats leave. When that would be less than 10 cells, the stats are dropped from the row.
 
-**Duration format.** Durations use one format everywhere: the selector's rows, the stats footer (§5.2), the turns sidebar (§4.2), the details overlay (§4.3) and tool calls of a minute or longer (§5.2). One shared formatter (`src/duration.rs`) provides it, so no component has its own.
+**Duration format.** Durations use one format everywhere: the selector's rows and its Session Time panel, the stats footer (§5.2), the turns sidebar (§4.2), the details overlay (§4.3) and tool calls of a minute or longer (§5.2). One shared formatter (`src/duration.rs`) provides it, so no component has its own.
 
 | Duration | Resolution | Examples |
 |---|---|---|
@@ -210,6 +221,67 @@ Search (`/` in the selector):
 - Fuzzy (`nucleo`) over title, first prompt and project name across **all projects of the current harness**.
 - While a query is active, the Sessions pane shows matching sessions with their project name prefixed, and keeps the focus (`Tab`, `←`/`→`, `h`/`l` do nothing). `ESC` clears the query.
 
+#### Session Time and Session Tokens panels
+
+Two panels below the Sessions pane show the selected session's totals. The session rows in this wireframe are illustrative: titles follow the rules above.
+
+```
+╭─ Projects ─────────╮ ╭─ Sessions in chronoscope2 ───────────────────────────╮
+│                    │ │                                                      │
+│ > chronoscope2     │ │ > 2026-10-29 23:02  Spec build 6 turns · 17h 56m     │
+│   jacob            │ │   2026-10-29 22:48  Factory.md  1 turn · 10m 50s     │
+│                    │ │                                                      │
+│                    │ ╰──────────────────────────────────────────────────────╯
+│                    │ ╭─ Session Time ───────────────────────────────────────╮
+│                    │ │ Total                                        81h 33m │
+│                    │ │ Agent                                        17h 56m │
+│                    │ ╰──────────────────────────────────────────────────────╯
+│                    │ ╭─ Session Tokens ─────────────────────────────────────╮
+│                    │ │ Input                                          15.8k │
+│                    │ │ Output                                          6.3M │
+│                    │ │ Thinking                                        2.2M │
+│                    │ │ Cache read                                    862.3M │
+│                    │ │ Cache write                                    30.7M │
+╰────────────────────╯ ╰──────────────────────────────────────────────────────╯
+╭─ Working Directory ─────────────────────────────────────────────────────────╮
+```
+
+Each panel is a rounded block in `border`, titled as above, like the Working Directory box. Rows appear in this order, with the label left-aligned and the value right-aligned, one column inside each border.
+
+`Session Time`:
+
+| Label | Value | Format |
+|---|---|---|
+| `Total` | `run_time` | The shared duration format (above) |
+| `Agent` | `agent_time` | The shared duration format; the same text as the row |
+
+`Session Tokens`:
+
+| Label | Value | Format |
+|---|---|---|
+| `Input` | `tokens.input` | `format_tokens` (§5.2), as in the details overlay |
+| `Output` | `tokens.output` | `format_tokens` |
+| `Thinking` | `tokens.reasoning` | `format_tokens` |
+| `Cache read` | `tokens.cache_read` | `format_tokens` |
+| `Cache write` | `tokens.cache_write` | `format_tokens` |
+
+- The values are the session's `SessionStats` (§5.1). `Total` is the time from the session's first entry to its last (local commands count), idle time included, and `Agent` the time the agent was working. The tokens are the whole session's use, subagents included, so they are larger than the sum of the turn footers, which cover the main session only.
+- Every label starts with a capital letter. The panel titles say what the values measure, so the labels do not repeat "time" or "tokens". Labels are muted and values are `foreground`.
+- All rows of a panel always show together. A count no message reported is `0`.
+- A row that cannot hold both keeps the value and cuts the label (with `…`, or leaves it out when nothing remains). Every label and value fits at the narrowest supported width (a 60-column terminal).
+
+**When they show values.** Both panels show the selected session's stats, and both are an empty block (border and title, no rows) when:
+- no session is selected (above), for example at startup, after moving to another project, or when a search has no results;
+- the selected session's stats are not ready yet, or could not be computed.
+
+Rules:
+- The selected session is the one with the `>` marker, and while a search lists results the highlighted result. Selecting another session by any route (keys, mouse, wheel, search, `Ctrl-o`, switching harness) updates both panels in the same frame. They never show the previous session's values under a new selection. Opening the selector over an open session (`Ctrl-o`) shows that session's values on its first frame.
+- When stats arrive for the selected session, the panels update without any key press. A running session's values follow its stats. Until a newer computation finishes, the last known values stay, as they do on the row.
+- Stats for another session do not change the panels.
+- The panels never take focus and are not in the `Tab` order. Clicks and wheel events over them do nothing, and do not reach the session list.
+- Each panel is a component of its own (`SessionTime` with `Id::SessionTime`, `SessionTokens` with `Id::SessionTokens`, §1.3), mounted and unmounted with the selector. The `App` pushes their values, as it does for the Working Directory box. Both join the themed components, so they follow a theme change.
+- Drawing does no I/O or parsing: the panels show stats the worker already delivered.
+
 ### 4.2 Session browser
 
 - Header block: `Project <name>` (left title), session id (right title), working directory in the body. A `● live` marker shows while the session is active (§7.2), and a breadcrumb shows when viewing a subagent (§5.4).
@@ -218,7 +290,9 @@ Search (`/` in the selector):
 - Help line under the transcript and the sidebar, full width: context-sensitive key hints. It turns into the search/path prompt when active and shows search position (`3/17`), the `↓ N new` indicator and parse warnings.
 - Toasts (copy/save/export confirmations, config warnings) appear in the bottom-right corner for ~2 s.
 - Loading state: `Loading… 34%` in the help line while the initial parse streams in.
-- Empty states: "No sessions for this harness" / "Session file is empty".
+- Empty states: "No sessions for this harness" / "Session file is empty". A session that holds only local commands (§3.1) has no turns to attach them to and must not claim to be empty: the message is then **`No turns. Local commands only:`** followed by the commands, one per line, in the order they ran, as `/command args`. The message is centred as a block in the same place as the single line, each line on its own, and a line too wide for the area ends in `…`. A file with truly nothing in it still shows `Session file is empty`, and so does one with outputs but no command.
+  - The commands come from the loader (`ModelUpdate::LocalCommands`, the whole list each time, sent only while the session has no turns and only when the list changed). They are the command of each echo; Claude Code writes a `system` `local_command` entry beside most echoes, so those entries are listed (by their command) only when the session has no echo at all. Outputs and the caveat are not commands. An echo with stray text is listed by its `<command-name>` alone, and tabs in the arguments show as spaces, so a list row is always one line.
+  - The list belongs to its load: a reload, a reset or opening another session starts over. When a turn arrives in a live session, the browser replaces the state with the normal view, and the commands are part of the first User turn. Held entries after a trailing compaction (§5.6) keep their behaviour: they appear once a later turn arrives.
 
 #### Turns sidebar
 
@@ -332,9 +406,20 @@ Item    = Text(markdown)
 ToolKind = Shell | Read | Write | Edit | Grep | Glob | WebFetch | WebSearch | Subagent | Other(name)
 TurnStats  = { duration, message_count, tokens?: TokenUsage, cost? }
 TokenUsage = { input, output, cache_read, cache_write, reasoning }
+SessionStats = { turns, agent_time, run_time, tokens: TokenUsage }   // §4.1: the selector's row and panels
 ```
 
 - **Tokens.** `TurnStats.tokens` is a `TokenUsage` summed over the turn's messages. Each message counts once, using its latest usage. `output` includes `reasoning` on every harness, and `reasoning` is only an "of which" figure that is never added to a total. The footer's `tokens` is input + output + cache writes (§5.2), and its `cached` is the sum of cache reads.
+- **Session stats.** `SessionStats` is what the selector shows for a session without opening it (§4.1). It is computed in the background from the transcript or the rows, and cached (§9.2). A duration is stored in milliseconds, and `tokens` has the footer's `TokenUsage` shape.
+
+  | Field | Claude | OpenCode |
+  |---|---|---|
+  | `turns` | The number of User turns (rule 1 below) | The number of `user` rows |
+  | `agent_time` | The sum of the Assistant turns' `TurnStats.duration` (rule 6), a turn without a footer adding nothing | The same sum, from the OpenCode assembler's turns |
+  | `run_time` | The last entry's timestamp minus the first's. Local-command entries count | `time_updated` minus `time_created` |
+  | `tokens` | The whole session's use, below | The whole session's use, below |
+
+  `tokens` is the session's whole use: the main session and all its subagents. `output` includes `reasoning`, and `reasoning` is never added to a total. It deliberately differs from the sum of the session's turn footers, which cover only the main session. Claude: the main transcript and the subagent transcripts of §3.1, each message counted once per file with its latest usage, keyed by message id. `TurnStats.tokens` is **not** summed, because it exists only once a turn has a footer, and a turn without one would be lost (12 of 250 Assistant turns locally, about 2% of the output tokens). A pass lighter than the `Assembler` is allowed over subagent files, as long as the result is the same. OpenCode: the `assistant` rows of the session and of its descendants (§3.2). Total time (`run_time`) and the turn count stay those of the main session on both harnesses.
 - **Sources.** Every turn carries `sources`, a side table of cheap references to where its sections were read from, and never the field values (§3.1, §3.2): for Claude a `ByteSource` and a byte range per line (the prompt, the last `turn_duration` line, the latest line of each message with a non-null `stop_reason`, else its latest line, and for a tool call two ranges, its call and its result), for OpenCode the ids of rows. Items carry nothing of it. Adding to the table takes constant time per item and it is never searched while assembling, because one turn can hold tens of thousands of items. The details overlay (§4.3) reads through the references when it opens, so assembling a turn never parses the detail fields.
 - **Durations.** `ToolCall.duration` is the time between the call and its result. It is empty for a pending call, when the adapter does not know it, and for an asynchronous subagent (Claude `toolUseResult.isAsync` is `true`), whose result only records the launch.
 - **Notices.** An `Item::Notice` records how a message ended abnormally, because the turn would otherwise show nothing about it. Its id is `notice:<message or row id>` and it is upserted, so a row updated in place replaces its notice instead of adding another. A normal ending never produces one.
@@ -350,7 +435,7 @@ TokenUsage = { input, output, cache_read, cache_write, reasoning }
   A null Claude `stop_reason` alone produces no notice, and synthetic messages without `isApiErrorMessage` (such as `No response requested.`) stay ordinary text.
 
 Turn assembly (Claude):
-1. A **User turn** starts at a `user` entry that is a human prompt: `origin.kind == "human"` (or, for older versions without `origin`, string/text content with no `tool_result` and no `isMeta`). A message typed while the agent is working is stored as an `attachment` of kind `queued_command` with `origin.kind == "human"`; it also starts a User turn, and the content after it forms a new Assistant turn.
+1. A **User turn** starts at a `user` entry that is a human prompt: `origin.kind == "human"` (or, for older versions without `origin`, string/text content with no `tool_result` and no `isMeta`), and that is not local-command content (§3.1; rule 7). A message typed while the agent is working is stored as an `attachment` of kind `queued_command` with `origin.kind == "human"`; it also starts a User turn, and the content after it forms a new Assistant turn.
 2. Everything up to the next human prompt forms **one Assistant turn**: `assistant` lines, `tool_result`-only `user` lines, and allowlisted injected content (§5.6).
 3. `assistant` lines with the same `message.id` are merged into one message, keeping their content blocks in order. Repeated blocks (same `tool_use.id`, or same index for text/thinking) replace the earlier version instead of being duplicated.
 4. `tool_result` blocks are attached to the `ToolCall` with the matching `tool_use_id`. A tool call without a result yet has status `pending`.
@@ -360,6 +445,12 @@ Turn assembly (Claude):
    - **Messages:** the number of distinct message ids in the turn, leaving out messages whose model is `<synthetic>`. It stays current when messages arrive after a `turn_duration` entry. `messageCount` is a running total for the session and is not read.
    - **Tokens:** from each message's `usage`, per the tokens rule above. Claude's `thinking_tokens` is already part of `output_tokens`, so it only fills `reasoning`.
    - No cost: Claude records none, and there is no price table.
+7. **Local commands** (§3.1) are neither prompts nor turns. Each echo and each output becomes an injected entry of kind `local_command` through the held-entries path of §5.6, the kind that `system` `local_command` entries already use. Like the other injected entries it joins the neighbouring block: into the next User turn when one follows, else into the current turn at the end of the input.
+   - Its text drops the markup. An echo becomes the command and its arguments (`/effort`, `/model opus`), and an output becomes the text inside the tags (`Cancelled`). A body that does not match these forms exactly, such as an echo with stray text around its tags, is kept as it is.
+   - The echo and its output are separate entries and are not merged.
+   - A local command does not end the current Assistant turn: Assistant entries after it continue that turn, as they do when no local command came between them. It does not move the start of the turn's duration (rule 6), which stays the prompt's timestamp. It adds no turn, so the sidebar gains no row and the turn count (§4.1) does not change.
+   - A live batch can end between a local command and the next prompt. As for every other injected entry, `flush_held` then places the entry in the current turn, and it stays there. Reloading the session places it in the next turn. Only the block holding the entry differs: the turns themselves do not.
+   - A session that holds nothing else has no turn to hold the entries; the browser shows them as its empty state (§4.2).
 
 Turn assembly (OpenCode): each `user` row (with `synthetic` rows treated as injected content) starts a turn. `assistant` rows up to the next `user` row form the Assistant turn. Tool calls and their results are already combined in each `tool` part (`state.input`, `state.content`, `state.status`). The stats come from the rows: the duration, the message count (assistant messages) and the cost, and the tokens from each row's `tokens` (`input`, `output` plus `reasoning`, `cache.read`, `cache.write`). A row with an abnormal `finish` produces a notice (table above).
 
@@ -450,7 +541,8 @@ Results longer than N lines (default 200, configurable) are truncated, with a `�
 - **Allowlist** of Claude content that counts as system/injected:
   - attachments `hook_system_message`, `file`, `directory`, `opened_file_in_ide`, `selected_lines_in_ide`, `queued_command` (except human messages, see §5.1), `instructions`, `plan_mode`, `plan_mode_exit`, `compact_file_reference`;
   - `system` entries with subtype `local_command`, `informational` or `away_summary`;
-  - `user` entries with `isMeta: true`.
+  - `user` entries with `isMeta: true`;
+  - `user` entries that are local-command content (§3.1), which become `local_command` entries with the markup dropped (§5.1, rule 7).
 - OpenCode: `synthetic` and `system` rows.
 - **Everything else is noise and never shown:**
   - API request records, mode/permission changes, file-history snapshots, title / last-prompt / cost records;
@@ -625,7 +717,7 @@ If a session id is ambiguous (prefix matches several sessions), the selector ope
 
 ### 7.3 Selector behaviour
 
-- Project and session lists update live: new sessions appear, and titles and stats refresh. The current selection is kept (matched by id, not by index).
+- Project and session lists update live: new sessions appear, and titles and stats refresh (the panels of §4.1 with them). The current selection is kept (matched by id, not by index).
 - Active sessions show the `●` marker in their row.
 
 ## 8. Configuration & theming
@@ -811,7 +903,11 @@ Target: sessions up to **~100 MB** stay smooth.
 - Detail fields are not parsed while assembling. A turn keeps only a byte range or row id per section (§5.1), and opening the details overlay re-reads one or two lines (Claude) or rows (OpenCode) on the UI thread, which takes about a millisecond even for a 2 MB result (a line of about 4 MB; measured for Claude). `toolUseResult`, which can hold whole files, is read by the assembler and the details overlay through a typed head and never loaded as a whole value. (Finding a subagent's transcript from its parent, when no meta file names the call, scans the parent for the call's result line and loads its `toolUseResult` as a value, §5.4.)
 - The turns sidebar (§4.2) builds its rows from the section derivation, never from a layout or a render, and a turn update rebuilds only the rows it names. A key press in the sidebar (selection, transcript scroll and frame) is held to the frame budget below.
 - Layout is computed lazily per block for the current width. Only blocks overlapping the viewport are rendered.
-- Session list stats are computed in the background and cached in `$XDG_CACHE_HOME/chronoscope/`, keyed by (path, size, mtime) or by (db, session id, `time_updated`).
+- Session stats (`SessionStats`, §5.1) are computed in the background, on a small pool of worker threads, and cached in `$XDG_CACHE_HOME/chronoscope/stats-v2.json`: one JSON file mapping a harness's stats key to the stats computed for it, with both durations in milliseconds and the `TokenUsage` serialised. The previous version's file is removed, best effort, when the cache loads, and never read, so every session's stats are computed once again after an upgrade (without this, sessions that have not changed would keep showing their old row, because their keys still match). Entries of sessions that are gone are pruned. The key must see everything the stats count, subagents included:
+  - Claude: `claude:<path>:<size>:<mtime>:<n>:<total size>:<newest mtime>`, with the main transcript's size and mtime (nanoseconds since the epoch) followed by the number of subagent transcripts (§3.1), their total size and their newest mtime (`:0:0:0` without subagents). A main file that cannot be stat'ed gives `claude:<path>:missing`. The key runs on the coordinator thread, so it stats files but never reads them, and a listing problem there is only logged at debug level.
+  - OpenCode: `opencode:<db path>:<session id>:<time_updated in ms>`, where the time is the newest `time_updated` of the session and of all its descendants (at least the session's own). It comes from the last index build, which aggregates it for all sessions with one recursive query. A descendant whose `time_updated` is not an integer is left out of that aggregate, and a failure of the query is logged and never fails the index.
+- **The subagent files are memoised.** A session with many subagents (the largest local session has 320 files of 207 MB in total) is recomputed on every coalesced rebuild while it runs, which can be for hours. So each subagent file's usage is kept in memory, keyed by (path, size, mtime) as discovery does for its scans, with the size and mtime taken from the listing before the file is read, so a file that grows during the read is read again next time. A recomputation reads the main transcript and only the files that changed. Entries for files that are gone are dropped, as are those of sessions that are gone, and a failed read is not memoised, so it is tried again next time. The first computation parses all the files (about 0.5 s for that session with the files in the OS cache) on the stats pool, which is background work. `doc/performance.md` records the figures.
+- **The stats are refreshed even when the snapshot is not.** A write to a subagent file (or to an OpenCode child row) changes no summary of the main session, so a rebuild finds the snapshot unchanged and does not send it to the UI. The stats are still rescheduled, over the sessions of the last snapshot, whenever a rebuild succeeds, because a session's key may have changed. A failed build (a poll that could not read the store) schedules nothing. The file watcher already reports these writes, because it watches the data directory recursively.
 - Session discovery reads each Claude transcript at most once per index build. Each file's scan result (cwd, start time, first prompt, last `ai-title`) is kept in memory, keyed by (path, size, mtime). The initial build and live rebuilds rescan only new or changed files, scanning several files in parallel. Results for files that are gone are dropped.
 - Budgets (measured with benchmarks and an ignored budget test on a synthetic 100 MB fixture, `doc/performance.md`):
   - first content within 300 ms;

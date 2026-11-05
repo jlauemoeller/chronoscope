@@ -129,11 +129,18 @@ From `cargo bench` (criterion, mean of the samples):
 | `frame_render/scroll_and_draw` | 0.61 ms     |
 | `selector_index/cold`          | 6.0 ms      |
 | `selector_index/warm`          | 2.6 ms      |
+| `selector_index/stats_keys`    | 2.5 ms      |
+| `session_stats/first`          | 526 ms      |
+| `session_stats/recompute_one_file` | 6.6 ms  |
+| `session_stats/key`            | 162 us      |
 
 `selector_index` builds the session index over 2 000 small session files in ten
 projects, with a new harness (the scan cache cold) or one that has already
-scanned them (warm: nothing changed, so only the files are stat'ed). It has no
-budget; it is there for reference.
+scanned them (warm: nothing changed, so only the files are stat'ed).
+`stats_keys` asks the same warm harness for the stats key of each of the 2 000
+sessions, which the coordinator thread does on every rebuild: a stat of the
+main file and a failed look for its `subagents` directory, about 1.3 us per
+session. `selector_index` has no budget; it is there for reference.
 
 Heap is measured with a counting global allocator
 (`bench_support::CountingAlloc`) installed in the budget test binary. The peak
@@ -221,6 +228,47 @@ The first press far from the top would lay out every block above it; that is a
 one-off, as it is for `G` and the page keys, and the test leaves it out by
 starting at the ends of the list.
 
+## Stats of a session with many subagents
+
+A session's stats (SPEC §5.1) include the tokens of its subagents, which are
+read from the subagent transcripts (SPEC §3.1). The largest local session has
+320 subagent files, 207 MB in total. Parsing all of them takes about 0.3 s with
+the files in the OS cache, so the first computation stays background work on
+the stats pool. A running session of that kind would parse them all again on
+every coalesced rebuild, for hours, so each file's usage is kept in memory,
+keyed by (path, size, mtime), and a recomputation reads only the files that
+changed (SPEC §9.2). `cargo bench --bench session_stats` measures both.
+
+The fixture (`bench_support::generate_subagent_fixture`) is one Claude session
+with a main transcript of 4 MiB, made like the mixed session above (5% large
+results), and 320 subagent files below `<session>/subagents/` that vary
+between half and one and a half times the mean size. The files are generated
+until each reaches its share of 207 MB, so they come out slightly larger: 215.9
+MB in all. It is deterministic, is written to `target/bench-fixtures/` on first
+use and reused, and the page cache is warm. The recomputation moves one
+file's modification time, which leaves the cached fixture as it is and makes
+the memo treat that file as changed, as an append would. The figures were
+measured on the machine above (the same one, nothing else running), with
+`cargo bench --bench session_stats -- --sample-size 10`:
+
+| benchmark                          | mean    | range             |
+|------------------------------------|---------|-------------------|
+| `session_stats/first`              | 526 ms  | 523 to 531 ms     |
+| `session_stats/recompute_one_file` | 6.6 ms  | 6.5 to 6.6 ms     |
+| `session_stats/key`                | 162 us  | 162 to 163 us     |
+
+- `first` is a fresh harness with an empty memo: the main transcript and all
+  320 files are parsed.
+- `recompute_one_file` is the main transcript and the one changed file, about
+  80 times faster than the first computation. The other 319 files come from the
+  memo.
+- `key` is `stats_key` for that session: it lists the subagent files and stats
+  them, and reads none.
+
+The stats have no budget of their own. A rebuild runs the key for every session
+on the coordinator thread (`selector_index/stats_keys` above), and the
+computation itself runs on the stats pool.
+
 ## Running them
 
 Benchmarks (criterion; each prints its time and keeps a report under
@@ -231,6 +279,7 @@ cargo bench --bench first_content
 cargo bench --bench full_parse
 cargo bench --bench frame_render
 cargo bench --bench selector_index
+cargo bench --bench session_stats
 ```
 
 Pass criterion options after `--`, for example
