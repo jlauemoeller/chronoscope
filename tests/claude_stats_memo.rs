@@ -365,8 +365,55 @@ fn a_file_whose_read_failed_is_tried_again_next_time() {
     // Once the target exists the file counts.
     fs::write(&target, sub_line("s2", 20)).unwrap();
     let stats = rig.harness.stats(&session).unwrap();
-    assert_eq!(rig.take_reads(), [link]);
+    assert_eq!(rig.take_reads(), std::slice::from_ref(&link));
     assert_eq!(stats.tokens, tokens(1 + 10 + 20, 2 + 2));
     assert_eq!(rig.harness.subagent_memo_len(), 2);
     assert_eq!(stats, rig.fresh_stats(&session));
+
+    // A memoised file whose read fails later loses its entry and its tokens.
+    fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink(rig.dir.path().join("nowhere"), &link).unwrap();
+    let stats = rig.harness.stats(&session).unwrap();
+    assert_eq!(rig.take_reads(), std::slice::from_ref(&link));
+    assert_eq!(stats.tokens, tokens(1 + 10, 2 + 1));
+    assert_eq!(rig.harness.subagent_memo_len(), 1);
+}
+
+#[test]
+fn a_file_that_grows_during_the_read_is_read_again_next_time() {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let dir = tempfile::tempdir().unwrap();
+    let main = dir.path().join("-p").join("ses.jsonl");
+    let sub = dir.path().join("-p/ses/subagents/agent-a.jsonl");
+    fs::create_dir_all(sub.parent().unwrap()).unwrap();
+    fs::write(&main, MAIN).unwrap();
+    fs::write(&sub, sub_line("s1", 10)).unwrap();
+    // The first read is preceded by an append: the file is listed (stat'ed)
+    // before it, so what the memo holds is the stat of the smaller file.
+    let grown = AtomicBool::new(false);
+    let harness = ClaudeHarness::with_data_dir(dir.path().to_owned(), Default::default())
+        .with_subagent_read_hook(move |path| {
+            if !grown.swap(true, Ordering::SeqCst) {
+                let mut file = File::options().append(true).open(path).unwrap();
+                file.write_all(sub_line("s2", 5).as_bytes()).unwrap();
+            }
+        });
+    harness.refresh().unwrap();
+    let project = harness.projects().unwrap().remove(0);
+    let session = harness.sessions(&project.id).unwrap().remove(0);
+
+    let first = harness.stats(&session).unwrap();
+    assert_eq!(harness.subagent_read_count(), 1);
+    assert_eq!(first.tokens.input, 1 + 10 + 5, "the read saw the append");
+    // Read again: the stat it was memoised under is not the file's now.
+    let second = harness.stats(&session).unwrap();
+    assert_eq!(harness.subagent_read_count(), 2);
+    assert_eq!(second, first);
+    // And now it is memoised.
+    assert_eq!(harness.stats(&session).unwrap(), first);
+    assert_eq!(harness.subagent_read_count(), 2);
+    let fresh = ClaudeHarness::with_data_dir(dir.path().to_owned(), Default::default());
+    assert_eq!(fresh.stats(&session).unwrap(), second);
 }

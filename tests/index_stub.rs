@@ -39,6 +39,8 @@ struct Stub {
     panic_first: bool,
     /// `projects` fails.
     fail_projects: bool,
+    /// `projects` fails from now on.
+    fail_now: std::sync::atomic::AtomicBool,
 }
 
 impl Stub {
@@ -57,6 +59,7 @@ impl Stub {
             block_first: None,
             panic_first: false,
             fail_projects: false,
+            fail_now: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -100,7 +103,7 @@ impl Harness for Stub {
         Vec::new()
     }
     fn projects(&self) -> Result<Vec<Project>> {
-        if self.fail_projects {
+        if self.fail_projects || self.fail_now.load(Ordering::SeqCst) {
             anyhow::bail!("the store cannot be read");
         }
         Ok(vec![Project {
@@ -468,5 +471,34 @@ fn a_failed_poll_schedules_no_stats() {
     stub.key_bump.store(1, Ordering::SeqCst);
     assert!(stats_without_a_snapshot(&rx, Duration::from_millis(300)).is_empty());
     assert_eq!(stub.calls.load(Ordering::SeqCst), 0);
+    handle.shutdown();
+}
+
+#[test]
+fn a_failed_poll_after_a_good_snapshot_schedules_no_stats() {
+    let stub = Arc::new(Stub::plain(HarnessId::Claude, &["s"], Duration::ZERO));
+    let cache = tempfile::tempdir().unwrap();
+    let harness: Arc<dyn Harness> = stub.clone();
+    let mut handle =
+        SessionIndex::start_with_timing(vec![harness], cache.path().to_owned(), poll_50ms());
+    let rx = handle.take_events().unwrap();
+    assert!(matches!(
+        rx.recv_timeout(WAIT).unwrap(),
+        IndexEvent::Snapshot { .. }
+    ));
+    assert_eq!(next_stats(&rx).turns, 1);
+
+    // The store becomes unreadable and the key changes: the sessions are not
+    // known, so nothing is scheduled and no snapshot is sent.
+    stub.fail_now.store(true, Ordering::SeqCst);
+    stub.key_bump.store(1, Ordering::SeqCst);
+    assert!(stats_without_a_snapshot(&rx, Duration::from_millis(400)).is_empty());
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 1);
+
+    // Readable again: the stats follow.
+    stub.fail_now.store(false, Ordering::SeqCst);
+    let stats = stats_without_a_snapshot(&rx, Duration::from_millis(400));
+    assert_eq!(stats.len(), 1);
+    assert_eq!(stub.calls.load(Ordering::SeqCst), 2);
     handle.shutdown();
 }

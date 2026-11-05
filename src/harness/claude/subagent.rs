@@ -149,22 +149,34 @@ pub(super) struct SubagentFile {
 /// opening could block on, is left out. The `subagents` directory itself is
 /// not followed when it is a symlink.
 pub(super) fn list_transcripts(session_path: &Path) -> Vec<SubagentFile> {
+    list(session_path, log::Level::Warn)
+}
+
+/// Like [`list_transcripts`], for the stats key, which runs on every rebuild:
+/// a directory that cannot be listed is logged at `debug` only, so that it
+/// does not log again for every session at every rebuild. [`list_transcripts`]
+/// (from `stats`) still warns.
+pub(super) fn list_transcripts_quietly(session_path: &Path) -> Vec<SubagentFile> {
+    list(session_path, log::Level::Debug)
+}
+
+fn list(session_path: &Path, level: log::Level) -> Vec<SubagentFile> {
     let mut found = Vec::new();
     let root = session_path.with_extension("").join("subagents");
     if fs::symlink_metadata(&root).is_ok_and(|meta| meta.file_type().is_symlink()) {
         return found;
     }
-    list_below(&root, &mut found);
+    list_below(&root, &mut found, level);
     found.sort_by(|a, b| a.path.cmp(&b.path));
     found
 }
 
-fn list_below(dir: &Path, found: &mut Vec<SubagentFile>) {
+fn list_below(dir: &Path, found: &mut Vec<SubagentFile>, level: log::Level) {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
         Err(err) => {
-            log::warn!("could not list {}: {err}", dir.display());
+            log::log!(level, "could not list {}: {err}", dir.display());
             return;
         }
     };
@@ -172,7 +184,7 @@ fn list_below(dir: &Path, found: &mut Vec<SubagentFile>) {
         let entry = match entry {
             Ok(entry) => entry,
             Err(err) => {
-                log::warn!("could not list {}: {err}", dir.display());
+                log::log!(level, "could not list {}: {err}", dir.display());
                 continue;
             }
         };
@@ -180,12 +192,12 @@ fn list_below(dir: &Path, found: &mut Vec<SubagentFile>) {
         let kind = match entry.file_type() {
             Ok(kind) => kind,
             Err(err) => {
-                log::warn!("could not stat {}: {err}", path.display());
+                log::log!(level, "could not stat {}: {err}", path.display());
                 continue;
             }
         };
         if kind.is_dir() {
-            list_below(&path, found);
+            list_below(&path, found, level);
             continue;
         }
         let name = entry.file_name();

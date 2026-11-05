@@ -1030,6 +1030,36 @@ fn the_stats_key_follows_the_newest_time_updated_of_the_descendants() {
 }
 
 #[test]
+fn a_child_whose_time_updated_is_not_an_integer_does_not_fail_the_index() {
+    let db = TempDb::new();
+    let h = harness(&db);
+    let session = summary(&h, "ses_main");
+    let key = h.stats_key(&session);
+    let main_updated = session.last_activity.timestamp_millis();
+    db.exec(&child_sql("ses_grand", "ses_child1", 1_793_180_000_000));
+    for bad in ["'abc'", "1793179900000.5"] {
+        // Text and REAL are not counted.
+        db.exec(&format!(
+            "UPDATE session_v2 SET time_updated = {bad} WHERE id = 'ses_child1'"
+        ));
+        h.refresh().unwrap();
+        assert_eq!(summary(&h, "ses_main"), session, "{bad}: still listed");
+        // The grandchild's valid time still counts.
+        assert_eq!(
+            h.stats_key(&session),
+            format!("opencode:{}:ses_main:1793180000000", db.path.display()),
+            "{bad}"
+        );
+    }
+    // With no valid descendant time the key falls back to the session's own.
+    db.exec("UPDATE session_v2 SET time_updated = 'x' WHERE id IN ('ses_child1', 'ses_grand')");
+    h.refresh().unwrap();
+    assert_eq!(summary(&h, "ses_main"), session);
+    assert_eq!(h.stats_key(&session), key);
+    assert!(key.ends_with(&format!(":{main_updated}")));
+}
+
+#[test]
 fn a_cycle_in_parent_id_does_not_hang_the_index() {
     let db = TempDb::new();
     let h = harness(&db);

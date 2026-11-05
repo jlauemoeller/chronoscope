@@ -439,7 +439,9 @@ impl Harness for ClaudeHarness {
     ///   entries are ignored (see [`Assembler::first_timestamp`]);
     /// - `tokens` is the whole use of the main transcript and of every
     ///   subagent transcript below `subagents/`; a subagent file that cannot
-    ///   be read is logged and skipped, and read again next time. The usage
+    ///   be read is logged and skipped (its tokens stay uncounted until its
+    ///   size or mtime changes: the result is cached under a key that only
+    ///   those change), and read again next time. The usage
     ///   of each subagent file is remembered by (path, size, mtime), so a
     ///   recomputation reads only the files that changed; the entries of
     ///   files that are gone are dropped.
@@ -518,7 +520,7 @@ impl Harness for ClaudeHarness {
         match fs::metadata(&session.path) {
             Ok(meta) => {
                 let mtime = meta.modified().map_or(0, nanos);
-                let files = subagent::list_transcripts(&session.path);
+                let files = subagent::list_transcripts_quietly(&session.path);
                 let total = files
                     .iter()
                     .fold(0_u64, |sum, f| sum.saturating_add(f.size));

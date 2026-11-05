@@ -495,7 +495,12 @@ fn build_index(db: &Db, db_path: &Path, aliases: &BTreeMap<PathBuf, String>) -> 
             .then_with(|| a.name.cmp(&b.name))
             .then_with(|| a.id.cmp(&b.id))
     });
-    let tree_updated = tree_updated(db)?;
+    // Only the stats key reads it, so a failure costs the descendants' part
+    // of the key and not the index.
+    let tree_updated = tree_updated(db).unwrap_or_else(|err| {
+        log::warn!("could not read the update times of the child sessions: {err:#}");
+        HashMap::new()
+    });
     Ok(Index {
         projects,
         sessions,
@@ -505,22 +510,25 @@ fn build_index(db: &Db, db_path: &Path, aliases: &BTreeMap<PathBuf, String>) -> 
 
 /// The newest `time_updated` of each top-level session and its descendants,
 /// in one recursive query. `UNION` (not `UNION ALL`) keeps a cycle in
-/// `parent_id` from looping forever.
+/// `parent_id` from looping forever. A `time_updated` that is not an integer
+/// is left out, so that one bad child row cannot fail the index; a root
+/// without a usable time is not in the map.
 fn tree_updated(db: &Db) -> Result<HashMap<SessionId, i64>> {
     let rows = db.select(
         // `Db::select` takes statements that start with SELECT.
-        "SELECT t.root, max(s.time_updated) FROM session_v2 s JOIN (\
+        "SELECT t.root, \
+                max(CASE WHEN typeof(s.time_updated) = 'integer' THEN s.time_updated END) FROM session_v2 s JOIN (\
              WITH RECURSIVE tree(root, id) AS (\
                  SELECT id, id FROM session_v2 WHERE parent_id IS NULL \
                  UNION \
                  SELECT tree.root, c.id FROM session_v2 c JOIN tree ON c.parent_id = tree.id) \
              SELECT root, id FROM tree) t ON s.id = t.id GROUP BY t.root",
         [],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?)),
     )?;
     Ok(rows
         .into_iter()
-        .map(|(id, updated)| (SessionId::from(id), updated))
+        .filter_map(|(id, updated)| Some((SessionId::from(id), updated?)))
         .collect())
 }
 
