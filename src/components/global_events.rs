@@ -561,7 +561,9 @@ mod tests {
                 session: SessionId::from("s"),
                 stats: SessionStats {
                     turns: 1,
-                    duration: std::time::Duration::ZERO,
+                    agent_time: std::time::Duration::ZERO,
+                    run_time: std::time::Duration::ZERO,
+                    tokens: crate::model::TokenUsage::default(),
                 },
             },
         );

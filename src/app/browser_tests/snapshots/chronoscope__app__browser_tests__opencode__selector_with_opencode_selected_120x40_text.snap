@@ -10,8 +10,8 @@ expression: "text(&mut rig.rig.app, 120, 40)"
 │                                                                                                                      │
 │   ╭─ Projects ───────────────────────╮ ╭─ Sessions in Alpha App ─────────────────────────────────────────────────╮   │
 │   │                                  │ │                                                                         │   │
-│   │  > Alpha App                     │ │    2026-10-28 09:00Z    Add the settings screen       2 turns · 30m 0s  │   │
-│   │    beta-tool                     │ │    2026-10-20 14:00Z    Rename the config key          1 turn · 10m 0s  │   │
+│   │  > Alpha App                     │ │    2026-10-28 09:00Z    Add the settings screen          2 turns · 56s  │   │
+│   │    beta-tool                     │ │    2026-10-20 14:00Z    Rename the config key              1 turn · 7s  │   │
 │   │                                  │ │                                                                         │   │
 │   │                                  │ │                                                                         │   │
 │   │                                  │ │                                                                         │   │

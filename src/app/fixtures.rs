@@ -9,7 +9,9 @@ use chrono::{DateTime, TimeZone, Utc};
 
 use super::{IndexUpdate, Msg};
 use crate::index::{IndexEvent, SessionMap};
-use crate::model::{HarnessId, Project, ProjectId, SessionId, SessionStats, SessionSummary};
+use crate::model::{
+    HarnessId, Project, ProjectId, SessionId, SessionStats, SessionSummary, TokenUsage,
+};
 
 /// The time the tests' clock shows.
 pub fn now() -> DateTime<Utc> {
@@ -173,7 +175,9 @@ pub fn stats_event(harness: HarnessId, session: &str, turns: usize, secs: u64) -
         session: SessionId::from(session),
         stats: SessionStats {
             turns,
-            duration: Duration::from_secs(secs),
+            agent_time: Duration::from_secs(secs),
+            run_time: Duration::ZERO,
+            tokens: TokenUsage::default(),
         },
     }
 }

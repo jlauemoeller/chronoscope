@@ -12,14 +12,17 @@ use std::time::{Duration, Instant};
 use chronoscope::harness::Harness;
 use chronoscope::harness::claude::ClaudeHarness;
 use chronoscope::index::{CACHE_FILE, IndexEvent, IndexHandle, SessionIndex, Timing};
-use chronoscope::model::{HarnessId, SessionId, SessionStats, SessionSummary};
+use chronoscope::model::{HarnessId, SessionId, SessionStats, SessionSummary, TokenUsage};
 use tempfile::TempDir;
 
 const WAIT: Duration = Duration::from_secs(10);
 
 /// The sessions of the fixture tree, and their expected stats (user turns,
-/// last minus first entry timestamp in seconds), read off the fixture files.
+/// last minus first entry timestamp in seconds as the run time), read off the
+/// fixture files. None of them has a `turn_duration` entry or a `usage`, so
+/// their agent time is zero and their tokens are empty.
 const EXPECTED: [(&str, usize, u64); 8] = [
+    // Its subagent has no usage either.
     ("aaaa0001", 1, 300),
     ("bbbb0001", 1, 600),
     ("bbbb0002", 1, 1800),
@@ -32,6 +35,16 @@ const EXPECTED: [(&str, usize, u64); 8] = [
     // An empty transcript.
     ("ffff0001", 0, 0),
 ];
+
+/// Stats with no footer and no usage: the span is the run time.
+fn stats_of(turns: usize, run_secs: u64) -> SessionStats {
+    SessionStats {
+        turns,
+        agent_time: Duration::ZERO,
+        run_time: Duration::from_secs(run_secs),
+        tokens: TokenUsage::default(),
+    }
+}
 
 fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
@@ -160,15 +173,7 @@ fn collect_stats(rx: &Receiver<IndexEvent>, count: usize) -> HashMap<SessionId, 
 fn expected_stats() -> HashMap<SessionId, SessionStats> {
     EXPECTED
         .iter()
-        .map(|&(id, turns, secs)| {
-            (
-                SessionId::from(id),
-                SessionStats {
-                    turns,
-                    duration: Duration::from_secs(secs),
-                },
-            )
-        })
+        .map(|&(id, turns, secs)| (SessionId::from(id), stats_of(turns, secs)))
         .collect()
 }
 
@@ -327,11 +332,133 @@ fn stats_count_user_turns_and_span_first_to_last_entry() {
 
     let (_handle, rx) = start(&claude(&env.data), &env.cache);
     let stats = collect_stats(&rx, EXPECTED.len() + 1);
+    assert_eq!(stats[&SessionId::from("mt01")], stats_of(3, 12 * 60 + 34));
+}
+
+#[test]
+fn a_stats_v1_file_is_removed_and_none_of_its_entries_is_used() {
+    let env = env();
+    let harness = claude(&env.data);
+    // Entries under the current keys, in the new shape and with values no
+    // transcript gives: reading the file would show.
+    let bogus = SessionStats {
+        turns: 99,
+        agent_time: Duration::from_secs(99),
+        run_time: Duration::from_secs(999),
+        tokens: TokenUsage {
+            input: 1,
+            output: 2,
+            cache_read: 3,
+            cache_write: 4,
+            reasoning: 5,
+        },
+    };
+    let mut entries = BTreeMap::new();
+    for project in harness.projects().unwrap() {
+        for session in harness.sessions(&project.id).unwrap() {
+            entries.insert(harness.stats_key(&session), bogus);
+        }
+    }
+    assert_eq!(entries.len(), EXPECTED.len());
+    fs::create_dir_all(&env.cache).unwrap();
+    let old = env.cache.join("stats-v1.json");
+    fs::write(&old, serde_json::to_vec(&entries).unwrap()).unwrap();
+
+    let (handle, rx) = start(&harness, &env.cache);
+    let stats = collect_stats(&rx, EXPECTED.len());
+    handle.shutdown();
+    assert_eq!(stats, expected_stats());
+    assert_eq!(harness.stats_parse_count(), EXPECTED.len());
+    assert!(!old.exists(), "the old file is removed");
+    assert!(env.cache.join(CACHE_FILE).is_file());
+}
+
+/// A transcript with two footers, a message that continues after a prompt,
+/// a turn without a footer, a subagent and a nested workflow subagent.
+#[test]
+fn stats_cover_agent_time_run_time_and_the_subagents_tokens() {
+    let env = env();
+    let dir = env.data.join("-home-user-totals");
+    fs::create_dir_all(dir.join("tot01/subagents/workflows/run1")).unwrap();
+    let ts = |h: u32, m: u32, s: u32| format!("2026-05-01T{h:02}:{m:02}:{s:02}.000Z");
+    let line =
+        |body: &str| format!(r#"{{"cwd":"/home/user/tot","sessionId":"tot01",{body}}}"#) + "\n";
+    let user = |uuid: &str, t: String| {
+        line(&format!(
+            r#""type":"user","uuid":"{uuid}","timestamp":"{t}","origin":{{"kind":"human"}},"message":{{"role":"user","content":"go"}}"#
+        ))
+    };
+    let assistant = |id: &str, t: String, usage: &str| {
+        line(&format!(
+            r#""type":"assistant","uuid":"u-{id}","timestamp":"{t}","message":{{"id":"{id}","model":"x","role":"assistant","content":[{{"type":"text","text":"ok"}}],"usage":{usage}}}"#
+        ))
+    };
+    let footer = |t: String, ms: u64| {
+        line(&format!(
+            r#""type":"system","subtype":"turn_duration","uuid":"d-{ms}","timestamp":"{t}","durationMs":{ms}"#
+        ))
+    };
+    let mut text = String::new();
+    text += &user("u1", ts(10, 0, 0));
+    text += &assistant(
+        "m1",
+        ts(10, 0, 10),
+        r#"{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":30,"cache_creation_input_tokens":40,"output_tokens_details":{"thinking_tokens":6}}"#,
+    );
+    text += &footer(ts(10, 0, 20), 20_000);
+    // Hours later: idle time between the turns.
+    text += &user("u2", ts(14, 0, 0));
+    text += &assistant(
+        "m2",
+        ts(14, 0, 5),
+        r#"{"input_tokens":1,"output_tokens":2}"#,
+    );
+    text += &footer(ts(14, 0, 30), 30_000);
+    // A turn that has no footer: its tokens count, its time does not.
+    text += &user("u3", ts(15, 0, 0));
+    text += &assistant(
+        "m3",
+        ts(15, 0, 5),
+        r#"{"input_tokens":100,"output_tokens":200}"#,
+    );
+    fs::write(dir.join("tot01.jsonl"), text).unwrap();
+    let sub = |id: &str, tokens: &str| {
+        assistant(id, ts(11, 0, 0), tokens).replace(
+            r#""sessionId":"tot01""#,
+            r#""sessionId":"tot01","isSidechain":true"#,
+        )
+    };
+    fs::write(
+        dir.join("tot01/subagents/agent-a1.jsonl"),
+        sub("s1", r#"{"input_tokens":1000,"output_tokens":2000}"#),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("tot01/subagents/workflows/run1/agent-w1.jsonl"),
+        sub("s2", r#"{"input_tokens":10000,"output_tokens":20000}"#),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("tot01/subagents/workflows/run1/journal.jsonl"),
+        "{}\n",
+    )
+    .unwrap();
+
+    let (_handle, rx) = start(&claude(&env.data), &env.cache);
+    let stats = collect_stats(&rx, EXPECTED.len() + 1);
     assert_eq!(
-        stats[&SessionId::from("mt01")],
+        stats[&SessionId::from("tot01")],
         SessionStats {
             turns: 3,
-            duration: Duration::from_secs(12 * 60 + 34),
+            agent_time: Duration::from_secs(50),
+            run_time: Duration::from_secs(5 * 3600 + 5),
+            tokens: TokenUsage {
+                input: 10 + 1 + 100 + 1000 + 10_000,
+                output: 20 + 2 + 200 + 2000 + 20_000,
+                cache_read: 30,
+                cache_write: 40,
+                reasoning: 6,
+            },
         }
     );
 }
@@ -380,13 +507,7 @@ fn a_changed_file_gets_fresh_stats() {
     handle.shutdown();
     assert_eq!(harness.stats_parse_count(), 1);
     let mut expected = expected_stats();
-    expected.insert(
-        SessionId::from("aaaa0001"),
-        SessionStats {
-            turns: 2,
-            duration: Duration::from_secs(30 * 60),
-        },
-    );
+    expected.insert(SessionId::from("aaaa0001"), stats_of(2, 30 * 60));
     assert_eq!(stats, expected);
 }
 
@@ -407,13 +528,7 @@ fn a_growing_file_gets_fresh_stats_while_the_index_runs() {
         IndexEvent::Stats { session, stats, .. } if session.as_str() == "cccc0001" => Some(*stats),
         _ => None,
     });
-    assert_eq!(
-        stats,
-        SessionStats {
-            turns: 2,
-            duration: Duration::from_secs(3600),
-        }
-    );
+    assert_eq!(stats, stats_of(2, 3600));
 }
 
 #[test]

@@ -156,6 +156,11 @@ pub struct Assembler {
     /// The usable timestamp of the prompt that started the turn about to
     /// begin; taken by its first assistant entry, dropped by a compaction.
     prompt_ts: Option<DateTime<Utc>>,
+    /// Latest token usage per message id over the whole transcript, whatever
+    /// the turn (a message id can continue after a human prompt). The
+    /// session's token total (SPEC cycle 3 §3.2) sums it, so a turn without a footer
+    /// still counts.
+    session_usage: HashMap<String, TokenUsage>,
     /// The `version` last compared against the newest known one.
     last_version: Option<String>,
     /// Whether the newer-version warning has been logged.
@@ -192,6 +197,7 @@ impl Assembler {
             user_flushed: false,
             compaction_pending: None,
             prompt_ts: None,
+            session_usage: HashMap::new(),
             last_version: None,
             warned_version: false,
             echoed_commands: Vec::new(),
@@ -248,6 +254,18 @@ impl Assembler {
     /// [`first_timestamp`](Self::first_timestamp) for which entries count.
     pub fn last_timestamp(&self) -> Option<DateTime<Utc>> {
         self.last_ts
+    }
+
+    /// The token use of the whole transcript so far: every message counted
+    /// once, using its latest usage, whatever turn it is in and whether or
+    /// not that turn has a footer. `output` includes `reasoning`, which is
+    /// never added again.
+    pub fn session_tokens(&self) -> TokenUsage {
+        let mut sum = TokenUsage::default();
+        for usage in self.session_usage.values() {
+            sum.accumulate(usage);
+        }
+        sum
     }
 
     /// The local commands the session ran so far, in the order they ran, as
@@ -1031,7 +1049,14 @@ impl Assembler {
             }
 
             if let Some(usage) = &message.usage {
-                b.usage.insert(msg_id, token_usage(usage));
+                let usage = token_usage(usage);
+                match self.session_usage.get_mut(&msg_id) {
+                    Some(latest) => *latest = usage,
+                    None => {
+                        self.session_usage.insert(msg_id.clone(), usage);
+                    }
+                }
+                b.usage.insert(msg_id, usage);
             }
             // Once the turn has a footer, its count and tokens follow later
             // messages.

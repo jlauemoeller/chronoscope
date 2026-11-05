@@ -962,18 +962,6 @@ fn subagent_info_names_the_agent_and_the_description() {
 // -- stats, stats key, resume
 
 #[test]
-fn stats_are_the_user_rows_and_the_time_span() {
-    let db = TempDb::new();
-    let h = harness(&db);
-    let stats = h.stats(&summary(&h, "ses_main")).unwrap();
-    assert_eq!(stats.turns, 2);
-    assert_eq!(stats.duration, Duration::from_secs(30 * 60));
-    let stats = h.stats(&summary(&h, "ses_blank")).unwrap();
-    assert_eq!((stats.turns, stats.duration), (0, Duration::ZERO));
-    assert_eq!(h.stats(&summary(&h, "ses_untitled")).unwrap().turns, 1);
-}
-
-#[test]
 fn the_stats_key_changes_with_time_updated() {
     let db = TempDb::new();
     let h = harness(&db);

@@ -16,6 +16,8 @@ mod load;
 mod location;
 #[cfg(test)]
 mod notice_tests;
+#[cfg(test)]
+mod stats_tests;
 mod subagent;
 #[cfg(test)]
 pub(crate) mod testing;
