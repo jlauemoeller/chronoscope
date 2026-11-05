@@ -53,6 +53,75 @@ fn injected_item_before_the_prompt_at_80() {
     insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 80)));
 }
 
+/// The User turn of the cycle 3 fixture `local_commands.jsonl`: the caveat,
+/// the `/effort` echo and its output, then the `/factory` prompt.
+fn local_command_turn() -> crate::model::Turn {
+    user(
+        "<command-message>factory</command-message>",
+        vec![injected(
+            "i1",
+            &[
+                (
+                    "meta",
+                    "<local-command-caveat>The command below was run locally.</local-command-caveat>",
+                ),
+                ("local_command", "/effort"),
+                ("local_command", "Cancelled"),
+            ],
+        )],
+    )
+}
+
+#[test]
+fn local_command_entries_folded_at_80() {
+    insta::assert_snapshot!(buffer_to_text(&draw(
+        &local_command_turn(),
+        &Opts::default(),
+        80
+    )));
+}
+
+#[test]
+fn local_command_entries_folded_at_120() {
+    insta::assert_snapshot!(buffer_to_text(&draw(
+        &local_command_turn(),
+        &Opts::default(),
+        120
+    )));
+}
+
+#[test]
+fn local_command_entries_unfolded_at_80() {
+    let turn = local_command_turn();
+    let opts = Opts::default().unfold(item_id(&turn, "i1"));
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &opts, 80)));
+}
+
+#[test]
+fn local_command_entries_unfolded_at_120() {
+    let turn = local_command_turn();
+    let opts = Opts::default().unfold(item_id(&turn, "i1"));
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &opts, 120)));
+}
+
+#[test]
+fn local_command_entries_unfolded_and_selected_at_80_styled() {
+    let turn = local_command_turn();
+    let opts = Opts::default()
+        .unfold(item_id(&turn, "i1"))
+        .select(item_id(&turn, "i1"));
+    insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &opts, 80)));
+}
+
+#[test]
+fn a_single_local_command_entry_folded_at_80() {
+    let turn = user(
+        "<command-message>factory</command-message>",
+        vec![injected("i1", &[("local_command", "/effort")])],
+    );
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 80)));
+}
+
 fn full_opts() -> (crate::model::Turn, Opts) {
     let turn = full_assistant();
     let opts = Opts::default()

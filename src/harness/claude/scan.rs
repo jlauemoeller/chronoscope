@@ -223,4 +223,39 @@ mod tests {
         ));
         assert_eq!(s.first_prompt.unwrap().chars().count(), MAX_PROMPT_CHARS);
     }
+
+    #[test]
+    fn local_commands_are_not_the_first_prompt() {
+        let s = scan(concat!(
+            "{\"type\":\"user\",\"message\":{\"content\":\"<command-name>/effort</command-name>",
+            "\\n  <command-args></command-args>\"}}\n",
+            "{\"type\":\"user\",\"message\":{\"content\":",
+            "\"<local-command-stdout>Cancelled</local-command-stdout>\"}}\n",
+            "{\"type\":\"user\",\"origin\":{\"kind\":\"human\"},\"message\":{\"content\":\"real\"}}\n",
+        ));
+        assert_eq!(s.first_prompt.as_deref(), Some("real"));
+        let only = scan(concat!(
+            "{\"type\":\"user\",\"message\":{\"content\":\"<command-name>/clear</command-name>\"}}\n",
+            "{\"type\":\"user\",\"message\":{\"content\":",
+            "\"<local-command-stderr>oops</local-command-stderr>\"}}\n",
+        ));
+        assert_eq!(only.first_prompt, None);
+    }
+
+    #[test]
+    fn human_prompts_that_look_like_local_commands_count() {
+        let s = scan(concat!(
+            "{\"type\":\"user\",\"origin\":{\"kind\":\"human\"},",
+            "\"message\":{\"content\":\" /clear\"}}\n",
+        ));
+        assert_eq!(s.first_prompt.as_deref(), Some(" /clear"));
+        let named = scan(concat!(
+            "{\"type\":\"user\",\"origin\":{\"kind\":\"human\"},",
+            "\"message\":{\"content\":\"<command-name>/clear</command-name>\"}}\n",
+        ));
+        assert_eq!(
+            named.first_prompt.as_deref(),
+            Some("<command-name>/clear</command-name>")
+        );
+    }
 }

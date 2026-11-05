@@ -16,8 +16,8 @@ use chrono::{DateTime, Utc};
 
 use super::inject::{
     NEWEST_KNOWN_VERSION, attachment_text, is_injected_attachment, is_injected_system,
-    is_known_noise_attachment, is_metadata_type, is_noise_type, queued_prompt_text, system_text,
-    version_newer,
+    is_known_noise_attachment, is_metadata_type, is_noise_type, local_command_text,
+    queued_prompt_text, system_text, version_newer,
 };
 use super::tools::{describe, tool_kind};
 use super::wire::{Block, Content, Entry, Head, Usage, content_text, read_entry, result_text};
@@ -731,6 +731,14 @@ impl Assembler {
         if entry.is_meta == Some(true) {
             let text = content_text(content);
             self.hold("meta", ts, text, entry.uuid.as_deref(), range);
+            return;
+        }
+        // A local command is handled by the harness and is no prompt: it is
+        // held like any injected entry. `cur` and `prompt_ts` are left alone,
+        // so the open Assistant turn continues and keeps its start.
+        if let Some(raw) = entry.local_command_text() {
+            let text = local_command_text(&raw);
+            self.hold("local_command", ts, text, entry.uuid.as_deref(), range);
             return;
         }
         let Some(text) = entry.human_prompt_text() else {

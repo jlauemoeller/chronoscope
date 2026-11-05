@@ -257,6 +257,60 @@ pub(super) fn system_text(
     head_and_body(&command, output)
 }
 
+/// The text of `value` between `open` and `close` (their literal names),
+/// searching from the start of `value`.
+fn between<'a>(value: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    let rest = &value[value.find(open)? + open.len()..];
+    Some(&rest[..rest.find(close)?])
+}
+
+/// The readable text of a local command's `user` entry, without its markup
+/// (SPEC cycle 3 §2.2).
+///
+/// An echo (`<command-name>/model</command-name>` and, on the lines after it,
+/// `<command-args>opus</command-args>`) becomes the command and its
+/// arguments, `/model opus`. An output (`<local-command-stdout>` or
+/// `<local-command-stderr>`) becomes the trimmed text inside its tags. A body
+/// that matches neither form (no closing tag, no name, text after an output's
+/// closing tag) is returned as it is. The tags are found by their literal
+/// names.
+pub(super) fn local_command_text(raw: &str) -> String {
+    let text = raw.trim_start();
+    if text.starts_with("<command-name>") {
+        if let Some(name) = between(text, "<command-name>", "</command-name>")
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        {
+            let after_name = &text[text.find("</command-name>").unwrap_or_default()..];
+            let args = if after_name.contains("<command-args>") {
+                // An opening tag without its closing tag: not the form.
+                between(after_name, "<command-args>", "</command-args>").map(str::trim)
+            } else {
+                Some("")
+            };
+            match args {
+                Some("") => return name.to_owned(),
+                Some(args) => return format!("{name} {args}"),
+                None => {}
+            }
+        }
+        return raw.to_owned();
+    }
+    for tag in ["local-command-stdout", "local-command-stderr"] {
+        let open = format!("<{tag}>");
+        let close = format!("</{tag}>");
+        if let Some(rest) = text.strip_prefix(&open) {
+            if let Some(end) = rest.find(&close)
+                && rest[end + close.len()..].trim().is_empty()
+            {
+                return rest[..end].trim().to_owned();
+            }
+            return raw.to_owned();
+        }
+    }
+    raw.to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,5 +344,64 @@ mod tests {
         }
         assert!(!is_noise_type("agent-name"));
         assert!(!is_noise_type("user"));
+    }
+
+    const ECHO: &str = "<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args>opus</command-args>";
+
+    #[test]
+    fn an_echo_becomes_the_command_and_its_arguments() {
+        assert_eq!(local_command_text(ECHO), "/model opus");
+    }
+
+    #[test]
+    fn an_echo_without_arguments_is_the_bare_command() {
+        let empty = "<command-name>/effort</command-name>\n            <command-message>effort</command-message>\n            <command-args></command-args>";
+        assert_eq!(local_command_text(empty), "/effort");
+        assert_eq!(
+            local_command_text("<command-name>/clear</command-name>"),
+            "/clear"
+        );
+        assert_eq!(
+            local_command_text("  \n<command-name>/clear</command-name>"),
+            "/clear"
+        );
+    }
+
+    #[test]
+    fn arguments_are_trimmed() {
+        let echo = "<command-name>/model</command-name>\n<command-args>  opus \n</command-args>";
+        assert_eq!(local_command_text(echo), "/model opus");
+    }
+
+    #[test]
+    fn an_output_becomes_the_text_inside_its_tags() {
+        assert_eq!(
+            local_command_text("<local-command-stdout>Cancelled</local-command-stdout>"),
+            "Cancelled"
+        );
+        assert_eq!(
+            local_command_text("<local-command-stderr> Error: nope\n</local-command-stderr>\n"),
+            "Error: nope"
+        );
+        assert_eq!(
+            local_command_text("<local-command-stdout></local-command-stdout>"),
+            ""
+        );
+    }
+
+    #[test]
+    fn a_body_that_matches_neither_form_is_kept_as_it_is() {
+        for raw in [
+            "<command-name>/model",
+            "<command-name></command-name>",
+            "<command-name>/model</command-name><command-args>opus",
+            "<local-command-stdout>no end",
+            "<local-command-stdout>a</local-command-stdout> trailing",
+            "<local-command-stdout>a</local-command-stderr>",
+            "  <local-command-stdout>a",
+            "plain text",
+        ] {
+            assert_eq!(local_command_text(raw), raw, "{raw:?}");
+        }
     }
 }

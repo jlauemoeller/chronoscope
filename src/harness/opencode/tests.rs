@@ -1042,3 +1042,34 @@ fn the_known_migration_is_the_newest_of_the_fixture() {
         Some(NEWEST_KNOWN_MIGRATION)
     );
 }
+
+// -- the selector's turn count against the sidebar
+
+#[test]
+fn for_every_session_the_selectors_turn_count_is_the_number_of_user_rows() {
+    use crate::components::{EntryKind, TurnRows};
+
+    let db = TempDb::new();
+    let h = harness(&db);
+    let mut checked = 0;
+    for project in h.projects().unwrap() {
+        for session in h.sessions(&project.id).unwrap() {
+            let turns = load_turns(&h, session.id.as_str());
+            let rows = TurnRows::from_turns(turns.iter().map(|t| &**t));
+            let user_rows = (0..rows.entry_count())
+                .filter(|i| rows.entry(*i).unwrap().1.kind == EntryKind::User)
+                .count();
+            let counted = h.stats(&session).unwrap().turns;
+            if session.id.as_str() == "ses_bad" {
+                // The known exception: the SQL count sees 2 `user` rows, but
+                // the second row's `data` is `[]`, which the assembler skips
+                // and counts (SPEC §9.5), so the sidebar shows 1.
+                assert_eq!((counted, user_rows), (2, 1));
+            } else {
+                assert_eq!(counted, user_rows, "{}", session.id);
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked >= 5, "{checked}");
+}
