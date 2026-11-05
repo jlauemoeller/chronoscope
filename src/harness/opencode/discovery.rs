@@ -12,7 +12,7 @@ use std::time::Duration;
 use anyhow::Context;
 use chrono::DateTime;
 
-use super::assemble::millis;
+use super::assemble::{Assembler, millis, row_usage};
 use super::db::{Db, NEWEST_KNOWN_MIGRATION, wal_path};
 use super::load::{self, WatchMode};
 use super::location::default_db_path;
@@ -22,7 +22,7 @@ use crate::harness::shared::{SubagentInfo, UNTITLED, truncate_title};
 use crate::harness::{Harness, Result, WatchHandle, resume};
 use crate::model::{
     HarnessId, ModelUpdate, Project, ProjectId, SectionSource, SessionId, SessionStats,
-    SessionSummary, SourceGroup, ToolCallId,
+    SessionSummary, SourceGroup, TokenUsage, ToolCallId, Turn,
 };
 
 /// The default resume command template: `{id}` stands for the session id.
@@ -236,23 +236,34 @@ impl Harness for OpenCodeHarness {
             .unwrap_or_default())
     }
 
-    /// `turns` is the number of `user` rows, `duration` is `time_updated`
-    /// minus `time_created` (the summary's last activity minus its start).
+    /// - `turns` is the number of `user` rows of the session;
+    /// - `agent_time` is the sum of the Assistant turns' footer durations,
+    ///   from the rows fed through the [`Assembler`] as the loader does,
+    ///   summed before it is formatted;
+    /// - `run_time` is `time_updated` minus `time_created` (the summary's
+    ///   last activity minus its start);
+    /// - `tokens` is the sum over the `assistant` rows of the session and of
+    ///   every descendant session (any depth, through `parent_id`), with
+    ///   `reasoning` added to `output`. The `session_v2.tokens_*` columns are
+    ///   not read.
     fn stats(&self, session: &SessionSummary) -> Result<SessionStats> {
         let db = self.connect()?;
+        let id = session.id.as_str();
         let count = db
             .select_one(
                 "SELECT count(*) FROM session_message WHERE session_id = ?1 AND type = 'user'",
-                [session.id.as_str()],
+                [id],
                 |row| row.get::<_, i64>(0),
             )?
             .unwrap_or_default();
-        let duration = (session.last_activity - session.started_at)
+        let run_time = (session.last_activity - session.started_at)
             .to_std()
             .unwrap_or(Duration::ZERO);
         Ok(SessionStats {
             turns: usize::try_from(count).unwrap_or_default(),
-            duration,
+            agent_time: agent_time(&db, id, self.page_size)?,
+            run_time,
+            tokens: tokens(&db, id)?,
         })
     }
 
@@ -312,6 +323,53 @@ impl Harness for OpenCodeHarness {
     fn section_details(&self, source: &SectionSource) -> Vec<SourceGroup> {
         super::details::section_details(&self.db_path, source)
     }
+}
+
+/// The sum of the footer durations of the session's Assistant turns: its
+/// rows, read in pages as the loader does, go through the [`Assembler`].
+fn agent_time(db: &Db, session: &str, page_size: usize) -> Result<Duration> {
+    let mut asm = Assembler::new();
+    let mut after = i64::MIN;
+    loop {
+        let rows = load::fetch_page(db, session, after, page_size)?;
+        for row in &rows {
+            asm.push_row(row);
+        }
+        match rows.last() {
+            Some(last) if rows.len() >= page_size => after = last.seq,
+            _ => break,
+        }
+    }
+    asm.finish();
+    Ok(asm
+        .turns()
+        .iter()
+        .filter_map(|turn| match &**turn {
+            Turn::Assistant(turn) => turn.stats.as_ref().map(|stats| stats.duration),
+            _ => None,
+        })
+        .sum())
+}
+
+/// The token use of the `assistant` rows of `session` and of all its
+/// descendants. `UNION` (not `UNION ALL`) keeps a cycle in `parent_id` from
+/// looping forever. A row whose data does not parse adds nothing.
+fn tokens(db: &Db, session: &str) -> Result<TokenUsage> {
+    let rows = db.select(
+        "SELECT data FROM session_message WHERE type = 'assistant' AND session_id IN (\
+         WITH RECURSIVE tree(id) AS (\
+             SELECT ?1 \
+             UNION \
+             SELECT s.id FROM session_v2 s JOIN tree ON s.parent_id = tree.id) \
+         SELECT id FROM tree)",
+        [session],
+        |row| Ok(row_usage(&load::text_at(row, 0)?)),
+    )?;
+    let mut sum = TokenUsage::default();
+    for usage in rows.iter().flatten() {
+        sum.accumulate(usage);
+    }
+    Ok(sum)
 }
 
 struct ProjectRow {

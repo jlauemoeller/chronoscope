@@ -380,12 +380,20 @@ impl Harness for ClaudeHarness {
         vec![self.data_dir.clone()]
     }
 
-    /// Parses the whole transcript with the [`Assembler`]: `turns` is the
-    /// number of User turns, `duration` the last conversation entry's
-    /// timestamp minus the first's (zero when there are none). Only entries
-    /// the assembler handles count: timestamped noise and metadata entries
-    /// are ignored (see [`Assembler::first_timestamp`]). Does not take the index
-    /// lock, so it can run while a [`refresh`](Harness::refresh) does.
+    /// Parses the whole transcript with the [`Assembler`] (SPEC §3):
+    /// - `turns` is the number of User turns;
+    /// - `agent_time` is the sum of the Assistant turns' footer durations,
+    ///   summed before it is formatted; a turn without a footer adds nothing;
+    /// - `run_time` is the last conversation entry's timestamp minus the
+    ///   first's (zero when there are none), local commands included. Only
+    ///   entries the assembler handles count: timestamped noise and metadata
+    ///   entries are ignored (see [`Assembler::first_timestamp`]);
+    /// - `tokens` is the whole use of the main transcript and of every
+    ///   subagent transcript below `subagents/`; a subagent file that cannot
+    ///   be read is logged and skipped.
+    ///
+    /// Does not take the index lock, so it can run while a
+    /// [`refresh`](Harness::refresh) does.
     fn stats(&self, session: &SessionSummary) -> Result<SessionStats> {
         self.stat_parses.fetch_add(1, Ordering::Relaxed);
         let asm = Assembler::from_file(&session.path)
@@ -395,11 +403,34 @@ impl Harness for ClaudeHarness {
             .iter()
             .filter(|t| matches!(***t, Turn::User(_)))
             .count();
-        let duration = match (asm.first_timestamp(), asm.last_timestamp()) {
+        let agent_time = asm
+            .turns()
+            .iter()
+            .filter_map(|t| match &**t {
+                Turn::Assistant(turn) => turn.stats.as_ref().map(|s| s.duration),
+                _ => None,
+            })
+            .sum();
+        let run_time = match (asm.first_timestamp(), asm.last_timestamp()) {
             (Some(first), Some(last)) => (last - first).to_std().unwrap_or_default(),
             _ => Duration::ZERO,
         };
-        Ok(SessionStats { turns, duration })
+        let mut tokens = asm.session_tokens();
+        for file in subagent::list_transcripts(&session.path) {
+            match Assembler::from_file(&file.path) {
+                Ok(sub) => tokens.accumulate(&sub.session_tokens()),
+                Err(err) => log::warn!(
+                    "could not read the subagent transcript {}: {err}",
+                    file.path.display()
+                ),
+            }
+        }
+        Ok(SessionStats {
+            turns,
+            agent_time,
+            run_time,
+            tokens,
+        })
     }
 
     /// Reads the fields of the section's lines again; see

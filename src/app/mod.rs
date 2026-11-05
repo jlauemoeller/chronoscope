@@ -43,6 +43,8 @@ mod selection_tests;
 #[cfg(test)]
 mod selector_tests;
 #[cfg(test)]
+mod selector_totals_tests;
+#[cfg(test)]
 mod tests;
 
 use std::collections::HashMap;

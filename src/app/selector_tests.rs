@@ -827,7 +827,7 @@ fn stats_events_fill_the_matching_row() {
     let stats = |i: usize| {
         sessions.rows[i]
             .stats
-            .map(|s| (s.turns, s.duration.as_secs()))
+            .map(|s| (s.turns, s.agent_time.as_secs()))
     };
     assert_eq!(stats(0), Some((23, 3900)));
     assert_eq!(stats(1), Some((1, 45)));

@@ -102,7 +102,7 @@ pub fn format_stats(stats: &SessionStats) -> String {
     format!(
         "{} {unit} · {}",
         stats.turns,
-        format_duration(stats.duration)
+        format_duration(stats.agent_time)
     )
 }
 
@@ -436,7 +436,9 @@ mod tests {
     fn stats(turns: usize, secs: u64) -> SessionStats {
         SessionStats {
             turns,
-            duration: Duration::from_secs(secs),
+            agent_time: Duration::from_secs(secs),
+            run_time: Duration::ZERO,
+            tokens: crate::model::TokenUsage::default(),
         }
     }
 
@@ -510,12 +512,30 @@ mod tests {
     #[test]
     fn the_stats_use_the_shared_duration_format() {
         let duration = Duration::from_millis(59 * 60_000 + 59_900);
-        let stats = SessionStats { turns: 3, duration };
+        let stats = SessionStats {
+            turns: 3,
+            agent_time: duration,
+            ..stats(3, 0)
+        };
         assert_eq!(
             format_stats(&stats),
             format!("3 turns · {}", format_duration(duration))
         );
         assert_eq!(format_stats(&stats), "3 turns · 59m 59s");
+    }
+
+    #[test]
+    fn the_row_shows_agent_time_not_run_time() {
+        let stats = SessionStats {
+            run_time: Duration::from_secs(81 * 3600 + 33 * 60),
+            ..stats(6, 17 * 3600 + 56 * 60)
+        };
+        assert_eq!(format_stats(&stats), "6 turns · 17h 56m");
+    }
+
+    #[test]
+    fn a_session_without_turns_shows_zero() {
+        assert_eq!(format_stats(&stats(0, 0)), "0 turns · 0s");
     }
 
     #[test]

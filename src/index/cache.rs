@@ -1,5 +1,8 @@
-//! The on-disk stats cache (SPEC §9.2): one JSON file, `stats-v1.json`,
+//! The on-disk stats cache (SPEC §9.2, §3.3): one JSON file, `stats-v2.json`,
 //! mapping a harness's `stats_key` to the [`SessionStats`] computed for it.
+//! The file of the version before, `stats-v1.json`, is removed when the cache
+//! loads and never read: its entries have another shape and their keys still
+//! match, so every session's stats are computed again.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -10,7 +13,24 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::model::SessionStats;
 
 /// The cache file's name inside the cache directory.
-pub const CACHE_FILE: &str = "stats-v1.json";
+pub const CACHE_FILE: &str = "stats-v2.json";
+
+/// The file of the previous version, removed when the cache loads.
+const OLD_CACHE_FILE: &str = "stats-v1.json";
+
+/// Removes the previous version's cache file. A missing file is the normal
+/// case and logs nothing; any other failure is logged and not fatal.
+fn remove_old(dir: &Path) {
+    let path = dir.join(OLD_CACHE_FILE);
+    match fs::remove_file(&path) {
+        Ok(()) => log::info!("removed the old stats cache {}", path.display()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(err) => log::warn!(
+            "could not remove the old stats cache {}: {err}",
+            path.display()
+        ),
+    }
+}
 
 /// The stats cache: loaded at start, saved on demand.
 #[derive(Debug)]
@@ -21,10 +41,12 @@ pub(super) struct StatsCache {
 }
 
 impl StatsCache {
-    /// Loads `<dir>/stats-v1.json`. A missing file gives an empty cache; a
+    /// Loads `<dir>/stats-v2.json`. A missing file gives an empty cache; a
     /// file that cannot be read or parsed is logged and ignored (it is
-    /// overwritten by the next save).
+    /// overwritten by the next save). A `stats-v1.json` is removed, best
+    /// effort, and never read.
     pub fn load(dir: &Path) -> Self {
+        remove_old(dir);
         let path = dir.join(CACHE_FILE);
         let entries = match fs::read(&path) {
             Ok(bytes) => match serde_json::from_slice::<HashMap<String, SessionStats>>(&bytes) {
@@ -114,11 +136,30 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::model::TokenUsage;
 
     fn stats(turns: usize, ms: u64) -> SessionStats {
         SessionStats {
             turns,
-            duration: Duration::from_millis(ms),
+            agent_time: Duration::from_millis(ms),
+            run_time: Duration::from_millis(ms * 2),
+            tokens: TokenUsage::default(),
+        }
+    }
+
+    /// Every field different, so that a swapped one is caught.
+    fn full_stats() -> SessionStats {
+        SessionStats {
+            turns: 3,
+            agent_time: Duration::from_millis(61_500),
+            run_time: Duration::from_millis(7_200_250),
+            tokens: TokenUsage {
+                input: 11,
+                output: 22,
+                cache_read: 33,
+                cache_write: 44,
+                reasoning: 5,
+            },
         }
     }
 
@@ -127,7 +168,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut cache = StatsCache::load(dir.path());
         assert!(!cache.is_dirty());
-        cache.insert("a".into(), stats(2, 300_500));
+        cache.insert("a".into(), full_stats());
         assert!(cache.is_dirty());
         cache.save();
         assert!(!cache.is_dirty());
@@ -135,10 +176,54 @@ mod tests {
         assert_eq!(leftovers, 1, "only the cache file is left");
 
         let loaded = StatsCache::load(dir.path());
-        assert_eq!(loaded.get("a"), Some(stats(2, 300_500)));
+        assert_eq!(loaded.get("a"), Some(full_stats()));
         assert_eq!(loaded.get("b"), None);
         let text = fs::read_to_string(dir.path().join(CACHE_FILE)).unwrap();
-        assert_eq!(text, r#"{"a":{"turns":2,"duration":300500}}"#);
+        assert_eq!(
+            text,
+            r#"{"a":{"turns":3,"agent_time":61500,"run_time":7200250,"tokens":{"input":11,"output":22,"cache_read":33,"cache_write":44,"reasoning":5}}}"#
+        );
+    }
+
+    #[test]
+    fn the_cache_file_is_stats_v2() {
+        assert_eq!(CACHE_FILE, "stats-v2.json");
+    }
+
+    #[test]
+    fn an_old_cache_file_is_removed_and_never_read() {
+        let dir = tempfile::tempdir().unwrap();
+        // In the new shape and under the key being asked for, so that
+        // reading it would show.
+        let old = dir.path().join(OLD_CACHE_FILE);
+        let json = serde_json::to_string(&HashMap::from([("a", full_stats())])).unwrap();
+        fs::write(&old, json).unwrap();
+        let cache = StatsCache::load(dir.path());
+        assert_eq!(cache.get("a"), None);
+        assert!(!old.exists(), "the old file is removed");
+        assert!(!cache.is_dirty());
+    }
+
+    #[test]
+    fn an_old_cache_file_does_not_hide_a_new_one() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(OLD_CACHE_FILE), "{}").unwrap();
+        let mut cache = StatsCache::load(dir.path());
+        cache.insert("a".into(), full_stats());
+        cache.save();
+        fs::write(dir.path().join(OLD_CACHE_FILE), "{}").unwrap();
+        let loaded = StatsCache::load(dir.path());
+        assert_eq!(loaded.get("a"), Some(full_stats()));
+        assert!(!dir.path().join(OLD_CACHE_FILE).exists());
+    }
+
+    #[test]
+    fn an_old_cache_that_cannot_be_removed_is_not_fatal() {
+        let dir = tempfile::tempdir().unwrap();
+        // A directory of that name cannot be removed as a file.
+        fs::create_dir(dir.path().join(OLD_CACHE_FILE)).unwrap();
+        let cache = StatsCache::load(dir.path());
+        assert_eq!(cache.get("a"), None);
     }
 
     #[test]

@@ -215,9 +215,19 @@ pub fn is_active_at(last_activity: DateTime<Utc>, idle: Option<bool>, now: DateT
 pub struct SessionStats {
     /// The number of User turns.
     pub turns: usize,
-    /// The last entry's timestamp minus the first entry's.
+    /// The sum of the Assistant turns' footer durations, the figure the
+    /// turns sidebar shows. A turn without a footer adds nothing. This is
+    /// the duration of the row.
     #[serde(with = "duration_millis")]
-    pub duration: Duration,
+    pub agent_time: Duration,
+    /// The session's run time: the last entry's timestamp minus the first
+    /// entry's (Claude), or `time_updated` minus `time_created` (OpenCode).
+    /// Idle time is included.
+    #[serde(with = "duration_millis")]
+    pub run_time: Duration,
+    /// The session's whole token use: the main session and all its
+    /// subagents. `output` includes `reasoning`.
+    pub tokens: TokenUsage,
 }
 
 /// Serialises a [`Duration`] as whole milliseconds.
@@ -357,7 +367,7 @@ pub struct CompactionTurn {
 ///
 /// `output` includes `reasoning` on every harness; `reasoning` is only an
 /// "of which" figure and is never added to a total.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct TokenUsage {
     /// Input tokens that were neither read from nor written to the cache.
     pub input: u64,

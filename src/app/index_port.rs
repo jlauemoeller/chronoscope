@@ -113,7 +113,7 @@ mod tests {
     use std::sync::mpsc;
 
     use super::*;
-    use crate::model::{HarnessId, SessionId, SessionStats};
+    use crate::model::{HarnessId, SessionId, SessionStats, TokenUsage};
 
     fn stats_event(n: usize) -> IndexEvent {
         IndexEvent::Stats {
@@ -121,7 +121,9 @@ mod tests {
             session: SessionId::from("s"),
             stats: SessionStats {
                 turns: n,
-                duration: Duration::ZERO,
+                agent_time: Duration::ZERO,
+                run_time: Duration::ZERO,
+                tokens: TokenUsage::default(),
             },
         }
     }

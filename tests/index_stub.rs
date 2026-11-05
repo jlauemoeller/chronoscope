@@ -13,7 +13,8 @@ use chrono::{DateTime, TimeDelta, Utc};
 use chronoscope::harness::{Harness, Result, WatchHandle};
 use chronoscope::index::{IndexEvent, SessionIndex, Timing};
 use chronoscope::model::{
-    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary, ToolCallId,
+    HarnessId, ModelUpdate, Project, ProjectId, SessionId, SessionStats, SessionSummary,
+    TokenUsage, ToolCallId,
 };
 
 const WAIT: Duration = Duration::from_secs(10);
@@ -139,7 +140,9 @@ impl Harness for Stub {
         std::thread::sleep(self.delay);
         Ok(SessionStats {
             turns: version as usize,
-            duration: Duration::ZERO,
+            agent_time: Duration::ZERO,
+            run_time: Duration::ZERO,
+            tokens: TokenUsage::default(),
         })
     }
     fn stats_key(&self, session: &SessionSummary) -> String {
@@ -270,7 +273,7 @@ fn a_stale_result_after_newer_stats_were_sent_is_dropped() {
     let cache = tempfile::tempdir().unwrap();
     std::fs::write(
         cache.path().join(chronoscope::index::CACHE_FILE),
-        r#"{"claude:s:v2":{"turns":42,"duration":0}}"#,
+        r#"{"claude:s:v2":{"turns":42,"agent_time":0,"run_time":0,"tokens":{"input":0,"output":0,"cache_read":0,"cache_write":0,"reasoning":0}}}"#,
     )
     .unwrap();
     let first: Arc<dyn Harness> = stub.clone();
@@ -313,7 +316,7 @@ fn a_stale_result_after_a_revert_to_the_sent_key_is_dropped() {
     let cache = tempfile::tempdir().unwrap();
     std::fs::write(
         cache.path().join(chronoscope::index::CACHE_FILE),
-        r#"{"claude:s:v1":{"turns":10,"duration":0}}"#,
+        r#"{"claude:s:v1":{"turns":10,"agent_time":0,"run_time":0,"tokens":{"input":0,"output":0,"cache_read":0,"cache_write":0,"reasoning":0}}}"#,
     )
     .unwrap();
     let first: Arc<dyn Harness> = stub.clone();
@@ -367,7 +370,7 @@ fn cache_entries_of_harnesses_that_are_not_running_are_kept() {
     let file = cache.path().join(chronoscope::index::CACHE_FILE);
     std::fs::write(
         &file,
-        r#"{"opencode:old":{"turns":4,"duration":5000},"claude:gone":{"turns":1,"duration":1}}"#,
+        r#"{"opencode:old":{"turns":4,"agent_time":5000,"run_time":0,"tokens":{"input":0,"output":0,"cache_read":0,"cache_write":0,"reasoning":0}},"claude:gone":{"turns":1,"agent_time":0,"run_time":0,"tokens":{"input":0,"output":0,"cache_read":0,"cache_write":0,"reasoning":0}}}"#,
     )
     .unwrap();
     let stub = Stub::new(HarnessId::Claude, &["s"], Duration::ZERO);

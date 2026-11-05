@@ -12,6 +12,7 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::SystemTime;
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -123,6 +124,83 @@ pub(super) fn subagents_dir(path: &Path, session: &SessionId) -> Option<PathBuf>
     match classify(session.as_str())? {
         IdKind::Main => Some(path.with_extension("").join("subagents")),
         IdKind::Subagent { .. } => path.parent().map(Path::to_path_buf),
+    }
+}
+
+/// A subagent transcript found below a session's `subagents` directory, with
+/// the stat that identifies its content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SubagentFile {
+    pub path: PathBuf,
+    pub size: u64,
+    pub mtime: SystemTime,
+}
+
+/// Lists the subagent transcripts of the session whose transcript is
+/// `session_path`: every `agent-*.jsonl` found recursively below
+/// `<session file without extension>/subagents/`, in path order. Workflow
+/// runs nest theirs under `subagents/workflows/<run>/`. Other files there
+/// (`agent-*.meta.json`, `journal.jsonl`) are not transcripts and do not
+/// match. A symlink to a directory is not followed. A missing directory means
+/// no subagents and logs nothing; a directory that cannot be listed is
+/// logged. A symlink to a file that cannot be stat'ed (a dangling one) is
+/// listed with size 0, so that reading it logs the failure.
+pub(super) fn list_transcripts(session_path: &Path) -> Vec<SubagentFile> {
+    let mut found = Vec::new();
+    list_below(
+        &session_path.with_extension("").join("subagents"),
+        &mut found,
+    );
+    found.sort_by(|a, b| a.path.cmp(&b.path));
+    found
+}
+
+fn list_below(dir: &Path, found: &mut Vec<SubagentFile>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
+        Err(err) => {
+            log::warn!("could not list {}: {err}", dir.display());
+            return;
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(err) => {
+                log::warn!("could not list {}: {err}", dir.display());
+                continue;
+            }
+        };
+        let path = entry.path();
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_dir() {
+            list_below(&path, found);
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !(name.starts_with("agent-") && name.ends_with(".jsonl")) {
+            continue;
+        }
+        let meta = if kind.is_symlink() {
+            match fs::metadata(&path) {
+                Ok(meta) if meta.is_dir() => continue,
+                Ok(meta) => Some(meta),
+                Err(_) => None,
+            }
+        } else {
+            entry.metadata().ok()
+        };
+        found.push(SubagentFile {
+            path,
+            size: meta.as_ref().map_or(0, fs::Metadata::len),
+            mtime: meta
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(SystemTime::UNIX_EPOCH),
+        });
     }
 }
 
@@ -284,6 +362,64 @@ mod tests {
         ] {
             assert!(classify(bad).is_none(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn the_listing_finds_transcripts_at_any_depth_with_their_size_and_mtime() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = tmp.path().join("ses.jsonl");
+        let root = tmp.path().join("ses").join("subagents");
+        let nested = root.join("workflows").join("run1");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(&session, "").unwrap();
+        fs::write(root.join("agent-a1.jsonl"), "12345").unwrap();
+        fs::write(root.join("agent-a1.meta.json"), "{}").unwrap();
+        fs::write(root.join("journal.jsonl"), "{}").unwrap();
+        fs::write(root.join("notes.jsonl"), "{}").unwrap();
+        fs::write(nested.join("agent-w1.jsonl"), "123").unwrap();
+        fs::write(nested.join("journal.jsonl"), "{}").unwrap();
+
+        let found = list_transcripts(&session);
+        let paths: Vec<_> = found.iter().map(|f| f.path.clone()).collect();
+        assert_eq!(
+            paths,
+            [root.join("agent-a1.jsonl"), nested.join("agent-w1.jsonl")]
+        );
+        assert_eq!(found[0].size, 5);
+        assert_eq!(found[1].size, 3);
+        let mtime = fs::metadata(&paths[0]).unwrap().modified().unwrap();
+        assert_eq!(found[0].mtime, mtime);
+    }
+
+    #[test]
+    fn a_missing_subagents_directory_lists_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(list_transcripts(&tmp.path().join("ses.jsonl")).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_listing_does_not_follow_a_link_to_a_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = tmp.path().join("ses.jsonl");
+        let root = tmp.path().join("ses").join("subagents");
+        let elsewhere = tmp.path().join("elsewhere");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&elsewhere).unwrap();
+        fs::write(elsewhere.join("agent-z.jsonl"), "{}").unwrap();
+        std::os::unix::fs::symlink(&elsewhere, root.join("linked")).unwrap();
+        // A directory that looks like a transcript is not one either.
+        std::os::unix::fs::symlink(&elsewhere, root.join("agent-dir.jsonl")).unwrap();
+        // A dangling link is listed, so that reading it logs the failure.
+        std::os::unix::fs::symlink(tmp.path().join("nowhere"), root.join("agent-gone.jsonl"))
+            .unwrap();
+        let found = list_transcripts(&session);
+        let names: Vec<_> = found
+            .iter()
+            .map(|f| f.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["agent-gone.jsonl"]);
+        assert_eq!(found[0].size, 0);
     }
 
     #[test]

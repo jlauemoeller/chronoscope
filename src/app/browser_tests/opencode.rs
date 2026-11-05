@@ -161,12 +161,18 @@ fn the_stats_and_the_active_marker_come_from_the_database() {
     let app = &mut rig.rig.app;
     press_in_selector(app, Key::Char('2'));
     let rows = session_rows(app);
+    // The row shows the agent time: the footers of `ses_main` are 17 s and
+    // 39 s, the one of `ses_untitled` is 7 s. The span stays the run time.
     let stats: Vec<_> = rows
         .rows
         .iter()
-        .map(|r| r.stats.as_ref().map(|s| (s.turns, s.duration.as_secs())))
+        .map(|r| {
+            r.stats
+                .as_ref()
+                .map(|s| (s.turns, s.agent_time.as_secs(), s.run_time.as_secs()))
+        })
         .collect();
-    assert_eq!(stats, [Some((2, 1800)), Some((1, 600))]);
+    assert_eq!(stats, [Some((2, 56, 1800)), Some((1, 7, 600))]);
     // `ses_main` and `ses_untitled` are idle and long past.
     assert!(rows.rows.iter().all(|r| !r.active));
     // In beta-tool, `ses_long` has no `time_idle`: the session is running.
