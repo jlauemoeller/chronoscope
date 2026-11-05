@@ -1182,7 +1182,8 @@ theme_snapshot!(sessions_focused_theme_solarized, "solarized");
 // -- cell-level checks of the geometry and styles (SPEC §8.2)
 
 /// The overlay's panes at 120x40: Projects at (4, 6) 36x24, Sessions at
-/// (41, 6) 75x13 (the panels take the other 11 rows). The first list row is two rows below a pane's top.
+/// (41, 6) 75x13 (the panels take the other 11 rows). The first list row is
+/// two rows below a pane's top.
 const LIST_ROW_Y: u16 = 8;
 const SESSIONS_X: u16 = 41;
 const PROJECTS_X: u16 = 4;
