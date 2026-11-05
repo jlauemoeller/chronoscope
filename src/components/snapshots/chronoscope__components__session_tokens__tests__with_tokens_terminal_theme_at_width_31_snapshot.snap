@@ -1,0 +1,19 @@
+---
+source: src/components/session_tokens.rs
+expression: buffer_to_styled(&buffer)
+---
+╭─ Session Tokens ────────────╮
+│ Input                 15.8k │
+│ Output                 6.3M │
+│ Thinking               2.2M │
+│ Cache read           862.3M │
+│ Cache write           30.7M │
+╰─────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 DarkGray/Reset/NONE | 2..18 Reset/Reset/NONE | 18..31 DarkGray/Reset/NONE
+1: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..7 Gray/Reset/NONE | 7..30 Reset/Reset/NONE | 30..31 DarkGray/Reset/NONE
+2: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..8 Gray/Reset/NONE | 8..30 Reset/Reset/NONE | 30..31 DarkGray/Reset/NONE
+3: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..10 Gray/Reset/NONE | 10..30 Reset/Reset/NONE | 30..31 DarkGray/Reset/NONE
+4: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..12 Gray/Reset/NONE | 12..30 Reset/Reset/NONE | 30..31 DarkGray/Reset/NONE
+5: 0..1 DarkGray/Reset/NONE | 1..2 Reset/Reset/NONE | 2..13 Gray/Reset/NONE | 13..30 Reset/Reset/NONE | 30..31 DarkGray/Reset/NONE
+6: 0..31 DarkGray/Reset/NONE

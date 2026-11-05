@@ -6,11 +6,12 @@
 //! and is read when the overlay opens; it is not part of the model.
 
 use super::content::{DetailsContent, DetailsGroup, DetailsRow};
-use crate::components::turn_block::renderers::{format_cost, format_tokens};
+use crate::components::turn_block::renderers::format_cost;
 use crate::components::turn_block::{SectionContent, SectionId, derive_sections};
 use crate::duration::format_duration;
 use crate::model::{AssistantTurn, ToolCall, ToolStatus, Turn};
 use crate::timestamp::TimestampFormatter;
+use crate::tokens::format_tokens;
 
 /// The title of the group about the turn.
 pub const TURN: &str = "Turn";

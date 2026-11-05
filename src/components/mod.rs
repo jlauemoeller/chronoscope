@@ -12,6 +12,7 @@ mod help_line;
 mod help_overlay;
 mod list_pane;
 mod overlay_frame;
+mod panel_row;
 mod project_list;
 mod prompt;
 mod selector_frame;
@@ -63,8 +64,8 @@ pub use session_list::{
     ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_FILTERED_ATTR, SESSION_ROWS_ATTR,
     SESSION_STATS_ATTR, SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_stats,
 };
-pub use session_time::SessionTime;
-pub use session_tokens::SessionTokens;
+pub use session_time::{SESSION_TIME_ATTR, SessionTime, SessionTimes};
+pub use session_tokens::{SESSION_TOKENS_ATTR, SessionTokens};
 pub use theme_selector::{ThemeItem, ThemeRows, ThemeSelector, theme_items};
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
 pub use transcript::{

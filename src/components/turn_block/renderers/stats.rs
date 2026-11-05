@@ -5,19 +5,7 @@ use ratatui::text::Line;
 use super::{SectionCtx, SectionRenderer, with_lead, word_wrap};
 use crate::duration::format_duration;
 use crate::model::TurnStats;
-
-/// A token count: `950`, `45.2k` or `1.2M`.
-pub fn format_tokens(tokens: u64) -> String {
-    if tokens < 1_000 {
-        return tokens.to_string();
-    }
-    let thousands = tokens.saturating_add(50) / 100;
-    if thousands < 10_000 {
-        return format!("{}.{}k", thousands / 10, thousands % 10);
-    }
-    let millions = tokens.saturating_add(50_000) / 100_000;
-    format!("{}.{}M", millions / 10, millions % 10)
-}
+use crate::tokens::format_tokens;
 
 /// A cost in US dollars: `$0.42`.
 pub fn format_cost(cost: f64) -> String {

@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthStr;
 use super::fixtures::*;
 use super::renderers::{
     CompactionSection, SectionCtx, SectionRenderer, StatsSection, SystemSection, ThinkingSection,
-    ToolCallSection, UserPromptSection, format_stats, format_tokens,
+    ToolCallSection, UserPromptSection, format_stats,
 };
 use super::*;
 use crate::model::{Item, ItemId, Thinking, TokenUsage, ToolStatus, Turn, TurnStats};
@@ -572,18 +572,6 @@ fn stats_footer_adds_cost_and_omits_unknown_parts() {
     assert_eq!(format_stats(&stats), "5m 2s · 112 messages");
     stats.message_count = 0;
     assert_eq!(format_stats(&stats), "5m 2s");
-}
-
-#[test]
-fn token_counts_are_formatted() {
-    assert_eq!(format_tokens(0), "0");
-    assert_eq!(format_tokens(950), "950");
-    assert_eq!(format_tokens(999), "999");
-    assert_eq!(format_tokens(1_000), "1.0k");
-    assert_eq!(format_tokens(45_213), "45.2k");
-    assert_eq!(format_tokens(999_949), "999.9k");
-    assert_eq!(format_tokens(999_950), "1.0M");
-    assert_eq!(format_tokens(1_234_567), "1.2M");
 }
 
 #[test]
@@ -1320,11 +1308,6 @@ fn a_wrapped_footer_row_never_starts_with_the_separator() {
             .replace("  ", " ");
         assert_eq!(joined, format_stats(&stats), "width {width}");
     }
-}
-
-#[test]
-fn token_counts_near_u64_max_do_not_overflow() {
-    assert!(format_tokens(u64::MAX).ends_with('M'));
 }
 
 #[test]

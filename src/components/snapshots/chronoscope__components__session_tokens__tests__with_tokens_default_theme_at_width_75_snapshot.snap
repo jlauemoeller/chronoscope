@@ -1,0 +1,19 @@
+---
+source: src/components/session_tokens.rs
+expression: buffer_to_styled(&buffer)
+---
+╭─ Session Tokens ────────────────────────────────────────────────────────╮
+│ Input                                                             15.8k │
+│ Output                                                             6.3M │
+│ Thinking                                                           2.2M │
+│ Cache read                                                       862.3M │
+│ Cache write                                                       30.7M │
+╰─────────────────────────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..18 Rgb(250, 250, 250)/Reset/NONE | 18..75 Rgb(94, 94, 94)/Reset/NONE
+1: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..7 Rgb(161, 161, 161)/Reset/NONE | 7..68 Reset/Reset/NONE | 68..73 Rgb(250, 250, 250)/Reset/NONE | 73..74 Reset/Reset/NONE | 74..75 Rgb(94, 94, 94)/Reset/NONE
+2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..8 Rgb(161, 161, 161)/Reset/NONE | 8..69 Reset/Reset/NONE | 69..73 Rgb(250, 250, 250)/Reset/NONE | 73..74 Reset/Reset/NONE | 74..75 Rgb(94, 94, 94)/Reset/NONE
+3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..10 Rgb(161, 161, 161)/Reset/NONE | 10..69 Reset/Reset/NONE | 69..73 Rgb(250, 250, 250)/Reset/NONE | 73..74 Reset/Reset/NONE | 74..75 Rgb(94, 94, 94)/Reset/NONE
+4: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..12 Rgb(161, 161, 161)/Reset/NONE | 12..67 Reset/Reset/NONE | 67..73 Rgb(250, 250, 250)/Reset/NONE | 73..74 Reset/Reset/NONE | 74..75 Rgb(94, 94, 94)/Reset/NONE
+5: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..13 Rgb(161, 161, 161)/Reset/NONE | 13..68 Reset/Reset/NONE | 68..73 Rgb(250, 250, 250)/Reset/NONE | 73..74 Reset/Reset/NONE | 74..75 Rgb(94, 94, 94)/Reset/NONE
+6: 0..75 Rgb(94, 94, 94)/Reset/NONE

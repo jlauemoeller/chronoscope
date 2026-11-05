@@ -25,8 +25,8 @@ use crate::components::{
     ProjectList, ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR,
     SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame, SessionList, SessionRow, SessionRows,
     SessionStatsUpdate, SessionTime, SessionTokens, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR,
-    VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value, selected_from_value, selected_value,
-    viewport_value, visible_rows,
+    VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value, selected_value, viewport_value,
+    visible_rows,
 };
 use crate::keymap::Keymap;
 use crate::launch::{HarnessIndex, Preselect, deepest_ancestor};
@@ -80,12 +80,12 @@ pub(super) fn mount_selector(
     )?;
     application.mount(
         Id::SessionTime,
-        Box::new(SessionTime::new(theme.clone())),
+        Box::new(SessionTime::new(None, theme.clone())),
         Vec::new(),
     )?;
     application.mount(
         Id::SessionTokens,
-        Box::new(SessionTokens::new(theme.clone())),
+        Box::new(SessionTokens::new(None, theme.clone())),
         Vec::new(),
     )?;
     application.mount(
@@ -204,6 +204,8 @@ pub(super) struct SelectorState {
     pub(super) filtered: Option<Filter>,
     /// The sessions listed while filtered, in row order.
     pub(super) shown: Vec<SessionId>,
+    /// What the Session Time and Session Tokens panels were last given.
+    pub(super) panels: super::session_panels::PanelValues,
 }
 
 impl SelectorState {
@@ -594,7 +596,7 @@ impl App {
             return;
         };
         let previous = self
-            .selected_filtered_row()
+            .selected_row()
             .and_then(|row| self.selector.shown.get(row).cloned());
         let now = (self.clock)();
         let harness = self.selector.current;
@@ -636,16 +638,6 @@ impl App {
             harness_empty: false,
         };
         self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
-    }
-
-    /// The row the Sessions pane has selected, asked of the list.
-    fn selected_filtered_row(&self) -> Option<usize> {
-        let value = self
-            .application
-            .query(&Id::SessionList, SELECTED_ATTR)
-            .ok()??
-            .into_attr();
-        selected_from_value(&value)?
     }
 
     /// The sessions that show the `●` marker: those of the selected project
@@ -997,6 +989,8 @@ impl App {
         self.push_projects();
         self.push_sessions();
         self.push_cwd();
+        // Last: the panels follow the session the lists now show.
+        self.push_session_panels();
     }
 
     pub(super) fn push_tabs(&mut self) {

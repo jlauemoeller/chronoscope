@@ -23,6 +23,7 @@ pub mod terminal;
 pub mod test_support;
 pub mod theme;
 pub mod timestamp;
+pub mod tokens;
 pub mod transcript_search;
 
 /// Library entry point called by the binary.

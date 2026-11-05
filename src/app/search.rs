@@ -129,6 +129,10 @@ pub(super) struct SearchState {
     pending: Option<PendingSearch>,
     /// `Enter` was pressed while the results were still being searched.
     submit_when_ready: bool,
+    /// Whether the Sessions pane lists results: an answer was listed since
+    /// the query was last empty. Until then, with the answer of the first
+    /// request still pending, it keeps the project's sessions.
+    listing: bool,
 }
 
 /// A request sent to the search worker.
@@ -142,12 +146,21 @@ struct PendingSearch {
 }
 
 impl SelectorState {
-    /// Whether the Sessions pane lists search results: a search is on and
-    /// its query is not empty. Otherwise it shows the selected project.
+    /// Whether a search with a non-empty query is on. Its results replace the
+    /// project's sessions in the Sessions pane once the first answer is
+    /// listed ([`search_lists_results`](Self::search_lists_results)); until
+    /// then the pane keeps what it showed.
     pub(super) fn search_shows_results(&self) -> bool {
         self.search
             .as_ref()
             .is_some_and(|search| !search.query.trim().is_empty())
+    }
+
+    /// Whether the Sessions pane lists search results now. This is later than
+    /// [`search_shows_results`](Self::search_shows_results) by the time the
+    /// first answer takes to come back from the worker.
+    pub(super) fn search_lists_results(&self) -> bool {
+        self.search_shows_results() && self.search.as_ref().is_some_and(|search| search.listing)
     }
 }
 
@@ -174,7 +187,7 @@ impl App {
     /// The row selected in the Sessions pane, asked of the list. While the
     /// results are listed the list moves its own cursor (`SEARCH_NAV_ATTR`)
     /// and reports no message, so this is how the app learns the selection.
-    fn selected_row(&self) -> Option<usize> {
+    pub(super) fn selected_row(&self) -> Option<usize> {
         let value = self
             .application
             .query(&Id::SessionList, SELECTED_ATTR)
@@ -202,6 +215,7 @@ impl App {
             hits: Vec::new(),
             pending: None,
             submit_when_ready: false,
+            listing: false,
         });
         self.selector.pane = Pane::Sessions;
         self.selector.select_newest_if_focused();
@@ -226,6 +240,7 @@ impl App {
         if let Some(search) = self.selector.search.as_mut() {
             search.hits.clear();
             search.pending = None;
+            search.listing = false;
         }
         self.push_sessions();
     }
@@ -370,6 +385,7 @@ impl App {
         self.selector.active = self.active_ids();
         if let Some(search) = self.selector.search.as_mut() {
             search.hits = ids;
+            search.listing = true;
         }
         let rows = SessionRows {
             project: String::new(),

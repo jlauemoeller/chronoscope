@@ -1385,6 +1385,7 @@ mod overlay_mouse;
 mod resume;
 mod save;
 mod search;
+mod session_panels;
 mod sidebar;
 mod sidebar_follow;
 mod sidebar_keys;
