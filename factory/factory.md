@@ -6,16 +6,42 @@ subagents, json, and markdown files. The factory should be a single skill
 
 Building the factory means creating these files (see "Factory file system"):
 
-- `.claude/skills/factory/SKILL.md` — the orchestrator instructions, covering
-  every command below. The skill is user-invoked only
+- `.claude/skills/factory/SKILL.md` — the main orchestrator instructions,
+  covering every command below. The skill is user-invoked only
   (`disable-model-invocation: true`) and takes the command and its arguments
-  as arguments.
+  as arguments. It also holds the preconditions, rebuilding `board.json`,
+  running the Planner, choosing the next task, and spawning and acting on the
+  task orchestrator. It tells the main orchestrator to read `conventions.md`
+  before anything else.
+- `.claude/skills/factory/conventions.md` — everything both orchestrator levels
+  need, so that it is written once:
+  - the paths and names, including `T` for the task directory and `R` for the
+    round directory, and the list of agent types;
+  - the ground rules: never push or rewrite history, the destructive git
+    commands that are never allowed, one active task, the state staying out of
+    git, prompts that contain only ids and paths, waiting through completion
+    notifications, and one `board.json` writer at a time;
+  - the `backlog.md` format and how to change a status;
+  - the exact commands for checking changes to the state (see "Write
+    verification");
+  - the round rules: how a round's kind follows from its files, how to find the
+    latest and next round, how to count earlier REWORK verdicts, and the exact
+    first lines, where any other first line is an error that halts;
+  - the `board.json` format and how to update it (see "The orchestrator");
+  - the Merge and Halting steps.
+- `.claude/agents/task-orchestrator.md` — the task orchestrator: the spawn
+  prompts, builder reuse, write verification for the Builder, reviewers and
+  Approver, the table of where to start from a task's files, and the Build,
+  Review, Approve, Approver rework and Escalate steps. It tells the task
+  orchestrator to read `conventions.md` first.
 - `.claude/agents/{planner,builder,code-reviewer,feature-reviewer,ui-reviewer,approver}.md`
   — one subagent definition per role, with the model and effort given below.
 - `factory/dashboard/index.html` (plus optional `style.css` / `app.js`) — the
   static dashboard.
-- `.gitignore` entries for `factory/state/board.json` (and nothing else under
-  `factory/`; the dashboard is tracked).
+- `.gitignore` entries `/factory/state` and `/factory/archive`, with no trailing
+  slash, and nothing else under `factory/`; the dashboard is tracked. The state
+  of a run is never committed. When a run is finished, the human user moves
+  `factory/state/` to a folder under `factory/archive/`.
 
 The factory is built once; the orchestrator never regenerates these files at
 runtime. Commit the factory files before the first `/factory start`, so the
@@ -23,18 +49,18 @@ working tree is clean.
 
 ## Skill Commands
 
-Every command except `status` requires a clean working tree: no uncommitted
-changes and no untracked files that git doesn't ignore. Each command also
-requires a particular branch:
+Every command except `status` requires `factory/state/` to be ignored by git,
+and a clean working tree: no uncommitted changes and no untracked files that
+git doesn't ignore. Each command also requires a particular branch:
 - `start`: main.
 - `continue`: main, or the branch of the `In progress` task (see below).
 - `approve`, `rework` and `abandon`: main or `factory/<task-id>`.
 
 If a precondition fails, the command refuses with a message and does nothing.
 
-The authoritative backlog is always the one on main. When the orchestrator
-is on a task branch, it reads the backlog with
-`git show main:factory/state/backlog.md`.
+`factory/state/` is not in git, so there is one copy of it, the same on every
+branch. The orchestrator and agents read and edit its files directly, and
+nothing under it is ever committed.
 
 /factory start <spec>
 Starts the factory. The session using the command becomes the orchestrator.
@@ -43,10 +69,8 @@ Refuse if `factory/state/backlog.md` or `factory/state/tasks/` already exist
 deletes a previous run). Copy <spec> to `factory/state/SPEC.md`. Also copy
 every Markdown file that <spec> links to with a relative link (following
 links transitively) into `factory/state/spec/`, and rewrite those links so
-they resolve from the copies. Commit the copies (`factory: spec`), then
-spawn the Planner. When the Planner is
-done, the orchestrator commits the plan (`factory: plan`), builds
-`board.json`, and halts with a summary of the backlog so the human can
+they resolve from the copies. Then spawn the Planner. When the Planner is
+done, the orchestrator builds `board.json`, and halts with a summary of the backlog so the human can
 review (and optionally edit) the plan. Building starts with
 `/factory continue`.
 
@@ -57,7 +81,7 @@ orchestrator. Before choosing work it reconciles state:
   `factory/state/tasks/`.
 - If a task is `In progress` and its branch `factory/<task-id>` is already
   merged into main (the user resolved a merge conflict), mark it `Complete`,
-  commit, delete the branch, and carry on.
+  delete the branch, and carry on.
 - If a task is `In progress` and not merged (an interrupted run), check out
   its branch (or stay on it) and resume at the right step of its latest
   round. Work out the step from which files exist in the round directory
@@ -75,18 +99,18 @@ construction is complete.
 /factory approve <task-id>
 Merge an `Escalated` task into main. A human reviewer uses this command after
 reviewing the task. Refuse if the task isn't `Escalated`. The task branch
-already holds all task artifacts (code, documentation, and the files in
-`factory/state/tasks/<task-id>`). Switch to main and merge the branch with
+already holds the code and documentation. Switch to main and merge the branch
+with
 `git merge --no-ff -m "factory: merge <task-id>"`. In the event of a merge
 conflict, stop and notify the human user. Once the conflicts are resolved,
 the user completes the merge and restarts the loop with `/factory continue`.
-If the merge succeeds, mark the task `Complete`, commit, delete the local
+If the merge succeeds, mark the task `Complete`, delete the local
 branch `factory/<task-id>`, and continue the loop in the same session.
 
 /factory rework <task-id> <note>
 Send an `Escalated` task back to the builder with feedback. Refuse if the
-task isn't `Escalated`. The orchestrator marks the task `In progress` on main
-(commit), checks out `factory/<task-id>`, and creates the next round
+task isn't `Escalated`. The orchestrator marks the task `In progress`,
+checks out `factory/<task-id>`, and creates the next round
 directory. The note is given as text or as the name of a file outside the
 repo (a file inside the repo would make the tree unclean). The orchestrator
 copies it to
@@ -98,8 +122,8 @@ fix round. Human rework rounds count against neither the automatic round
 limit nor the Approver's rework limit, and any number of them are allowed.
 
 /factory abandon <task-id>
-Give up on an `Escalated` task. Switch to main, mark the task `Abandoned` in
-`backlog.md`, and commit. Keep the unmerged branch `factory/<task-id>` so no work is
+Give up on an `Escalated` task. Switch to main and mark the task `Abandoned` in
+`backlog.md`. Keep the unmerged branch `factory/<task-id>` so no work is
 lost; the user can delete it by hand. Warn the user if later tasks depend on
 the abandoned one. Then continue the loop in the same session.
 
@@ -150,7 +174,7 @@ The agent roles are:
   from a scratch crate.
 
   The Planner works on the main branch and writes only `backlog.md` and the
-  `task.md` files. It doesn't commit; the orchestrator does. The Planner runs
+  `task.md` files, and it doesn't commit. The Planner runs
   claude-opus-5-5 with xhigh effort.
 
 - **The Builder** implements one task, given to it by the orchestrator as a
@@ -190,8 +214,8 @@ The agent roles are:
   or the task is unclear. The file then summarises the changes, the
   self-check (one line per acceptance criterion and UI state, with the test
   that covers it), the test gate results, and (if blocked) the reason. The
-  Builder commits its work and the build notes on the task branch, with
-  messages prefixed `<task-id>: `. Apart from its build notes, it never
+  Builder commits its work on the task branch, with messages prefixed
+  `<task-id>: `. The build notes are not committed. Apart from them, it never
   writes under `factory/state/`. The Builder runs claude-sonnet-5-5 with
   High effort.
 
@@ -304,29 +328,123 @@ sets up their context. It never does an agent's work itself. Agent prompts
 contain only the task-id, the round-id, and the paths to read; all other
 context comes from files.
 
-It uses a single working tree:
-- On **main**, it updates `backlog.md`, commits plans and merges, and starts
-  tasks.
+The orchestrator has two levels, so that a long backlog doesn't accumulate in
+one context:
+- The **main orchestrator** is the session that ran `/factory`. It handles the
+  commands and their preconditions, the Planner, reconciliation, choosing the
+  next task, and the backlog bookkeeping around a task (`Start`, `Complete`,
+  and the `approve`, `rework` and `abandon` commands). It reports halts to the
+  human user.
+- The **task orchestrator** is a subagent, spawned fresh for each task and
+  discarded when the task ends. It runs claude-opus-5-5 with High effort, and
+  its tools are `Read, Grep, Glob, Write, Edit, Bash, Agent, SendMessage,
+  ToolSearch`. The role agents don't get `Agent`, so nesting stops there. Its
+  prompt is exactly `Task-id: <task-id>.`, and it always enters by working out
+  the next step from the task's files, so new, reworked and interrupted tasks
+  start the same way. It runs the task's rounds, and stops when the task is
+  merged, escalated or halted.
+
+Only the task orchestrator spawns the Builder, reviewers and Approver. Only the
+main orchestrator spawns the Planner and task orchestrators, and it never runs
+two task orchestrators at once.
+
+"The orchestrator" below means whichever level does the step. The split is:
+- **Starting a task:** the main orchestrator marks it `In progress`. The task
+  orchestrator creates `round-1/` and spawns the builder.
+- **`/factory rework`:** the main orchestrator does the backlog change, the new
+  round directory and `human-review.md`, then spawns a task orchestrator.
+- **Merging after APPROVE:** the task orchestrator merges and stops on `main`,
+  leaving the task `In progress`. The main orchestrator marks it `Complete` and
+  deletes the branch.
+- **`/factory approve`:** the main orchestrator merges, using the same Merge step
+  from `conventions.md`.
+- **Escalating:** the task orchestrator marks the task `Escalated`, stays on the
+  branch it is on, and stops. The main orchestrator reads
+  `verdict.md`, or `build-notes.md` if the builder blocked, and shows the user
+  the summary and commands.
+
+### Waiting and stopping
+
+The task orchestrator waits for its agents by ending its turn with the single
+word `WAITING`, and is woken when they report. It never polls or sleeps. Its run
+is over when it ends a turn with no agent running, so it does that only in one
+of three end states, with a one-line final message:
+- **Merged:** the merge succeeded and it is on `main` (`merged <task-id>`).
+- **Escalated:** the Escalate step has finished (`escalated <task-id>`).
+- **Halted:** `loop.state` is `halted`, with the reason in `message`
+  (`halted <task-id>`). If agents are still running when it must halt, it waits
+  for them first, and only then sets `halted`.
+
+It makes no further changes after reaching an end state.
+
+The main orchestrator runs a task in this order:
+1. Set `loop.state` to `running`, which clears any earlier `halted`, and
+   `current` to the task. It doesn't touch the board again until step 4.
+2. Spawn the task orchestrator.
+3. End its turn with `WAITING`. It is woken by a hand-back message from that
+   agent, or by a `<task-notification>` that carries that agent's id. It never
+   polls the task orchestrator, sends it messages, reads its output file or
+   starts other work.
+4. **Each time either message wakes it**, decide from `backlog.md`,
+   `board.json`, the current branch and `git status`, not from what the message
+   says. A hand-back can arrive while the task orchestrator's own agents are
+   still running, and a notification may never follow one (a `claude -p` run can
+   exit first), so it acts on neither alone. It takes the first case that
+   applies:
+   - `loop.state` is `halted`: report the reason. `/factory continue` resumes.
+   - The task is `Escalated`: show the summary and commands.
+   - The task is `In progress` and merged, on `main`, with a clean tree: mark it
+     `Complete` and carry on with the next task.
+   - Anything else, woken by a hand-back: the task orchestrator is still
+     working. Take no action and end the turn with `WAITING`.
+   - Anything else, woken by the notification: the task orchestrator stopped
+     early. Revert nothing, set `loop.state` to `halted` with the message `Task
+     orchestrator stopped early on <task-id>`, and tell the user that
+     `/factory continue` resumes the task from its files.
+5. Once it has acted on a task orchestrator, it ignores any later message from
+   that agent.
+
+A task is merged if `git log main --format=%s` contains the subject
+`factory: merge <id>`, or if its branch exists, is an ancestor of main
+(`git merge-base --is-ancestor`), and has at least one builder commit (subject
+starting with `<id>: `). A branch with no builder commits is not merged, even
+though it is an ancestor of main.
+
+### Updating board.json
+
+A board for a large spec is tens of kilobytes, so rewriting it through the Write
+tool on every update would fill the orchestrators' contexts. Never print the
+file or leave it half-edited. Change only `updated`, `loop`, `agents` and the
+current task's entry, with a short one-shot `python3 -I -c` command that loads
+the JSON, changes those fields, writes `board.json.tmp` next to it and moves it
+into place with `os.replace`. Use the Write tool only to create or rebuild the
+file, and don't leave helper scripts behind.
+
+### Responsibilities
+
+The orchestrator uses a single working tree:
+- On **main**, it runs the Planner, merges, and starts tasks.
 - On **`factory/<task-id>`**, it runs the build and review rounds.
 
 Its responsibilities are:
 
 - Maintain `factory/state/board.json`, which reflects the current state of
   the loop (schema below). The orchestrator is the owner and sole writer of
-  this file. The file isn't tracked by git, and it can always be rebuilt from
-  `backlog.md` and the task files. Update it every time the orchestrator takes
-  back control from a subagent, and on every stage change.
+  this file: the task orchestrator while it runs, the main orchestrator
+  otherwise, never both at once. The file isn't tracked by git, and it can
+  always be rebuilt from `backlog.md` and the task files. Update it every time
+  the orchestrator takes back control from a subagent, and on every stage
+  change (see "Updating board.json").
 
 - Maintain `factory/state/backlog.md`, which reflects the state of the known
   tasks. Statuses are `Planned`, `In progress`, `Escalated`, `Complete` and
   `Abandoned`. The orchestrator and the Planner are the owners and sole
-  writers of this file. The file is tracked by git, and the orchestrator only
-  edits and commits it while on main.
+  writers of this file. It isn't tracked by git, so it can be edited on any
+  branch.
 
 - Spawn the Planner (see `/factory start`) and wait for it to finish.
 
-- Start a task: on main, mark it `In progress` and commit
-  (`factory: start <task-id>`). Create `round-1/` and spawn a builder named
+- Start a task: on main, mark it `In progress`. Create `round-1/` and spawn a builder named
   `builder-<task-id>`, giving it the task-id and round-id.
 
 - When the builder finishes:
@@ -337,11 +455,10 @@ Its responsibilities are:
 
   Wait for the reviewers to finish. As each one finishes, check its output and
   update its state in `board.json` to PASS or FAIL according to the first line
-  of its review. To check the output, run `git status` and confirm that the
-  agent created or changed only its allowed files (see "Write verification").
+  of its review. To check the output, confirm that the agent created or changed
+  only its allowed files (see "Write verification").
 
-- When all the reviews for the round are in, commit the round directory on
-  the task branch (`<task-id>: <round-id> reviews`). Then:
+- When all the reviews for the round are in:
   - If any review is FAIL and this is round 1, create the next round
     directory and resume the builder with instructions to address the
     reviews.
@@ -353,7 +470,7 @@ Its responsibilities are:
   through `/factory rework`. Neither kind of rework round triggers an
   automatic fix round.
 
-- When the Approver has produced a verdict, commit it on the task branch.
+- When the Approver has produced a verdict:
   - **APPROVE:** switch to main and merge the branch with
     `git merge --no-ff -m "factory: merge <task-id>"`. If the merge
     conflicts, stop and notify the human user. Once the conflicts are
@@ -367,28 +484,37 @@ Its responsibilities are:
     then the Approver runs straight away. If the verdict is REWORK but the
     task already has two earlier REWORK verdicts, or the verdict has no
     rework note, handle it like an ESCALATE.
-  - **ESCALATE:** switch to main, mark the task `Escalated`, and commit. Then
-    check out `factory/<task-id>` again, so the human and the dashboard can
-    read the reviews. Set the loop state to `escalated` and halt with a
+  - **ESCALATE:** mark the task `Escalated` and stay on the branch. Set the loop
+    state to `escalated` and halt with a
     summary of the verdict and the commands the user can run next.
 
-- When work has been merged into main, mark the task `Complete`, commit, and
-  delete the local task branch. If no `Planned` tasks remain, the loop ends
+- When work has been merged into main, mark the task `Complete` and delete the
+  local task branch. If no `Planned` tasks remain, the loop ends
   with a message to the user stating that the work is complete. Otherwise the
   loop continues with the next task.
 
 ### Builder reuse
 
-Within one session, resume the same `builder-<task-id>` (via SendMessage)
-for each new round of that task. If that agent doesn't exist in this session
-(after `continue`, `rework` or `approve` in a new session), spawn a fresh
-`builder-<task-id>`. It rebuilds its context from `task.md`, the earlier
-round directories, and the branch's git log.
+Within one task orchestrator run, resume the same `builder-<task-id>` (via
+SendMessage) for each new round of that task. A task orchestrator that hasn't
+spawned that builder itself (after `continue` or `rework`) spawns a fresh
+`builder-<task-id>`. It rebuilds its context from `task.md`, the earlier round
+directories, and the branch's git log.
 
 ### Write verification
 
-After each subagent finishes, the orchestrator runs `git status`.
-Changes to files that git ignores (for example `target/`) don't count.
+After each subagent finishes, the orchestrator checks two things:
+- **Outside the state,** it runs `git status`. Changes to files that git ignores
+  (for example `target/`) don't count. The Builder must leave a clean tree, with
+  nothing under `factory/state/` in its commits. Every other agent changes
+  nothing here.
+- **Inside the state,** `git status` can't see changes, so it compares checksums.
+  Just before spawning an agent, it writes a `cksum` listing of every file under
+  `factory/state/` to `factory/state/tasks/<task-id>/.snapshot`, or
+  `factory/state/.snapshot` for the Planner, leaving out `board.json*` and
+  `.snapshot` files. Afterwards it runs the same listing and compares it with
+  `diff`. The Builder may change only its `build-notes.md`.
+
 Reviewers run in parallel, so:
 - After each reviewer finishes, any change outside the current round
   directory is a violation.
@@ -428,8 +554,10 @@ data.
 
 ```
 .claude/
-  skills/factory/SKILL.md          # orchestrator instructions
+  skills/factory/SKILL.md          # main orchestrator instructions
+  skills/factory/conventions.md    # shared by both orchestrator levels
   agents/                          # one file per agent
+    task-orchestrator.md
     planner.md
     builder.md
     code-reviewer.md
@@ -441,13 +569,15 @@ factory/
   floorplan.md                     # The factory floor plan
   dashboard/
     index.html                     # visual board, polls ../state/board.json
-  state/
-    board.json                     # current loop status (untracked)
+  archive/                         # finished runs, moved here by hand (git-ignored)
+  state/                           # everything below is git-ignored
+    board.json                     # current loop status
     backlog.md                     # queue of tasks
     SPEC.md                        # The spec file defining the work
     spec/                          # documents linked from SPEC.md
     tasks/                         # Tasks created by the planner
       001-scaffold-crate/          # one directory per task
+        .snapshot                  # checksums for write verification
         task.md                    # Spec for the task
         round-1/                   # one directory per round
           build-notes.md           # Builder: STATUS: DONE | BLOCKED
@@ -488,6 +618,7 @@ factory/state/board.json
   "updated": "2026-10-27T10:51:00Z",
   "loop": { "state": "running", "message": "Building 002-apply-selected-theme",
             "current": "002-apply-selected-theme" },
+  "agents": { "builder-002-apply-selected-theme": "<agent id from the Agent tool>" },
   "tasks": [
     { "id": "002-apply-selected-theme", "title": "Apply selected theme",
       "branch": "factory/002-apply-selected-theme",
@@ -510,6 +641,9 @@ factory/state/board.json
 - `loop.state`: `planning`, `awaiting-plan-review`, `running`, `escalated`,
   `halted` (merge conflict, write violation, error; the reason goes in
   `message`), or `complete`.
+- `agents`: builder agent ids, keyed by name. An id is only usable by the task
+  orchestrator that spawned it; a later one spawns a fresh builder and replaces
+  the id.
 - `stage`: `planned`, `building`, `review`, `approval`, `escalated`, `done`,
   or `abandoned`.
 - `kind`: `auto`, `approver-rework` (started by a REWORK verdict) or

@@ -122,10 +122,10 @@ STATUS: DONE
 
 ## Commit
 
-Commit your work and the build notes on `factory/<task-id>`, with every
-commit message prefixed `<task-id>: ` (for example
-`003-session-list: add session list component`). Several commits are fine.
-When you finish, `git status` must be clean: everything you changed is
-committed and nothing stray is left behind.
+Commit your work on `factory/<task-id>`, with every commit message prefixed
+`<task-id>: ` (for example `003-session-list: add session list component`).
+Several commits are fine. `factory/state/` is git-ignored, so your build notes
+are not committed; never force-add them. When you finish, `git status` must be
+clean: everything you changed is committed and nothing stray is left behind.
 
 Reply to the orchestrator with one line: the status and a short summary.
