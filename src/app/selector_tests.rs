@@ -923,11 +923,38 @@ fn the_lists_are_told_how_many_rows_their_pane_shows() {
         other => panic!("{other:?}"),
     };
     let mut app = loaded();
+    // 120x40: Projects is 24 rows, Sessions 13 (the panels take 11).
     assert_eq!(visible(&app, Id::ProjectList), 21);
-    assert_eq!(visible(&app, Id::SessionList), 21);
+    assert_eq!(visible(&app, Id::SessionList), 10);
     app.update(Msg::Resized(80, 24));
     assert_eq!(visible(&app, Id::ProjectList), 5);
     assert_eq!(visible(&app, Id::SessionList), 5);
+}
+
+#[test]
+fn each_list_follows_its_own_pane_across_a_resize_between_32_and_33_rows() {
+    let visible = |app: &App, id: Id| match app
+        .application()
+        .query(&id, VISIBLE_ROWS_ATTR)
+        .unwrap()
+        .unwrap()
+        .into_attr()
+    {
+        AttrValue::Length(n) => n,
+        other => panic!("{other:?}"),
+    };
+    let mut app = loaded();
+    app.update(Msg::Resized(100, 32));
+    // Overlay 30 rows, panes 16: no panels.
+    assert_eq!(visible(&app, Id::ProjectList), 13);
+    assert_eq!(visible(&app, Id::SessionList), 13);
+    app.update(Msg::Resized(100, 33));
+    // Panes 17: Sessions 6, three list rows.
+    assert_eq!(visible(&app, Id::ProjectList), 14);
+    assert_eq!(visible(&app, Id::SessionList), 3);
+    app.update(Msg::Resized(100, 32));
+    assert_eq!(visible(&app, Id::ProjectList), 13);
+    assert_eq!(visible(&app, Id::SessionList), 13);
 }
 
 #[test]
@@ -1013,7 +1040,7 @@ pub(super) fn styled(app: &mut App, width: u16, height: u16) -> String {
     buffer_to_styled(&screen(app, width, height))
 }
 
-fn long_session_snapshot(count: usize) -> IndexEvent {
+pub(super) fn long_session_snapshot(count: usize) -> IndexEvent {
     let projects = fixtures::projects(CLAUDE);
     let mut sessions = SessionMap::new();
     sessions.insert(
@@ -1155,7 +1182,7 @@ theme_snapshot!(sessions_focused_theme_solarized, "solarized");
 // -- cell-level checks of the geometry and styles (SPEC §8.2)
 
 /// The overlay's panes at 120x40: Projects at (4, 6) 36x24, Sessions at
-/// (41, 6) 75x24. The first list row is two rows below a pane's top.
+/// (41, 6) 75x13 (the panels take the other 11 rows). The first list row is two rows below a pane's top.
 const LIST_ROW_Y: u16 = 8;
 const SESSIONS_X: u16 = 41;
 const PROJECTS_X: u16 = 4;

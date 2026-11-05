@@ -144,6 +144,8 @@ fn startup_mounts_the_components_and_focuses_the_projects_pane() {
         Id::HarnessTabs,
         Id::ProjectList,
         Id::SessionList,
+        Id::SessionTime,
+        Id::SessionTokens,
         Id::WorkingDir,
         Id::EmptyState,
         Id::HelpLine,

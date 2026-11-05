@@ -27,6 +27,8 @@ fn every_id_is_themed_but_the_global_events() {
             | Id::HarnessTabs
             | Id::ProjectList
             | Id::SessionList
+            | Id::SessionTime
+            | Id::SessionTokens
             | Id::WorkingDir
             | Id::HelpLine
             | Id::BrowserHeader
@@ -388,6 +390,8 @@ fn the_selector_screen_components_are_themed_too() {
         Id::HarnessTabs,
         Id::ProjectList,
         Id::SessionList,
+        Id::SessionTime,
+        Id::SessionTokens,
         Id::WorkingDir,
         Id::HelpLine,
     ] {

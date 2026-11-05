@@ -45,6 +45,8 @@ mod selector_tests;
 #[cfg(test)]
 mod selector_totals_tests;
 #[cfg(test)]
+mod session_panels_tests;
+#[cfg(test)]
 mod tests;
 
 use std::collections::HashMap;
@@ -106,6 +108,10 @@ pub enum Id {
     ProjectList,
     /// The Sessions pane of the selector.
     SessionList,
+    /// The `Session Time` panel below the Sessions pane.
+    SessionTime,
+    /// The `Session Tokens` panel below `Session Time`.
+    SessionTokens,
     /// The Working Directory box of the selector.
     WorkingDir,
     /// Key hints of the selector.
