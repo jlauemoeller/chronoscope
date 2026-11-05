@@ -120,6 +120,33 @@ fn local_command_entries_unfolded_and_selected_at_80_styled() {
     insta::assert_snapshot!(buffer_to_styled(&draw(&turn, &opts, 80)));
 }
 
+/// An empty output (`<local-command-stdout></local-command-stdout>`) is an
+/// entry with no text: only its kind shows.
+#[test]
+fn an_empty_local_command_output_after_an_echo_unfolded_at_80() {
+    let turn = user(
+        "<command-message>factory</command-message>",
+        vec![injected(
+            "i1",
+            &[("local_command", "/clear"), ("local_command", "")],
+        )],
+    );
+    let opts = Opts::default().unfold(item_id(&turn, "i1"));
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &opts, 80)));
+}
+
+#[test]
+fn a_single_empty_local_command_output_folded_and_unfolded_at_80() {
+    let turn = user(
+        "<command-message>factory</command-message>",
+        vec![injected("i1", &[("local_command", "")])],
+    );
+    let folded = buffer_to_text(&draw(&turn, &Opts::default(), 80));
+    let opts = Opts::default().unfold(item_id(&turn, "i1"));
+    let unfolded = buffer_to_text(&draw(&turn, &opts, 80));
+    insta::assert_snapshot!(format!("{folded}\n{unfolded}"));
+}
+
 #[test]
 fn a_single_local_command_entry_folded_at_80() {
     let turn = user(

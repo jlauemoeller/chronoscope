@@ -736,8 +736,8 @@ impl Assembler {
         // A local command is handled by the harness and is no prompt: it is
         // held like any injected entry. `cur` and `prompt_ts` are left alone,
         // so the open Assistant turn continues and keeps its start.
-        if let Some(raw) = entry.local_command_text() {
-            let text = local_command_display_text(&raw);
+        if entry.is_local_command() {
+            let text = local_command_display_text(&content_text(content));
             self.hold("local_command", ts, text, entry.uuid.as_deref(), range);
             return;
         }

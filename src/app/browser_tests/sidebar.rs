@@ -636,7 +636,8 @@ fn the_sidebar_stays_mounted_under_the_selector_overlay() {
 
 /// The cycle 3 fixture `local_commands.jsonl`: the caveat, a `/effort` echo
 /// and its output, a `/factory` prompt and a reply. The local command starts
-/// no turn: the sidebar lists one User and one Assistant row.
+/// no turn: the sidebar lists one User and one Assistant row. The turns go
+/// through the fake harness, so the header is the rig's (project BRIO).
 #[test]
 fn browser_on_the_local_commands_fixture_120x40_text() {
     let bytes = include_bytes!("../../../tests/fixtures/claude/local_commands.jsonl");

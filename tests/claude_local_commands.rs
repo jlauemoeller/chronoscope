@@ -341,18 +341,17 @@ fn prompts_that_look_like_local_commands_stay_prompts() {
             .iter()
             .any(|t| t.starts_with("<bash-stdout>Cargo.toml</bash-stdout>"))
     );
-    // None of them holds a local command.
-    for turn in &turns {
-        if let Turn::User(u) = &**turn {
-            assert!(
-                u.items.iter().all(|i| injected_pairs(i)
-                    .iter()
-                    .all(|(k, _)| *k != "local_command")
-                    || u.text == "Second prompt"),
-                "{u:?}"
-            );
-        }
-    }
+    // The only User turn holding local commands is the second prompt's.
+    let holders: Vec<&str> = turns
+        .iter()
+        .filter_map(|t| match &**t {
+            Turn::User(u) if u.items.iter().any(|i| !injected_pairs(i).is_empty()) => {
+                Some(u.text.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(holders, ["Second prompt"]);
 }
 
 #[test]
@@ -574,4 +573,71 @@ fn an_ai_title_still_wins_over_the_prompt() {
         r#"{"type":"ai-title","aiTitle":"Titled by the model"}"#.to_owned(),
     ]));
     assert_eq!(summary.title, "Titled by the model");
+}
+
+fn turn_duration(ts: &str, ms: u64) -> String {
+    format!(
+        r#"{{"type":"system","subtype":"turn_duration","timestamp":"{ts}","durationMs":{ms},"messageCount":1}}"#
+    )
+}
+
+#[test]
+fn a_local_command_between_a_prompt_and_its_first_reply_leaves_the_footer_start_alone() {
+    let turns = assemble_lines(&[
+        human_user("2026-10-24T08:00:00.000Z", "go"),
+        plain_user("2026-10-24T08:00:10.000Z", ECHO_EFFORT),
+        plain_user("2026-10-24T08:00:11.000Z", OUT_CANCELLED),
+        reply("2026-10-24T08:00:20.000Z", "m1"),
+        // `durationMs` differs from the span, which is the one that counts.
+        turn_duration("2026-10-24T08:00:30.000Z", 7000),
+    ]);
+    assert_eq!(shape(&turns), "UA");
+    // From the prompt (08:00:00), not from the local command or the reply.
+    let stats = assistant(&turns[1]).stats.as_ref().expect("the footer");
+    assert_eq!(stats.duration, Duration::from_secs(30));
+    // The entries were placed in the open User turn, and the Assistant turn
+    // continued after them.
+    let entries: Vec<_> = turns
+        .iter()
+        .flat_map(|t| match &**t {
+            Turn::User(u) => u.items.clone(),
+            Turn::Assistant(a) => a.items.clone(),
+            Turn::Compaction(_) => Vec::new(),
+        })
+        .flat_map(|i| {
+            injected_pairs(&i)
+                .into_iter()
+                .map(|(k, t)| (k.to_owned(), t.to_owned()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            ("local_command".to_owned(), "/effort".to_owned()),
+            ("local_command".to_owned(), "Cancelled".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn a_local_command_at_the_end_of_the_input_after_a_prompt_lands_in_that_user_turn() {
+    let turns = assemble_lines(&[
+        human_user("2026-10-24T08:00:00.000Z", "go"),
+        plain_user(
+            "2026-10-24T08:00:10.000Z",
+            "<command-name>/exit</command-name>",
+        ),
+        plain_user(
+            "2026-10-24T08:00:11.000Z",
+            "<local-command-stdout>Bye!</local-command-stdout>",
+        ),
+    ]);
+    assert_eq!(shape(&turns), "U");
+    let prompt = user(&turns[0]);
+    assert_eq!(item_names(&prompt.items), ["injected"]);
+    assert_eq!(
+        pairs(injected(&prompt.items[0])),
+        [("local_command", "/exit"), ("local_command", "Bye!")]
+    );
 }

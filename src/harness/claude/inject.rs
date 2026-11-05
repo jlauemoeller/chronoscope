@@ -257,58 +257,70 @@ pub(super) fn system_text(
     head_and_body(&command, output)
 }
 
-/// The text of `value` between `open` and `close` (their literal names),
-/// searching from the start of `value`.
-fn between<'a>(value: &'a str, open: &str, close: &str) -> Option<&'a str> {
-    let rest = &value[value.find(open)? + open.len()..];
-    Some(&rest[..rest.find(close)?])
+/// `rest` after the element `<open>...<close>` that it starts with, with the
+/// whitespace after it skipped, and the element's trimmed content. `None`
+/// when `rest` does not start with `open` or the element is not closed.
+fn element<'a>(rest: &'a str, open: &str, close: &str) -> Option<(&'a str, &'a str)> {
+    let (content, after) = rest.strip_prefix(open)?.split_once(close)?;
+    Some((content.trim(), after.trim_start()))
+}
+
+/// The command and arguments of an echo, or `None` when the body is not the
+/// echo layout: `<command-name>`, optionally a `<command-message>`, optionally
+/// `<command-args>`, with only whitespace between and after them.
+fn echo_text(text: &str) -> Option<String> {
+    let (name, rest) = element(text, "<command-name>", "</command-name>")?;
+    if name.is_empty() {
+        return None;
+    }
+    let rest = element(rest, "<command-message>", "</command-message>").map_or(rest, |(_, r)| r);
+    let (args, rest) = if rest.starts_with("<command-args>") {
+        element(rest, "<command-args>", "</command-args>")?
+    } else {
+        ("", rest)
+    };
+    rest.is_empty().then(|| {
+        if args.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{name} {args}")
+        }
+    })
+}
+
+/// The trimmed text inside an output's tags, or `None` when the body is not
+/// exactly one such element.
+fn output_text(text: &str) -> Option<&str> {
+    [
+        ("<local-command-stdout>", "</local-command-stdout>"),
+        ("<local-command-stderr>", "</local-command-stderr>"),
+    ]
+    .into_iter()
+    .find_map(|(open, close)| element(text, open, close))
+    .filter(|(_, after)| after.is_empty())
+    .map(|(content, _)| content)
 }
 
 /// The readable text of a local command's `user` entry, without its markup
 /// (SPEC cycle 3 §2.2).
 ///
 /// An echo (`<command-name>/model</command-name>` and, on the lines after it,
+/// `<command-message>model</command-message>` and
 /// `<command-args>opus</command-args>`) becomes the command and its
 /// arguments, `/model opus`. An output (`<local-command-stdout>` or
 /// `<local-command-stderr>`) becomes the trimmed text inside its tags. A body
-/// that matches neither form (no closing tag, no name, text after an output's
-/// closing tag) is returned as it is. The tags are found by their literal
+/// that matches neither form is returned as it is: no closing tag, no name,
+/// or any text outside the expected tags (after an output's closing tag, or
+/// between or after the echo's tags). The tags are found by their literal
 /// names.
 pub(super) fn local_command_display_text(raw: &str) -> String {
     let text = raw.trim_start();
-    if text.starts_with("<command-name>") {
-        if let Some(name) = between(text, "<command-name>", "</command-name>")
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-        {
-            let after_name = &text[text.find("</command-name>").unwrap_or_default()..];
-            let args = if after_name.contains("<command-args>") {
-                // An opening tag without its closing tag: not the form.
-                between(after_name, "<command-args>", "</command-args>").map(str::trim)
-            } else {
-                Some("")
-            };
-            match args {
-                Some("") => return name.to_owned(),
-                Some(args) => return format!("{name} {args}"),
-                None => {}
-            }
-        }
-        return raw.to_owned();
-    }
-    for tag in ["local-command-stdout", "local-command-stderr"] {
-        let open = format!("<{tag}>");
-        let close = format!("</{tag}>");
-        if let Some(rest) = text.strip_prefix(&open) {
-            if let Some(end) = rest.find(&close)
-                && rest[end + close.len()..].trim().is_empty()
-            {
-                return rest[..end].trim().to_owned();
-            }
-            return raw.to_owned();
-        }
-    }
-    raw.to_owned()
+    let shown = if text.starts_with("<command-name>") {
+        echo_text(text)
+    } else {
+        output_text(text).map(str::to_owned)
+    };
+    shown.unwrap_or_else(|| raw.to_owned())
 }
 
 #[cfg(test)]
@@ -397,6 +409,11 @@ mod tests {
             "<command-name>/model",
             "<command-name></command-name>",
             "<command-name>/model</command-name><command-args>opus",
+            "<command-name>/foo</command-name>\nplease also do this",
+            "<command-name>/foo</command-name><command-args>a</command-args> dropped text",
+            "<command-name>/foo</command-name><command-args>a </command-args> b</command-args>",
+            "<command-name>/foo</command-name><command-message>a</command-message> x",
+            "<command-name>/foo</command-name><command-message>a",
             "<local-command-stdout>no end",
             "<local-command-stdout>a</local-command-stdout> trailing",
             "<local-command-stdout>a</local-command-stderr>",

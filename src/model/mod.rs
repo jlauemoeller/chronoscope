@@ -410,8 +410,9 @@ pub struct TurnStats {
 #[derive(Debug, Clone, PartialEq)]
 pub struct InjectedEntry {
     /// Kind label: the Claude attachment type (`file`, `hook_system_message`,
-    /// ...), the `system` subtype (`local_command`, ...) or `meta` for
-    /// `isMeta` user entries.
+    /// ...), the `system` subtype (`local_command`, ...), `meta` for `isMeta`
+    /// user entries, or `local_command` for the echo and the output of a
+    /// local command (`user` entries without an `origin`).
     pub kind: String,
     /// When it was injected.
     pub timestamp: DateTime<Utc>,
