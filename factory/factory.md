@@ -46,7 +46,8 @@ is missing. Then spawn the Planner. It runs the preflight first (see
   the plan"), builds `board.json`, and halts with a summary of the backlog,
   the preflight assumptions, and the stack profile (including anything under
   **Not available**), so the human can review (and optionally edit) the
-  plan. Building starts with `/factory continue`.
+  plan. Building starts with `/factory continue`. This first halt also says
+  how to open the dashboard (see "The dashboard").
 - Otherwise the preflight stopped. The orchestrator builds `board.json` with
   `loop.state` `awaiting-preflight`, and halts with a summary of
   `preflight.md` and the next steps:
@@ -68,6 +69,12 @@ orchestrator. Before choosing work it reconciles state:
   its result as `start` does. Nothing else in this list applies.
 - If `board.json` is missing, rebuild it from `backlog.md` and the files in
   `factory/state/tasks/`.
+- If every task is `Planned`, no task has a round directory, and
+  `loop.state` isn't `awaiting-plan-review`, the human hasn't seen the plan
+  yet. For example, the Planner step may have halted after `backlog.md` was
+  written. Check the plan (see "Checking the plan"), rebuild `board.json`,
+  and halt with the plan summary, as `start` does. Nothing else in this list
+  applies.
 - If `loop.state` is `awaiting-plan-review`, the human may have edited the
   plan. Check it again (see "Checking the plan"), and rebuild `board.json`
   from `backlog.md` and the files in `factory/state/tasks/`.
@@ -80,12 +87,12 @@ orchestrator. Before choosing work it reconciles state:
   (build notes, reviews, verdict). If the latest round's verdict is REWORK,
   start the Approver rework round it asks for (see "The orchestrator").
   When `continue` runs on this branch, it allows uncommitted changes only
-  while the latest round has no review files and no verdict. They must then
-  be the Builder's own, and it leaves them for the resumed builder. Once a
-  review or a verdict exists, the changes came from a reviewer or the
-  Approver. Then `continue` halts and asks the human to inspect them and
-  commit or remove them, because otherwise a builder would commit changes
-  that no reviewer saw.
+  while the latest round has no `reviews-started` marker (see "Write
+  verification"). They must then be the Builder's own, and it leaves them
+  for the resumed builder. Once the marker exists, the changes came from a
+  reviewer or the Approver. Then `continue` halts and asks the human to
+  inspect them and commit or remove them, because otherwise a builder would
+  commit changes that no reviewer saw.
 - If a task is `Escalated`, refuse and point the user to
   `/factory approve`, `/factory rework`, or `/factory abandon`.
 
@@ -151,7 +158,8 @@ branch names can't match a task from an earlier run. The Planner numbers a
 run's tasks consecutively from one above the highest serial the factory has
 already used, or from `001` if it has used none. It finds the used serials in
 git, which every clone has, not in the archive, which may be gone:
-- the subjects `factory: merge <id>` in `git log main`;
+- the subjects `factory: merge <id>` in `git log main --format=%s --` (the
+  trailing `--` stops git from reading `main` as a path);
 - the local branches `factory/<id>`, which include abandoned tasks.
 
 Rounds are identified by the word `round` and a number that increases
@@ -171,25 +179,33 @@ The agent roles are:
   implement the work described in them. Each task becomes a directory
   `factory/state/tasks/<task-id>/`. In each task directory the Planner writes
   a `task.md` file containing everything from the spec that a builder needs
-  to implement the task. Each `task.md` has these sections:
-  - a title;
-  - a goal;
-  - the relevant spec excerpts;
-  - acceptance criteria;
-  - a `UI` section that describes every view and state the task changes
-    precisely enough to check: what is shown, the layout, styling such as
-    theme roles or colours, focus and selection, and the sizes it must work
-    at, with the spec's sketches where it has them (or `UI: none` when the
-    task has no UI changes);
-  - a `Reviews` section listing the keys of the reviewers that run on the task
-    (see "The reviewer roster"), with one line for each specialist saying why
-    it applies. A specialist applies only when the task touches its concern
-    as the baseline in `preflight.md` defines it. `code` and `feature` are
-    always listed, and `ui` is listed
-    exactly when the `UI` section isn't `UI: none`. For each specialist it
-    lists, the Planner writes the spec requirements that reviewer will check
-    into the acceptance criteria, so the Builder knows them before it starts;
-  - the ids of the tasks it depends on.
+  to implement the task.
+
+  The factory script reads `task.md`, so its shape is fixed. The first line
+  is `# <task-id>: <title>`. Then come these sections, as `##` headings with
+  exactly these names and in this order:
+  - `## Goal`: what the task achieves, in a few sentences.
+  - `## Spec excerpts`: the relevant parts of the spec, each with where it
+    comes from. They are quoted as blockquotes (`> `), so that a heading in
+    the spec can never be mistaken for a section of `task.md`.
+  - `## Acceptance criteria`.
+  - `## UI`: describes every view and state the task changes precisely
+    enough to check: what is shown, the layout, styling such as theme roles
+    or colours, focus and selection, and the sizes it must work at, with the
+    spec's sketches where it has them. When the task has no UI changes, the
+    section is the single heading line `## UI: none`.
+  - `## Reviews`: one top-level bullet for each reviewer that runs on the
+    task (see "The reviewer roster"), starting with its key in backticks,
+    such as ``- `security`: parses session files from disk``. It lists only
+    the reviewers that run, and nothing else in the section is a bullet.
+    `code` and `feature` are always listed, and `ui` is listed exactly when
+    the task has UI changes. Each specialist's bullet says why it applies. A
+    specialist applies only when the task touches its concern as the
+    baseline in `preflight.md` defines it. For each specialist it lists, the
+    Planner writes the spec requirements that reviewer will check into the
+    acceptance criteria, so the Builder knows them before it starts.
+  - `## Depends on`: one top-level bullet for each task-id it depends on, or
+    the single bullet `- none`.
 
   When all tasks are written, the Planner writes `factory/state/backlog.md`,
   the execution plan. It contains a Markdown table with one row per task and
@@ -218,7 +234,9 @@ The agent roles are:
 
   The Planner works on the main branch and writes only `preflight.md`,
   `stack.md`, `backlog.md` and the `task.md` files, and it doesn't commit.
-  The Planner runs claude-opus-5-5 with xhigh effort.
+  When it runs the gate on main, it follows the same safety rules as the
+  reviewers (see "Safety rules"), so the gate's outputs can't make the tree
+  unclean. The Planner runs claude-opus-5-5 with xhigh effort.
 
 - **The Builder** implements one task, given to it by the orchestrator as a
   task-id and a round-id. It never reads or writes `backlog.md`.
@@ -231,7 +249,8 @@ The agent roles are:
     that nit with the reason for leaving it. In a rework round it also reads
     the `human-review.md` or `approver-review.md` in the current round
     directory. Where that note conflicts with a review, the note wins. A
-    finding the rework note sets aside is left alone.
+    finding the rework note sets aside is left alone. If the previous round
+    has no reviews because the Builder blocked, the note is its only input.
   - **A fresh builder** (in any round, including an interrupted round 1)
     rebuilds its context from `task.md`, the earlier round directories and
     the branch's git log. It carries on from any uncommitted changes it
@@ -247,7 +266,9 @@ The agent roles are:
   UI changes must come with snapshot tests of the rendered UI, using the
   tooling under **UI tests** in `stack.md`. The Builder accepts a snapshot
   only after checking that its content matches the `UI` section, and it
-  never commits pending snapshot files.
+  never commits pending snapshot files. Pending snapshot files are never
+  kept: the Builder deletes any it finds, its own or an interrupted
+  builder's, and runs the tests again to produce the ones it still needs.
 
   Before it reports `STATUS: DONE`, the Builder self-checks its work against
   `task.md`, the way the reviewers will:
@@ -272,10 +293,16 @@ The agent roles are:
   Builder commits its work on the task branch, with messages prefixed
   `<task-id>: `. When it is blocked, it still commits what it has, with the
   subject `<task-id>: WIP (blocked) <summary>`, so the tree is clean and the
-  partial work is kept and clearly marked. The build notes are not
-  committed. Apart from them, it never writes under `factory/state/`. It
-  follows the Builder's safety rules (see "Safety rules"). The Builder runs
-  claude-sonnet-5-5 with High effort.
+  partial work is kept and clearly marked. It writes the build notes last
+  of all, after committing (see "Rules"). The build notes are not committed.
+  Apart from them, it never writes under `factory/state/`.
+
+  When it is resumed with the uncommitted-changes message (see "Write
+  verification"), it commits those changes. If they shouldn't be committed,
+  it fixes the cause instead, for example by adding a missing `.gitignore`
+  entry for build outputs. Either way it leaves a clean tree and updates its
+  build notes. It follows the Builder's safety rules (see "Safety rules").
+  The Builder runs claude-sonnet-5-5 with High effort.
 
 - **The Code Reviewer** reviews the changes on the task branch
   (`git diff main...HEAD`). It checks that they follow best practices for the
@@ -498,8 +525,9 @@ only the human changes it. It has these sections:
   Cargo, for example, `CARGO_TARGET_DIR`).
 - **Concurrency:** whether the gate's commands can safely run at the same
   time in one checkout, as the reviewers do when they run in parallel. Cargo,
-  for example, locks its build directory. If they can't, reviewers run the
-  gate with their build outputs in their scratch directories.
+  for example, locks its build directory, so concurrent runs are safe: they
+  wait for each other. If the commands can't run concurrently, reviewers run
+  the gate with their build outputs in their scratch directories.
 - **Reviewer checks:** for each roster key, any extra tools that reviewer runs
   beyond the gate.
 - **Not available:** tools that belong in the gate or in a reviewer's checks
@@ -580,9 +608,10 @@ API Reviewer's inconsistent naming or error reporting is best practice.
 - **UI Reviewer.** Baseline: the views, states and sizes in the task's `UI`
   section. It reads the Builder's snapshots, and renders the views itself at
   those sizes and at the edge cases it tries. Must-fix: a view that
-  contradicts the `UI` section; a listed state or size with no snapshot; or
-  a crash, panic or unusable layout at any size it tries, edge cases
-  included. Other differences outside the `UI` section are nits.
+  contradicts the `UI` section; a listed state or size with no snapshot; a
+  pending snapshot file committed to the branch; or a crash, panic or
+  unusable layout at any size it tries, edge cases included. Other
+  differences outside the `UI` section are nits.
 
 - **Security Reviewer.** Baseline: the threat model, meaning who can reach
   the program's inputs and what they can do with them. A local single-user
@@ -640,8 +669,8 @@ rounds alike), a reviewer:
    or `human-review.md` in the current round if there is one.
 2. Checks each must-fix finding from its previous review, and states in its
    review whether that finding is resolved. A finding that isn't resolved
-   stays must-fix, unless the rework note sets it aside; the reviewer then
-   doesn't raise it again.
+   stays must-fix, unless the rework note sets it aside. No reviewer raises
+   a finding the rework note sets aside, whoever raised it first.
 3. Reviews the task as in round 1, and also reads this round's changes with
    `git diff <base>..HEAD`, where `<base>` is the commit in the round's
    `base-commit` file.
@@ -677,8 +706,10 @@ one context:
   ToolSearch`. The role agents don't get `Agent`, so nesting stops there. Its
   prompt is exactly `Task-id: <task-id>.`, and it always enters by working out
   the next step from the task's files, so new, reworked and interrupted tasks
-  start the same way. It runs the task's rounds, and stops when the task is
-  merged, escalated or halted.
+  start the same way. Before it does, it checks the first line of every
+  file in the task's directory that has a fixed one, so that an invalid file
+  left by an interrupted run halts before anything acts on it. It runs the
+  task's rounds, and stops when the task is merged, escalated or halted.
 
 Only the task orchestrator spawns the Builder, reviewers and Approver. Only the
 main orchestrator spawns the Planner and task orchestrators, and it never runs
@@ -753,10 +784,13 @@ though it is an ancestor of main.
 
 The orchestrators leave the factory's mechanics to the factory script,
 `.claude/skills/factory/factory.py`. It is a factory file, run as
-`python3 -I .claude/skills/factory/factory.py <command> …`. The
-orchestrators keep the judgement: what to do next, and what to tell the
-human. The script does the parsing, so the same files always give the same
-answer. Its commands cover:
+`python3 -I .claude/skills/factory/factory.py <command> …`, always from the
+repository root. It finds the repository from the working directory
+(`git rev-parse --show-toplevel`), not from its own location, so it can be
+tested against a sample repository without touching the real run. The 
+orchestrators keep the judgement: what to do next, and what to tell the human. 
+The script does the parsing, so the same files always give the same answer. Its 
+commands cover:
 - **The board.** A board for a large spec is tens of kilobytes, so
   rewriting it through the Write tool on every update would fill the
   orchestrators' contexts. Every change to `board.json` goes through the
@@ -769,9 +803,13 @@ answer. Its commands cover:
   - writes `board.json.tmp` next to the board and moves it into place with
     `os.replace`, so the file is never half-written.
 - **The spec copy** for `start` and the preflight restart (see
-  `/factory start`).
-- **The plan:** the mechanical part of "Checking the plan", and the highest
-  serial used before this run (see "Identifiers").
+
+`/factory start`).
+- **The plan:**
+  - the mechanical part of "Checking the plan";
+  - the highest serial used before this run (see "Identifiers");
+  - the newest earlier cycle's `stack.md` in the archive (see "The stack
+    profile").
 - **Rounds:**
   - the latest round, the previous round and the next round-id;
   - a round's kind;
@@ -786,14 +824,16 @@ answer. Its commands cover:
   valid one.
 
 The role agents use it as well, and their definitions name the commands:
-the Planner for the highest serial used and the plan check, the Builder for
-its previous round, and the Approver for the number of earlier REWORK
-verdicts.
+- the Planner, for the highest serial used, the archived stack profile and
+  the plan check;
+- the Builder and the reviewers, for their previous round;
+- the Approver, for the number of earlier REWORK verdicts.
 
 Every command exits 0 when it succeeds and prints its answer, even when the
 answer is "no" or an empty list. A non-zero exit always means an error, with
-the reason on stderr. The orchestrators never print the whole board or
-change it any other way, and they leave no helper scripts behind.
+the reason on stderr, and the orchestrator halts with that reason. The
+orchestrators never print the whole board or change it any other way, and
+they leave no helper scripts behind.
 
 ### Responsibilities
 
@@ -890,8 +930,8 @@ After each subagent finishes, the orchestrator checks two things:
   nothing under `factory/state/` in its commits. If it leaves uncommitted
   changes, the orchestrator resumes it once with the fixed message
   `Task-id: <task-id>. Round-id: <round-id>. Uncommitted changes: commit
-  them, then update the build notes.` If the tree still isn't clean, it
-  halts. Every other agent changes nothing here.
+  them or fix their cause, then update the build notes.` If the tree still
+  isn't clean, it halts. Every other agent changes nothing here.
 - **Inside the state,** `git status` can't see changes, so it compares checksums.
   Just before spawning an agent, it writes a `cksum` listing of every file under
   `factory/state/` to `factory/state/tasks/<task-id>/.snapshot`, or
@@ -899,13 +939,22 @@ After each subagent finishes, the orchestrator checks two things:
   `.snapshot` files. Afterwards it runs the same listing and compares it with
   `diff`. The Builder may change only its `build-notes.md`.
 
+Once the Builder's work has passed these checks, and just before the
+orchestrator spawns the round's first reviewer, it writes an empty marker
+file `reviews-started` in the round directory, and only then the snapshot.
+The marker records that from here on the Builder is done with the round.
+Uncommitted changes found before it are the Builder's own, and changes found
+after it came from a reviewer or the Approver (see `/factory continue`).
+When a resumed round re-runs only its missing reviewers, the marker is
+already there.
+
 Reviewers run in parallel, so:
 - After each reviewer finishes, any change outside the current round
   directory is a violation.
 - Once all of them are done, any file in the round directory other than
-  `build-notes.md`, `base-commit`, `human-review.md`, `approver-review.md`,
-  and, for each reviewer the task lists, `<key>-review.md` and `<key>/**`, is
-  a violation.
+  `build-notes.md`, `base-commit`, `reviews-started`, `human-review.md`,
+  `approver-review.md`, and, for each reviewer the task lists,
+  `<key>-review.md` and `<key>/**`, is a violation.
 
 For the Approver, anything other than `verdict.md` is a violation. For the
 Planner, anything other than `preflight.md`, `stack.md`, `backlog.md` and
@@ -939,12 +988,17 @@ board.
   and `backlog.md`. That way a preflight halt, which has no tasks yet, can
   still be read on the dashboard.
 - Clicking a card opens a resizable panel that lists the task's files (from
-  the card's `files`): its Markdown files and the reviewers' evidence.
-  Clicking a file shows it. Markdown is rendered with a small Markdown
-  library from cdnjs, pinned to a version and loaded with its integrity
-  hash, falling back to preformatted text. Images show as images. Other
-  files show as preformatted text that scrolls sideways instead of wrapping,
-  so text snapshots keep their layout.
+  the card's `files`): its Markdown files and the reviewers' evidence. It
+  opens `task.md` first. Clicking a file shows it. Markdown is rendered with
+  a small Markdown library from cdnjs, pinned to a version and loaded with
+  its integrity hash, falling back to preformatted text. Images show as
+  images. Other files show as preformatted text that scrolls sideways
+  instead of wrapping, so text snapshots keep their layout.
+- Links and images inside a rendered file resolve against that file, not
+  the dashboard page. A link to another file of the run opens it in the
+  panel.
+- The open file refreshes on each poll, so a file that changes shows its
+  latest version.
 - Clean and minimal.
 
 ## Factory file system
@@ -986,6 +1040,7 @@ factory/
         round-1/                   # one directory per round
           base-commit              # commit the round started from
           build-notes.md           # Builder: STATUS: DONE | BLOCKED
+          reviews-started          # empty marker: the reviewers were spawned
           code-review.md           # one <key>-review.md per listed reviewer
           feature-review.md
           ui-review.md
@@ -1049,7 +1104,10 @@ factory/state/board.json
   rebuilding, this is the state whenever `preflight.md` exists and
   `backlog.md` doesn't), `awaiting-plan-review`, `running`, `escalated`,
   `halted` (merge conflict, write violation, error; the reason goes in
-  `message`), or `complete`.
+  `message`), or `complete`. Only the plan-review halt sets
+  `awaiting-plan-review`, by passing it explicitly. A rebuild from the files
+  never derives it, so a rebuilt board can't make `continue` skip the plan
+  review (see `/factory continue`).
 - `agents`: builder agent ids, keyed by name. An id is only usable by the task
   orchestrator that spawned it; a later one spawns a fresh builder and replaces
   the id.
@@ -1083,9 +1141,11 @@ factory/state/board.json
 - The factory never pushes changes to an origin. Only the human user pushes.
 - Agents never share scratch space. The session scratchpad and `$TMPDIR` are
   shared by agents running at the same time, so the definition of every agent
-  that can work outside the repo (Builder, reviewers, Approver) tells it to:
+  that can work outside the repo (Planner, Builder, reviewers, Approver)
+  tells it to:
   create its own directory with `mktemp -d`, named
-  `<role>-<task-id>-<round-id>.XXXXXX`, before any such work; keep all exports,
+  `<role>-<task-id>-<round-id>.XXXXXX` (the Planner, which has neither id,
+  uses `planner.XXXXXX`), before any such work; keep all exports,
   copies, probes and backups there, with build outputs sent to a folder inside
   it (see **Scratch builds** in `stack.md`); never use, overwrite or delete a
   path it didn't create in this run; and delete its directory when it
@@ -1097,6 +1157,15 @@ factory/state/board.json
   as `git check-ignore -q`, and the factory files label each one as such.
   The factory script's commands have no such exception (see "The factory
   script").
+- Every agent writes each of its result files once, complete, at the end of
+  its work, with a single write: never a draft or a stub first. These are
+  `preflight.md`, the build notes, the reviews and the verdict. A round's
+  result files (build notes, reviews and verdict) are final once they
+  exist, because a resumed round treats them as done and the dashboard
+  shows them as results. The one exception is a Builder resumed with the
+  uncommitted-changes message, which rewrites its build notes, again in a
+  single write. A preflight run that runs again replaces `preflight.md` and
+  `stack.md`, as "Preflight" describes.
 - Wait for all reviews: a review round is done only when the review file of
   every reviewer the task lists exists in the round directory. Never resume
   the builder mid-round.
@@ -1132,7 +1201,8 @@ Every agent and both orchestrator levels follow these rules. Each agent
 definition repeats the rules for its role.
 
 - **Nobody** pushes, forces anything, rewrites history, or discards commits
-  or uncommitted changes. That rules out `git push`, `reset`, `rebase`,
+  or uncommitted changes, except that the Builder deletes pending snapshot
+  files (see below). That rules out `git push`, `reset`, `rebase`,
   `commit --amend`, `cherry-pick`, `revert`, `stash`, `clean`, `restore`,
   `checkout -- <path>`, `branch -D`, `branch -f`, `tag -d`, `update-ref`,
   `reflog expire` and `gc --prune`. Only the Merge step merges, and branches
@@ -1142,14 +1212,19 @@ definition repeats the rules for its role.
   skill and its conventions, the factory script, the agent definitions, the
   dashboard, `factory.md` and `floorplan.md`. In `.gitignore`, only the
   factory's two entries are off limits; tasks may add their own entries.
+- **Nobody** installs anything outside the project and their own scratch
+  directory. The project's dev dependencies go in its manifest. A tool that
+  a scratch project needs, such as the UI Reviewer's rendering project, is
+  installed into that scratch directory. Nothing is installed globally.
 - **The Builder** never weakens, skips or disables a test or a gate
   command to make the gate pass. It never switches away from its task
   branch, except to create it in round 1. It keeps uncommitted changes it
-  finds on the branch and carries on from them.
-- **The reviewers and the Approver** change nothing in the repository: no
-  edits, commits, branch switches or stashes. Their tests run in the
-  no-update mode from `stack.md`. A command that would still write files
-  into the repo that git doesn't ignore runs with its outputs in their
+  finds on the branch and carries on from them. Pending snapshot files are
+  the one exception: it deletes them (see "The Floor Plan").
+- **The Planner, the reviewers and the Approver** change nothing in the
+  repository: no edits, commits, branch switches or stashes. Their tests run
+  in the no-update mode from `stack.md`. A command that would still write
+  files into the repo that git doesn't ignore runs with its outputs in their
   scratch directory instead.
 
 ## Building the factory
@@ -1204,7 +1279,7 @@ before anything else. It covers:
 - **Rounds:**
   - how a round's kind follows from its files;
   - how to find the latest round and the next one;
-  - the `base-commit` file;
+  - the `base-commit` file and the `reviews-started` marker;
   - how to count earlier REWORK verdicts;
   - the exact first line of each file that has one: reviews, verdicts, build
     notes and `preflight.md`. Any other first line is an error that halts the
@@ -1230,14 +1305,19 @@ from git. It must be robust to the files the agents and the human write:
 - rounds numbered 10 and above;
 - no task directories at all.
 
-It treats a first line that isn't one of the allowed ones, including an
-empty one, as an error. A rework note counts only if it has text under its
-heading.
+It reads `task.md` only by its fixed shape (see "The Floor Plan"): only the
+`##` headings with the fixed names count as sections. In `## Reviews` and
+`## Depends on`, only top-level bullets count, each by its leading key or
+task-id. It treats a first line that isn't one of the allowed ones,
+including an empty one, as an error. A rework note counts only if it has
+text under its heading.
 
 The spec copy:
 - writes the absolute path of the spec to `spec-source`;
 - follows relative links to Markdown files transitively, including
-  reference-style links, and ignores links in code;
+  reference-style links and links whose text wraps across lines;
+- ignores links in code: inline code, fenced code and indented code
+  blocks;
 - keeps anchors;
 - rewrites every link to the spec itself as a link to `SPEC.md`, so the spec
   is never copied twice;
@@ -1245,21 +1325,27 @@ The spec copy:
 - replaces `SPEC.md` and `spec/` when it runs again;
 - lists every linked document that is missing.
 
-Before committing the script, run every command against a sample run. Cover
-tasks in every stage, the preflight state with no tasks, and a spec whose
-linked documents link to each other, back to the spec and to a missing
-file.
+Before committing the script, run every command against a sample
+repository, never the real one. Cover:
+- tasks in every stage, and the preflight state with no tasks;
+- a `task.md` whose spec excerpts quote headings, and a `Reviews` section
+  with explanations in its bullets;
+- a spec whose linked documents link to each other, back to the spec and to
+  a missing file, with a link that wraps across lines and one in an
+  indented code block.
 
 ### The task orchestrator
 
 `.claude/agents/task-orchestrator.md` defines the subagent that runs one
 task. The main orchestrator spawns a fresh one for each task. Its first
 instruction is to read `conventions.md`. It then covers:
-- a table that works out where to start from the task's files, so that new,
-  reworked and interrupted tasks all enter the same way;
+- the first-line check of the task's files on entry, then a table that works
+  out where to start from those files, so that new, reworked and
+  interrupted tasks all enter the same way;
 - the spawn prompts for the Builder, the reviewers and the Approver, and
   builder reuse (see "Builder reuse");
-- write verification after each of those agents;
+- write verification after each of those agents, and the `reviews-started`
+  marker;
 - the Build, Review, Approve, Approver rework and Escalate steps.
 
 ### The role agents
