@@ -1,316 +1,306 @@
 # Factory conventions
 
-Shared by both orchestrator levels: the main orchestrator (the session running
-`/factory`, see `SKILL.md`) and the task orchestrator
-(`.claude/agents/task-orchestrator.md`). Read this file before anything else.
-Where this file gives a command, use it as written.
+Both orchestrator levels read this file before anything else: the main
+orchestrator (the session running `/factory`) and the task orchestrator (the
+`task-orchestrator` subagent). It is read as it is, so the shell snippets here
+can use `$`.
+
+Run every command from the repository root. Shell state doesn't persist
+between commands, so always write paths and commands in full.
 
 ## Names and paths
 
-Run every command from the repository root, with paths relative to it.
-
-| Name | Path |
+| Name | Path or meaning |
 |---|---|
-| state | `factory/state/` |
-| spec copy | `factory/state/SPEC.md`, linked documents in `factory/state/spec/` |
-| spec source | `factory/state/spec-source` (one line: the absolute path of the original spec) |
+| state | `factory/state/`, never in git, the same on every branch |
+| board | `factory/state/board.json` (the factory script is its only writer) |
+| backlog | `factory/state/backlog.md` |
+| spec | `factory/state/SPEC.md`, linked documents in `factory/state/spec/`, original path in `factory/state/spec-source` |
 | preflight | `factory/state/preflight.md` |
 | stack profile | `factory/state/stack.md` |
-| backlog | `factory/state/backlog.md` |
-| board | `factory/state/board.json` |
-| Planner snapshot | `factory/state/.snapshot` |
-| `T` | the task directory, `factory/state/tasks/<task-id>` |
-| task snapshot | `T/.snapshot` |
-| `R` | the round directory, `T/<round-id>` |
-| round files | `R/base-commit`, `R/build-notes.md`, `R/<key>-review.md`, `R/<key>/` (evidence), `R/verdict.md`, `R/approver-review.md`, `R/human-review.md` |
+| `T` | the task directory `factory/state/tasks/<task-id>/` |
+| `R` | the round directory `T/<round-id>/` |
 | task branch | `factory/<task-id>` |
-| `B` | `python3 -I .claude/skills/factory/board.py` (the board script) |
+| main branch | `main` |
+
+Files in `T`: `task.md` (the Planner's), `.snapshot` (write verification).
+Files in `R`: `base-commit`, `build-notes.md`, one `<key>-review.md` and
+optional evidence directory `<key>/` per listed reviewer, `verdict.md`,
+`approver-review.md` (Approver rework rounds), `human-review.md` (human rework
+rounds).
+
+Identifiers:
+- A task-id is a serial of at least three digits (zero-padded), a dash, and a
+  two-to-three word fingerprint in lowercase letters and digits, separated by
+  dashes: `002-apply-selected-theme`. Serials are never reused in a
+  repository.
+- A round-id is `round-<n>`, with `n` counting up from 1: `round-4`. Rounds
+  sort by number, so `round-10` comes after `round-9`.
 
 Agent types, used as the Agent tool's `subagent_type`:
+- `planner`, `task-orchestrator`, `builder`, `approver`;
+- one `<key>-reviewer` per roster key: `code-reviewer`, `feature-reviewer`,
+  `security-reviewer`, `privacy-reviewer`, `api-reviewer`, `ui-reviewer`.
 
-| Agent | Spawned by |
-|---|---|
-| `planner` | main orchestrator |
-| `task-orchestrator` | main orchestrator |
-| `builder` | task orchestrator |
-| `code-reviewer`, `feature-reviewer`, `security-reviewer`, `privacy-reviewer`, `api-reviewer`, `ui-reviewer` (`<key>-reviewer`) | task orchestrator |
-| `approver` | task orchestrator |
-
-Task ids are `<serial>-<word>-<word>[-<word>]`: a serial of at least three
-digits, then two or three words of lowercase letters and digits, joined by
-dashes (`^[0-9]{3,}-[a-z0-9]+(-[a-z0-9]+){1,2}$`). Round ids are
-`round-<n>`, with `n` counting up from 1.
+`factory.py <command>` below is short for
+`python3 -I .claude/skills/factory/factory.py <command>`. Always run it in
+full.
 
 ## Ground rules
 
-- **Never push, never rewrite history.** The factory never runs `git push` in
-  any form. Never run `git reset --hard`, `git rebase`, `git commit --amend`,
-  `git filter-branch`, `git clean`, `git stash`, `git checkout -- <path>`,
-  `git restore`, `git merge --abort`, any `--force` variant, or anything else
-  that discards commits or uncommitted changes. `git branch -D` is allowed
-  only as the Merge step's last resort for a merged task. Never delete,
-  revert or "tidy" files an agent changed, even after a violation.
+- **Never push, force or rewrite history**, and never discard commits or
+  uncommitted changes. These are never allowed: `git push`, `git reset`,
+  `git rebase`, `git commit --amend`, `git cherry-pick`, `git revert`,
+  `git stash`, `git clean`, `git restore`, `git checkout -- <path>`,
+  `git branch -D`, `git branch -f`, `git tag -d`, `git update-ref`,
+  `git reflog expire`, `git gc --prune`, and any `--force` option. Only the
+  Merge step merges. Branches are deleted only with `git branch -d`; if that
+  refuses, halt instead of forcing.
+- **Never change the factory's own files** while the factory runs: the skill,
+  this file, the factory script, the agent definitions, the dashboard,
+  `factory/factory.md` and `factory/floorplan.md`. In `.gitignore`, only the
+  entries `/factory/state` and `/factory/archive` are off limits.
 - **One active task.** Only one task is ever `In progress` or `Escalated` at
-  a time. The main orchestrator never runs two task orchestrators at once.
+  a time, and the main orchestrator never runs two task orchestrators at
+  once.
 - **The state never goes into git.** Nothing under `factory/state/` is ever
-  staged or committed. Never `git add -f` anything.
-- **Agent prompts contain only ids and paths,** in the exact templates the
-  orchestrator files give, plus the fixed messages defined there. All other
-  context comes from files.
-- **Wait, don't poll.** Spawn every agent with `run_in_background: true`,
-  then end the turn with the single word `WAITING`. You are woken when an
-  agent reports. Never sleep, poll, read an agent's output file, or check on
-  a running agent.
-- **One writer of `board.json`.** The task orchestrator while it runs, the
-  main orchestrator otherwise. Every change goes through `B`. Never print
-  the whole board, edit it with another tool, or write helper scripts.
-- **No factory edits, no installs.** Never create, edit or regenerate the
-  factory files (`.claude/skills/factory/`, `.claude/agents/`,
-  `factory/dashboard/`, `factory/factory.md`, `factory/floorplan.md`), and
-  never install anything.
-- **Don't do an agent's work.** The orchestrators never write code, plans,
-  reviews or verdicts themselves.
-- **Exit statuses.** A command that finds, lists or counts things exits 0
-  when it succeeds, including when it finds nothing, so a non-zero exit
-  always means an error. The few checks whose exit status is their answer
-  are labelled *(exit status is the answer)*.
+  staged or committed (never `git add -f` it). Orchestrators and agents read
+  and edit its files directly, on any branch.
+- **Agent prompts contain only ids, paths and the fixed messages** listed
+  under "Spawn prompts". All other context comes from files.
+- **Wait for completion notifications instead of polling.** To wait for
+  agents, end the turn with the single word `WAITING`. Never poll, sleep,
+  read an agent's output file, or send a running agent messages to check on
+  it.
+- **One writer of `board.json` at a time:** the task orchestrator while it
+  runs, the main orchestrator otherwise. Every change goes through
+  `factory.py board ...` or `factory.py backlog-set ...`. Never write the
+  board with the Write or Edit tools, never print the whole board, and leave
+  no helper scripts behind.
+- **Orchestrators never do an agent's work**: no code, tests, `task.md`,
+  reviews or verdicts. They never install anything.
+- **Exit codes.** A command that finds, lists or counts things exits 0 when
+  it succeeds, including when it finds nothing, so a non-zero exit always
+  means an error. The only exceptions are plain git checks whose exit status
+  is the answer; each one is labelled "(plain git check)" where it appears.
+  Every `factory.py` command exits 0 with its answer, and non-zero only on an
+  error, with the reason on stderr.
+- **Halts never revert anything.** They leave every change in place for the
+  human to inspect.
+
+## Spawn prompts
+
+These are the only prompts. Fill in the ids; add nothing.
+
+| Agent | When | Prompt |
+|---|---|---|
+| `planner` | spawn | `Spec: factory/state/SPEC.md. Linked documents: factory/state/spec/.` |
+| `task-orchestrator` | spawn | `Task-id: <task-id>.` |
+| `builder` | spawn, or resume for a new round | `Task-id: <task-id>. Round-id: <round-id>.` |
+| `builder` | it left uncommitted changes | `Task-id: <task-id>. Round-id: <round-id>. Uncommitted changes: commit them, then update the build notes.` |
+| `<key>-reviewer` | spawn | `Task-id: <task-id>. Round-id: <round-id>.` |
+| `approver` | spawn | `Task-id: <task-id>. Round-id: <round-id>.` |
+
+## Git checks
+
+- Clean tree: `git status --porcelain=v1 --untracked-files=all` prints
+  nothing. Files git ignores (such as build outputs) never show, so they
+  don't count. The option makes the check independent of
+  `status.showUntrackedFiles`.
+- Current branch: `git branch --show-current`.
+- Current commit: `git rev-parse HEAD`.
+- State ignored: `git check-ignore -q factory/state` (plain git check: exit 0
+  means ignored, 1 means not ignored).
+- Branch exists: `git rev-parse --verify --quiet refs/heads/factory/<task-id>`
+  (plain git check: exit 0 means it exists, 1 means it doesn't).
+- Merge in progress: `git ls-files -u` lists unmerged paths (empty when
+  there are none).
 
 ## The backlog
 
-`backlog.md` is the execution plan: one row per task, in implementation
-order, exactly in this format:
+`backlog.md` is the execution plan: a heading and a Markdown table with one
+row per task, in implementation order from top to bottom.
 
 ```markdown
 # Backlog
 
 | Task | Status |
 |---|---|
-| 015-scaffold-project | Planned |
-| 016-list-sessions | Planned |
+| 001-scaffold-project | Complete |
+| 002-apply-selected-theme | In progress |
+| 003-save-user-settings | Planned |
 ```
 
-The task cell is the bare task-id. Statuses are `Planned`, `In progress`,
-`Escalated`, `Complete` and `Abandoned`. Only the orchestrators and the
-Planner write this file. It isn't in git, so it can be changed on any branch.
+Statuses: `Planned`, `In progress`, `Escalated`, `Complete`, `Abandoned`.
+The Planner writes the file; after that, the orchestrators are its only
+writers (the human may edit it during the plan review). Change a status only
+with
 
-List the rows (prints `<task-id><TAB><status>` per task):
-
-```bash
-awk -F'|' '/^\| *[0-9][0-9][0-9]/ { gsub(/^[ `]+|[ `]+$/, "", $2); gsub(/^ +| +$/, "", $3); print $2 "\t" $3 }' factory/state/backlog.md
+```
+python3 -I .claude/skills/factory/factory.py backlog-set <task-id> "<status>"
 ```
 
-Change a task's status, then confirm it changed:
+which rewrites that row's status cell and nothing else, and refreshes the
+task's entry on the board when the board exists. Read the backlog with
+`factory.py tasks`.
 
-```bash
-sed -i -E 's/^\| *`?<task-id>`? *\|[^|]*\|$/| <task-id> | <Status> |/' factory/state/backlog.md
-grep -Fxq '| <task-id> | <Status> |' factory/state/backlog.md   # (exit status is the answer)
+## Write verification
+
+After each subagent finishes, check what it changed, both outside and inside
+the state.
+
+### Inside the state: the snapshot
+
+`git status` can't see the state, so compare checksums. The snapshot file is
+`T/.snapshot` for agents working on a task, and `factory/state/.snapshot` for
+the Planner. Just before spawning (or resuming) an agent, write it:
+
+```
+find factory/state -type f ! -name 'board.json*' ! -name '.snapshot' -print0 | LC_ALL=C sort -z | xargs -0 -r cksum > factory/state/tasks/<task-id>/.snapshot
 ```
 
-If the `grep` fails, halt (see "Halting"). After every status change, run
-`B task <task-id>`.
+After the agent finishes, list the changed paths (added, removed or
+modified), one per line; empty output means nothing changed:
 
-### task.md
-
-The Planner writes `T/task.md` in exactly this shape. The plan check, `B` and
-the task orchestrator read these headings:
-
-```markdown
-# <task-id>: <Title>
-
-## Goal
-## Spec excerpts
-## Acceptance criteria
-## UI
-## Reviews
-## Depends on
+```
+test -s factory/state/tasks/<task-id>/.snapshot && { find factory/state -type f ! -name 'board.json*' ! -name '.snapshot' -print0 | LC_ALL=C sort -z | xargs -0 -r cksum | diff factory/state/tasks/<task-id>/.snapshot - | sed -n 's/^[<>] [0-9]* [0-9]* //p' | LC_ALL=C sort -u; }
 ```
 
-- `## UI` holds the single line `UI: none` when the task changes no UI.
-- `## Reviews` has one list item per reviewer, the key in backticks first:
-  `` - `security`: adds a dependency ``.
-- `## Depends on` lists task-ids in backticks, one per item, or the single
-  line `none`.
+A non-zero exit means the snapshot is missing: halt. For the Planner, use
+`factory/state/.snapshot` in both commands. The `board.json*` files and
+`.snapshot` files are always left out.
+
+### Outside the state: git
+
+Record `git branch --show-current` and `git rev-parse HEAD` just before
+spawning the agent, then check afterwards with the git checks above.
+
+### What each agent may change
+
+| Agent | Outside the state | Changed paths inside the state |
+|---|---|---|
+| `planner` | nothing: clean tree, still on `main`, `HEAD` unchanged | only `factory/state/preflight.md`, `factory/state/stack.md`, `factory/state/backlog.md` and `factory/state/tasks/*/task.md` |
+| `builder` | commits on the task branch only: clean tree, on `factory/<task-id>`, and `git diff --name-only <base> HEAD -- factory .claude/skills/factory .claude/agents` prints nothing (`<base>` from `R/base-commit`), and `git check-ignore -q factory/state` and `git check-ignore -q factory/archive` both still exit 0 (plain git checks) | only `R/build-notes.md` |
+| each `<key>-reviewer` | nothing: clean tree, branch and `HEAD` unchanged | after each one finishes: only paths under `R/` |
+| all reviewers of a round | | once all have finished: only `R/<key>-review.md` and `R/<key>/**` for the task's listed keys, and every file in `R/` is one of `build-notes.md`, `base-commit`, `human-review.md`, `approver-review.md`, or a listed key's `<key>-review.md` or `<key>/**` (check with `find factory/state/tasks/<task-id>/<round-id> -type f`) |
+| `approver` | nothing: clean tree, branch and `HEAD` unchanged | only `R/verdict.md` |
+
+The builder's dirty tree has its own remedy: if the tree isn't clean after
+the builder finishes, resume it once with the uncommitted-changes prompt (see
+"Spawn prompts"), then check again. If it still isn't clean, halt.
+
+Any other difference is a violation. On a violation, halt (see "Halting")
+with a reason that names the agent and lists what changed, revert nothing,
+and tell the human to inspect those changes and commit or remove them before
+`/factory continue`.
+
+## Rounds
+
+- **Directories.** A round is `R = T/round-<n>/`. The orchestrator creates a
+  new round directory at the beginning of each round.
+- **`base-commit`** holds the commit the round started from, on one line.
+  Round 1: `git rev-parse main`. Later rounds: `git rev-parse HEAD` on the
+  task branch. Write the round's note (`human-review.md` or
+  `approver-review.md`) first and `base-commit` last, before spawning any
+  agent for the round, so a round directory with a `base-commit` is complete.
+  Write it with `git rev-parse <rev> > <R>/base-commit`.
+- **Kind**, from the round's files (`factory.py round kind <task-id> <round-id>`):
+  `rework` if it has `human-review.md`, `approver-rework` if it has
+  `approver-review.md`, otherwise `auto`.
+- **Latest and next.** The latest round is the highest-numbered round
+  directory (`factory.py round latest <task-id>`, which prints `none` when
+  there is none). The next round-id is one above it
+  (`factory.py round next <task-id>`).
+- **Previous round:** the latest earlier round directory that has a
+  `base-commit`; directories without one are never a previous round
+  (`factory.py round previous <task-id> <round-id>`).
+- **A round's state** (kind, `base-commit`, build result, each listed
+  reviewer's result, verdict, previous round):
+  `factory.py round state <task-id> [<round-id>]`. A missing file shows as
+  `missing`, a file with a bad first line as `invalid`.
+- **Earlier REWORK verdicts:** `factory.py rework-count <task-id> <round-id>`
+  counts the `VERDICT: REWORK` verdicts in the rounds before `<round-id>`.
+- **Rework note:** `factory.py rework-note <task-id> <round-id>` prints
+  `rework-note: none` when `R/verdict.md` has no `## Rework note` section
+  with text, or `rework-note: yes` and the section. With
+  `--out <path>` it writes the section to `<path>` instead.
+- **Limits.** At most two automatic rounds per task: round 1 and one fix
+  round. At most two Approver rework rounds (REWORK verdicts) per task.
+  Human rework rounds (`/factory rework`) are unlimited and count against
+  neither limit. Neither kind of rework round triggers an automatic fix
+  round: after the builder and the reviewers, the Approver runs straight
+  away.
+- **Interrupted round creation.** On re-entry, a round directory without
+  `base-commit` was interrupted while it was being created. If the previous
+  round's verdict is `VERDICT: REWORK`, it is an Approver rework round: copy
+  the note again with `factory.py rework-note <task-id> <previous> --out
+  <R>/approver-review.md`, then write `base-commit`. Any other round just gets
+  its `base-commit`. Then the work goes on. (A human rework round is never
+  found like this while the task is `In progress`, because `/factory rework`
+  marks the task only after the round is complete.)
+
+### Fixed first lines
+
+| File | Allowed first lines |
+|---|---|
+| `<key>-review.md` | `VERDICT: PASS`, `VERDICT: FAIL` |
+| `verdict.md` | `VERDICT: APPROVE`, `VERDICT: REWORK`, `VERDICT: ESCALATE` |
+| `build-notes.md` | `STATUS: DONE`, `STATUS: BLOCKED` |
+| `preflight.md` | `PREFLIGHT: READY`, `PREFLIGHT: TOOLS`, `PREFLIGHT: BLOCKED` |
+
+Read a result with `factory.py first-line <path>`, which prints the result
+word (`PASS`, `APPROVE`, `DONE`, `READY` and so on). It exits non-zero when
+the file is missing or its first line is anything else, including empty.
+That is an error that halts the loop. `factory.py check-firstlines
+[<task-id>]` checks every such file at once and prints `first-lines: ok` or
+one `invalid:` line per bad file.
+
+## The preflight state
+
+The run is in the preflight state when `preflight.md` exists and
+`backlog.md` doesn't (`factory.py tasks` prints `phase: preflight`). The
+preflight stopped, and the human is fixing the spec or installing tools. To
+restart it, re-copy the spec with `factory.py spec-copy` (no argument): it
+reads the path in `spec-source`, replaces `SPEC.md` and `spec/` the same way
+`/factory start` created them, and lists any linked document that is
+missing. `phase: none` means there is no run at all.
 
 ## The reviewer roster
 
-In roster order (the dashboard's chip order, and the Approver's priority
-order after security and data protection):
-
-| Key | Agent | Review | Runs on |
+| Key | Agent type | Review file | Runs on |
 |---|---|---|---|
 | `code` | `code-reviewer` | `code-review.md` | every task |
 | `feature` | `feature-reviewer` | `feature-review.md` | every task |
 | `security` | `security-reviewer` | `security-review.md` | tasks that list it |
 | `privacy` | `privacy-reviewer` | `privacy-review.md` | tasks that list it |
 | `api` | `api-reviewer` | `api-review.md` | tasks that list it |
-| `ui` | `ui-reviewer` | `ui-review.md` | tasks whose `UI` section isn't `UI: none` |
+| `ui` | `ui-reviewer` | `ui-review.md` | tasks that list it |
 
-Each reviewer writes `R/<key>-review.md` and may put evidence in `R/<key>/`.
+The order of the rows is roster order: the order of the reviewer chips on
+the dashboard and of each round's `reviews` on the board.
 
-A task's reviewers are the roster keys in its `## Reviews` list, in roster
-order whatever order the list uses. A `task.md` without a `## Reviews`
-section runs `code`, `feature`, and `ui` unless its `## UI` section is
-`UI: none`. Don't parse this yourself: `B show <task-id>` and
-`B task <task-id>` print the list as `task.reviewers`.
+A task's reviewers come from the `Reviews` section of its `task.md`, and
+`code` and `feature` always run, whatever it says. A `task.md` without a
+`Reviews` section runs `code`, `feature`, and `ui` unless its `UI` section is
+`UI: none`. Read them with `factory.py reviewers <task-id>`, which prints the
+keys in roster order, separated by spaces. Never work them out by hand.
 
-## Rounds
+## `board.json`
 
-- **Latest and next round.** The latest round is the round directory with the
-  highest number (compare numerically: `round-10` comes after `round-9`). The
-  next round is that number plus one, or `round-1` when there are none.
-
-  ```bash
-  find factory/state/tasks/<task-id> -mindepth 1 -maxdepth 1 -type d -name 'round-*' | sed 's/.*round-//' | sort -n | tail -n 1   # empty if no rounds
-  ```
-
-- **Kind,** from the round's files (the first rule that applies):
-  1. `human-review.md` exists: `rework` (a human rework round).
-  2. `approver-review.md` exists: `approver-rework`.
-  3. It is `round-1`: `auto`.
-  4. The previous round's verdict is a *usable REWORK* (below):
-     `approver-rework`.
-  5. The previous round ended in an escalation (its build was BLOCKED, its
-     verdict is ESCALATE, or its verdict is a REWORK that isn't usable):
-     `rework`.
-  6. Otherwise: `auto` (the fix round after round 1).
-
-  Rules 4 and 5 only matter for a round directory whose note isn't written
-  yet.
-
-- **Creating a round.** In this order, so that a round directory with a
-  `base-commit` is complete:
-  1. `mkdir -p R`
-  2. Write the round's note, if its kind has one: `approver-review.md`
-     (copied from the previous round's verdict, below) or `human-review.md`.
-  3. Write `base-commit`, a single line with the full commit hash the round
-     starts from: for `round-1` the commit `main` points at
-     (`git rev-parse main > R/base-commit`), for later rounds the `HEAD` of
-     the task branch (`git rev-parse HEAD > R/base-commit`, run on the task
-     branch).
-
-  No agent is spawned for a round before its `base-commit` exists.
-
-- **Interrupted round creation.** On re-entry, a round directory without
-  `base-commit` was interrupted while it was being created. By its kind:
-  - `approver-rework`: copy the note again from the previous round's
-    verdict, then write `base-commit`;
-  - `rework` without `human-review.md`: halt, with the message
-    `<task-id>: <round-id> was interrupted before its rework note was saved; run /factory rework <task-id> <note> again`;
-  - anything else: write `base-commit`.
-
-  Then the work goes on.
-
-- **REWORK verdicts.** Count the task's REWORK verdicts, including the
-  latest round's:
-
-  ```bash
-  find factory/state/tasks/<task-id> -path '*/round-*/verdict.md' -exec head -q -n 1 {} + | awk '$0 == "VERDICT: REWORK" { n++ } END { print n + 0 }'
-  ```
-
-  A REWORK verdict is *usable* when the count, including it, is at most 2,
-  and the verdict has a rework note. A REWORK that isn't usable is handled
-  like an ESCALATE. Human rework rounds don't reset the count.
-
-- **The rework note** is the verdict's `## Rework note` section, from that
-  heading to the next `## ` heading or the end of the file. Extract it (with
-  its heading) into the new round:
-
-  ```bash
-  awk '/^## Rework note[[:space:]]*$/ { f = 1; print; next } f && /^## / { exit } f' <previous R>/verdict.md > R/approver-review.md
-  ```
-
-  The verdict has a rework note when `approver-review.md` then has a
-  non-blank line after the heading:
-  `tail -n +2 R/approver-review.md | grep -q '[^[:space:]]'`
-  *(exit status is the answer)*. If it hasn't, the REWORK isn't usable:
-  remove nothing, and handle it like an ESCALATE (the stray, empty
-  `approver-review.md` in the unfinished round directory is harmless,
-  because that round has no `base-commit` and is never started).
-
-  Check for the note *before* creating the round directory when you can:
-  `awk '/^## Rework note[[:space:]]*$/ { f = 1; next } f && /^## / { exit } f && /[^[:space:]]/ { n++ } END { print n + 0 }' <previous R>/verdict.md`
-  prints the number of non-blank note lines (0 means no note).
-
-- **First lines.** Read a file's first line with `head -n 1 <file>`. These
-  are the only allowed first lines:
-
-  | File | First line |
-  |---|---|
-  | `<key>-review.md` | `VERDICT: PASS` or `VERDICT: FAIL` |
-  | `verdict.md` | `VERDICT: APPROVE`, `VERDICT: REWORK` or `VERDICT: ESCALATE` |
-  | `build-notes.md` | `STATUS: DONE` or `STATUS: BLOCKED` |
-  | `preflight.md` | `PREFLIGHT: READY`, `PREFLIGHT: TOOLS` or `PREFLIGHT: BLOCKED` |
-
-  Any other first line is an error that halts the loop, with the message
-  `Invalid first line in <path>: <line>`. So is an agent that finishes
-  without writing the file it owns.
-
-## The preflight state
-
-The run is in the preflight state when `preflight.md` exists and
-`backlog.md` doesn't:
-
-```bash
-test -f factory/state/preflight.md && test ! -f factory/state/backlog.md   # (exit status is the answer)
-```
-
-### Copying the spec
-
-`/factory start` copies the spec, and `/factory continue` re-copies it in the
-preflight state, the same way. Linked documents are copied flat into
-`factory/state/spec/`.
-
-1. Find the source. For `start` it is the command's `<spec>` argument; expand
-   a leading `~` to `$HOME`, make it absolute
-   (`realpath -- "<path>"`), check it is a file (`test -f`), and write that
-   path to `factory/state/spec-source`
-   (`printf '%s\n' "<absolute path>" > factory/state/spec-source`). For a
-   re-copy, read it from `spec-source`. If it is not a file, stop and tell
-   the user (`start` refuses; `continue` halts and asks the user to restore
-   the spec or fix `spec-source`).
-2. For a re-copy only, remove the previous copies:
-   `rm -rf factory/state/spec factory/state/SPEC.md`. These are the factory's
-   own copies; nothing else under the state is ever deleted.
-3. `cp -- "<source>" factory/state/SPEC.md` and
-   `mkdir -p factory/state/spec`.
-4. Find the source's relative links to Markdown files. List candidate lines
-   with `grep -nE '\]\(|^ {0,3}\[[^]]+\]:' "<file>"` (it prints nothing when
-   there are none) and read them. A link counts when it is an inline link
-   `[text](target)` or a reference definition `[label]: target` whose target
-   (without a `#fragment`, an optional `"title"`, or `<…>` brackets) ends in
-   `.md` (any case), has no URL scheme (such as `https:` or `mailto:`), and
-   doesn't start with `/` or `#`. Ignore links inside fenced code blocks.
-   Resolve each target relative to the directory of the *original* file
-   that contains it.
-5. Copy each linked file that exists to `factory/state/spec/<basename>`. If
-   that name is already taken by a different source file, use
-   `<parent directory name>-<basename>`, then add `-2`, `-3`, … before
-   `.md` until the name is free. Keep a list of `original path → copy name`,
-   and copy each original only once.
-6. Repeat steps 4 and 5 for every copied file, reading the original, until
-   no new files turn up (links are followed transitively).
-7. Rewrite each counted link target, keeping any `#fragment` and title:
-   in `SPEC.md` to `spec/<copy name>`, and in the copies under `spec/` to
-   `<copy name>`. Change only the link targets, with the Edit tool.
-8. Leave a link to a missing file unchanged. The Planner reports it as a
-   spec issue.
-
-## board.json
-
-`factory/state/board.json` reflects the loop for the dashboard
-(`factory/dashboard/`). It isn't in git and can always be rebuilt from
-`backlog.md` and the task files. Its format:
+The board reflects the loop for the dashboard. It can always be rebuilt from
+`backlog.md` and the task files. The factory script works every task entry
+out from the files, so update the board after every agent finishes and on
+every stage change, and it is right.
 
 ```json
 {
   "updated": "2026-10-27T10:51:00Z",
-  "loop": { "state": "running", "message": "Building 016-list-sessions round-2",
-            "current": "016-list-sessions" },
-  "agents": { "builder-016-list-sessions": "<agent id from the Agent tool>" },
-  "files": [ "SPEC.md", "preflight.md", "stack.md", "backlog.md" ],
+  "loop": { "state": "running", "message": "Building 002-apply-selected-theme",
+            "current": "002-apply-selected-theme" },
+  "agents": { "builder-002-apply-selected-theme": "<agent id from the Agent tool>" },
   "tasks": [
-    { "id": "016-list-sessions", "title": "List sessions",
-      "branch": "factory/016-list-sessions",
+    { "id": "002-apply-selected-theme", "title": "Apply selected theme",
+      "branch": "factory/002-apply-selected-theme",
       "status": "In progress", "stage": "review",
       "rounds": [
         { "id": "round-1", "kind": "auto", "build": "DONE",
@@ -327,194 +317,107 @@ preflight state, the same way. Linked documents are copied flat into
 }
 ```
 
-- `loop.state`: `planning`, `awaiting-preflight`, `awaiting-plan-review`,
-  `running`, `escalated`, `halted` (the reason goes in `message`) or
-  `complete`. When rebuilding, the state is always `awaiting-preflight` in
-  the preflight state.
-- `loop.current`: the task being worked on, or `null`.
-- `agents`: builder agent ids, keyed `builder-<task-id>`. An id is usable
-  only by the task orchestrator that spawned it.
-- `files`: the run's own files that exist (`SPEC.md`, `preflight.md`,
-  `stack.md`, `backlog.md`), so the dashboard can open them even before
-  there are tasks. This is the one field beyond the board in `factory.md`;
-  the dashboard copes without it.
+- `loop.state`: `planning`, `awaiting-preflight` (the preflight stopped;
+  when rebuilding, this is the state whenever `preflight.md` exists and
+  `backlog.md` doesn't), `awaiting-plan-review`, `running`, `escalated`,
+  `halted` (merge conflict, write violation, error; the reason goes in
+  `message`), or `complete`. `loop.current` is the task being worked on, or
+  `null`.
+- `agents`: builder agent ids keyed by name, `builder-<task-id>`. An id is
+  only usable by the task orchestrator that spawned it; a later one spawns a
+  fresh builder and replaces the id.
 - `stage`: `planned`, `building`, `review`, `approval`, `escalated`, `done`
-  or `abandoned`, worked out from the status and the latest round.
-- `kind`: `auto`, `approver-rework` or `rework` (see "Rounds").
+  or `abandoned`.
+- `kind`: `auto`, `approver-rework` or `rework`.
 - `build`: `pending`, `DONE` or `BLOCKED`.
-- `reviews`: one key per reviewer of the task, in roster order, each
-  `pending`, `PASS` or `FAIL`.
+- `reviews`: one key per reviewer the task lists, in roster order, each
+  `pending`, `PASS` or `FAIL`. A review that hasn't landed (or has a bad
+  first line) is `pending`. A round whose build is `BLOCKED` has
+  `"reviews": {}`, because its reviewers never run.
 - `verdict`: `null`, `APPROVE`, `REWORK` or `ESCALATE`.
-- `files` (per task): `task.md`, every Markdown file in the round
-  directories, and every file in the reviewers' evidence directories, relative
-  to `T`.
+- `files`: `task.md`, every Markdown file in the round directories, and every
+  file in the reviewers' evidence directories (`round-*/<key>/`), relative to
+  the task directory.
 
-### The board script
+How the script works out a task's stage: `Planned` is `planned`,
+`Escalated` is `escalated`, `Complete` is `done`, `Abandoned` is
+`abandoned`. An `In progress` task is `done` once merged; otherwise, from
+its latest round, `building` until the build notes say `STATUS: DONE`,
+`review` until every listed review has landed, then `building` again if a
+fix round follows (round 1 with a FAIL), and `approval` otherwise.
 
-`B` works out everything it writes from `backlog.md` and the task files. It
-writes `board.json.tmp` and moves it into place, so the board is never
-half-written.
+## The factory script
 
-| Command | Does |
-|---|---|
-| `B rebuild [--state S] [--message M]` | Create the board, or rebuild every task from the files. Keeps `agents`, and `loop` unless overridden. |
-| `B loop [--state S] [--message M] [--current <task-id> \| --no-current]` | Update the loop. |
-| `B agent builder-<task-id> <agent-id>` | Record a builder's agent id (`--remove` deletes it). |
-| `B task <task-id>` | Work out one task's entry from its files, write it, and print it like `show`. |
-| `B show [<task-id>]` | Print `updated`, the loop and the agents, and for a task its status, stage, round count, latest round and reviewers. Read-only. |
+`.claude/skills/factory/factory.py` does the factory's mechanics, so the
+same files always give the same answer. The orchestrators keep the judgement:
+what to do next and what to tell the human. Every command exits 0 with its
+answer when it succeeds; non-zero is an error, with the reason on stderr.
 
-Exit status 0 is success. 2 is a usage error or an unknown task. 3 means a
-state file is invalid (a bad first line, or a backlog row with an unknown
-status); the board is still written and stderr names each file. Treat any
-non-zero exit as an error and halt with the script's message.
-
-Update the board every time you take back control from an agent and on
-every stage change: `B task <task-id>` for the task, and
-`B loop --message "<what is happening>"` for the header. Messages are short:
-`Building <task-id> <round-id>`, `Reviewing <task-id> <round-id>`,
-`Approving <task-id> <round-id>`, `Merged <task-id>`.
-
-## Write verification
-
-After each agent finishes, check what it changed, outside the state with git
-and inside it with checksums.
-
-**Snapshot,** just before spawning the agent (`<snapshot>` is `T/.snapshot`,
-or `factory/state/.snapshot` for the Planner):
-
-```bash
-find factory/state -type f ! -name 'board.json*' ! -name '.snapshot' -print0 | sort -z | xargs -0 -r cksum > <snapshot>
-```
-
-Also note `git rev-parse HEAD` and `git branch --show-current`.
-
-**Changed state files** since the snapshot (one path per created, changed or
-deleted file; prints nothing when nothing changed):
-
-```bash
-diff <snapshot> <(find factory/state -type f ! -name 'board.json*' ! -name '.snapshot' -print0 | sort -z | xargs -0 -r cksum) | sed -n 's/^[<>] [0-9]* [0-9]* //p' | sort -u
-```
-
-**Outside the state,** the tree is clean when this prints nothing (files git
-ignores, such as build outputs, never show):
-
-```bash
-git status --porcelain --untracked-files=all
-```
-
-What each agent may change:
-
-| Agent | In the state | In git |
+| Command | Prints or does | Used by |
 |---|---|---|
-| Planner | only `preflight.md`, `stack.md`, `backlog.md` and `tasks/*/task.md` | nothing: clean tree, same `HEAD` and branch |
-| Builder | only `R/build-notes.md` | its commits on `factory/<task-id>`, a clean tree, and nothing under `factory/state/` in the branch (`git diff --name-only main...HEAD -- factory/state` prints nothing) |
-| Each reviewer, as it finishes | nothing outside `R/` | nothing: clean tree, same `HEAD` and branch |
-| All reviewers, once all are done | only `R/<key>-review.md` and files under `R/<key>/`, for keys the task lists | as above |
-| Approver | only `R/verdict.md` | nothing: clean tree, same `HEAD` and branch |
+| `factory.py board rebuild [--state <s>] [--message <m>]` | Creates the board, or rebuilds every task entry from `backlog.md` and the task files, keeping the agents and (unless given) the loop. Without a loop and without `--state`, it derives the state from the files. | main: after the Planner, at the plan review, when the board is missing |
+| `factory.py board set [--state <s>] [--message <m>] [--current <task-id> \| --clear-current] [--agent builder-<task-id>=<agent-id>] [--task <task-id>]` | Updates `updated`, the loop, the agents, and one task's entry, worked out from that task's files. Creates the board from the files first if it is missing. | both levels, on every update |
+| `factory.py board show [--task <task-id>]` | The loop and agents, and one task's status, stage and latest round, as JSON (`"board": "missing"` without a board). | both levels, to read the board |
+| `factory.py spec-copy [<spec>]` | Writes the spec's absolute path (with `~` expanded) to `spec-source`, copies the spec to `SPEC.md` and every Markdown file it links to with a relative link, transitively, to `spec/`, with links rewritten to resolve from the copies, replacing earlier copies. Lists each copy and each `missing:` linked document (or `missing: none`). Without `<spec>` it re-reads `spec-source`. | main: `start`, preflight restart |
+| `factory.py plan-check` | `plan: ok (<n> tasks)`, or `plan: <n> problems` and one `- ` line per problem (the mechanical part of "Checking the plan"). | Planner, main |
+| `factory.py max-serial` | `highest-used: <serial>` (or `none`) and `next: <serial>`, from `factory: merge <id>` subjects on main and local `factory/<id>` branches. | Planner |
+| `factory.py round latest <task-id>` | The latest round-id, or `none`. | both |
+| `factory.py round next <task-id>` | The next round-id. | both |
+| `factory.py round previous <task-id> <round-id>` | The previous round-id, or `none`. | task orchestrator, Builder, reviewers |
+| `factory.py round kind <task-id> <round-id>` | `auto`, `approver-rework` or `rework`. | task orchestrator, agents |
+| `factory.py round state <task-id> [<round-id>]` | The round's kind, `base-commit`, build, reviews, verdict and previous round (latest round by default). | both |
+| `factory.py rework-count <task-id> <round-id>` | The number of REWORK verdicts before `<round-id>`. | task orchestrator, Approver |
+| `factory.py rework-note <task-id> <round-id> [--out <path>]` | Whether `R/verdict.md` has a rework note with text, and the section (or writes it to `<path>`). | task orchestrator |
+| `factory.py reviewers <task-id>` | The task's reviewer keys in roster order. | task orchestrator, agents |
+| `factory.py dependents <task-id>` | Each backlog task that depends on the task, with its status, or `none`. | main: `abandon` |
+| `factory.py merged <task-id>` | `yes` or `no` (see "Merged"). | both |
+| `factory.py tasks` | `phase: none`, `phase: preflight`, or `phase: backlog` followed by one `task: <id> \| <status> \| <stage> \| <latest round>` line per task, `active:` (the `In progress` or `Escalated` task) and `next:` (the first `Planned` task), each `none` when there is none. | main |
+| `factory.py backlog-set <task-id> <status>` | Changes the task's status in `backlog.md`, and refreshes its board entry if the board exists. | both |
+| `factory.py first-line <path>` | The result word of a fixed first line; non-zero exit if missing or invalid. | both |
+| `factory.py check-firstlines [<task-id>]` | `first-lines: ok (<n> files)` or one `invalid:` line per bad file. | both |
 
-Once all the reviewers are done, also list the round directory
-(`find R -type f | sort`). Every file in it must be `build-notes.md`,
-`base-commit`, `human-review.md`, `approver-review.md`, or, for a key the
-task lists, `<key>-review.md` or a file under `<key>/`.
+### Merged
 
-On any violation, halt (see "Halting") with the message
-`Write violation by <agent> on <task-id> <round-id>: <paths>`, revert
-nothing, and tell the user what changed. The one exception is a Builder that
-leaves uncommitted changes: the task orchestrator resumes it once (see
-`task-orchestrator.md`) before it halts.
-
-## Plan and dependency commands
-
-The main orchestrator uses these for "Checking the plan" and
-`/factory abandon` in `SKILL.md`. They live here because a skill's body has
-`$0`, `$1`, … substituted with the command's arguments, which would break
-them there; this file is read as it is.
-
-**Task directories** (one task-id per line):
-
-```bash
-find factory/state/tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
-```
-
-**Missing sections** (one line per `task.md` problem; nothing when all are
-sound):
-
-```bash
-for f in factory/state/tasks/*/task.md; do id=$(basename "$(dirname "$f")"); head -n 1 "$f" | grep -qF "# $id: " || echo "$f: first line is not '# $id: <title>'"; for h in '## Goal' '## Spec excerpts' '## Acceptance criteria' '## UI' '## Reviews' '## Depends on'; do grep -qxF "$h" "$f" || echo "$f: missing $h"; done; done
-```
-
-**Dependencies** (`<task-id><TAB><dependency>` for each task-id named in a
-task's `## Depends on` section):
-
-```bash
-for f in factory/state/tasks/*/task.md; do awk -v t="$(basename "$(dirname "$f")")" '/^## Depends on[[:space:]]*$/ { f = 1; next } /^## / { f = 0 } f { s = $0; while (match(s, /[0-9][0-9][0-9]+-[a-z0-9]+(-[a-z0-9]+)*/)) { print t "\t" substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH) } }' "$f"; done
-```
-
-**Highest used serial** (from the `factory: merge` subjects on `main` and
-the local `factory/*` branches; nothing if none was used):
-
-```bash
-{ git log main --format=%s | sed -n 's/^factory: merge \([0-9][0-9]*\)-.*/\1/p'; git for-each-ref --format='%(refname:strip=2)' refs/heads/factory/ | sed -n 's/^factory\/\([0-9][0-9]*\)-.*/\1/p'; } | sort -n | tail -n 1
-```
-
-**Dependents of a task** (the `task.md` files whose `## Depends on`
-section names `<task-id>`):
-
-```bash
-awk -v id='<task-id>' 'FNR == 1 { f = 0 } /^## Depends on[[:space:]]*$/ { f = 1; next } /^## / { f = 0 } f && index($0, id) { print FILENAME; nextfile }' factory/state/tasks/*/task.md
-```
+A task is merged if `git log main --format=%s` contains the subject
+`factory: merge <task-id>`, or if its branch exists, is an ancestor of main
+(`git merge-base --is-ancestor`), and has at least one builder commit (a
+subject starting with `<task-id>: `). A branch with no builder commits is not
+merged, even though it is an ancestor of main. Always ask
+`factory.py merged <task-id>`.
 
 ## Shared steps
 
-### The merged check
-
-A task is merged when either holds *(exit status is the answer: 0 means
-merged)*:
-
-```bash
-git log main --format=%s | grep -Fxq "factory: merge <task-id>" || { git rev-parse -q --verify refs/heads/factory/<task-id> > /dev/null && git merge-base --is-ancestor refs/heads/factory/<task-id> main && git log refs/heads/factory/<task-id> --format=%s | grep -Fq "<task-id>: "; }
-```
-
-The second half needs the branch to have a builder commit (a subject
-starting with `<task-id>: `). A branch with none isn't merged, even though it
-is an ancestor of main. Ids are never reused, so always match the full
-task-id, never a bare serial.
-
 ### Merge
 
-Used by the task orchestrator after APPROVE, and by the main orchestrator for
+Used by the task orchestrator after APPROVE and by the main orchestrator for
 `/factory approve`. The tree must be clean.
 
-```bash
-git switch main
-git merge --no-ff -m "factory: merge <task-id>" factory/<task-id>
-```
+1. Switch to main: `git switch main`.
+2. Merge: `git merge --no-ff -m "factory: merge <task-id>" factory/<task-id>`.
+3. If it exits 0, the merge succeeded. Stay on `main`.
+4. If it stopped with conflicts (`git ls-files -u` lists paths), leave the
+   merge exactly as it is: never abort it, resolve it or commit it. The
+   result is a merge conflict. The task is (or stays) `In progress`. Halt
+   (see "Halting") with the message `Merge conflict merging
+   factory/<task-id> into main` and tell the human to resolve the conflicts,
+   complete the merge with `git commit`, and run `/factory continue`, which
+   finds the task merged and marks it `Complete`.
+5. If any step fails in another way, halt with git's error as the reason.
 
-- If the merge succeeds, you are on `main` with a clean tree. The main
-  orchestrator then marks the task `Complete` (backlog, then
-  `B task <task-id>`) and deletes the branch with
-  `git branch -d factory/<task-id>`. If git refuses because the branch isn't
-  an ancestor of main but the merged check passes,
-  `git branch -D factory/<task-id>` is allowed.
-- If it conflicts (`git diff --name-only --diff-filter=U` lists files), leave
-  the merge as it is, unfinished, on `main`. Halt with the message
-  `Merge conflict merging <task-id>: <files>. Resolve the conflicts on main, commit the merge, then run /factory continue.`
-  The user completes the merge; `/factory continue` then finds the task
-  merged and marks it `Complete`.
-- If it fails for any other reason, halt with git's message.
+After a successful merge, the main orchestrator completes the task:
+`factory.py backlog-set <task-id> Complete`, then
+`git branch -d factory/<task-id>` (if that refuses, halt instead of forcing),
+then `factory.py board set --task <task-id>`.
 
 ### Halting
 
-1. If an agent you spawned is still running, wait for it first: end your
-   turn with `WAITING` until every running agent has reported, and start no
-   new ones.
-2. `B loop --state halted --message "<reason>"`, then `B task <task-id>` if a
-   task is current.
+1. The task orchestrator first waits for any of its agents that are still
+   running (end the turn with `WAITING`, spawn nothing new), and only then
+   halts.
+2. Set the state:
+   `factory.py board set --state halted --message "<reason>"`, adding
+   `--task <task-id>` when a task is involved.
 3. Revert nothing.
-4. The task orchestrator ends with the one line `halted <task-id>`. The main
-   orchestrator tells the user the reason and what to do; unless the reason
-   says otherwise, `/factory continue` resumes from the files.
-
-A halt with a plan problem is the exception: it keeps `loop.state`
-`awaiting-plan-review` so that `/factory continue` checks the plan again
-(see `SKILL.md`).
+4. Report. The task orchestrator ends with the one-line final message
+   `halted <task-id>`. The main orchestrator tells the human the reason, what
+   to inspect or fix, and that `/factory continue` resumes.

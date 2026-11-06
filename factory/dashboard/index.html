@@ -3,37 +3,42 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Factory Board</title>
+  <title>Factory board</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.11/marked.min.js"
+          integrity="sha512-OTmDnatwFtpx21xsHvxZdpqKcy9IxqlYSS1Qb0eZBvrwSarxkSYxT/HunpwjWAkaS069Q87iNafdft1oIKf1Qg=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js"
+          integrity="sha512-YlctBG9PGZIhh9keoqI3eZkQM9T8QUbiBi7qNYAO/TUEo8jqWX5pLp5+x1cKRQDRzJ/lyGyJ9WUVNIRduxIIFw=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="loop">
-      <span id="loop-state" class="badge state-none">no board</span>
-      <span id="loop-message" class="loop-message">Waiting for factory/state/board.json</span>
+  <header class="top">
+    <div class="top-row">
+      <h1>Factory</h1>
+      <span id="loop-state" class="loop-state">loading</span>
+      <span id="loop-message" class="loop-message"></span>
     </div>
-    <div class="meta">
+    <div class="top-row secondary">
       <nav id="run-files" class="run-files" aria-label="Run files"></nav>
       <span id="updated" class="updated"></span>
     </div>
+    <div id="stale" class="stale" role="status" hidden></div>
   </header>
 
-  <main id="board" class="board" aria-live="polite"></main>
+  <main id="board" class="board" aria-label="Tasks by stage"></main>
 
-  <aside id="panel" class="panel" hidden aria-label="Files">
-    <div id="panel-handle" class="panel-handle" title="Drag to resize"></div>
+  <aside id="panel" class="panel" aria-labelledby="panel-title" hidden>
+    <div id="panel-resize" class="panel-resize" role="separator" tabindex="0"
+         aria-orientation="vertical" aria-label="Resize panel"></div>
     <div class="panel-inner">
       <div class="panel-head">
-        <div>
-          <div id="panel-title" class="panel-title"></div>
-          <div id="panel-subtitle" class="panel-subtitle"></div>
-        </div>
-        <button id="panel-close" class="icon-button" type="button" aria-label="Close panel">&times;</button>
+        <h2 id="panel-title"></h2>
+        <button id="panel-close" class="panel-close" type="button" aria-label="Close panel">×</button>
       </div>
-      <ul id="panel-files" class="panel-files"></ul>
-      <div id="panel-view" class="panel-view"></div>
+      <ul id="panel-files" class="file-list"></ul>
+      <div id="panel-view" class="file-view" tabindex="-1"></div>
     </div>
   </aside>
 </body>
