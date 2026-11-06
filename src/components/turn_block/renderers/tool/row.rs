@@ -205,8 +205,8 @@ impl OpenHint<'_> {
 
 /// Adds the rule and the hint to the description `rows` of a subagent call,
 /// whose text area is `text_width` cells wide. The title row is the last of
-/// `rows`; it is `text_width + 2` cells wide after its lead, so that it
-/// reaches two cells into the block's padding.
+/// `rows`; it is `text_width + PADDING_REACH` cells wide after its lead, so
+/// that it reaches two cells into the block's padding.
 ///
 /// A folded row that has no room for the hint shows a rule alone, or nothing.
 /// An unfolded row always shows the hint: when it does not fit on the title
@@ -221,9 +221,12 @@ pub(super) fn with_open_hint(
     let row = text_width + usize::from(PADDING_REACH);
     let last = rows.len().checked_sub(1)?;
     let text = rows[last].width();
-    let chrome = |rule| TitleChrome {
+    // `rule` is the index of the rule's span; the gap before it starts the
+    // chrome.
+    let chrome = |rule: usize| TitleChrome {
         row: last,
-        from: text,
+        span: rule - 1,
+        own_row: false,
         rule: Some(rule),
     };
     match Trailer::fit(text, row, hint.width()) {
@@ -235,7 +238,8 @@ pub(super) fn with_open_hint(
             rows.push(own);
             Some(TitleChrome {
                 row: last + 1,
-                from: 0,
+                span: 0,
+                own_row: true,
                 rule,
             })
         }
@@ -389,7 +393,8 @@ mod tests {
             chrome,
             Some(TitleChrome {
                 row: 0,
-                from: 22,
+                span: 1,
+                own_row: false,
                 rule: Some(2),
             })
         );
@@ -466,7 +471,7 @@ mod tests {
         let mut rows = description("日本語");
         let t = 6 + 7 + H - 2;
         let chrome = with_open_hint(&mut rows, &open_hint(), t, true).unwrap();
-        assert_eq!(chrome.from, 6);
+        assert_eq!(chrome.span, 1);
         assert_eq!(rows[0].width(), t + 2);
         assert_eq!(rows[0].to_string(), "日本語  ───  a to open transcript");
         // A cut ending in a wide character is a cell short and gets nothing.
@@ -499,7 +504,8 @@ mod tests {
             chrome,
             TitleChrome {
                 row: 1,
-                from: 0,
+                span: 0,
+                own_row: true,
                 rule: Some(0)
             }
         );
@@ -529,7 +535,7 @@ mod tests {
         let chrome = with_open_hint(&mut rows, &open_hint(), t, false).unwrap();
         assert_eq!(rows[1].to_string(), HINT);
         assert_eq!(chrome.rule, None);
-        assert_eq!(chrome.from, 0);
+        assert!(chrome.own_row);
     }
 
     #[test]

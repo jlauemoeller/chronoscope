@@ -32,8 +32,8 @@ pub use user::UserPromptSection;
 /// The width the block leaves for the text: 4 cells on the left and 4 on the
 /// right of it (3 of padding and the border).
 pub const CHROME: u16 = 8;
-/// The cells of the lead in front of a row: the fold marker or two spaces.
-pub(crate) const LEAD: usize = 2;
+/// The column of the first cell of a row's line: after the border and a blank.
+pub(crate) const CONTENT_COLUMN: u16 = 2;
 /// The cells of the block's right padding that a subagent's title row reaches
 /// into with its rule and hint: it ends at column `W - 3`.
 pub(crate) const PADDING_REACH: u16 = 2;
@@ -125,8 +125,8 @@ pub struct Rendered {
     pub chrome: Option<TitleChrome>,
 }
 
-/// The chrome of a subagent's title row (SPEC cycle 4 §2): from cell `from`
-/// of the row on, its cells are the rule and the open hint. They are drawn,
+/// The chrome of a subagent's title row (SPEC cycle 4 §2): from span `span`
+/// of the row on, its spans are the rule and the open hint. They are drawn,
 /// but they are not the section's text: they are not searched, highlighted
 /// or copied, and the rule is not emphasised.
 ///
@@ -136,8 +136,12 @@ pub struct Rendered {
 pub struct TitleChrome {
     /// The index of the row in [`Rendered::lines`].
     pub row: usize,
-    /// The cell of the row's line (lead included) where the chrome starts.
-    pub from: usize,
+    /// The index, in the row's spans, of the first span of the chrome. What
+    /// comes before it is the row's text.
+    pub span: usize,
+    /// Whether the row is the hint's own row (all of it is chrome, but for
+    /// the lead).
+    pub own_row: bool,
     /// The index, in the row's spans, of the rule (it keeps the `border`
     /// colour whatever the emphasis of the section). `None` when the row has
     /// no rule.
@@ -150,7 +154,8 @@ impl TitleChrome {
     pub(crate) fn after_lead(self) -> Self {
         Self {
             row: self.row,
-            from: self.from + LEAD,
+            span: self.span + 1,
+            own_row: self.own_row,
             rule: self.rule.map(|span| span + 1),
         }
     }

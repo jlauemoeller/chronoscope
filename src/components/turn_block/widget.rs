@@ -10,7 +10,8 @@ use ratatui::widgets::Widget;
 
 use super::emphasis::emphasize;
 use super::renderers::{
-    CHROME, DEFAULT_OPEN_KEY, LEAD, PADDING_REACH, Rendered, SectionCtx, render_section, text_width,
+    CHROME, CONTENT_COLUMN, DEFAULT_OPEN_KEY, PADDING_REACH, Rendered, SectionCtx, TitleChrome,
+    render_section, text_width,
 };
 use super::section::{FoldState, Section, SectionId, derive_sections};
 use super::title::TitleBar;
@@ -18,10 +19,8 @@ use crate::model::Turn;
 use crate::theme::{Role, Theme, Token};
 use crate::timestamp::TimestampFormatter;
 use crate::transcript_search::SearchQuery;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
-/// The column of the first cell of a row's line: after the border and a blank.
-const CONTENT_COLUMN: u16 = 2;
 /// The columns after the text area: three of padding and the border.
 const RIGHT_MARGIN: u16 = CHROME / 2;
 
@@ -32,36 +31,24 @@ struct BlockRow {
     line: Line<'static>,
     /// Whether the row belongs to the selected section.
     selected: bool,
-    /// The cell of `line` (counted from column 2) where the rule and the hint
-    /// of a subagent's title row start. Such a row is drawn up to column
-    /// `W - 3`, two cells into the padding, and what is drawn from here on is
-    /// chrome, not text.
-    chrome: Option<usize>,
+    /// The rule and the hint of a subagent's title row. Such a row is drawn
+    /// up to column `W - 3`, two cells into the padding, and its spans from
+    /// `chrome.span` on are chrome, not text.
+    chrome: Option<TitleChrome>,
 }
 
 impl BlockRow {
     /// The text of the row: the line without the chrome.
     fn text(&self) -> String {
-        let Some(from) = self.chrome else {
-            return self.line.to_string();
-        };
-        if from <= LEAD {
-            // The hint's own row: nothing but the lead comes before the chrome.
-            return String::new();
+        match self.chrome {
+            None => self.line.to_string(),
+            // The hint's own row: nothing in it is text.
+            Some(chrome) if chrome.own_row => String::new(),
+            Some(chrome) => self.line.spans[..chrome.span]
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect(),
         }
-        let mut width = 0;
-        let mut text = String::new();
-        for c in self.line.spans.iter().flat_map(|s| s.content.chars()) {
-            let cells = c.width().unwrap_or(0);
-            // A zero-width character (a combining mark) belongs to the
-            // character before it, even when that one ends the text.
-            if width >= from && cells > 0 {
-                break;
-            }
-            width += cells;
-            text.push(c);
-        }
-        text
     }
 
     /// How many cells of the line are drawn, from column 2, in a block of
@@ -301,7 +288,7 @@ impl<'a> TurnBlock<'a> {
         rows.extend(lines.into_iter().enumerate().map(|(i, line)| BlockRow {
             line,
             selected,
-            chrome: chrome.filter(|c| c.row == i).map(|c| c.from),
+            chrome: chrome.filter(|c| c.row == i),
         }));
         let more_id = id.more_row();
         spans.push((id, start..rows.len() + 1));

@@ -16,9 +16,7 @@ use super::folding::FoldOp;
 use super::keys::{WHEEL_DOWN, WHEEL_UP};
 use crate::app::{Msg, RoutedMouse};
 use crate::components::turn_block::SectionId;
-
-/// The columns before the content of a block row: the border and a blank.
-const CONTENT_FROM: u16 = 2;
+use crate::components::turn_block::renderers::CONTENT_COLUMN;
 
 /// What a click landed on.
 struct Hit {
@@ -70,7 +68,7 @@ impl Transcript {
             .iter()
             .find(|placed| (placed.top..placed.top + placed.layout.height()).contains(&row))?;
         let within = row - placed.top;
-        let content = CONTENT_FROM..placed.layout.content_end(within);
+        let content = CONTENT_COLUMN..placed.layout.content_end(within);
         if !content.contains(&mouse.column) {
             return None;
         }

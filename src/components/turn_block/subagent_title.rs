@@ -563,6 +563,68 @@ fn a_pending_subagent_without_an_agent_type_at_80() {
     insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 80)));
 }
 
+/// The `row_text` of the title row (layout row 2) of `turn` at 80 columns.
+fn title_text(turn: &Turn) -> String {
+    with_block(turn, &Opts::default(), |block| {
+        block.layout(80).row_text(2).unwrap()
+    })
+}
+
+fn pending(description: &str) -> Turn {
+    turn_of(tool_of(
+        ToolKind::Subagent,
+        "c1",
+        description,
+        json!({"prompt": "p"}),
+        None,
+        ToolStatus::Pending,
+    ))
+}
+
+#[test]
+fn a_zwj_sequence_before_the_duration_leaves_the_rows_text_whole() {
+    let description = "Family 👨\u{200D}👩\u{200D}👧 report";
+    let turn = turn_of(call(description, Some("Explore"), Some(302_000), "ok"));
+    assert_eq!(
+        title_text(&turn),
+        format!("▶ {description} (Explore) · 5m 2s")
+    );
+    // `5m 2s` is the last five cells of the description; no wider than the
+    // line, the highlight is on exactly them.
+    let cells = highlighted(&turn, &Opts::default(), "5m 2s", 80, 2);
+    assert_eq!(cells.len(), 5, "{cells:?}");
+    assert!(cells.windows(2).all(|w| w[1] == w[0] + 1));
+}
+
+#[test]
+fn lam_alef_before_the_duration_leaves_the_rows_text_whole() {
+    let description = "Arabic \u{644}\u{627} text";
+    let turn = turn_of(call(description, Some("Explore"), Some(302_000), "ok"));
+    assert_eq!(
+        title_text(&turn),
+        format!("▶ {description} (Explore) · 5m 2s")
+    );
+    // The widths of lam-alef differ between the layout and the drawing, so
+    // only check that the duration is lit.
+    assert!(!highlighted(&turn, &Opts::default(), "5m 2s", 80, 2).is_empty());
+}
+
+#[test]
+fn a_pending_row_ending_in_a_sequence_keeps_all_of_it() {
+    let zwj = "Family 👨\u{200D}👩\u{200D}👧";
+    assert_eq!(title_text(&pending(zwj)), format!("▶ {zwj}"));
+    assert_eq!(
+        title_text(&pending("Love ❤\u{FE0F}")),
+        "▶ Love ❤\u{FE0F}",
+        "no gap cell after a variation selector"
+    );
+}
+
+#[test]
+fn a_description_of_zero_width_is_not_taken_for_the_hints_own_row() {
+    assert_eq!(title_text(&pending("\u{301}")), "▶ \u{301}");
+}
+
 // ---- Highlights ----
 
 /// The columns of row `y` drawn with the `search_match` background.

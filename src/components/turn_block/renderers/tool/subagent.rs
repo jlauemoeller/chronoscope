@@ -312,7 +312,8 @@ mod tests {
             render.chrome,
             Some(TitleChrome {
                 row: 1,
-                from: 2,
+                span: 1,
+                own_row: true,
                 rule: Some(1)
             })
         );
