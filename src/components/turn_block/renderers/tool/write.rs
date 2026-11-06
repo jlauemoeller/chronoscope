@@ -55,7 +55,6 @@ impl ToolBodyRenderer for WriteBody {
                 },
             ],
             remaining: (cut > 0).then_some(cut),
-            hint: None,
         };
         with_status_result(body, call, ctx, content_cut)
     }

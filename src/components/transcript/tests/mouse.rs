@@ -527,3 +527,106 @@ fn a_click_on_another_section_refolds_what_the_search_unfolded() {
     assert_eq!(t.selected(), Some(&other));
     assert_eq!(t.is_folded(&tool_id()), Some(true), "refolded");
 }
+
+// ---- The rule and the hint of a subagent's title row ----
+
+use super::subagent::with_subagents_at;
+use crate::components::turn_block::fixtures as blocks;
+
+/// The transcript of `with_subagents` and its first subagent call `s1`.
+fn subagent_rig(width: u16) -> (Transcript, SectionId) {
+    let t = with_subagents_at(width, 40);
+    (t, item_section("a1", "s1"))
+}
+
+#[test]
+fn a_click_on_the_rule_or_the_hint_of_a_folded_subagent_row_selects_and_unfolds_it() {
+    // At 100 columns the row is `Explore the repo (Explore)  ────  a to open
+    // transcript`: the rule is columns 31 to 75, the hint 78 to 97.
+    for column in [31, 50, 75, 78, 90, 96, 97] {
+        let (mut t, id) = subagent_rig(100);
+        assert!(is_folded(&t, &id));
+        assert_eq!(click(&mut t, &id, 0, column), Some(Msg::TranscriptChanged));
+        assert_eq!(t.selected(), Some(&id), "column {column}");
+        assert!(!is_folded(&t, &id), "column {column}");
+    }
+}
+
+#[test]
+fn a_click_on_the_blank_cell_before_the_border_does_nothing() {
+    let (mut t, id) = subagent_rig(100);
+    let before = t.presentation();
+    assert_eq!(click(&mut t, &id, 0, 98), None);
+    assert_eq!(click(&mut t, &id, 0, 99), None);
+    assert!(is_folded(&t, &id));
+    assert_eq!(t.presentation(), before);
+}
+
+#[test]
+fn the_padding_of_every_other_row_still_does_nothing() {
+    let (mut t, id) = subagent_rig(100);
+    t.set_folded(&id, false);
+    let before = t.presentation();
+    let rows = rows_of(&mut t, &id);
+    // The body rows of the unfolded subagent and a shell call's row.
+    for dy in 1..rows.len() {
+        for column in [96, 97, 98] {
+            assert_eq!(click(&mut t, &id, dy, column), None, "row {dy}, {column}");
+        }
+    }
+    let shell = item_section("a1", "sh");
+    for column in [96, 97, 98] {
+        assert_eq!(click(&mut t, &shell, 0, column), None, "shell, {column}");
+    }
+    assert_eq!(t.presentation(), before);
+}
+
+#[test]
+fn a_description_that_fills_the_text_area_has_no_padding_to_click_on() {
+    // At 40 columns the text area is 32 cells: `d` x 22 and ` (Explore)`
+    // fill it, so the row has neither rule nor hint.
+    let call = blocks::tool_of(
+        crate::model::ToolKind::Subagent,
+        "s1",
+        &"d".repeat(22),
+        serde_json::json!({"subagent_type": "Explore", "prompt": "Look"}),
+        Some(("Done.", false)),
+        crate::model::ToolStatus::Ok,
+    );
+    let turn = arc(with_id(blocks::assistant(None, vec![call], None), "a1"));
+    let mut t = transcript_of(vec![turn], 40, 20);
+    let id = item_section("a1", "s1");
+    let before = t.presentation();
+    for column in [36, 37, 38] {
+        assert_eq!(click(&mut t, &id, 0, column), None, "column {column}");
+    }
+    assert_eq!(t.presentation(), before);
+    assert!(is_folded(&t, &id));
+    // The text itself still toggles the fold.
+    assert_eq!(click(&mut t, &id, 0, 35), Some(Msg::TranscriptChanged));
+    assert!(!is_folded(&t, &id));
+}
+
+#[test]
+fn a_click_on_the_hints_own_row_selects_the_section_and_leaves_it_unfolded() {
+    // At 40 columns the unfolded hint has no room beside the description and
+    // is on a row of its own: `────────────  a to open transcript`.
+    let (mut t, id) = subagent_rig(40);
+    t.set_folded(&id, false);
+    let other = item_section("a1", "sh");
+    assert!(t.select(&other));
+    for column in [4, 20, 37] {
+        assert!(t.select(&other));
+        assert_eq!(
+            click(&mut t, &id, 1, column),
+            Some(Msg::TranscriptChanged),
+            "{column}"
+        );
+        assert_eq!(t.selected(), Some(&id), "column {column}");
+        assert!(!is_folded(&t, &id), "still unfolded at {column}");
+    }
+    // Column W - 2 of that row is blank padding.
+    assert!(t.select(&other));
+    assert_eq!(click(&mut t, &id, 1, 38), None);
+    assert_eq!(t.selected(), Some(&other));
+}

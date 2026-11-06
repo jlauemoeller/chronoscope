@@ -39,3 +39,5 @@ pub(crate) mod fixtures;
 mod notice_snapshots;
 #[cfg(test)]
 mod snapshots;
+#[cfg(test)]
+mod subagent_title;

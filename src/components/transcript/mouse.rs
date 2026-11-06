@@ -16,11 +16,7 @@ use super::folding::FoldOp;
 use super::keys::{WHEEL_DOWN, WHEEL_UP};
 use crate::app::{Msg, RoutedMouse};
 use crate::components::turn_block::SectionId;
-
-/// The columns before the content of a block row: the border and a blank.
-const CONTENT_FROM: u16 = 2;
-/// The columns after the content: three of padding and the border.
-const CONTENT_MARGIN: u16 = 4;
+use crate::components::turn_block::renderers::CONTENT_COLUMN;
 
 /// What a click landed on.
 struct Hit {
@@ -62,19 +58,20 @@ impl Transcript {
     }
 
     /// The section under the pointer. `None` on the borders, the padding, the
-    /// blank rows and below the last block.
+    /// blank rows and below the last block. The padding counts for the two
+    /// cells a subagent's title row draws its rule and hint into.
     fn hit(&self, mouse: &RoutedMouse) -> Option<Hit> {
         let window = self.window.as_ref().filter(|w| w.size == mouse.area)?;
-        let content = CONTENT_FROM..mouse.area.width.saturating_sub(CONTENT_MARGIN);
-        if !content.contains(&mouse.column) {
-            return None;
-        }
         let row = window.offset + usize::from(mouse.row);
         let placed = window
             .blocks
             .iter()
             .find(|placed| (placed.top..placed.top + placed.layout.height()).contains(&row))?;
         let within = row - placed.top;
+        let content = CONTENT_COLUMN..placed.layout.content_end(within);
+        if !content.contains(&mouse.column) {
+            return None;
+        }
         placed
             .layout
             .section_rows()

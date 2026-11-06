@@ -8,36 +8,36 @@ expression: after
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ [1] Turns  ───────────────╮ │                                                                                       │
-│                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  ┬   Start                 │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
-│  │                         │ │                                                                                       │
-│  ├   User                  │ │   The extension units are listed under VideoControl:                                  │
-│  │                         │ │                                                                                       │
-│  ├   Assistant      5m 2s  │ │   • one for exposure                                                                  │
-│  │                         │ │   • one for pan and tilt                                                              │
-│  ├   User                  │ │                                                                                       │
+│                            │ │ ▶ Continue with the extension units.                                                  │
+│  ┬   Start                 │ │                                                                                       │
 │  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
-│  ├   Assistant      5m 2s  │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  ├   User                  │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  │                         │ │                                                                                       │
-│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ │   That is everything the camera exposes over plain UVC. Anything beyond that needs    │
+│  ├   Assistant      5m 2s  │ │   The extension units are listed under VideoControl:                                  │
+│  │                         │ │                                                                                       │
+│  ├   User                  │ │   • one for exposure                                                                  │
+│  │                         │ │   • one for pan and tilt                                                              │
+│  ├   Assistant      5m 2s  │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│  │                         │ │                                                                                       │
+│  ├   User                  │ │   That is everything the camera exposes over plain UVC. Anything beyond that needs    │
 │  │                         │ │   the vendor protocol, which is not documented.                                       │
-│  ├   User                  │ │                                                                                       │
+│  ├   Assistant             │ │                                                                                       │
 │  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
 │  ├   Assistant             │ ╭─ Assistant ── claude-opus-5.5 ───────────────────────────────── 2026-10-21 08:35:18Z ─╮
 │  │                         │ │                                                                                       │
-│  ├   Assistant             │ │   I will ask the story writer.                                                        │
+│  ▒   Assistant             │ │   I will ask the story writer.                                                        │
 │  │                         │ │                                                                                       │
-│  ▒   Assistant             │ ▒ ▼ Ask story-writer (story-writer)                                                     │
-│  │                         │ ▒                                                                                       │
-│  ┴   End                   │ ▒   Prompt:                                                                             │
+│  ┴   End                   │ ▒ ▼ Ask story-writer (story-writer)  ────────────────────────────  a to open transcript │
+│                            │ ▒                                                                                       │
+│                            │ ▒   Prompt:                                                                             │
 │                            │ ▒                                                                                       │
 │                            │ ▒      Write a short story                                                              │
 │                            │ ▒                                                                                       │
 │                            │ ▒   Result:                                                                             │
 │                            │ ▒                                                                                       │
 │                            │ ▒      Once upon a time.                                                                │
-│                            │ ▒                                                                                       │
-│                            │ ▒   a to open transcript                                                                │
 │                            │ │                                                                                       │
 ╰────────────────────────────╯ ╰───────────────────────────────────────────────────────────────────────────────────────╯
                                                                                                                         

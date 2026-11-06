@@ -9,7 +9,10 @@ use ratatui::text::Line;
 use ratatui::widgets::Widget;
 
 use super::emphasis::emphasize;
-use super::renderers::{DEFAULT_OPEN_KEY, Rendered, SectionCtx, render_section, text_width};
+use super::renderers::{
+    CHROME, CONTENT_COLUMN, DEFAULT_OPEN_KEY, PADDING_REACH, Rendered, SectionCtx, TitleChrome,
+    render_section, text_width,
+};
 use super::section::{FoldState, Section, SectionId, derive_sections};
 use super::title::TitleBar;
 use crate::model::Turn;
@@ -18,6 +21,9 @@ use crate::timestamp::TimestampFormatter;
 use crate::transcript_search::SearchQuery;
 use unicode_width::UnicodeWidthStr;
 
+/// The columns after the text area: three of padding and the border.
+const RIGHT_MARGIN: u16 = CHROME / 2;
+
 /// A row of the block between the top and the bottom border.
 #[derive(Debug, Clone)]
 struct BlockRow {
@@ -25,6 +31,37 @@ struct BlockRow {
     line: Line<'static>,
     /// Whether the row belongs to the selected section.
     selected: bool,
+    /// The rule and the hint of a subagent's title row. Such a row is drawn
+    /// up to column `W - 3`, two cells into the padding, and its spans from
+    /// `chrome.span` on are chrome, not text.
+    chrome: Option<TitleChrome>,
+}
+
+impl BlockRow {
+    /// The text of the row: the line without the chrome.
+    fn text(&self) -> String {
+        match self.chrome {
+            None => self.line.to_string(),
+            // The hint's own row: nothing in it is text.
+            Some(chrome) if chrome.own_row => String::new(),
+            Some(chrome) => self.line.spans[..chrome.span]
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect(),
+        }
+    }
+
+    /// How many cells of the line are drawn, from column 2, in a block of
+    /// `width` columns: the text area and the lead, or two cells more for a
+    /// title row.
+    fn drawn_cells(&self, width: u16) -> u16 {
+        let reach = if self.chrome.is_some() {
+            PADDING_REACH
+        } else {
+            0
+        };
+        width.saturating_sub(CONTENT_COLUMN + RIGHT_MARGIN - reach)
+    }
 }
 
 /// The rows of a block laid out for one width.
@@ -32,6 +69,7 @@ struct BlockRow {
 pub struct BlockLayout {
     rows: Vec<BlockRow>,
     sections: Vec<(SectionId, Range<usize>)>,
+    width: u16,
 }
 
 #[cfg(test)]
@@ -59,11 +97,30 @@ impl BlockLayout {
     }
 
     /// The text of row `row` (counted from the top border, like
-    /// [`section_rows`](Self::section_rows)), from column 2 on. `None` for
-    /// the borders and rows that do not exist.
+    /// [`section_rows`](Self::section_rows)), from column 2 on, without the
+    /// rule and the hint of a subagent's title row. `None` for the borders
+    /// and rows that do not exist.
     pub fn row_text(&self, row: usize) -> Option<String> {
         let interior = row.checked_sub(1)?;
-        self.rows.get(interior).map(|row| row.line.to_string())
+        self.rows.get(interior).map(BlockRow::text)
+    }
+
+    /// The first column after the part of row `row` (counted like
+    /// [`row_text`](Self::row_text)) that belongs to its section: the text
+    /// area, which ends at column `W - 5`, or on a title row that draws its
+    /// rule or hint into the padding, the cells it draws there. Column
+    /// `W - 2` is never part of a row.
+    pub fn content_end(&self, row: usize) -> u16 {
+        let text_end = self.width.saturating_sub(RIGHT_MARGIN);
+        let Some(row) = row.checked_sub(1).and_then(|i| self.rows.get(i)) else {
+            return text_end;
+        };
+        if row.chrome.is_none() {
+            return text_end;
+        }
+        let drawn = u16::try_from(row.line.width()).unwrap_or(u16::MAX);
+        let limit = text_end.saturating_add(PADDING_REACH);
+        text_end.max(drawn.saturating_add(CONTENT_COLUMN).min(limit))
     }
 }
 
@@ -183,30 +240,20 @@ impl<'a> TurnBlock<'a> {
         let blank = || BlockRow {
             line: Line::default(),
             selected: false,
+            chrome: None,
         };
         let mut rows = vec![blank()];
         let mut spans = Vec::new();
         for section in derive_sections(self.turn, self.show_system) {
             let ctx = self.section_ctx(&section, text_width, folds);
-            let Rendered { lines, more } = render_section(&section, &ctx);
-            if lines.is_empty() {
+            let rendered = render_section(&section, &ctx);
+            if rendered.lines.is_empty() {
                 continue;
             }
             if !spans.is_empty() {
                 rows.push(blank());
             }
-            let selected = self.selected == Some(&section.id);
-            let lines = emphasize(lines, selected, self.dim_unselected, self.theme);
-            // Row 0 of the block is the top border.
-            let start = rows.len() + 1;
-            rows.extend(lines.into_iter().map(|line| BlockRow { line, selected }));
-            let more_id = section.id.more_row();
-            spans.push((section.id, start..rows.len() + 1));
-            // The truncation row follows its section directly and is a
-            // selection stop of its own.
-            if let (Some(more), Some(id)) = (more, more_id) {
-                self.push_more(more, id, &mut rows, &mut spans);
-            }
+            self.push_section(section.id, rendered, &mut rows, &mut spans);
         }
         if !spans.is_empty() {
             rows.push(blank());
@@ -214,6 +261,41 @@ impl<'a> TurnBlock<'a> {
         BlockLayout {
             rows,
             sections: spans,
+            width,
+        }
+    }
+
+    /// Adds the rows of the section `id`, emphasised, and the `… N more
+    /// lines` row below it, if it has one.
+    fn push_section(
+        &self,
+        id: SectionId,
+        rendered: Rendered,
+        rows: &mut Vec<BlockRow>,
+        spans: &mut Vec<(SectionId, Range<usize>)>,
+    ) {
+        let Rendered {
+            lines,
+            more,
+            chrome,
+        } = rendered;
+        let selected = self.selected == Some(&id);
+        // The rule keeps its colour: it is not emphasised.
+        let keep = chrome.and_then(|c| Some((c.row, c.rule?)));
+        let lines = emphasize(lines, selected, self.dim_unselected, self.theme, keep);
+        // Row 0 of the block is the top border.
+        let start = rows.len() + 1;
+        rows.extend(lines.into_iter().enumerate().map(|(i, line)| BlockRow {
+            line,
+            selected,
+            chrome: chrome.filter(|c| c.row == i),
+        }));
+        let more_id = id.more_row();
+        spans.push((id, start..rows.len() + 1));
+        // The truncation row follows its section directly and is a selection
+        // stop of its own.
+        if let (Some(more), Some(id)) = (more, more_id) {
+            self.push_more(more, id, rows, spans);
         }
     }
 
@@ -243,9 +325,13 @@ impl<'a> TurnBlock<'a> {
         spans: &mut Vec<(SectionId, Range<usize>)>,
     ) {
         let selected = self.selected == Some(&id);
-        let line = emphasize(vec![line], selected, self.dim_unselected, self.theme).remove(0);
+        let line = emphasize(vec![line], selected, self.dim_unselected, self.theme, None).remove(0);
         let start = rows.len() + 1;
-        rows.push(BlockRow { line, selected });
+        rows.push(BlockRow {
+            line,
+            selected,
+            chrome: None,
+        });
         spans.push((id, start..rows.len() + 1));
     }
 
@@ -285,8 +371,9 @@ impl<'a> TurnBlock<'a> {
             " ".repeat(usize::from(area.width.saturating_sub(2))),
             Style::default(),
         );
-        // The content may use columns 2 to W - 4; the rest is padding.
-        buf.set_line(area.x + 2, y, &row.line, area.width.saturating_sub(6));
+        // The content may use columns 2 to W - 5; the rest is padding, but
+        // for the two cells a title row reaches into it.
+        buf.set_line(area.x + 2, y, &row.line, row.drawn_cells(area.width));
         self.highlight(row, area, y, buf);
         buf.set_string(area.x + area.width - 1, y, "│", self.border_style());
     }
@@ -298,10 +385,10 @@ impl<'a> TurnBlock<'a> {
         let Some(query) = self.search else {
             return;
         };
-        let text = row.line.to_string();
+        let text = row.text();
         let style = self.theme.style(Token::SearchMatch);
         let first = area.x + 2;
-        let columns = usize::from(area.width.saturating_sub(6));
+        let columns = usize::from(row.drawn_cells(area.width));
         for found in query.find_all(&text) {
             let start = text[..found.start].width();
             let end = start + text[found.clone()].width();

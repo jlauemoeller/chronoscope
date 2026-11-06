@@ -61,7 +61,7 @@ pub fn displayed_text(
         verbatim: false,
     };
     let Some(block_width) = block_width.filter(|_| folded) else {
-        return Some(plain_lines(&section, &ctx, true).join("\n"));
+        return Some(plain_lines(&section, &ctx).join("\n"));
     };
     let narrow = SectionCtx {
         width: text_width(block_width),
@@ -69,15 +69,15 @@ pub fn displayed_text(
     };
     let lines = match section.content {
         SectionContent::Prompt(_) => {
-            let rows = plain_lines(&section, &narrow, true);
+            let rows = plain_lines(&section, &narrow);
             let whole = SectionCtx {
                 folded: false,
                 ..ctx
             };
-            soft_joined(rows, &plain_lines(&section, &whole, true))
+            soft_joined(rows, &plain_lines(&section, &whole))
         }
-        SectionContent::Tool(_) => plain_lines(&section, &ctx, true),
-        _ => plain_lines(&section, &narrow, true),
+        SectionContent::Tool(_) => plain_lines(&section, &ctx),
+        _ => plain_lines(&section, &narrow),
     };
     Some(lines.join("\n"))
 }
@@ -106,7 +106,7 @@ pub fn full_text(turn: &Turn, id: &SectionId, theme: &Theme, open_key: &str) -> 
         open_key,
         verbatim: true,
     };
-    Some(plain_lines(&section, &ctx, false).join("\n"))
+    Some(plain_lines(&section, &ctx).join("\n"))
 }
 
 /// The rows of a folded summary with the ones that continue the line before
@@ -183,9 +183,9 @@ pub(super) fn find<'a>(turn: &'a Turn, id: &SectionId) -> Option<Section<'a>> {
         .find(|section| section.id == id)
 }
 
-fn plain_lines(section: &Section<'_>, ctx: &SectionCtx<'_>, with_hint: bool) -> Vec<String> {
+fn plain_lines(section: &Section<'_>, ctx: &SectionCtx<'_>) -> Vec<String> {
     match section.content {
-        SectionContent::Tool(call) => ToolCallSection(call).plain_lines(ctx, with_hint),
+        SectionContent::Tool(call) => ToolCallSection(call).plain_lines(ctx),
         SectionContent::System(entries) => SystemSection(entries).plain_lines(ctx),
         _ => render_section(section, ctx)
             .lines

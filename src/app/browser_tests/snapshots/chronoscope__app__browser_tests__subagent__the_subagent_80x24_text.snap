@@ -16,7 +16,7 @@ expression: "screen_text(&mut rig, 80, 24)"
 │                                                                              │
 │   I need some facts first.                                                   │
 │                                                                              │
-│ ▶ Ask Explore (Explore)                                                      │
+│ ▶ Ask Explore (Explore)  ─────────────────────────────  a to open transcript │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
                                                                                 

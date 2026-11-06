@@ -1633,3 +1633,55 @@ fn a_call_without_a_duration_has_no_duration_to_find() {
     );
     assert_eq!(search(&mut t, " · ").as_deref(), Some("0/0"));
 }
+
+// ---- The rule and the hint of a subagent's title row are not text ----
+
+mod subagent_title {
+    use super::super::subagent::with_subagents_at;
+    use super::*;
+
+    #[test]
+    fn a_query_for_the_open_hint_finds_nothing() {
+        for query in ["open transcript", "a to open", "to open transcript"] {
+            let mut t = with_subagents_at(WIDTH, HEIGHT);
+            assert_eq!(search(&mut t, query).as_deref(), Some("0/0"), "{query}");
+            assert!(highlighted(&mut t).is_empty());
+        }
+    }
+
+    #[test]
+    fn a_query_for_the_rule_finds_nothing() {
+        let mut t = with_subagents_at(WIDTH, HEIGHT);
+        assert_eq!(search(&mut t, "─").as_deref(), Some("0/0"));
+    }
+
+    #[test]
+    fn a_match_in_the_description_of_a_folded_row_highlights_only_its_cells() {
+        let mut t = with_subagents_at(WIDTH, HEIGHT);
+        // `Explore the repo (Explore)` is the description row of `s1`, which
+        // draws a rule and the hint too.
+        assert_eq!(search(&mut t, "the repo").as_deref(), Some("1/1"));
+        let hits = highlighted(&mut t);
+        assert_eq!(hits, ["the", "repo"]);
+        assert!(rows(&mut t).contains("a to open transcript"));
+    }
+
+    #[test]
+    fn a_query_in_the_result_and_the_hint_lights_only_the_result() {
+        let call = blocks::tool_of(
+            crate::model::ToolKind::Subagent,
+            "c1",
+            "Explore",
+            json!({"subagent_type": "Explore", "prompt": "Look"}),
+            Some(("Read the transcript.", false)),
+            ToolStatus::Ok,
+        );
+        let turn = arc(with_id(blocks::assistant(None, vec![call], None), "a1"));
+        let mut t = transcript_of(vec![turn], WIDTH, HEIGHT);
+        assert_eq!(search(&mut t, "transcript").as_deref(), Some("1/1"));
+        // The result is unfolded for the match; only its cells are lit.
+        assert!(unfolded(&t, &tool()));
+        assert_eq!(highlighted(&mut t), ["transcript"]);
+        assert!(rows(&mut t).contains("a to open transcript"));
+    }
+}
