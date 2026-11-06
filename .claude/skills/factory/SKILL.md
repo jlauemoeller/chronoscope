@@ -144,13 +144,9 @@ Sends an escalated task back to the builder with the human's feedback.
 3. `git switch main` (if not on it).
 4. Mark the task `Abandoned`. Keep the unmerged branch `factory/<task-id>`
    so no work is lost; tell the user they can delete it by hand.
-5. Warn the user about tasks that depend on it. This lists the task files
-   whose `## Depends on` section names it:
-
-   ```bash
-   awk -v id='<task-id>' 'FNR == 1 { f = 0 } /^## Depends on[[:space:]]*$/ { f = 1; next } /^## / { f = 0 } f && index($0, id) { print FILENAME; nextfile }' factory/state/tasks/*/task.md
-   ```
-
+5. Warn the user about tasks that depend on it: run the **Dependents of a
+   task** command from "Plan and dependency commands" in the conventions,
+   and name each later task it lists.
 6. Continue the loop in this session (see "Choosing the next task").
 
 ## /factory status
@@ -247,38 +243,24 @@ and halt: list each problem, and say to fix the plan (removing a task from
 `/factory continue`, which checks it again. The state stays
 `awaiting-plan-review` so that it does.
 
+The commands named below are under "Plan and dependency commands" in the
+conventions. Run them from there, exactly as written.
+
 1. **Backlog and directories match.** Every backlog row has
    `factory/state/tasks/<task-id>/task.md`, and every directory in
-   `factory/state/tasks/` appears in the backlog exactly once:
-
-   ```bash
-   find factory/state/tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
-   ```
-
+   `factory/state/tasks/` appears in the backlog exactly once. Compare the
+   backlog rows with the **Task directories** command.
 2. **Sections.** Each `task.md` starts with `# <task-id>: ` and has every
-   section. This prints each missing one:
-
-   ```bash
-   for f in factory/state/tasks/*/task.md; do id=$(basename "$(dirname "$f")"); head -n 1 "$f" | grep -qF "# $id: " || echo "$f: first line is not '# $id: <title>'"; for h in '## Goal' '## Spec excerpts' '## Acceptance criteria' '## UI' '## Reviews' '## Depends on'; do grep -qxF "$h" "$f" || echo "$f: missing $h"; done; done
-   ```
-
+   section. The **Missing sections** command prints each problem.
 3. **Statuses.** Every row's status is `Planned`.
 4. **Dependencies.** Every task-id in a task's `## Depends on` section names
    a task earlier in this backlog, or a task from an earlier run that is
-   already merged (the merged check). This prints each task's dependencies:
-
-   ```bash
-   for f in factory/state/tasks/*/task.md; do awk -v t="$(basename "$(dirname "$f")")" '/^## Depends on[[:space:]]*$/ { f = 1; next } /^## / { f = 0 } f { s = $0; while (match(s, /[0-9][0-9][0-9]+-[a-z0-9]+(-[a-z0-9]+)*/)) { print t "\t" substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH) } }' "$f"; done
-   ```
-
+   already merged (the merged check). The **Dependencies** command prints
+   each task's dependencies.
 5. **Identifiers.** Every task-id matches the task-id pattern in the
    conventions, no serial appears twice in the backlog, and every serial is
-   above the highest serial the factory used before this run. This prints
-   that highest serial (nothing if none was used):
-
-   ```bash
-   { git log main --format=%s | sed -n 's/^factory: merge \([0-9][0-9]*\)-.*/\1/p'; git for-each-ref --format='%(refname:strip=2)' refs/heads/factory/ | sed -n 's/^factory\/\([0-9][0-9]*\)-.*/\1/p'; } | sort -n | tail -n 1
-   ```
+   above the highest serial the factory used before this run (the
+   **Highest used serial** command).
 
    Compare serials as numbers (`10#<serial>` in bash). This run's tasks have
    no branches yet while the plan is being checked, so every branch counts

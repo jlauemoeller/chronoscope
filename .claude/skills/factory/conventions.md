@@ -423,6 +423,47 @@ nothing, and tell the user what changed. The one exception is a Builder that
 leaves uncommitted changes: the task orchestrator resumes it once (see
 `task-orchestrator.md`) before it halts.
 
+## Plan and dependency commands
+
+The main orchestrator uses these for "Checking the plan" and
+`/factory abandon` in `SKILL.md`. They live here because a skill's body has
+`$0`, `$1`, … substituted with the command's arguments, which would break
+them there; this file is read as it is.
+
+**Task directories** (one task-id per line):
+
+```bash
+find factory/state/tasks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+```
+
+**Missing sections** (one line per `task.md` problem; nothing when all are
+sound):
+
+```bash
+for f in factory/state/tasks/*/task.md; do id=$(basename "$(dirname "$f")"); head -n 1 "$f" | grep -qF "# $id: " || echo "$f: first line is not '# $id: <title>'"; for h in '## Goal' '## Spec excerpts' '## Acceptance criteria' '## UI' '## Reviews' '## Depends on'; do grep -qxF "$h" "$f" || echo "$f: missing $h"; done; done
+```
+
+**Dependencies** (`<task-id><TAB><dependency>` for each task-id named in a
+task's `## Depends on` section):
+
+```bash
+for f in factory/state/tasks/*/task.md; do awk -v t="$(basename "$(dirname "$f")")" '/^## Depends on[[:space:]]*$/ { f = 1; next } /^## / { f = 0 } f { s = $0; while (match(s, /[0-9][0-9][0-9]+-[a-z0-9]+(-[a-z0-9]+)*/)) { print t "\t" substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH) } }' "$f"; done
+```
+
+**Highest used serial** (from the `factory: merge` subjects on `main` and
+the local `factory/*` branches; nothing if none was used):
+
+```bash
+{ git log main --format=%s | sed -n 's/^factory: merge \([0-9][0-9]*\)-.*/\1/p'; git for-each-ref --format='%(refname:strip=2)' refs/heads/factory/ | sed -n 's/^factory\/\([0-9][0-9]*\)-.*/\1/p'; } | sort -n | tail -n 1
+```
+
+**Dependents of a task** (the `task.md` files whose `## Depends on`
+section names `<task-id>`):
+
+```bash
+awk -v id='<task-id>' 'FNR == 1 { f = 0 } /^## Depends on[[:space:]]*$/ { f = 1; next } /^## / { f = 0 } f && index($0, id) { print FILENAME; nextfile }' factory/state/tasks/*/task.md
+```
+
 ## Shared steps
 
 ### The merged check

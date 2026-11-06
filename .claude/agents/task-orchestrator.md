@@ -104,8 +104,11 @@ Use one builder for the task within this run. When you spawn a fresh
 builder, record the agent id the Agent tool returns with
 `B agent builder-<task-id> <agent-id>`. For each later round in this run,
 resume that same builder by sending its prompt with SendMessage to that id
-(`to: "<agent-id>"`); it continues in the background and you are woken when
-it reports. Spawn a fresh builder, and record its id in place of the old
+(`to: "<agent-id>"`, `message:` the prompt); it continues in the background
+and you are woken when it reports. SendMessage may be a deferred tool whose
+schema isn't loaded yet: before your first resume, load it with ToolSearch
+(query `select:SendMessage`), so that the resume doesn't fail on the call
+itself. Do the same for any other tool you need that is listed as deferred. Spawn a fresh builder, and record its id in place of the old
 one, when you haven't spawned one yourself in this run (so after
 `/factory continue` or `/factory rework` the id on the board belongs to an
 earlier run and is never used), or when resuming fails. A fresh builder
