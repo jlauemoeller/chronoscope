@@ -469,7 +469,7 @@ Each turn is rendered as a rounded block. Its title shows the role on the left a
 | Thinking (readable) | Folded | `Thinking` + first line, muted | Full text, muted |
 | Thinking (redacted) | Not shown | n/a | n/a |
 | Tool call | Folded | `> <description>`, then the duration of a finished call (below) | Description and duration, then per-tool body (§5.3) |
-| Subagent call | Folded | `> <description>` + agent name, then the duration | Prompt + final result + "open transcript" hint (§5.4) |
+| Subagent call | Folded | `> <description>` + agent name, then the duration, then a rule and the "open transcript" hint (title row, below) | The same title row, then prompt + final result |
 | Notice | Not foldable | n/a | The text of an abnormal ending, word-wrapped (below) |
 | Turn stats footer | Not foldable | One muted line: duration · messages · tokens · cached · cost (the parts that are known) | n/a |
 | Compaction marker | Folded | Divider `── context compacted ──` | Summary text |
@@ -506,6 +506,24 @@ Every section's text starts at the same column, two cells in from the block's pa
 
 Values are truncated, as in the shared format. The text that is copied, saved, exported and searched is the text displayed, so search highlights stay aligned with the cells drawn.
 
+**Subagent title rows.** The title row of a subagent call is its folded row, or the last of the rows its description and duration are word-wrapped into when it is unfolded. It carries, after the description, a rule and the hint that opens the subagent's transcript (§5.4). This applies to every subagent call, folded or unfolded, selected or not, on both harnesses and in an opened subagent's transcript. From left to right the row holds the description, ` (<agent>)` and ` · <duration>` exactly as above, a gap of 2 cells, a rule of `─`, a gap of 2 cells and the hint `<key> to open transcript`, where `<key>` is the label of the `open_subagent` key (`a` by default, `Ctrl-o` or another label when remapped). The hint is right-aligned with one blank cell between it and the block's right border, the same gap as between the left border and the fold marker. The text area (the block's width `W` less 8) leaves 3 cells of padding before the right border, and a title row reaches 2 cells into it: it ends at column `W − 3` (counting from 0), column `W − 2` is blank and the border is at column `W − 1`. Only the rule and the hint go into the padding, and only on title rows: the description, the agent type and the duration still end within the text area. The rule fills every cell between the two gaps. Widths are display cells, not characters.
+
+```
+│ ▶ Explore the UVC descriptors (Explore)  ─────────────────────────────────  a to open transcript │
+```
+
+The rule and the hint use only the room the description leaves, and never cut, wrap or move the description, the agent type or the duration. Let `d` be the width of the description, agent type and duration on the title row, `h` the width of the hint, `t` the width of the text area (`W − 8`) and `r = t + 2` the width of the title row, from the text column to the cell before the right border's gap. The rule is at least 3 cells wide:
+
+| Room | Title row |
+|---|---|
+| `d + 7 + h ≤ r` | Description, gap, rule, gap and hint. The rule is `r − d − 4 − h` cells, so it shrinks first, down to 3 cells |
+| `d + 5 ≤ r < d + 7 + h` | The hint is left out. The gap and the rule run to the row's end, one cell before the border: the rule is `r − d − 2` cells |
+| `r < d + 5` | Neither rule nor hint. The row is as without them, including a description cut with `…` |
+
+A folded row whose hint is left out shows it nowhere else. An unfolded subagent always shows the hint. Its `d` is the width of the last description row only: the end of the description with the duration when it ends there, or the duration alone when it is on a row of its own. When the hint fits there (the first row of the table), the rule and the hint go on that row. Otherwise the hint goes on a row of its own directly below the description, and the description's rows have no rule. That row starts at the text column and is `r` cells wide: the rule runs from the text column to the gap before the hint, and the hint ends one cell before the right border. When `r < h + 5` the row holds only the hint, from the text column, cut with `…` when it is wider than `r`. The hint's own row belongs to the description rows and is followed by the blank row that follows the description. An unfolded subagent shows `Prompt:` and `Result:` and nothing after the result; the `… N more lines` row of a truncated result follows the result directly, as for every other tool call.
+
+No background colour is painted. The rule is drawn in `border` (§8.2), whatever the selection and `dim_unselected`: it is never dimmed and never bold. The hint is `muted_foreground` and takes the section's emphasis, bold when the section is selected. The description, the agent type and the duration keep their styles. The rule and the hint are chrome, like the fold marker, and not the section's text: search matches the description row as drawn without them (`open transcript` is not a match), highlights are never drawn on them, and copy and save as displayed give the description rows without them (§6.4).
+
 **Notice rows.** A `Notice` item (§5.1) is a section of its own kind in the turn's order. It is not foldable and is selectable. Its text is word-wrapped and indented like the other non-foldable lines. An `Error` is drawn in `error_output` and a `Warning` in `muted_foreground`. It is included in search, copy, save and export like the `model → …` note. When saved, the file-name word is `error` for an `Error` and `notice` for a `Warning` (§6.4).
 
 ### 5.3 Per-tool renderers
@@ -525,6 +543,7 @@ Results longer than N lines (default 200, configurable) are truncated, with a `�
 ### 5.4 Subagents
 
 - Subagent sections show the prompt and the final result inline.
+- The hint that names the key to open the transcript (`a to open transcript`) is on the section's title row, folded or unfolded, with a rule (§5.2), not in the body.
 - A key (§6) opens the subagent's own transcript as a full session view: Claude `subagents/agent-<id>.jsonl`, OpenCode child `session_v2` via `parent_id`.
 - The browser header shows a breadcrumb (`Project BRIO › Agent: story-writer`). A back key returns to the parent view at the same scroll position.
 
@@ -623,6 +642,7 @@ Fold levels (`1`/`2`/`3`) and Vim-style `z` aliases (`za`, `zc`, `zo`, `zM`, `zR
   - export: `./<project>-<yyyymmdd-hhmm>-<short-id>.md`
   - save: `./<project>-<short-id>-<section-kind>.txt` (the kind is `user`, `assistant`, `thinking`, the tool's kind, `system`, `compaction`, `stats`, and for a notice `error` or `notice`)
 - Saving or exporting asks for confirmation before overwriting an existing file.
+- The rule and the hint of a subagent title row (§5.2) are not part of copied or saved text: `y` and `w` give the description rows without them, so an unfolded subagent's text ends with its result. `Y`, `W`, `e` and `E` never contain the hint.
 - Clipboard: `arboard`, falling back to OSC52 when there's no display server or over SSH/tmux. A toast confirms the copy (`Copied 42 lines`).
 
 ### 6.5 Sessions, subagents, overlays, application
@@ -690,7 +710,7 @@ If a session id is ambiguous (prefix matches several sessions), the selector ope
 ### 6.9 Mouse
 
 - Wheel scrolls the transcript or the list under the pointer.
-- Click selects a section or list row. Clicking a section's summary line (or the `▶`/`▼` marker) toggles its fold. Double-clicking a session row opens it.
+- Click selects a section or list row. Clicking a section's summary line (or the `▶`/`▼` marker) toggles its fold. Double-clicking a session row opens it. A click on the rule or the hint of a subagent title row (§5.2) is a click on its row: on a folded row it selects the section and toggles its fold, and on the hint's own row of an unfolded one it only selects. The two padding cells that row draws into count as part of it; every other padding cell does nothing. The hint is not a link.
 - Click on a harness tab switches to it. Click outside an overlay closes it.
 - **Turns sidebar** (§4.2): the wheel selects the previous or next entry, like `↑` / `↓` (no wrap-around), and scrolls the transcript to its block; it does not move the focus. Clicking a selectable row focuses the sidebar, selects that row and scrolls the transcript to its block. Double-clicking a row does what `Enter` does and gives the transcript focus (two presses on the same row at most 400 ms apart). A click on `Start`, `End`, a connector, a blank row of the pane, the border or the margin does nothing. Clicking the transcript gives it focus.
 - Mouse events go to the component under the pointer (§1.4).
@@ -763,6 +783,7 @@ Selection is shown with **text brightness and markers**. The one background band
   - Selected row in the **unfocused** list (e.g. Projects while Sessions has focus): text **bold** in `secondary_foreground`, not inverted; the `>` marker in the same `secondary_foreground` (not bold), so the context stays visible.
 - The turns sidebar (§4.2) selects the same way, with `▒` as its marker: in a focused sidebar the `▒` in `primary` and one inverted band after it; in an unfocused one the `▒` and the bold text in `secondary_foreground`. Its `┬`, `├`, `┴`, `│` and `╶` are `muted_foreground`.
 - Focused pane border: `ring`; unfocused borders: `border`.
+- The rule of a subagent title row (§5.2) is drawn in `border`, whatever the selection and `dim_unselected`. It is never dimmed and never bold. Its hint follows the section like any other text: `muted_foreground`, bold when the section is selected.
 - Selected harness tab: `primary`, underlined; other tabs: `muted_foreground`.
 - In the transcript, dimming of unselected sections is controlled by `dim_unselected` (default `true`). When `false`, all sections use their normal token colours and only the marker + bold indicate selection.
 
