@@ -150,8 +150,9 @@ not even `board.json`, and spawn nothing. Print:
   backlog.
 - Otherwise: the backlog (task-id, title, status); the current task, its
   stage and latest round (with the build, review and verdict results of that
-  round); `loop.state` and `loop.message` from `board.json` (or that the
-  board is missing and `continue` will rebuild it).
+  round); `loop.state` and `loop.message` (or that the board is missing and
+  `continue` will rebuild it). Read the board only with the read-only
+  commands in the conventions, never by printing the file.
 - The action `/factory continue` would take next, worked out with the same
   reconciliation as `continue` (including any precondition that would
   refuse it), without doing it.
@@ -184,7 +185,9 @@ Used by `start`, and by `continue` in the preflight state.
      `stack.md`), then run `/factory continue` to start building.
 7. **Otherwise the preflight stopped.** Build `board.json` (the state is
    `awaiting-preflight`). Halt with a summary of `preflight.md` (its result,
-   issues and tools) and the next steps:
+   spec and environment issues, assumptions and tools on offer), the stack
+   profile from `stack.md` as in step 6 (including everything under
+   **Not available**), and the next steps:
    - For each spec issue: fix the spec at the path in
      `factory/state/spec-source`. If the Planner is wrong about an issue, add
      a sentence to the spec that settles it. If the spec is in the repo,
@@ -218,7 +221,8 @@ Used by `start`, and by `continue` in the preflight state.
    that agent, or by a completion notification carrying that agent's id.
    Never poll it, send it messages, read its output file or start other work.
 4. **Each time either one wakes you**, decide from `backlog.md`,
-   `board.json`, the current branch and `git status`, not from what the
+   `board.json` (read with the read-only command in the conventions, never
+   by printing the file), the current branch and `git status`, not from what the
    message says (a hand-back can arrive while the task orchestrator's own
    agents are still running, and a notification may never follow one).
    Take the first case that applies:

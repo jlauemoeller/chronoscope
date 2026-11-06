@@ -333,7 +333,17 @@ files. Format:
   relative to `T`.
 
 **Never print the file, never rewrite it with the Write tool, and never leave
-it half-edited.** Update it every time you take back control from an agent
+it half-edited.** A board for a large spec is tens of kilobytes. To read
+it, print only what you need, read-only:
+
+```bash
+# the loop (state, message, current) and the builder ids
+python3 -I -c 'import json;b=json.load(open("factory/state/board.json"));print(json.dumps(b["loop"]));print(json.dumps(b["agents"]))'
+# one task: status, stage, and its latest round
+python3 -I -c 'import json,sys;t=[t for t in json.load(open("factory/state/board.json"))["tasks"] if t["id"]==sys.argv[1]];print(json.dumps({k:t[0][k] for k in ("status","stage")}|{"round":(t[0]["rounds"] or [None])[-1]}) if t else "no entry")' <task-id>
+```
+
+Update it every time you take back control from an agent
 and on every stage change, with the one-shot command below. It loads the
 JSON, sets `updated`, the given `loop` fields and `agents` entries, and
 re-derives the given task's whole entry (status from `backlog.md`; title,
@@ -408,7 +418,8 @@ The `<state>` and `<message>` of a rebuild:
 - every task `Planned`: `awaiting-plan-review`, `Plan ready: review it, then run /factory continue`;
 - a task `Escalated`: `escalated`, `Escalated <task-id>`, with `current` set to it;
 - a task `In progress`: `halted`, `Rebuilt board; /factory continue resumes <task-id>`, with `current` set to it;
-- otherwise (no `Planned` task left): `complete`, `Construction complete`.
+- `Planned` tasks left and none active (some `Complete` or `Abandoned`): `halted`, `Rebuilt board; /factory continue starts <next task-id>`;
+- no `Planned` task left and none active: `complete`, `Construction complete`.
 
 Don't leave helper scripts behind: always run these as one-shot commands.
 
