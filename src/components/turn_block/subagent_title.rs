@@ -235,7 +235,7 @@ fn a_hint_wider_than_the_row_is_cut_with_an_ellipsis_on_its_own_row() {
 #[test]
 fn the_layout_counts_the_hints_own_row() {
     let turn = repository();
-    // 5 rows more than the body when the hint fits on the title row.
+    // The hint's own row is one row more than a hint on the title row.
     let narrow = unfolded(&turn).open_key("Ctrl-o");
     assert_eq!(
         height(&turn, &narrow, 80),
@@ -517,11 +517,7 @@ fn both_exports_have_neither_rule_nor_hint() {
             block_width: Some(80),
         };
         let text = export_markdown(None, &[std::sync::Arc::new(turn.clone())], &settings, full);
-        assert!(
-            text.contains("Explore the repository (story-writer)")
-                || text.contains("Explore the repository"),
-            "{text}"
-        );
+        assert!(text.contains("Explore the repository"), "{text}");
         assert!(
             !text.contains("to open transcript") && !text.contains('─'),
             "{text}"

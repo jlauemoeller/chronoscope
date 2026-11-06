@@ -241,35 +241,14 @@ impl<'a> TurnBlock<'a> {
         let mut spans = Vec::new();
         for section in derive_sections(self.turn, self.show_system) {
             let ctx = self.section_ctx(&section, text_width, folds);
-            let Rendered {
-                lines,
-                more,
-                chrome,
-            } = render_section(&section, &ctx);
-            if lines.is_empty() {
+            let rendered = render_section(&section, &ctx);
+            if rendered.lines.is_empty() {
                 continue;
             }
             if !spans.is_empty() {
                 rows.push(blank());
             }
-            let selected = self.selected == Some(&section.id);
-            // The rule keeps its colour: it is not emphasised.
-            let keep = chrome.and_then(|c| Some((c.row, c.rule?)));
-            let lines = emphasize(lines, selected, self.dim_unselected, self.theme, keep);
-            // Row 0 of the block is the top border.
-            let start = rows.len() + 1;
-            rows.extend(lines.into_iter().enumerate().map(|(i, line)| BlockRow {
-                line,
-                selected,
-                chrome: chrome.filter(|c| c.row == i).map(|c| c.from),
-            }));
-            let more_id = section.id.more_row();
-            spans.push((section.id, start..rows.len() + 1));
-            // The truncation row follows its section directly and is a
-            // selection stop of its own.
-            if let (Some(more), Some(id)) = (more, more_id) {
-                self.push_more(more, id, &mut rows, &mut spans);
-            }
+            self.push_section(section.id, rendered, &mut rows, &mut spans);
         }
         if !spans.is_empty() {
             rows.push(blank());
@@ -278,6 +257,40 @@ impl<'a> TurnBlock<'a> {
             rows,
             sections: spans,
             width,
+        }
+    }
+
+    /// Adds the rows of the section `id`, emphasised, and the `… N more
+    /// lines` row below it, if it has one.
+    fn push_section(
+        &self,
+        id: SectionId,
+        rendered: Rendered,
+        rows: &mut Vec<BlockRow>,
+        spans: &mut Vec<(SectionId, Range<usize>)>,
+    ) {
+        let Rendered {
+            lines,
+            more,
+            chrome,
+        } = rendered;
+        let selected = self.selected == Some(&id);
+        // The rule keeps its colour: it is not emphasised.
+        let keep = chrome.and_then(|c| Some((c.row, c.rule?)));
+        let lines = emphasize(lines, selected, self.dim_unselected, self.theme, keep);
+        // Row 0 of the block is the top border.
+        let start = rows.len() + 1;
+        rows.extend(lines.into_iter().enumerate().map(|(i, line)| BlockRow {
+            line,
+            selected,
+            chrome: chrome.filter(|c| c.row == i).map(|c| c.from),
+        }));
+        let more_id = id.more_row();
+        spans.push((id, start..rows.len() + 1));
+        // The truncation row follows its section directly and is a selection
+        // stop of its own.
+        if let (Some(more), Some(id)) = (more, more_id) {
+            self.push_more(more, id, rows, spans);
         }
     }
 
