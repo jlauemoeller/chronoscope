@@ -1,399 +1,506 @@
+// The factory dashboard: polls ../state/board.json and shows it as a kanban
+// board, with a panel for a task's files and the run's own files.
 'use strict';
 
-// The factory dashboard: polls ../state/board.json and shows the tasks as a
-// kanban board. Served with `python3 -m http.server -d factory`, opened at
-// /dashboard/.
-
-(() => {
-  const STATE_URL = new URL('../state/', location.href);
-  const BOARD_URL = new URL('board.json', STATE_URL);
+(function () {
   const POLL_MS = 5000;
   const STAGES = [
-    ['planned', 'Planned'], ['building', 'Building'], ['review', 'Review'],
-    ['approval', 'Approval'], ['escalated', 'Escalated'], ['done', 'Done'],
+    ['planned', 'Planned'],
+    ['building', 'Building'],
+    ['review', 'Review'],
+    ['approval', 'Approval'],
+    ['escalated', 'Escalated'],
+    ['done', 'Done'],
     ['abandoned', 'Abandoned'],
   ];
   const RUN_FILES = ['SPEC.md', 'preflight.md', 'stack.md', 'backlog.md'];
-  const IMAGE_RE = /\.(png|jpe?g|gif|svg|webp|bmp|avif)$/i;
-  const MARKDOWN_RE = /\.(md|markdown)$/i;
-  const KIND_LABELS = { 'approver-rework': 'approver rework', rework: 'human rework' };
+  const MARKDOWN = /\.(md|markdown)$/i;
+  const IMAGE = /\.(png|jpe?g|gif|svg|webp|avif|bmp)$/i;
+  const STATE_BASE = new URL('../state/', window.location.href);
+  const WIDTH_KEY = 'factory-dashboard-panel-width';
 
   const view = {
-    board: null,          // the last board that loaded
-    error: null,          // why the last fetch failed, or null
-    runFiles: [],         // run files that exist
-    panel: null,          // { kind: 'task', id } or { kind: 'run' }
-    openUrl: null,        // URL of the file shown in the panel
+    loopState: document.getElementById('loop-state'),
+    loopMessage: document.getElementById('loop-message'),
+    runFiles: document.getElementById('run-files'),
+    stale: document.getElementById('stale'),
+    updated: document.getElementById('updated'),
+    board: document.getElementById('board'),
+    panel: document.getElementById('panel'),
+    panelTitle: document.getElementById('panel-title'),
+    panelFiles: document.getElementById('panel-files'),
+    panelClose: document.getElementById('panel-close'),
+    resize: document.getElementById('panel-resize'),
+    viewerPath: document.getElementById('viewer-path'),
+    viewerStatus: document.getElementById('viewer-status'),
+    viewer: document.getElementById('viewer'),
   };
 
-  // ------------------------------------------------------------ helpers --
+  const state = {
+    board: null, // the last board fetched successfully
+    staleReason: null, // why the last fetch failed, or null
+    runFiles: [], // the run files that exist
+    panel: null, // { kind: 'task', id } or { kind: 'run' }
+    openPath: null, // the open file, relative to factory/state/
+    openHash: '',
+    openSignature: null, // what the open file looked like when last shown
+    objectUrl: null, // the blob URL of an image being shown
+  };
 
-  function el(tag, className, text) {
+  // ---------------------------------------------------------------- helpers
+
+  function h(tag, attrs, ...children) {
     const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text !== undefined) node.textContent = text;
+    for (const [key, value] of Object.entries(attrs || {})) {
+      if (value === null || value === undefined || value === false) continue;
+      if (key === 'className') node.className = value;
+      else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+      else node.setAttribute(key, value === true ? '' : value);
+    }
+    for (const child of children.flat()) {
+      if (child === null || child === undefined || child === false) continue;
+      node.append(child instanceof Node ? child : String(child));
+    }
     return node;
   }
 
-  function pathUrl(base, path) {
-    return new URL(path.split('/').map(encodeURIComponent).join('/'), base);
+  function stateUrl(path) {
+    return new URL(path.split('/').map(encodeURIComponent).join('/'), STATE_BASE);
   }
 
-  function taskUrl(id, file) {
-    return pathUrl(new URL(`tasks/${encodeURIComponent(id)}/`, STATE_URL), file);
+  async function fetchNoStore(url, init) {
+    const response = await fetch(url, Object.assign({ cache: 'no-store' }, init));
+    if (!response.ok) throw new Error('HTTP ' + response.status + ' for ' + url.pathname);
+    return response;
   }
 
-  function statePath(url) {
-    const rel = url.pathname.startsWith(STATE_URL.pathname)
-      ? url.pathname.slice(STATE_URL.pathname.length) : url.pathname;
-    return decodeURIComponent(rel);
+  function formatTime(iso) {
+    const date = new Date(iso);
+    return isNaN(date) ? String(iso || '') : date.toLocaleString();
   }
 
-  function findTask(id) {
-    return view.board ? view.board.tasks.find((t) => t.id === id) : undefined;
+  function slugify(text) {
+    return text.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s/g, '-');
   }
 
-  function isActive(task) {
-    return task.status !== 'Complete' && task.status !== 'Abandoned';
+  function storageGet(key) {
+    try { return window.localStorage.getItem(key); } catch (e) { return null; }
   }
 
-  function latestRound(task) {
-    const rounds = task.rounds || [];
-    return rounds.length ? rounds[rounds.length - 1] : null;
+  function storageSet(key, value) {
+    try { window.localStorage.setItem(key, value); } catch (e) { /* not available */ }
   }
 
-  function alertReason(task) {
-    if (!isActive(task)) return null;
-    const round = latestRound(task);
-    if (round && round.build === 'BLOCKED') return 'BLOCKED';
-    if (round && round.verdict === 'ESCALATE') return 'ESCALATE';
-    if (task.status === 'Escalated') return 'ESCALATED';
-    return null;
-  }
-
-  // ------------------------------------------------------------ fetching --
+  // ---------------------------------------------------------------- polling
 
   async function fetchBoard() {
     try {
-      const res = await fetch(BOARD_URL, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
-      const data = await res.json();
-      if (!data || typeof data.loop !== 'object' || !Array.isArray(data.tasks)) {
-        throw new Error('board.json has no loop or tasks');
-      }
-      view.board = data;
-      view.error = null;
-    } catch (err) {
-      view.error = err && err.message ? err.message : String(err);
+      const response = await fetchNoStore(new URL('board.json', STATE_BASE));
+      const board = await response.json();
+      if (!board || typeof board !== 'object') throw new Error('board.json is not an object');
+      state.board = board;
+      state.staleReason = null;
+    } catch (error) {
+      state.staleReason = error.message || String(error);
     }
   }
 
   async function fetchRunFiles() {
     const found = await Promise.all(RUN_FILES.map(async (name) => {
       try {
-        const res = await fetch(new URL(name, STATE_URL), { method: 'HEAD', cache: 'no-store' });
-        return res.ok ? name : null;
-      } catch (err) {
+        await fetchNoStore(stateUrl(name), { method: 'HEAD' });
+        return name;
+      } catch (error) {
         return null;
       }
     }));
-    view.runFiles = found.filter(Boolean);
+    state.runFiles = found.filter(Boolean);
   }
-
-  let lastSignature = null;
 
   async function poll() {
     await Promise.all([fetchBoard(), fetchRunFiles()]);
-    // Re-render only when something changed, so focus and scrolling survive.
-    const signature = JSON.stringify([view.board, view.error, view.runFiles]);
-    if (signature === lastSignature) return;
-    lastSignature = signature;
-    renderAll();
+    renderHeader();
+    renderBoard();
+    if (state.panel) {
+      if (!state.openPath && panelFiles().length) {
+        const files = panelFiles();
+        const first = files.find((file) => file.label === 'task.md') || files[0];
+        openFile(first.path, '');
+      } else {
+        renderPanelFiles();
+        await loadOpenFile(false);
+      }
+    }
+    window.setTimeout(poll, POLL_MS);
   }
 
-  // -------------------------------------------------------------- header --
+  // ---------------------------------------------------------------- header
 
-  function renderLoop() {
-    const loop = (view.board && view.board.loop) || {};
-    const state = $('loop-state');
-    state.textContent = loop.state || (view.board ? 'unknown' : 'no board');
-    state.className = `loop-state ${loop.state || ''}`;
-    $('loop-message').textContent = loop.message || '';
-  }
-
-  function renderUpdated() {
-    const updated = view.board && view.board.updated;
-    $('updated').textContent = updated ? `updated ${new Date(updated).toLocaleString()}` : '';
+  function renderHeader() {
+    const loop = (state.board && state.board.loop) || {};
+    const loopState = loop.state || (state.board ? 'unknown' : 'no board');
+    view.loopState.textContent = loopState;
+    view.loopState.className = 'state ' + String(loopState).replace(/\s/g, '-');
+    view.loopMessage.textContent = loop.message || '';
+    view.updated.textContent = state.board && state.board.updated
+      ? 'updated ' + formatTime(state.board.updated) : '';
+    renderStale();
+    renderRunFileButtons();
   }
 
   function renderStale() {
-    const stale = $('stale');
-    if (!view.error) {
-      stale.hidden = true;
+    if (!state.staleReason) {
+      view.stale.hidden = true;
       return;
     }
-    stale.hidden = false;
-    stale.textContent = view.board
-      ? `Stale: showing the last board. Fetching board.json failed: ${view.error}`
-      : `No board yet. Fetching board.json failed: ${view.error}`;
+    view.stale.hidden = false;
+    view.stale.textContent = state.board
+      ? 'stale: ' + state.staleReason
+      : 'no board: ' + state.staleReason;
   }
 
-  function renderRunFiles() {
-    const nav = $('run-files');
-    nav.replaceChildren(...view.runFiles.map((name) => {
-      const button = el('button', 'run-file', name);
-      button.type = 'button';
-      button.addEventListener('click', () => openRunFile(name));
-      return button;
-    }));
+  function renderRunFileButtons() {
+    view.runFiles.replaceChildren(...state.runFiles.map((name) =>
+      h('button', { type: 'button', className: 'run-file', onclick: () => openRunPanel(name) }, name)));
   }
 
-  // --------------------------------------------------------------- board --
+  // ---------------------------------------------------------------- board
 
-  function chip(label, value) {
-    const cls = String(value || 'none').toLowerCase();
-    return el('span', `chip ${cls}`, `${label} ${value || 'none'}`);
+  function tasks() {
+    return (state.board && Array.isArray(state.board.tasks)) ? state.board.tasks : [];
   }
 
-  function verdictChip(task, round) {
-    if (round.verdict) return chip('verdict', round.verdict);
-    const pending = isActive(task) && round === latestRound(task) && round.build !== 'BLOCKED';
-    return pending ? chip('verdict', 'pending') : el('span', 'chip none', 'no verdict');
-  }
-
-  function roundRow(task, round) {
-    const row = el('span', 'round');
-    const kind = KIND_LABELS[round.kind];
-    row.append(el('span', 'round-id', kind ? `${round.id} (${kind})` : round.id));
-    row.append(chip('build', round.build || 'pending'));
-    for (const [key, value] of Object.entries(round.reviews || {})) {
-      row.append(chip(key, value));
-    }
-    row.append(verdictChip(task, round));
-    return row;
-  }
-
-  function card(task) {
-    const node = el('button', 'card');
-    node.type = 'button';
-    const reason = alertReason(task);
-    if (reason) node.classList.add('alert');
-    if (view.board.loop && view.board.loop.current === task.id) node.classList.add('current');
-    if (view.panel && view.panel.kind === 'task' && view.panel.id === task.id) {
-      node.classList.add('selected');
-    }
-    node.append(el('span', 'card-id', task.id));
-    node.append(el('span', 'card-title', task.title || task.id));
-    const round = latestRound(task);
-    node.append(el('span', 'card-status', round ? `${task.status} · ${round.id}` : task.status));
-    if (reason) node.append(el('span', 'card-flag', reason));
-    if ((task.rounds || []).length) {
-      const rounds = el('span', 'rounds');
-      rounds.append(...task.rounds.map((r) => roundRow(task, r)));
-      node.append(rounds);
-    }
-    node.addEventListener('click', () => openTask(task.id));
-    return node;
-  }
-
-  function column(stage, label, tasks) {
-    const col = el('section', 'column');
-    col.setAttribute('aria-label', label);
-    const head = el('div', 'column-head');
-    head.append(el('span', '', label), el('span', 'column-count', String(tasks.length)));
-    const cards = el('div', 'cards');
-    if (tasks.length) cards.append(...tasks.map(card));
-    else cards.append(el('div', 'empty', '—'));
-    col.append(head, cards);
-    return col;
+  function findTask(id) {
+    return tasks().find((task) => task.id === id) || null;
   }
 
   function renderBoard() {
-    const tasks = view.board ? view.board.tasks : [];
-    $('board').replaceChildren(...STAGES.map(([stage, label]) =>
-      column(stage, label, tasks.filter((t) => t.stage === stage))));
-  }
-
-  // --------------------------------------------------------------- panel --
-
-  function panelFiles() {
-    if (!view.panel) return [];
-    if (view.panel.kind === 'run') {
-      return view.runFiles.map((name) => ({ label: name, url: new URL(name, STATE_URL) }));
-    }
-    const task = findTask(view.panel.id);
-    return task ? (task.files || []).map((f) => ({ label: f, url: taskUrl(task.id, f) })) : [];
-  }
-
-  function renderPanel() {
-    const panel = $('panel');
-    if (!view.panel) {
-      panel.hidden = true;
+    if (!state.board) {
+      view.board.replaceChildren(h('p', { className: 'notice' },
+        'Waiting for factory/state/board.json. Start a run with /factory start <spec>.'));
       return;
     }
-    panel.hidden = false;
-    const task = view.panel.kind === 'task' ? findTask(view.panel.id) : null;
-    $('panel-title').textContent = view.panel.kind === 'run'
-      ? 'Run files' : `${view.panel.id}${task && task.title ? ` · ${task.title}` : ''}`;
-    $('panel-files').replaceChildren(...panelFiles().map(fileItem));
+    view.board.replaceChildren(...STAGES.map(([stage, label]) => renderColumn(stage, label)));
   }
 
-  function fileItem(file) {
-    const li = el('li');
-    const button = el('button', '', file.label);
-    button.type = 'button';
-    if (view.openUrl && view.openUrl.href === file.url.href) button.classList.add('open');
-    button.addEventListener('click', () => showFile(file.url, file.label));
-    li.append(button);
-    return li;
+  function renderColumn(stage, label) {
+    const cards = tasks().filter((task) => task.stage === stage);
+    const list = h('ul', { className: 'cards' },
+      cards.length ? cards.map(renderCard) : h('li', { className: 'empty-column' }, '—'));
+    return h('section', { className: 'column', 'aria-label': label },
+      h('div', { className: 'column-head' }, h('span', {}, label), h('span', {}, String(cards.length))),
+      list);
   }
 
-  function openTask(id) {
-    if (!view.panel || view.panel.kind !== 'task' || view.panel.id !== id) {
-      view.openUrl = null;
-      $('panel-view').replaceChildren(el('p', 'hint', 'Choose a file.'));
+  function latestRound(task) {
+    const rounds = Array.isArray(task.rounds) ? task.rounds : [];
+    return rounds.length ? rounds[rounds.length - 1] : null;
+  }
+
+  function alertFlag(task) {
+    const active = task.status === 'In progress' || task.status === 'Escalated';
+    if (!active) return null;
+    const latest = latestRound(task);
+    if (latest && latest.build === 'BLOCKED') return 'BLOCKED';
+    if (latest && latest.verdict === 'ESCALATE') return 'ESCALATE';
+    if (task.status === 'Escalated') return 'ESCALATED';
+    return null;
+  }
+
+  function renderCard(task) {
+    const flag = alertFlag(task);
+    const loop = state.board.loop || {};
+    const classes = ['card'];
+    if (flag) classes.push('alert');
+    if (loop.current === task.id) classes.push('current');
+    if (state.panel && state.panel.kind === 'task' && state.panel.id === task.id) classes.push('selected');
+    const open = () => openTaskPanel(task.id);
+    const rounds = Array.isArray(task.rounds) ? task.rounds : [];
+    return h('li', {
+      className: classes.join(' '),
+      tabindex: '0',
+      role: 'button',
+      'aria-label': 'Open ' + task.id,
+      onclick: open,
+      onkeydown: (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+      },
+    },
+    h('div', { className: 'card-head' },
+      h('span', { className: 'card-id' }, task.id),
+      h('span', { className: 'card-status' }, task.status || '')),
+    h('div', { className: 'card-title' }, task.title || task.id),
+    flag ? h('div', { className: 'card-flag' }, flag) : null,
+    rounds.map((round, index) => renderRound(round, index === rounds.length - 1)));
+  }
+
+  function renderRound(round, isLatest) {
+    const label = round.kind && round.kind !== 'auto' ? round.id + ' · ' + round.kind : round.id;
+    const chips = [];
+    if (round.build && round.build !== 'DONE') {
+      chips.push(chip('build ' + round.build, round.build === 'BLOCKED' ? 'fail' : ''));
     }
-    view.panel = { kind: 'task', id };
-    renderAll();
+    for (const [key, value] of Object.entries(round.reviews || {})) {
+      chips.push(chip(key + ' ' + value, resultClass(value)));
+    }
+    chips.push(verdictChip(round, isLatest));
+    return h('div', { className: 'round' }, h('span', { className: 'round-id' }, label), chips);
   }
 
-  function openRunFile(name) {
-    view.panel = { kind: 'run' };
-    renderAll();
-    showFile(new URL(name, STATE_URL), name);
+  function verdictChip(round, isLatest) {
+    if (round.verdict) return chip('verdict ' + round.verdict, 'verdict ' + resultClass(round.verdict));
+    if (round.build === 'BLOCKED' || !isLatest) return chip('verdict —', 'verdict none');
+    return chip('verdict pending', 'verdict');
+  }
+
+  function resultClass(value) {
+    if (value === 'PASS' || value === 'APPROVE') return 'pass';
+    if (value === 'FAIL' || value === 'ESCALATE') return 'fail';
+    if (value === 'REWORK') return 'warn';
+    return '';
+  }
+
+  function chip(text, extra) {
+    return h('span', { className: 'chip ' + (extra || '') }, text);
+  }
+
+  // ---------------------------------------------------------------- panel
+
+  function openTaskPanel(id) {
+    const task = findTask(id);
+    const files = (task && task.files) || [];
+    const first = files.includes('task.md') ? 'task.md' : files[0];
+    state.panel = { kind: 'task', id: id };
+    showPanel();
+    openFile(first ? 'tasks/' + id + '/' + first : null, '');
+  }
+
+  function openRunPanel(name) {
+    state.panel = { kind: 'run' };
+    showPanel();
+    openFile(name, '');
+  }
+
+  function showPanel() {
+    view.panel.hidden = false;
+    renderBoard();
   }
 
   function closePanel() {
-    view.panel = null;
-    view.openUrl = null;
-    renderAll();
-  }
-
-  // ---------------------------------------------------------- file view --
-
-  function canRenderMarkdown() {
-    return typeof window.marked !== 'undefined' && typeof window.marked.parse === 'function'
-      && typeof window.DOMPurify !== 'undefined';
-  }
-
-  function markdownNode(text, url) {
-    if (!canRenderMarkdown()) return el('pre', 'plain', text);
-    const node = el('div', 'markdown');
-    node.innerHTML = window.DOMPurify.sanitize(window.marked.parse(text));
-    for (const a of node.querySelectorAll('a[href]')) {
-      const target = new URL(a.getAttribute('href'), url);
-      if (target.origin !== location.origin) {
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-      }
-    }
-    return node;
-  }
-
-  async function fileBody(url, label) {
-    if (IMAGE_RE.test(label)) {
-      const img = el('img');
-      img.src = `${url.href}${url.search ? '&' : '?'}t=${Date.now()}`;
-      img.alt = label;
-      return img;
-    }
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
-    const text = await res.text();
-    return MARKDOWN_RE.test(label) ? markdownNode(text, url) : el('pre', 'plain', text);
-  }
-
-  async function showFile(url, label) {
-    view.openUrl = url;
-    renderPanel();
-    const target = $('panel-view');
-    let body;
-    try {
-      body = await fileBody(url, label);
-    } catch (err) {
-      body = el('p', 'hint', `Could not load ${label}: ${err.message || err}`);
-    }
-    if (view.openUrl !== url) return; // another file was chosen meanwhile
-    target.replaceChildren(el('div', 'file-name', label), body);
-    target.scrollTop = 0;
-  }
-
-  // Relative links between Markdown files (such as SPEC.md to spec/x.md)
-  // open in the panel instead of leaving the dashboard.
-  function onViewClick(event) {
-    const a = event.target.closest('a[href]');
-    if (!a || !view.openUrl) return;
-    const href = a.getAttribute('href');
-    if (href.startsWith('#')) return;
-    const target = new URL(href, view.openUrl);
-    if (target.origin !== location.origin || !MARKDOWN_RE.test(target.pathname)) return;
-    event.preventDefault();
-    target.hash = '';
-    showFile(target, statePath(target));
-  }
-
-  // -------------------------------------------------------- panel resize --
-
-  const WIDTH_KEY = 'factory-dashboard-panel-width';
-
-  function setPanelWidth(px) {
-    const width = Math.max(280, Math.min(px, window.innerWidth - 40));
-    $('panel').style.setProperty('--panel-width', `${width}px`);
-    try { localStorage.setItem(WIDTH_KEY, String(width)); } catch (err) { /* optional */ }
-  }
-
-  function restorePanelWidth() {
-    let saved = null;
-    try { saved = Number(localStorage.getItem(WIDTH_KEY)); } catch (err) { /* optional */ }
-    if (saved) setPanelWidth(saved);
-  }
-
-  function initResize() {
-    const handle = $('panel-resize');
-    handle.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      handle.setPointerCapture(event.pointerId);
-      const move = (e) => setPanelWidth(window.innerWidth - e.clientX);
-      const up = () => {
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', up);
-      };
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', up);
-    });
-    handle.addEventListener('keydown', (event) => {
-      const width = $('panel').getBoundingClientRect().width;
-      if (event.key === 'ArrowLeft') setPanelWidth(width + 32);
-      if (event.key === 'ArrowRight') setPanelWidth(width - 32);
-    });
-  }
-
-  // ---------------------------------------------------------------- main --
-
-  function $(id) {
-    return document.getElementById(id);
-  }
-
-  function renderAll() {
-    renderLoop();
-    renderUpdated();
-    renderStale();
-    renderRunFiles();
+    state.panel = null;
+    state.openPath = null;
+    state.openSignature = null;
+    view.panel.hidden = true;
+    view.viewer.replaceChildren();
     renderBoard();
-    renderPanel();
   }
 
-  function init() {
-    $('panel-close').addEventListener('click', closePanel);
-    $('panel-view').addEventListener('click', onViewClick);
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && view.panel) closePanel();
+  function panelFiles() {
+    if (!state.panel) return [];
+    if (state.panel.kind === 'run') return state.runFiles.map((name) => ({ label: name, path: name }));
+    const task = findTask(state.panel.id);
+    const files = (task && Array.isArray(task.files)) ? task.files : [];
+    return files.map((file) => ({ label: file, path: 'tasks/' + state.panel.id + '/' + file }));
+  }
+
+  function renderPanelFiles() {
+    if (state.panel.kind === 'run') {
+      view.panelTitle.textContent = 'Run files';
+    } else {
+      const task = findTask(state.panel.id);
+      view.panelTitle.textContent = task ? task.id + ': ' + (task.title || '') : state.panel.id;
+    }
+    view.panelFiles.replaceChildren(...panelFiles().map((file) =>
+      h('li', {}, h('button', {
+        type: 'button',
+        className: 'file' + (file.path === state.openPath ? ' active' : ''),
+        onclick: () => openFile(file.path, ''),
+      }, file.label))));
+  }
+
+  function openFile(path, hash) {
+    state.openPath = path;
+    state.openHash = hash || '';
+    state.openSignature = null;
+    renderPanelFiles();
+    view.viewerPath.textContent = path || '';
+    view.viewerStatus.textContent = '';
+    view.viewer.replaceChildren(path ? h('p', {}, 'Loading…') : h('p', {}, 'No files yet.'));
+    view.viewer.scrollTop = 0;
+    if (path) loadOpenFile(true);
+  }
+
+  // Fetches the open file and shows it again only when it changed, keeping
+  // the scroll position, so polling never makes the panel jump.
+  async function loadOpenFile(isNew) {
+    const path = state.openPath;
+    if (!path) return;
+    const url = stateUrl(path);
+    try {
+      const response = await fetchNoStore(url);
+      const isImage = IMAGE.test(path);
+      const body = isImage ? await response.blob() : await response.text();
+      if (path !== state.openPath) return;
+      const signature = isImage ? body.size + ':' + body.type : body;
+      view.viewerStatus.textContent = '';
+      if (!isNew && signature === state.openSignature) return;
+      state.openSignature = signature;
+      const scroll = view.viewer.scrollTop;
+      view.viewer.replaceChildren(renderFile(path, body, url));
+      if (isNew) scrollToHash(state.openHash);
+      else view.viewer.scrollTop = scroll;
+    } catch (error) {
+      if (path !== state.openPath) return;
+      view.viewerStatus.textContent = error.message || String(error);
+      if (isNew) view.viewer.replaceChildren(h('p', {}, 'This file is not available.'));
+    }
+  }
+
+  function renderFile(path, body, url) {
+    if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
+    state.objectUrl = null;
+    if (IMAGE.test(path)) {
+      state.objectUrl = URL.createObjectURL(body);
+      return h('img', { src: state.objectUrl, alt: path });
+    }
+    if (MARKDOWN.test(path)) return renderMarkdown(body, url);
+    return h('pre', { className: 'plain' }, body);
+  }
+
+  // ---------------------------------------------------------------- markdown
+
+  let markdownParser = null;
+
+  function parser() {
+    if (markdownParser || !window.marked || !window.marked.Marked) return markdownParser;
+    markdownParser = new window.marked.Marked({ gfm: true, async: false });
+    // Raw HTML in a file is shown as text, never run.
+    markdownParser.use({ renderer: { html: (token) => escapeHtml(token.text || token.raw || '') } });
+    return markdownParser;
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
+  function renderMarkdown(text, fileUrl) {
+    const md = parser();
+    if (!md) return h('pre', { className: 'plain' }, text);
+    let html;
+    try {
+      html = md.parse(text);
+    } catch (error) {
+      return h('pre', { className: 'plain' }, text);
+    }
+    const container = h('div', { className: 'markdown' });
+    container.innerHTML = html;
+    addHeadingIds(container);
+    container.querySelectorAll('a[href]').forEach((link) => fixLink(link, fileUrl));
+    container.querySelectorAll('img[src]').forEach((image) => fixImage(image, fileUrl));
+    return container;
+  }
+
+  function addHeadingIds(container) {
+    const seen = new Map();
+    container.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading) => {
+      const base = slugify(heading.textContent || '');
+      const count = seen.get(base) || 0;
+      seen.set(base, count + 1);
+      heading.id = count ? base + '-' + count : base;
     });
-    initResize();
-    restorePanelWidth();
-    poll();
-    setInterval(poll, POLL_MS);
   }
 
-  init();
+  // Links resolve against the file, not the page. A link to another file of
+  // the run opens it in the panel; anything else opens in a new tab.
+  function fixLink(link, fileUrl) {
+    const raw = link.getAttribute('href');
+    if (raw.startsWith('#')) {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        scrollToHash(raw);
+      });
+      return;
+    }
+    let target;
+    try { target = new URL(raw, fileUrl); } catch (error) { link.removeAttribute('href'); return; }
+    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+      link.removeAttribute('href');
+      return;
+    }
+    link.href = target.href;
+    if (target.origin === window.location.origin && target.pathname.startsWith(STATE_BASE.pathname)) {
+      const path = decodeURIComponent(target.pathname.slice(STATE_BASE.pathname.length));
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (path === state.openPath) scrollToHash(target.hash);
+        else openFile(path, target.hash);
+      });
+      return;
+    }
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+  }
+
+  function fixImage(image, fileUrl) {
+    let source;
+    try { source = new URL(image.getAttribute('src'), fileUrl); } catch (error) { image.remove(); return; }
+    if (source.protocol !== 'http:' && source.protocol !== 'https:') { image.remove(); return; }
+    image.src = source.href;
+    image.loading = 'lazy';
+  }
+
+  function scrollToHash(hash) {
+    if (!hash || hash === '#') return;
+    let id = hash.slice(1);
+    try { id = decodeURIComponent(id); } catch (error) { /* keep it as it is */ }
+    const target = view.viewer.querySelector('[id="' + CSS.escape(id) + '"]');
+    if (target) target.scrollIntoView({ block: 'start' });
+  }
+
+  // ---------------------------------------------------------------- resizing
+
+  function applyWidth(width) {
+    const clamped = Math.max(320, Math.min(width, window.innerWidth));
+    view.panel.style.setProperty('--panel-width', clamped + 'px');
+    return clamped;
+  }
+
+  function setUpResize() {
+    const saved = Number(storageGet(WIDTH_KEY));
+    if (saved) applyWidth(saved);
+    view.resize.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      view.resize.setPointerCapture(event.pointerId);
+      view.resize.classList.add('dragging');
+    });
+    view.resize.addEventListener('pointermove', (event) => {
+      if (!view.resize.hasPointerCapture(event.pointerId)) return;
+      applyWidth(window.innerWidth - event.clientX);
+    });
+    const stop = (event) => {
+      if (!view.resize.hasPointerCapture(event.pointerId)) return;
+      view.resize.releasePointerCapture(event.pointerId);
+      view.resize.classList.remove('dragging');
+      storageSet(WIDTH_KEY, String(Math.round(view.panel.getBoundingClientRect().width)));
+    };
+    view.resize.addEventListener('pointerup', stop);
+    view.resize.addEventListener('pointercancel', stop);
+    view.resize.addEventListener('keydown', (event) => {
+      const step = event.key === 'ArrowLeft' ? 40 : event.key === 'ArrowRight' ? -40 : 0;
+      if (!step) return;
+      event.preventDefault();
+      const width = applyWidth(view.panel.getBoundingClientRect().width + step);
+      storageSet(WIDTH_KEY, String(Math.round(width)));
+    });
+  }
+
+  // ---------------------------------------------------------------- start
+
+  view.panelClose.addEventListener('click', closePanel);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state.panel) closePanel();
+  });
+  setUpResize();
+  poll();
 })();

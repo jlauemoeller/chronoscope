@@ -1,36 +1,50 @@
 #!/usr/bin/env python3
-"""The factory script: the mechanics of the /factory loop.
+"""The factory script: the mechanics of the /factory skill.
 
-Run from the repository root as
+Run it from the repository root as
 
     python3 -I .claude/skills/factory/factory.py <command> ...
+
+It finds the repository from the working directory (git rev-parse
+--show-toplevel), never from its own location, so it can be tested against a
+sample repository. It uses only the Python standard library and works out
+everything from the files under factory/state/ and from git.
 
 Every command exits 0 when it succeeds and prints its answer, even when the
 answer is "no", "none" or an empty list. A non-zero exit always means an
 error, with the reason on stderr.
 
-Commands:
-  board rebuild [--state S] [--message M]
-  board set [--state S] [--message M] [--current ID | --clear-current]
-            [--agent NAME=ID ...] [--task ID]
-  board show [--task ID]
-  spec-copy [SPEC]
-  plan-check
-  max-serial
-  round latest TASK | round previous TASK ROUND | round next TASK
-  round kind TASK ROUND | round state TASK [ROUND]
-  rework-count TASK ROUND
-  rework-note TASK ROUND [--out PATH]
-  reviewers TASK
-  dependents TASK
-  merged TASK
-  tasks
-  backlog-set TASK STATUS
-  first-line PATH
-  check-firstlines [TASK]
+Commands (see conventions.md for when to use each one):
 
-It uses only the Python standard library and works everything out from the
-files in factory/state/ and from git.
+  board build [--state S] [--message M]   create or rebuild board.json
+  board loop S [--message M] [--current ID | --no-current]
+  board agent NAME AGENT-ID               record an agent id
+  board task ID                           recompute one task's entry
+  board show [ID]                         print loop, agents (and one task)
+
+  spec copy PATH                          copy a spec into factory/state/
+  spec recopy                             copy it again from spec-source
+
+  plan check                              mechanical plan check
+  plan highest-serial                     highest serial used before this run
+  plan archived-stack                     newest factory/archive/*/stack.md
+
+  round list ID                           latest, previous and next round
+  round previous ID ROUND                 the previous round of ROUND
+  round kind ID ROUND                     auto | approver-rework | rework
+  round rework-count ID ROUND             REWORK verdicts before ROUND
+  round rework-note ID ROUND [--write P]  a verdict's rework note
+
+  task reviewers ID                       the reviewers that run on a task
+  task dependents ID                      tasks that depend on a task
+  task merged ID                          yes | no
+  task next-step ID                       where an In progress task resumes
+
+  backlog next                            first Planned task, or none
+  backlog set ID STATUS                   change a task's status
+
+  first-lines [ID]                        check every fixed first line
+  summary                                 what /factory status prints
 """
 
 import argparse
@@ -42,498 +56,624 @@ import shutil
 import subprocess
 import sys
 import urllib.parse
-from pathlib import Path
+from collections import deque
 
-ROOT = Path(__file__).resolve().parents[3]
-STATE = ROOT / "factory" / "state"
-TASKS = STATE / "tasks"
-BOARD = STATE / "board.json"
-BACKLOG = STATE / "backlog.md"
-PREFLIGHT = STATE / "preflight.md"
-SPEC = STATE / "SPEC.md"
-SPEC_DIR = STATE / "spec"
-SPEC_SOURCE = STATE / "spec-source"
-MAIN = "main"
-
-# The reviewer roster, in roster order. Rebuild this file when a row is added.
 ROSTER = ["code", "feature", "security", "privacy", "api", "ui"]
-ALWAYS = ["code", "feature"]
-
 STATUSES = ["Planned", "In progress", "Escalated", "Complete", "Abandoned"]
-LOOP_STATES = ["planning", "awaiting-preflight", "awaiting-plan-review",
-               "running", "escalated", "halted", "complete"]
+LOOP_STATES = [
+    "planning",
+    "awaiting-preflight",
+    "awaiting-plan-review",
+    "running",
+    "escalated",
+    "halted",
+    "complete",
+]
+SECTIONS = ["Goal", "Spec excerpts", "Acceptance criteria", "UI", "Reviews", "Depends on"]
 
 FIRST_LINES = {
-    "review": ["VERDICT: PASS", "VERDICT: FAIL"],
-    "verdict": ["VERDICT: APPROVE", "VERDICT: REWORK", "VERDICT: ESCALATE"],
-    "build-notes": ["STATUS: DONE", "STATUS: BLOCKED"],
-    "preflight": ["PREFLIGHT: READY", "PREFLIGHT: TOOLS", "PREFLIGHT: BLOCKED"],
+    "preflight": re.compile(r"PREFLIGHT: (READY|TOOLS|BLOCKED)"),
+    "build": re.compile(r"STATUS: (DONE|BLOCKED)"),
+    "review": re.compile(r"VERDICT: (PASS|FAIL)"),
+    "verdict": re.compile(r"VERDICT: (APPROVE|REWORK|ESCALATE)"),
 }
+TASK_ID = re.compile(r"(\d{3,})-([a-z0-9]+(?:-[a-z0-9]+){1,2})")
+TASK_TITLE = re.compile(r"#[ \t]+`?([^`\s:]+)`?[ \t]*:[ \t]*(.*)")
+ROUND_ID = re.compile(r"round-(\d+)")
+MERGE_SUBJECT = re.compile(r"factory: merge `?(\d{3,}-[a-z0-9-]+)`?")
 
-ID_RE = re.compile(r"^(\d{3,})-([a-z0-9]+(?:-[a-z0-9]+){1,2})$")
-LOOSE_ID_RE = re.compile(r"(?<![\w-])(\d+-[a-z0-9]+(?:-[a-z0-9]+)*)(?![\w-])")
-ROUND_RE = re.compile(r"^round-([1-9]\d*)$")
-FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
-HEADING_RE = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$")
-LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(.*)$")
+ROOT = None  # repository root, set in main()
 
 
 class FactoryError(Exception):
     pass
 
 
-# ---------------------------------------------------------------- text ----
+def fail(message):
+    raise FactoryError(message)
+
+
+# --------------------------------------------------------------------------
+# Paths, files and git
+
+
+def state_dir():
+    return os.path.join(ROOT, "factory", "state")
+
+
+def state_path(*parts):
+    return os.path.join(state_dir(), *parts)
+
+
+def task_dir(task_id):
+    return state_path("tasks", task_id)
+
+
+def rel(path):
+    return os.path.relpath(path, ROOT)
+
 
 def read_text(path):
-    """Read a file as text, dropping a byte order mark."""
-    return Path(path).read_bytes().decode("utf-8-sig", errors="replace")
+    """Read a file as text: BOM removed, every line ending turned into \\n."""
+    with open(path, "rb") as f:
+        data = f.read()
+    text = data.decode("utf-8", errors="replace")
+    if text.startswith("﻿"):
+        text = text[1:]
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def read_lines(path):
-    """Lines without line endings or trailing spaces (CRLF safe)."""
-    return [line.rstrip() for line in read_text(path).splitlines()]
+    """Lines without trailing whitespace."""
+    return [line.rstrip() for line in read_text(path).split("\n")]
+
+
+def first_line(path):
+    return read_text(path).split("\n", 1)[0].rstrip()
 
 
 def write_atomic(path, text):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
     os.replace(tmp, path)
 
 
-def fence_mask(lines):
-    """For each line, True when it is inside a fenced code block (fences included)."""
-    mask = []
-    fence = None  # (char, length)
-    for line in lines:
-        if fence is None:
-            m = FENCE_OPEN_RE.match(line)
-            if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
-                fence = (m.group(1)[0], len(m.group(1)))
-                mask.append(True)
-            else:
-                mask.append(False)
-        else:
-            mask.append(True)
-            s = line.strip()
-            if (len(line) - len(line.lstrip(" ")) <= 3 and s
-                    and set(s) == {fence[0]} and len(s) >= fence[1]):
-                fence = None
-    return mask
-
-
-def clean_token(text):
-    """Strip Markdown decoration around a cell or token: backticks, emphasis, links."""
-    t = text.strip()
-    m = re.fullmatch(r"\[(.*)\]\([^)]*\)", t)
-    if m:
-        t = m.group(1).strip()
-    return t.strip("`*_ ").strip()
-
-
-def norm_heading(text):
-    t = re.sub(r"[`*_]", "", text or "").strip().lower()
-    t = re.sub(r"\s+", " ", t)
-    return t.rstrip(":").strip()
-
-
-def headings(lines):
-    """(index, level, text) of every ATX heading outside code fences."""
-    out = []
-    for i, (line, fenced) in enumerate(zip(lines, fence_mask(lines))):
-        if fenced:
-            continue
-        m = HEADING_RE.match(line)
-        if not m:
-            continue
-        text = m.group(2) or ""
-        text = re.sub(r"(^|[ \t]+)#+$", "", text).strip()
-        out.append((i, len(m.group(1)), text))
-    return out
-
-
-def section_body(lines, index, level):
-    """Lines after the heading at `index`, up to the next heading of level <= `level`."""
-    end = len(lines)
-    for i, lvl, _ in headings(lines):
-        if i > index and lvl <= level:
-            end = i
-            break
-    return list(range(index + 1, end))
-
-
-def first_line_value(path, kind):
-    """None if the file is missing, the result word if the first line is valid, else 'invalid'."""
-    path = Path(path)
-    if not path.is_file():
-        return None
-    lines = read_lines(path)
-    first = lines[0] if lines else ""
-    if first in FIRST_LINES[kind]:
-        return first.split(": ", 1)[1]
-    return "invalid"
-
-
-def first_line_raw(path):
-    lines = read_lines(path)
-    return lines[0] if lines else ""
-
-
-def kind_of_file(path):
-    name = Path(path).name
-    if name == "build-notes.md":
-        return "build-notes"
-    if name == "verdict.md":
-        return "verdict"
-    if name == "preflight.md":
-        return "preflight"
-    for key in ROSTER:
-        if name == f"{key}-review.md":
-            return "review"
-    return None
-
-
-# ----------------------------------------------------------------- git ----
-
 def git(*args, check=True):
-    r = subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=ROOT,
-                       capture_output=True, text=True)
-    if check and r.returncode != 0:
-        raise FactoryError(f"git {' '.join(args)} failed: {r.stderr.strip()}")
-    return r
+    proc = subprocess.run(
+        ["git", *args], cwd=ROOT, capture_output=True, text=True, errors="replace"
+    )
+    if check and proc.returncode != 0:
+        fail("git %s failed: %s" % (" ".join(args), proc.stderr.strip() or proc.returncode))
+    return proc
 
 
-def has_ref(ref):
-    return git("rev-parse", "--verify", "--quiet", ref, check=False).returncode == 0
+def find_root():
+    proc = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        fail("not inside a git repository: " + proc.stderr.strip())
+    return proc.stdout.strip()
+
+
+_main_subjects = None
 
 
 def main_subjects():
-    if not has_ref(f"refs/heads/{MAIN}"):
-        return []
-    return [s.rstrip() for s in git("log", MAIN, "--format=%s").stdout.splitlines()]
+    """Commit subjects on main (the trailing -- stops git reading main as a path)."""
+    global _main_subjects
+    if _main_subjects is None:
+        out = git("log", "main", "--format=%s", "--").stdout
+        _main_subjects = [s.strip() for s in out.splitlines()]
+    return _main_subjects
 
 
-def factory_branches():
-    out = git("for-each-ref", "--format=%(refname)", "refs/heads/factory/").stdout
-    return [line[len("refs/heads/factory/"):] for line in out.splitlines() if line.strip()]
+def branch_exists(task_id):
+    ref = "refs/heads/factory/" + task_id
+    return git("rev-parse", "--verify", "--quiet", ref, check=False).returncode == 0
 
 
-def is_merged(tid):
-    if f"factory: merge {tid}" in main_subjects():
+def is_merged(task_id):
+    """Merged: main has the subject 'factory: merge <id>', or the branch exists,
+    is an ancestor of main, and has at least one builder commit."""
+    if ("factory: merge " + task_id) in main_subjects():
         return True
-    branch = f"refs/heads/factory/{tid}"
-    if not has_ref(branch) or not has_ref(f"refs/heads/{MAIN}"):
+    if not branch_exists(task_id):
         return False
-    r = git("merge-base", "--is-ancestor", branch, f"refs/heads/{MAIN}", check=False)
-    if r.returncode == 1:
+    ref = "refs/heads/factory/" + task_id
+    # Plain git check: the exit status is the answer (0 yes, 1 no).
+    proc = git("merge-base", "--is-ancestor", ref, "main", check=False)
+    if proc.returncode == 1:
         return False
-    if r.returncode != 0:
-        raise FactoryError(f"git merge-base failed: {r.stderr.strip()}")
-    subjects = git("log", branch, "--format=%s").stdout.splitlines()
-    return any(s.startswith(f"{tid}: ") for s in subjects)
+    if proc.returncode != 0:
+        fail("git merge-base --is-ancestor failed: " + proc.stderr.strip())
+    subjects = git("log", ref, "--format=%s", "--").stdout.splitlines()
+    return any(s.startswith(task_id + ": ") for s in subjects)
 
 
-def used_serials():
-    serials = []
-    for s in main_subjects():
-        m = re.match(r"^factory: merge (\d+)-", s)
-        if m:
-            serials.append(int(m.group(1)))
-    for name in factory_branches():
-        m = re.match(r"^(\d+)-", name)
-        if m:
-            serials.append(int(m.group(1)))
-    return serials
+def current_branch():
+    return git("branch", "--show-current").stdout.strip()
 
 
-# ------------------------------------------------------------- backlog ----
-
-def norm_status(text):
-    t = clean_token(text)
-    for s in STATUSES:
-        if t.lower() == s.lower():
-            return s
-    return t
+def tree_changes():
+    """Uncommitted changes and untracked files git doesn't ignore."""
+    out = git("status", "--porcelain", "--untracked-files=all").stdout
+    return [line for line in out.splitlines() if line.strip()]
 
 
-def backlog_rows():
-    """[(line index, task id, status)] in backlog order, or None without backlog.md."""
-    if not BACKLOG.is_file():
-        return None
-    lines = read_lines(BACKLOG)
-    rows = []
-    for i, (line, fenced) in enumerate(zip(lines, fence_mask(lines))):
-        s = line.strip()
-        if fenced or not s.startswith("|"):
-            continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) < 2:
-            continue
-        tid = clean_token(cells[0])
-        if not re.fullmatch(r"\d+-[a-z0-9-]+", tid):
-            continue  # header or separator
-        rows.append((i, tid, norm_status(cells[1])))
-    return rows
+def state_ignored():
+    # Plain git check: the exit status is the answer (0 ignored, 1 not).
+    proc = git("check-ignore", "-q", "factory/state", check=False)
+    if proc.returncode not in (0, 1):
+        fail("git check-ignore failed: " + proc.stderr.strip())
+    return proc.returncode == 0
 
 
-def backlog():
-    rows = backlog_rows()
-    return None if rows is None else [(tid, status) for _, tid, status in rows]
+# --------------------------------------------------------------------------
+# Markdown helpers
+
+FENCE_OPEN = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
+FENCE_CLOSE = re.compile(r"^[ \t]*(`{3,}|~{3,})[ \t]*$")
+HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$")
+BULLET = re.compile(r"^[-*+][ \t]+(.*)$")
+BLANK_LINE = re.compile(r"\n[ \t]*\n")
 
 
-def status_of(tid):
-    for t, s in backlog() or []:
-        if t == tid:
-            return s
-    raise FactoryError(f"task {tid} is not in backlog.md")
-
-
-def require_task(tid):
-    status_of(tid)
-    return TASKS / tid
-
-
-def preflight_state():
-    return PREFLIGHT.is_file() and not BACKLOG.is_file()
-
-
-# ------------------------------------------------------------- task.md ----
-
-class TaskFile:
-    SECTIONS = {
-        "goal": lambda t: t.startswith("goal"),
-        "spec excerpts": lambda t: "spec" in t or "excerpt" in t,
-        "acceptance criteria": lambda t: "acceptance" in t,
-        "ui": lambda t: re.match(r"^ui\b", t) is not None,
-        "reviews": lambda t: t.startswith("review"),
-        "dependencies": lambda t: t.startswith("depend"),
-    }
-
-    def __init__(self, tid):
-        self.tid = tid
-        self.path = TASKS / tid / "task.md"
-        self.exists = self.path.is_file()
-        self.lines = read_lines(self.path) if self.exists else []
-        self.heads = headings(self.lines)
-        self.fenced = fence_mask(self.lines)
-
-    def title(self):
-        for _, level, text in self.heads:
-            if level == 1 and text:
-                return text
-        return None
-
-    def find(self, name):
-        pred = self.SECTIONS[name]
-        for i, level, text in self.heads:
-            if level >= 2 and pred(norm_heading(text)):
-                return i, level, text
-        return None
-
-    def body(self, name):
-        h = self.find(name)
-        if not h:
-            return None
-        return [self.lines[i] for i in section_body(self.lines, h[0], h[1])
-                if not self.fenced[i]]
-
-    def ui_none(self):
-        h = self.find("ui")
-        if h:
-            rest = norm_heading(h[2])[2:].strip(" :")
-            if rest == "none":
-                return True
-            for line in self.body("ui") or []:
-                t = norm_heading(line).rstrip(".")
-                if t:
-                    return t in ("ui: none", "none")
-            return False
-        for line, fenced in zip(self.lines, self.fenced):
-            if not fenced and norm_heading(line).rstrip(".") == "ui: none":
-                return True
-        return False
-
-    def has_ui_section(self):
-        return self.find("ui") is not None or self.ui_none()
-
-    def missing_sections(self):
-        missing = [] if self.title() else ["title"]
-        for name in self.SECTIONS:
-            if name == "ui":
-                if not self.has_ui_section():
-                    missing.append("UI")
-            elif not self.find(name):
-                missing.append(name.capitalize() if name != "spec excerpts" else "Spec excerpts")
-        return missing
-
-    def listed_reviewers(self):
-        """Keys listed in the Reviews section (any word), or None without the section."""
-        body = self.body("reviews")
-        if body is None:
-            return None
-        keys = []
-        for line in body:
-            s = line.strip()
-            item = None
-            if s.startswith("|"):
-                cells = [c.strip() for c in s.strip("|").split("|")]
-                if cells and not re.fullmatch(r":?-+:?", cells[0]):
-                    item = cells[0]
-            else:
-                m = LIST_ITEM_RE.match(line)
-                if m:
-                    item = m.group(1)
-            if not item:
-                continue
-            m = re.search(r"`([^`]+)`", item)
-            word = m.group(1) if m else re.split(r"[\s:,(—–]+", item.strip("*_ "), maxsplit=1)[0]
-            word = word.strip("*_:. ").lower()
-            if word.endswith("-reviewer"):
-                word = word[:-len("-reviewer")]
-            if word and word not in ("key", "reviewer") and word not in keys:
-                keys.append(word)
-        return keys
-
-    def reviewers(self):
-        listed = self.listed_reviewers()
-        if listed is None:
-            keys = set(ALWAYS)
-            if not self.ui_none():
-                keys.add("ui")
-        else:
-            keys = set(listed) | set(ALWAYS)
-        return [k for k in ROSTER if k in keys]
-
-    def dependencies(self):
-        body = self.body("dependencies") or []
-        deps = []
-        for line in body:
-            for m in LOOSE_ID_RE.finditer(line.replace("`", " ")):
-                if m.group(1) not in deps:
-                    deps.append(m.group(1))
-        return deps
-
-
-def task_reviewers(tid):
-    tf = TaskFile(tid)
-    if not tf.exists:
-        return list(ALWAYS)
-    return tf.reviewers()
-
-
-# -------------------------------------------------------------- rounds ----
-
-def round_dirs(tid):
-    """[(number, path)] sorted by round number."""
-    tdir = TASKS / tid
-    if not tdir.is_dir():
-        return []
-    out = []
-    for d in tdir.iterdir():
-        m = ROUND_RE.match(d.name)
-        if m and d.is_dir():
-            out.append((int(m.group(1)), d))
-    return sorted(out)
-
-
-def round_number(rid):
-    m = ROUND_RE.match(rid)
-    if not m:
-        raise FactoryError(f"not a round-id: {rid}")
-    return int(m.group(1))
-
-
-def has_base(rdir):
-    f = Path(rdir) / "base-commit"
-    return f.is_file() and read_text(f).strip() != ""
-
-
-def round_kind(rdir):
-    rdir = Path(rdir)
-    if (rdir / "human-review.md").is_file():
-        return "rework"
-    if (rdir / "approver-review.md").is_file():
-        return "approver-rework"
-    return "auto"
-
-
-def latest_round(tid):
-    rounds = round_dirs(tid)
-    return f"round-{rounds[-1][0]}" if rounds else None
-
-
-def previous_round(tid, rid):
-    n = round_number(rid)
-    prev = None
-    for num, d in round_dirs(tid):
-        if num < n and has_base(d):
-            prev = f"round-{num}"
-    return prev
-
-
-def next_round(tid):
-    rounds = round_dirs(tid)
-    return f"round-{rounds[-1][0] + 1 if rounds else 1}"
-
-
-def round_info(tid, rdir, reviewers):
-    rdir = Path(rdir)
-    reviews = {k: first_line_value(rdir / f"{k}-review.md", "review") for k in reviewers}
-    return {
-        "id": rdir.name,
-        "kind": round_kind(rdir),
-        "base": has_base(rdir),
-        "build": first_line_value(rdir / "build-notes.md", "build-notes"),
-        "reviews": reviews,
-        "verdict": first_line_value(rdir / "verdict.md", "verdict"),
-    }
-
-
-def board_round(info):
-    build = info["build"] if info["build"] in ("DONE", "BLOCKED") else "pending"
-    if build == "BLOCKED":
-        reviews = {}
-    else:
-        reviews = {k: (v if v in ("PASS", "FAIL") else "pending")
-                   for k, v in info["reviews"].items()}
-    verdict = info["verdict"] if info["verdict"] in ("APPROVE", "REWORK", "ESCALATE") else None
-    return {"id": info["id"], "kind": info["kind"], "build": build,
-            "reviews": reviews, "verdict": verdict}
-
-
-def rework_section(path):
-    """Lines of the '## Rework note' section (heading included), or None."""
-    path = Path(path)
-    if not path.is_file():
-        return None
-    lines = read_lines(path)
-    for i, level, text in headings(lines):
-        if norm_heading(text) == "rework note":
-            idx = section_body(lines, i, level)
-            return [lines[i]] + [lines[j] for j in idx]
+def opens_fence(line):
+    m = FENCE_OPEN.match(line)
+    if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+        return m.group(1)
     return None
 
 
-def rework_note_text(path):
-    section = rework_section(path)
-    if not section or not any(line.strip() for line in section[1:]):
+def closes_fence(line, fence):
+    m = FENCE_CLOSE.match(line)
+    return bool(m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence))
+
+
+def walk_lines(lines):
+    """Yield (index, line, in_code) where in_code marks fenced code lines.
+    Fences count at any indentation, so a fence nested in a list item counts."""
+    fence = None
+    for i, line in enumerate(lines):
+        if fence is not None:
+            if closes_fence(line, fence):
+                fence = None
+            yield i, line, True
+            continue
+        fence = opens_fence(line)
+        yield i, line, fence is not None
+
+
+def heading_of(line):
+    m = HEADING.match(line)
+    if not m:
         return None
-    body = section[1:]
-    while body and not body[-1].strip():
-        body.pop()
-    return "\n".join([section[0]] + body) + "\n"
+    return len(m.group(1)), (m.group(2) or "").strip()
 
 
-def count_reworks(tid, rid):
-    n = round_number(rid)
-    return sum(1 for num, d in round_dirs(tid)
-               if num < n and first_line_value(d / "verdict.md", "verdict") == "REWORK")
+def leading_token(text):
+    """The leading key or task-id of a bullet, without backticks or emphasis."""
+    m = re.match(r"^[`*_\[\]]*([A-Za-z0-9][A-Za-z0-9_.-]*)", text.strip())
+    if not m:
+        return None
+    return m.group(1).rstrip(".")
 
 
-# --------------------------------------------------------------- tasks ----
+def md_sections(lines, level=2):
+    """Map heading text -> body lines, for headings of `level` outside code."""
+    out = {}
+    name = None
+    for _, line, code in walk_lines(lines):
+        h = None if code else heading_of(line)
+        if h and h[0] <= level:
+            name = h[1].strip().strip("*").rstrip(":").strip() if h[0] == level else None
+            if name is not None:
+                out.setdefault(name, [])
+            continue
+        if name is not None:
+            out[name].append(line)
+    return out
 
-def derive_stage(tid, status, infos):
+
+# --------------------------------------------------------------------------
+# task.md
+
+
+class Task:
+    def __init__(self, task_id):
+        self.id = task_id
+        self.path = os.path.join(task_dir(task_id), "task.md")
+        self.exists = os.path.isfile(self.path)
+        self.first = ""
+        self.file_id = None
+        self.title = None
+        self.sections = []  # fixed section names in the order found
+        self.ui_none = False
+        self.review_bullets = []  # leading tokens of top-level bullets
+        self.depends = []  # leading tokens of top-level bullets
+        self.has_reviews = False
+        if self.exists:
+            self._parse()
+
+    def _parse(self):
+        lines = read_lines(self.path)
+        self.first = lines[0] if lines else ""
+        m = TASK_TITLE.fullmatch(self.first)
+        if m:
+            self.file_id, self.title = m.group(1), m.group(2).strip()
+        current = None
+        for i, line, code in walk_lines(lines):
+            if i == 0:
+                continue
+            h = None if code else heading_of(line)
+            if h and h[0] == 2 and (h[1] in SECTIONS or h[1] == "UI: none"):
+                current = "UI" if h[1] == "UI: none" else h[1]
+                if h[1] == "UI: none":
+                    self.ui_none = True
+                self.sections.append(current)
+                continue
+            if code or current not in ("Reviews", "Depends on"):
+                continue
+            b = BULLET.match(line)
+            if not b:
+                continue
+            token = leading_token(b.group(1))
+            if current == "Reviews":
+                self.review_bullets.append(token.lower() if token else "")
+            else:
+                self.depends.append(token or "")
+        self.has_reviews = "Reviews" in self.sections
+
+    def dependencies(self):
+        return [d for d in self.depends if d.lower() != "none"]
+
+    def reviewers(self):
+        if self.exists and self.has_reviews:
+            keys = set(self.review_bullets)
+        elif self.exists and self.ui_none:
+            keys = set()
+        else:
+            keys = {"ui"}
+        keys |= {"code", "feature"}
+        return [k for k in ROSTER if k in keys]
+
+
+def task_dirs():
+    root = state_path("tasks")
+    if not os.path.isdir(root):
+        return []
+    return sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))
+
+
+# --------------------------------------------------------------------------
+# backlog.md
+
+
+class Backlog:
+    def __init__(self, path):
+        self.path = path
+        self.rows = []  # dicts: id, status, line, raw_id
+        self.problems = []
+        lines = read_lines(path)
+        blocks = []
+        block = []
+        for i, line, code in walk_lines(lines):
+            if not code and line.strip().startswith("|"):
+                block.append((i, line))
+            else:
+                if block:
+                    blocks.append(block)
+                block = []
+        if block:
+            blocks.append(block)
+        for block in blocks:
+            seps = [k for k, (_, line) in enumerate(block) if self._is_separator(line)]
+            start = seps[0] + 1 if seps else 0
+            for i, line in block[start:]:
+                if self._is_separator(line):
+                    continue
+                cells = self._cells(line)
+                if not any(cells):
+                    continue
+                if len(cells) < 2:
+                    self.problems.append("backlog.md line %d: a row needs two cells" % (i + 1))
+                    continue
+                raw_id = cells[0]
+                task_id = raw_id.strip().strip("`*_ ").strip()
+                status = cells[1].strip().strip("`*_ ").strip()
+                if status not in STATUSES:
+                    self.problems.append(
+                        "backlog.md line %d: unknown status %r for %s" % (i + 1, status, task_id)
+                    )
+                self.rows.append({"id": task_id, "status": status, "line": i, "raw_id": raw_id})
+
+    @staticmethod
+    def _cells(line):
+        s = line.strip()
+        if s.startswith("|"):
+            s = s[1:]
+        if s.endswith("|") and not s.endswith("\\|"):
+            s = s[:-1]
+        return [c.strip() for c in re.split(r"(?<!\\)\|", s)]
+
+    @classmethod
+    def _is_separator(cls, line):
+        cells = cls._cells(line)
+        return bool(cells) and all(re.fullmatch(r":?-+:?", c.replace(" ", "")) for c in cells)
+
+    def ids(self):
+        return [r["id"] for r in self.rows]
+
+    def status_of(self, task_id):
+        for r in self.rows:
+            if r["id"] == task_id:
+                return r["status"]
+        return None
+
+
+def read_backlog(required=False):
+    path = state_path("backlog.md")
+    if not os.path.isfile(path):
+        if required:
+            fail("factory/state/backlog.md does not exist")
+        return None
+    return Backlog(path)
+
+
+def valid_backlog():
+    backlog = read_backlog(required=True)
+    if backlog.problems:
+        fail("; ".join(backlog.problems))
+    return backlog
+
+
+def set_status(task_id, status):
+    if status not in STATUSES:
+        fail("unknown status %r (one of: %s)" % (status, ", ".join(STATUSES)))
+    backlog = valid_backlog()
+    matches = [r for r in backlog.rows if r["id"] == task_id]
+    if len(matches) != 1:
+        fail("%s appears %d times in backlog.md" % (task_id, len(matches)))
+    row = matches[0]
+    with open(backlog.path, "rb") as f:
+        raw = f.read().decode("utf-8", errors="replace")
+    bom = raw.startswith("﻿")
+    if bom:
+        raw = raw[1:]
+    newline = "\r\n" if "\r\n" in raw else "\n"
+    lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    lines[row["line"]] = "| %s | %s |" % (row["raw_id"], status)
+    text = ("﻿" if bom else "") + newline.join(lines)
+    tmp = backlog.path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+    os.replace(tmp, backlog.path)
+    return row["status"]
+
+
+# --------------------------------------------------------------------------
+# Rounds
+
+
+def round_num(round_id):
+    m = ROUND_ID.fullmatch(round_id or "")
+    if not m:
+        fail("not a round-id: %r" % round_id)
+    return int(m.group(1))
+
+
+def round_dirs(task_id):
+    t = task_dir(task_id)
+    if not os.path.isdir(t):
+        return []
+    found = []
+    for name in os.listdir(t):
+        m = ROUND_ID.fullmatch(name)
+        if m and os.path.isdir(os.path.join(t, name)):
+            found.append((int(m.group(1)), name))
+    return [name for _, name in sorted(found)]
+
+
+def rpath(task_id, round_id, *parts):
+    return os.path.join(task_dir(task_id), round_id, *parts)
+
+
+def has_base(task_id, round_id):
+    return os.path.isfile(rpath(task_id, round_id, "base-commit"))
+
+
+def previous_round(task_id, round_id):
+    n = round_num(round_id)
+    earlier = [r for r in round_dirs(task_id) if round_num(r) < n and has_base(task_id, r)]
+    return earlier[-1] if earlier else None
+
+
+def next_round_id(task_id):
+    rounds = round_dirs(task_id)
+    return "round-%d" % (round_num(rounds[-1]) + 1) if rounds else "round-1"
+
+
+def file_result(path, kind):
+    """The value on a fixed first line, None if the file is missing,
+    'invalid' if the first line isn't an allowed one."""
+    if not os.path.isfile(path):
+        return None
+    m = FIRST_LINES[kind].fullmatch(first_line(path))
+    return m.group(1) if m else "invalid"
+
+
+def build_result(task_id, round_id):
+    return file_result(rpath(task_id, round_id, "build-notes.md"), "build")
+
+
+def review_result(task_id, round_id, key):
+    return file_result(rpath(task_id, round_id, key + "-review.md"), "review")
+
+
+def verdict_result(task_id, round_id):
+    return file_result(rpath(task_id, round_id, "verdict.md"), "verdict")
+
+
+def round_kind(task_id, round_id):
+    if os.path.isfile(rpath(task_id, round_id, "human-review.md")):
+        return "rework"
+    if os.path.isfile(rpath(task_id, round_id, "approver-review.md")):
+        return "approver-rework"
+    if not has_base(task_id, round_id):
+        # Interrupted while it was being created: an Approver rework round
+        # follows a REWORK verdict and gets its note copied again.
+        prev = previous_round(task_id, round_id)
+        if prev and verdict_result(task_id, prev) == "REWORK":
+            return "approver-rework"
+    return "auto"
+
+
+def rework_count(task_id, round_id):
+    n = round_num(round_id)
+    return sum(
+        1
+        for r in round_dirs(task_id)
+        if round_num(r) < n and verdict_result(task_id, r) == "REWORK"
+    )
+
+
+def rework_note(task_id, round_id):
+    """(has_text, section_text) for the verdict's '## Rework note' section."""
+    path = rpath(task_id, round_id, "verdict.md")
+    if not os.path.isfile(path):
+        fail("%s does not exist" % rel(path))
+    lines = read_lines(path)
+    start = end = None
+    for i, line, code in walk_lines(lines):
+        h = None if code else heading_of(line)
+        if start is None:
+            if h and h[0] == 2 and h[1].strip("*").rstrip(":").strip().lower() == "rework note":
+                start = i
+        elif h and h[0] <= 2:
+            end = i
+            break
+    if start is None:
+        return False, ""
+    section = lines[start:end]
+    while section and not section[-1].strip():
+        section.pop()
+    has_text = any(line.strip() for line in section[1:])
+    return has_text, "\n".join(section) + "\n"
+
+
+# --------------------------------------------------------------------------
+# Next step of an In progress task (the task orchestrator's entry table)
+
+
+def next_step(task_id):
+    """Where an In progress task resumes, worked out from its files."""
+    if is_merged(task_id):
+        return {"step": "merged"}
+    task = Task(task_id)
+    if not task.exists:
+        fail("factory/state/tasks/%s/task.md does not exist" % task_id)
+    rounds = round_dirs(task_id)
+    if not rounds:
+        return {"step": "new-round", "round": "round-1", "kind": "auto"}
+    latest = rounds[-1]
+    if not has_base(task_id, latest):
+        return {"step": "complete-round", "round": latest, "kind": round_kind(task_id, latest)}
+    build = build_result(task_id, latest)
+    if build is None:
+        return {"step": "build", "round": latest}
+    if build == "invalid":
+        fail("%s/build-notes.md has an invalid first line" % rel(rpath(task_id, latest)))
+    if build == "BLOCKED":
+        return {"step": "escalate", "round": latest, "reason": "blocked"}
+    keys = task.reviewers()
+    results = {k: review_result(task_id, latest, k) for k in keys}
+    bad = [k for k, v in results.items() if v == "invalid"]
+    if bad:
+        fail("invalid first line in %s" % ", ".join("%s-review.md" % k for k in bad))
+    started = os.path.isfile(rpath(task_id, latest, "reviews-started"))
+    if not started and all(v is None for v in results.values()):
+        return {"step": "verify-build", "round": latest}
+    missing = [k for k, v in results.items() if v is None]
+    if missing:
+        return {"step": "review", "round": latest, "missing": " ".join(missing)}
+    verdict = verdict_result(task_id, latest)
+    if verdict == "invalid":
+        fail("%s/verdict.md has an invalid first line" % rel(rpath(task_id, latest)))
+    if verdict is None:
+        failed = [k for k, v in results.items() if v == "FAIL"]
+        if latest == "round-1" and round_kind(task_id, latest) == "auto" and failed:
+            return {"step": "fix-round", "round": next_round_id(task_id), "after": latest}
+        return {"step": "approve", "round": latest}
+    if verdict == "APPROVE":
+        return {"step": "merge", "round": latest}
+    if verdict == "ESCALATE":
+        return {"step": "escalate", "round": latest, "reason": "approver"}
+    # REWORK
+    if rework_count(task_id, latest) >= 2:
+        return {"step": "escalate", "round": latest, "reason": "rework-limit"}
+    if not rework_note(task_id, latest)[0]:
+        return {"step": "escalate", "round": latest, "reason": "no-rework-note"}
+    return {"step": "approver-rework", "round": next_round_id(task_id), "after": latest}
+
+
+# --------------------------------------------------------------------------
+# board.json
+
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def task_files(task_id, keys):
+    t = task_dir(task_id)
+    files = []
+    if os.path.isfile(os.path.join(t, "task.md")):
+        files.append("task.md")
+    order = ["human-review.md", "approver-review.md", "build-notes.md"]
+    order += ["%s-review.md" % k for k in ROSTER] + ["verdict.md"]
+    for r in round_dirs(task_id):
+        rdir = os.path.join(t, r)
+        names = [n for n in os.listdir(rdir) if os.path.isfile(os.path.join(rdir, n))]
+        mds = [n for n in names if n.lower().endswith(".md")]
+        mds.sort(key=lambda n: (order.index(n) if n in order else len(order), n))
+        files += ["%s/%s" % (r, n) for n in mds]
+        for k in ROSTER:
+            edir = os.path.join(rdir, k)
+            if not os.path.isdir(edir):
+                continue
+            found = []
+            for base, dirs, fnames in os.walk(edir):
+                dirs.sort()
+                for n in fnames:
+                    found.append(os.path.relpath(os.path.join(base, n), t).replace(os.sep, "/"))
+            files += sorted(found)
+    return files
+
+
+def round_entry(task_id, round_id, keys):
+    build = build_result(task_id, round_id)
+    entry = {
+        "id": round_id,
+        "kind": round_kind(task_id, round_id),
+        "build": build if build in ("DONE", "BLOCKED") else "pending",
+        "reviews": {},
+        "verdict": None,
+    }
+    started = os.path.isfile(rpath(task_id, round_id, "reviews-started"))
+    results = {k: review_result(task_id, round_id, k) for k in keys}
+    if started or any(v is not None for v in results.values()):
+        entry["reviews"] = {
+            k: (v if v in ("PASS", "FAIL") else "pending") for k, v in results.items()
+        }
+    verdict = verdict_result(task_id, round_id)
+    if verdict in ("APPROVE", "REWORK", "ESCALATE"):
+        entry["verdict"] = verdict
+    return entry
+
+
+def task_stage(task_id, status, rounds, keys):
     if status == "Planned":
         return "planned"
     if status == "Complete":
@@ -542,726 +682,933 @@ def derive_stage(tid, status, infos):
         return "abandoned"
     if status == "Escalated":
         return "escalated"
-    if status != "In progress":
-        return "planned"
-    if is_merged(tid):
+    if is_merged(task_id):
         return "done"
-    if not infos:
+    if not rounds:
         return "building"
-    r = infos[-1]
-    if not r["base"] or r["build"] != "DONE":
+    latest = rounds[-1]
+    if latest["build"] != "DONE":
         return "building"
-    results = list(r["reviews"].values())
-    if any(v not in ("PASS", "FAIL") for v in results):
+    reviews = latest["reviews"]
+    if len(reviews) < len(keys) or "pending" in reviews.values():
         return "review"
-    if r["verdict"] is None and r["id"] == "round-1" and r["kind"] == "auto" \
-            and "FAIL" in results:
+    if latest["verdict"] is None:
+        if latest["id"] == "round-1" and latest["kind"] == "auto" and "FAIL" in reviews.values():
+            return "building"
+        return "approval"
+    if latest["verdict"] == "REWORK":
         return "building"
     return "approval"
 
 
-REVIEW_FILE_ORDER = (["human-review.md", "approver-review.md", "build-notes.md"]
-                     + [f"{k}-review.md" for k in ROSTER] + ["verdict.md"])
-
-
-def task_files(tid):
-    tdir = TASKS / tid
-    files = ["task.md"] if (tdir / "task.md").is_file() else []
-    for _, rdir in round_dirs(tid):
-        mds = [p.name for p in rdir.iterdir() if p.is_file() and p.suffix.lower() == ".md"]
-        known = [n for n in REVIEW_FILE_ORDER if n in mds]
-        files += [f"{rdir.name}/{n}" for n in known + sorted(set(mds) - set(known))]
-        for key in ROSTER:
-            ev = rdir / key
-            if ev.is_dir():
-                files += sorted(p.relative_to(tdir).as_posix() for p in ev.rglob("*") if p.is_file())
-    return files
-
-
-def task_entry(tid, status):
-    tf = TaskFile(tid)
-    reviewers = tf.reviewers() if tf.exists else list(ALWAYS)
-    infos = [round_info(tid, d, reviewers) for _, d in round_dirs(tid)]
+def task_entry(task_id, status):
+    task = Task(task_id)
+    keys = task.reviewers()
+    rounds = [round_entry(task_id, r, keys) for r in round_dirs(task_id)]
     return {
-        "id": tid,
-        "title": tf.title() or tid,
-        "branch": f"factory/{tid}",
+        "id": task_id,
+        "title": task.title or task_id,
+        "branch": "factory/" + task_id,
         "status": status,
-        "stage": derive_stage(tid, status, infos),
-        "rounds": [board_round(i) for i in infos],
-        "files": task_files(tid),
+        "stage": task_stage(task_id, status, rounds, keys),
+        "rounds": rounds,
+        "files": task_files(task_id, keys),
     }
 
 
-# --------------------------------------------------------------- board ----
-
-def now():
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def board_path():
+    return state_path("board.json")
 
 
 def load_board():
-    if not BOARD.is_file():
+    path = board_path()
+    if not os.path.isfile(path):
         return None
     try:
-        board = json.loads(read_text(BOARD))
-    except ValueError:
-        return None
-    return board if isinstance(board, dict) else None
+        with open(path, encoding="utf-8-sig") as f:
+            board = json.load(f)
+    except (OSError, ValueError) as e:
+        fail("factory/state/board.json is not valid JSON (%s); run 'board build'" % e)
+    if not isinstance(board, dict):
+        fail("factory/state/board.json is not a JSON object; run 'board build'")
+    return board
 
 
 def save_board(board):
     board["updated"] = now()
-    ordered = {k: board[k] for k in ("updated", "loop", "agents", "tasks")}
-    write_atomic(BOARD, json.dumps(ordered, indent=2, ensure_ascii=False) + "\n")
+    os.makedirs(state_dir(), exist_ok=True)
+    write_atomic(board_path(), json.dumps(board, indent=2, ensure_ascii=False) + "\n")
 
 
-def derived_loop_state(rows):
-    if preflight_state():
-        return "awaiting-preflight", "Preflight stopped: see preflight.md"
-    if rows is None:
-        return "planning", "Planning"
-    statuses = [s for _, s in rows]
-    if "Escalated" in statuses:
-        return "escalated", "A task is escalated"
-    if statuses and all(s in ("Complete", "Abandoned") for s in statuses):
-        return "complete", "Construction complete"
-    if all(s == "Planned" for s in statuses) and not any(round_dirs(t) for t, _ in rows):
-        return "awaiting-plan-review", "Plan ready for review"
-    return "halted", "Board rebuilt from the files; /factory continue resumes"
+def derived_loop(backlog):
+    """The loop a rebuild derives from the files (never awaiting-plan-review)."""
+    if backlog is None:
+        if os.path.isfile(state_path("preflight.md")):
+            return "awaiting-preflight", "The preflight stopped: see preflight.md", None
+        return "planning", "", None
+    active = [r for r in backlog.rows if r["status"] in ("In progress", "Escalated")]
+    current = active[0]["id"] if active else None
+    if any(r["status"] == "Escalated" for r in backlog.rows):
+        esc = [r["id"] for r in backlog.rows if r["status"] == "Escalated"][0]
+        return "escalated", "%s is escalated" % esc, current
+    if backlog.rows and all(r["status"] in ("Complete", "Abandoned") for r in backlog.rows):
+        return "complete", "Construction is complete", None
+    return "halted", "Board rebuilt from the files; /factory continue resumes", current
 
 
-def active_task(rows):
-    for tid, status in rows or []:
-        if status in ("In progress", "Escalated"):
-            return tid
-    return None
-
-
-def rebuild_board(state=None, message=None):
-    rows = backlog()
-    old = load_board() or {}
-    loop = dict(old.get("loop") or {})
-    if state is None and not loop.get("state"):
-        state, derived_message = derived_loop_state(rows)
-        if message is None:
-            message = derived_message
+def build_board(state=None, message=None):
+    old = None
+    try:
+        old = load_board()
+    except FactoryError:
+        old = None
+    backlog = read_backlog()
+    if backlog is not None and backlog.problems:
+        fail("; ".join(backlog.problems))
+    d_state, d_message, current = derived_loop(backlog)
     if state is not None:
-        loop["state"] = state
+        d_state, d_message = state, ""
     if message is not None:
-        loop["message"] = message
-    loop.setdefault("message", "")
-    ids = [t for t, _ in rows or []]
-    if loop.get("current") not in ids:
-        loop["current"] = active_task(rows)
-    agents = old.get("agents") if isinstance(old.get("agents"), dict) else {}
-    tasks = [task_entry(t, s) for t, s in rows or []]
-    board = {"loop": {"state": loop["state"], "message": loop["message"],
-                      "current": loop["current"]},
-             "agents": agents, "tasks": tasks}
+        d_message = message
+    tasks = [task_entry(r["id"], r["status"]) for r in backlog.rows] if backlog else []
+    board = {
+        "updated": now(),
+        "loop": {"state": d_state, "message": d_message, "current": current},
+        "agents": (old or {}).get("agents") or {},
+        "tasks": tasks,
+    }
     save_board(board)
     return board
 
 
-def cmd_board(args):
-    if args.action == "rebuild":
-        check_state(args.state)
-        board = rebuild_board(args.state, args.message)
-        loop = board["loop"]
-        print(f"board: rebuilt ({len(board['tasks'])} tasks), loop {loop['state']}: {loop['message']}")
-    elif args.action == "set":
-        check_state(args.state)
-        board = load_board() or rebuild_board()
-        loop = board["loop"]
-        if args.state is not None:
-            loop["state"] = args.state
-        if args.message is not None:
-            loop["message"] = args.message
-        if args.clear_current:
-            loop["current"] = None
-        if args.current is not None:
-            require_task(args.current)
-            loop["current"] = args.current
-        for pair in args.agent or []:
-            name, sep, value = pair.partition("=")
-            if not sep or not name or not value:
-                raise FactoryError(f"--agent needs NAME=ID, got {pair!r}")
-            board.setdefault("agents", {})[name] = value
-        if args.task is not None:
-            entry = task_entry(args.task, status_of(args.task))
-            order = [t for t, _ in backlog()]
-            tasks = [t for t in board.get("tasks", []) if t.get("id") != args.task]
-            tasks.append(entry)
-            tasks.sort(key=lambda t: order.index(t["id"]) if t.get("id") in order else len(order))
-            board["tasks"] = tasks
-        board.setdefault("agents", {})
-        save_board(board)
-        print(f"board: updated, loop {loop['state']}: {loop.get('message', '')}")
-    else:  # show
-        board = load_board()
-        out = {}
-        if board is None:
-            out["board"] = "missing" if not BOARD.exists() else "unreadable"
+def board_or_build():
+    board = load_board()
+    if board is None:
+        board = build_board()
+    board.setdefault("loop", {"state": "halted", "message": "", "current": None})
+    board.setdefault("agents", {})
+    board.setdefault("tasks", [])
+    return board
+
+
+def update_task_entry(board, task_id):
+    backlog = valid_backlog()
+    status = backlog.status_of(task_id)
+    if status is None:
+        fail("%s is not in backlog.md" % task_id)
+    entry = task_entry(task_id, status)
+    tasks = [t for t in board["tasks"] if t.get("id") != task_id]
+    order = backlog.ids()
+    pos = order.index(task_id)
+    insert_at = len(tasks)
+    for i, t in enumerate(tasks):
+        if t.get("id") in order and order.index(t.get("id")) > pos:
+            insert_at = i
+            break
+    tasks.insert(insert_at, entry)
+    board["tasks"] = tasks
+    return entry
+
+
+# --------------------------------------------------------------------------
+# Spec copy
+
+SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+LIST_ITEM = re.compile(r"^( *)([-*+]|\d{1,9}[.)])( +|$)")
+
+
+def indent_width(line):
+    width = 0
+    for ch in line:
+        if ch == " ":
+            width += 1
+        elif ch == "\t":
+            width += 4 - width % 4
         else:
-            out["updated"] = board.get("updated")
-            out["loop"] = board.get("loop")
-            out["agents"] = board.get("agents", {})
-        if args.task is not None:
-            entry = None
-            for t in (board or {}).get("tasks", []):
-                if t.get("id") == args.task:
-                    entry = t
-            if entry is None:
-                out["task"] = {"id": args.task, "on-board": False}
-            else:
-                rounds = entry.get("rounds") or []
-                out["task"] = {"id": entry["id"], "status": entry.get("status"),
-                               "stage": entry.get("stage"),
-                               "latest-round": rounds[-1] if rounds else None}
-        print(json.dumps(out, indent=1, ensure_ascii=False))
+            break
+    return width
 
 
-def check_state(state):
-    if state is not None and state not in LOOP_STATES:
-        raise FactoryError(f"unknown loop state {state!r}; use one of {', '.join(LOOP_STATES)}")
+def mask_code(text):
+    """Replace code (fenced, indented and inline) with spaces, keeping offsets."""
+    out = list(text)
+    lines = text.split("\n")
+    offsets = []
+    pos = 0
+    for line in lines:
+        offsets.append(pos)
+        pos += len(line) + 1
 
+    def blank(i):
+        for k in range(offsets[i], offsets[i] + len(lines[i])):
+            out[k] = " "
 
-# ----------------------------------------------------------- spec copy ----
+    fence = None
+    prev_blank = True
+    prev_code = False
+    list_indent = 0  # content column of the list item we are in, or 0
+    for i, line in enumerate(lines):
+        if fence is not None:
+            if closes_fence(line, fence):
+                fence = None
+            blank(i)
+            prev_blank, prev_code = False, False
+            continue
+        if not line.strip():
+            prev_blank = True
+            continue
+        width = indent_width(line)
+        item = LIST_ITEM.match(line)
+        if list_indent and width < list_indent and prev_blank and not item:
+            list_indent = 0  # a paragraph that isn't indented ends the list
+        if (width - list_indent) >= 4 and (prev_blank or prev_code):
+            blank(i)  # indented code block
+            prev_blank, prev_code = False, True
+            continue
+        if (width - list_indent) <= 3:
+            fence = opens_fence(line)
+            if fence is not None:
+                blank(i)
+                prev_blank, prev_code = False, False
+                continue
+        if item:
+            spaces = len(item.group(3))
+            pad = 1 if spaces > 4 or not spaces else spaces
+            list_indent = len(item.group(1)) + len(item.group(2)) + pad
+        prev_blank, prev_code = False, False
 
-INLINE_LINK_RE = re.compile(
-    r"(!?)\[(?:[^\[\]\\]|\\.)*\]\([ \t]*(<[^<>\n]*>|[^\s()<>]+)"
-    r"(?:[ \t]+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?[ \t]*\)")
-REF_DEF_RE = re.compile(r"^ {0,3}\[(?:[^\[\]\\]|\\.)+\]:[ \t]*(<[^<>\n]*>|\S+)")
-
-
-def mask_code_spans(line):
-    """The line with every inline code span replaced by NULs of the same length."""
-    out = list(line)
+    # Inline code spans: a run of N backticks up to the next run of exactly N,
+    # within one paragraph. Masking a span never changes the text after it.
+    masked = "".join(out)
     i = 0
-    while i < len(line):
-        if line[i] != "`":
+    n = len(masked)
+    while i < n:
+        if masked[i] != "`":
+            i += 1
+            continue
+        if i > 0 and masked[i - 1] == "\\":
             i += 1
             continue
         j = i
-        while j < len(line) and line[j] == "`":
+        while j < n and masked[j] == "`":
             j += 1
         run = j - i
         k = j
-        close = -1
-        while k < len(line):
-            if line[k] == "`":
+        close = None
+        while k < n:
+            c = masked[k]
+            if c == "\n" and BLANK_LINE.match(masked, k):
+                break
+            if c == "`":
                 m = k
-                while m < len(line) and line[m] == "`":
+                while m < n and masked[m] == "`":
                     m += 1
                 if m - k == run:
                     close = m
                     break
                 k = m
-            else:
-                k += 1
-        if close < 0:
+                continue
+            k += 1
+        if close is None:
             i = j
             continue
         for p in range(i, close):
-            out[p] = "\0"
+            if out[p] != "\n":
+                out[p] = " "
         i = close
     return "".join(out)
 
 
-def link_spans(line):
-    """(start, end) of every link destination in a line, outside code spans (images excluded)."""
-    masked = mask_code_spans(line)
+def find_link_destinations(masked):
+    """(start, end) spans of link destinations in inline links, images and
+    reference definitions, found in text whose code is masked."""
     spans = []
-    m = REF_DEF_RE.match(masked)
-    if m:
-        spans.append(m.span(1))
-    for m in INLINE_LINK_RE.finditer(masked):
-        if m.group(1) == "!":
+    n = len(masked)
+    for i, ch in enumerate(masked):
+        if ch != "[" or (i > 0 and masked[i - 1] == "\\"):
             continue
-        spans.append(m.span(2))
-    return spans
-
-
-def split_destination(dest):
-    """(angle, path, suffix) where suffix is '?query#anchor' as written, or None if not relative Markdown."""
-    angle = dest.startswith("<") and dest.endswith(">")
-    raw = dest[1:-1] if angle else dest
-    if not raw or raw.startswith(("#", "/", "\\")) or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", raw):
-        return None
-    cut = len(raw)
-    for ch in "?#":
-        pos = raw.find(ch)
-        if pos >= 0:
-            cut = min(cut, pos)
-    path, suffix = raw[:cut], raw[cut:]
-    if not urllib.parse.unquote(path).lower().endswith((".md", ".markdown")):
-        return None
-    return angle, path, suffix
-
-
-def doc_links(doc_path, text):
-    """[(line index, start, end, target abs path, angle, suffix)] for relative Markdown links."""
-    lines = text.splitlines(keepends=True)
-    mask = fence_mask([l.rstrip("\r\n") for l in lines])
-    out = []
-    for i, line in enumerate(lines):
-        if mask[i]:
-            continue
-        body = line.rstrip("\r\n")
-        for start, end in link_spans(body):
-            parts = split_destination(body[start:end])
-            if not parts:
+        depth = 0
+        j = i
+        close = None
+        while j < n:
+            c = masked[j]
+            if c == "\\":
+                j += 2
                 continue
-            angle, path, suffix = parts
-            target = os.path.normpath(os.path.join(os.path.dirname(doc_path),
-                                                   urllib.parse.unquote(path)))
-            if os.path.exists(target):
-                target = os.path.realpath(target)
-            out.append((i, start, end, target, angle, suffix))
-    return out
+            if c == "\n" and BLANK_LINE.match(masked, j):
+                break
+            if c == "[":
+                depth += 1
+            elif c == "]":
+                depth -= 1
+                if depth == 0:
+                    close = j
+                    break
+            j += 1
+        if close is None or close + 1 >= n or masked[close + 1] != "(":
+            continue
+        k = close + 2
+        while k < n and masked[k] in " \t":
+            k += 1
+        if k < n and masked[k] == "\n":
+            k += 1
+            while k < n and masked[k] in " \t":
+                k += 1
+        if k >= n:
+            continue
+        start = k
+        if masked[k] == "<":
+            end = masked.find(">", k)
+            if end == -1 or "\n" in masked[k:end]:
+                continue
+            end += 1
+        else:
+            parens = 0
+            end = k
+            while end < n:
+                c = masked[end]
+                if c == "\\" and end + 1 < n:
+                    end += 2
+                    continue
+                if c.isspace():
+                    break
+                if c == "(":
+                    parens += 1
+                elif c == ")":
+                    if parens == 0:
+                        break
+                    parens -= 1
+                end += 1
+        if end > start:
+            spans.append((start, end))
+    for m in re.finditer(
+        r"^ {0,3}\[(?:[^\]\\\n]|\\.)+\]:[ \t]*\n?[ \t]*(<[^>\n]*>|\S+)", masked, re.M
+    ):
+        spans.append((m.start(1), m.end(1)))
+    return sorted(set(spans))
 
 
-def cmd_spec_copy(args):
-    if args.spec is not None:
-        source = os.path.abspath(os.path.expanduser(args.spec))
-    else:
-        if not SPEC_SOURCE.is_file():
-            raise FactoryError("no spec given and factory/state/spec-source is missing")
-        source = read_text(SPEC_SOURCE).strip()
-        if not source:
-            raise FactoryError("factory/state/spec-source is empty")
+def split_target(raw):
+    angle = raw.startswith("<") and raw.endswith(">")
+    target = raw[1:-1] if angle else raw
+    path, sep, anchor = target.partition("#")
+    return angle, path, (sep + anchor)
+
+
+def is_relative_md(path):
+    if not path or SCHEME.match(path) or path.startswith("/") or path.startswith("~"):
+        return False
+    clean = urllib.parse.unquote(path.split("?", 1)[0])
+    return clean.lower().endswith((".md", ".markdown"))
+
+
+def copy_spec(source):
+    source = os.path.abspath(os.path.expanduser(source))
     if not os.path.isfile(source):
-        raise FactoryError(f"spec not found: {source}")
-    spec_real = os.path.realpath(source)
+        fail("the spec %s does not exist" % source)
+    source = os.path.realpath(source)
+    state_real = os.path.realpath(state_dir())
+    if source == state_real or source.startswith(state_real + os.sep):
+        fail("the spec %s is inside factory/state/, which the copy replaces" % source)
+    os.makedirs(state_dir(), exist_ok=True)
+    with open(state_path("spec-source"), "w", encoding="utf-8") as f:
+        f.write(source + "\n")
+    spec_out = state_path("SPEC.md")
+    spec_dir = state_path("spec")
+    if os.path.isfile(spec_out):
+        os.remove(spec_out)
+    if os.path.isdir(spec_dir):
+        shutil.rmtree(spec_dir)
 
-    # Pass 1: find every linked document, transitively.
-    names = {spec_real: None}  # abs path -> copy name in spec/ (None for the spec)
-    used = set()
-    texts = {}
-    links = {}
+    names = {source: "SPEC.md"}  # source path -> copy path relative to the state dir
+    used = {"SPEC.md"}
+    queue = deque([source])
     missing = []
-    queue = [spec_real]
+    copied = []
     while queue:
-        doc = queue.pop(0)
-        texts[doc] = read_text(doc)
-        links[doc] = doc_links(doc, texts[doc])
-        for *_, target, _angle, _suffix in links[doc]:
-            if target in names:
+        src = queue.popleft()
+        out_rel = names[src]
+        out_dir = os.path.dirname(out_rel)
+        with open(src, "rb") as f:
+            raw = f.read().decode("utf-8", errors="replace")
+        if raw.startswith("﻿"):
+            raw = raw[1:]
+        masked = mask_code(raw)
+        pieces = []
+        last = 0
+        for start, end in find_link_destinations(masked):
+            angle, path, anchor = split_target(raw[start:end])
+            if not is_relative_md(path):
                 continue
-            if not os.path.isfile(target):
-                entry = (target, doc)
-                if entry not in missing:
-                    missing.append(entry)
-                continue
-            base = os.path.basename(target)
-            stem, ext = os.path.splitext(base)
-            name, n = base, 1
-            while name.lower() in used:
-                n += 1
-                name = f"{stem}-{n}{ext}"
-            used.add(name.lower())
-            names[target] = name
-            queue.append(target)
-
-    # Pass 2: write the copies with their links rewritten.
-    def rewritten(doc):
-        lines = texts[doc].splitlines(keepends=True)
-        by_line = {}
-        for i, start, end, target, angle, suffix in links[doc]:
+            plain = urllib.parse.unquote(path.split("?", 1)[0])
+            target = os.path.realpath(os.path.join(os.path.dirname(src), plain))
             if target not in names:
-                continue
-            name = names[target]
-            if name is None:
-                new = "SPEC.md" if doc == spec_real else "../SPEC.md"
-            else:
-                new = name if doc != spec_real else f"spec/{name}"
-            new = new if angle else urllib.parse.quote(new)
-            new = new + suffix
-            by_line.setdefault(i, []).append((start, end, f"<{new}>" if angle else new))
-        for i, edits in by_line.items():
-            line = lines[i]
-            for start, end, new in sorted(edits, reverse=True):
-                line = line[:start] + new + line[end:]
-            lines[i] = line
-        return "".join(lines)
+                if not os.path.isfile(target):
+                    if (out_rel, target) not in [(m[0], m[2]) for m in missing]:
+                        missing.append((out_rel, raw[start:end], target))
+                    continue
+                base = os.path.basename(target)
+                stem, ext = os.path.splitext(base)
+                candidate = "spec/" + base
+                k = 2
+                while candidate in used:
+                    candidate = "spec/%s-%d%s" % (stem, k, ext)
+                    k += 1
+                used.add(candidate)
+                names[target] = candidate
+                queue.append(target)
+            new = os.path.relpath(names[target], out_dir or ".").replace(os.sep, "/")
+            new = urllib.parse.quote(new, safe="/-_.~") + anchor
+            if angle:
+                new = "<" + new + ">"
+            pieces.append(raw[last:start])
+            pieces.append(new)
+            last = end
+        pieces.append(raw[last:])
+        dest = state_path(*out_rel.split("/"))
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w", encoding="utf-8", newline="") as f:
+            f.write("".join(pieces))
+        copied.append((out_rel, src))
+    return source, copied, missing
 
-    STATE.mkdir(parents=True, exist_ok=True)
-    if SPEC_DIR.exists():
-        shutil.rmtree(SPEC_DIR)
-    SPEC_DIR.mkdir()
-    write_atomic(SPEC, rewritten(spec_real))
-    for doc, name in names.items():
-        if name is not None:
-            write_atomic(SPEC_DIR / name, rewritten(doc))
-    write_atomic(SPEC_SOURCE, source + "\n")
 
-    print(f"spec-source: {source}")
-    print(f"copied: SPEC.md <- {source}")
-    for doc, name in names.items():
-        if name is not None:
-            print(f"copied: spec/{name} <- {doc}")
+def print_spec_copy(result):
+    source, copied, missing = result
+    print("spec-source: %s" % source)
+    for out_rel, src in copied:
+        print("copied: %s <- %s" % (out_rel, src))
     if missing:
-        for target, doc in missing:
-            print(f"missing: {target} (linked from {doc})")
+        for out_rel, link, target in missing:
+            print("missing: %s (linked from %s as %s)" % (target, out_rel, link))
     else:
         print("missing: none")
 
 
-# ---------------------------------------------------------------- plan ----
-
-def valid_id(tid):
-    m = ID_RE.match(tid)
-    if not m:
-        return False
-    digits = m.group(1)
-    if int(digits) < 1:
-        return False
-    return len(digits) == 3 or not digits.startswith("0")
+# --------------------------------------------------------------------------
+# The plan
 
 
-def cmd_plan_check(args):
+def used_serials(exclude):
+    """Serials the factory has used, from git: merge subjects on main and the
+    local factory/<id> branches. Ids in `exclude` (this run) are left out."""
+    serials = []
+    for subject in main_subjects():
+        m = MERGE_SUBJECT.fullmatch(subject)
+        if m and m.group(1) not in exclude:
+            serials.append(int(m.group(1).split("-", 1)[0]))
+    out = git("for-each-ref", "--format=%(refname)", "refs/heads/factory/").stdout
+    for ref in out.splitlines():
+        name = ref.strip()[len("refs/heads/factory/"):]
+        m = re.match(r"(\d{3,})-", name)
+        if m and name not in exclude:
+            serials.append(int(m.group(1)))
+    return serials
+
+
+def this_run_ids():
+    ids = set(task_dirs())
+    backlog = read_backlog()
+    if backlog:
+        ids |= set(backlog.ids())
+    return ids
+
+
+def highest_serial():
+    serials = used_serials(this_run_ids())
+    return max(serials) if serials else None
+
+
+def serial_text(n):
+    return "%03d" % n
+
+
+def check_plan():
     problems = []
-    rows = backlog()
-    if rows is None:
-        print("plan: 1 problem")
-        print("- factory/state/backlog.md is missing")
-        return
-    ids = [t for t, _ in rows]
+    warnings = []
+    backlog = read_backlog()
+    if backlog is None:
+        return ["factory/state/backlog.md is missing"], warnings
+    problems += backlog.problems
+    ids = backlog.ids()
     if not ids:
         problems.append("backlog.md lists no tasks")
-    seen = set()
-    for tid in ids:
-        if tid in seen:
-            problems.append(f"{tid} appears in backlog.md more than once")
-        seen.add(tid)
-    dirs = sorted(d.name for d in TASKS.iterdir() if d.is_dir()) if TASKS.is_dir() else []
-    for d in dirs:
-        if d not in seen:
-            problems.append(f"task directory tasks/{d}/ isn't in backlog.md "
-                            "(remove the directory too when removing a task)")
-    highest = max(used_serials(), default=0)
+    for d in task_dirs():
+        if d not in ids:
+            problems.append("task directory tasks/%s/ is not in backlog.md" % d)
+    for task_id in sorted(set(ids)):
+        if ids.count(task_id) > 1:
+            problems.append("%s appears %d times in backlog.md" % (task_id, ids.count(task_id)))
+    highest = highest_serial()
     serials = {}
-    for pos, (tid, status) in enumerate(rows):
-        if status != "Planned":
-            problems.append(f"{tid} has status {status!r}, not Planned")
-        if not valid_id(tid):
-            problems.append(f"{tid} isn't a valid task-id (serial of at least three digits, "
-                            "then two or three lowercase words)")
+    for pos, row in enumerate(backlog.rows):
+        task_id = row["id"]
+        if row["status"] != "Planned":
+            problems.append("%s has status %r, not Planned" % (task_id, row["status"]))
+        m = TASK_ID.fullmatch(task_id)
+        if not m:
+            problems.append(
+                "%s does not follow the identifier rules (serial, then 2-3 lowercase words)" % task_id
+            )
         else:
-            serial = int(ID_RE.match(tid).group(1))
-            if serial <= highest:
-                problems.append(f"{tid} reuses serial {serial:03d}; serials must be above "
-                                f"{highest:03d}, the highest used in git")
-            if serial in serials and serials[serial] != tid:
-                problems.append(f"{tid} has the same serial as {serials[serial]}")
-            serials.setdefault(serial, tid)
-        tf = TaskFile(tid)
-        if not tf.exists:
-            problems.append(f"{tid} has no tasks/{tid}/task.md")
+            digits = m.group(1)
+            serial = int(digits)
+            if len(digits) > 3 and digits.startswith("0"):
+                problems.append("%s: the serial is zero-padded beyond three digits" % task_id)
+            if highest is not None and serial <= highest:
+                problems.append(
+                    "%s: serial %s is not above the highest serial already used (%s)"
+                    % (task_id, digits, serial_text(highest))
+                )
+            if serial in serials and serials[serial] != task_id:
+                problems.append("%s and %s share serial %s" % (serials[serial], task_id, digits))
+            serials.setdefault(serial, task_id)
+        task = Task(task_id)
+        if not task.exists:
+            problems.append("%s has no tasks/%s/task.md" % (task_id, task_id))
             continue
-        for name in tf.missing_sections():
-            problems.append(f"{tid}: task.md has no {name} section")
-        listed = tf.listed_reviewers()
-        if listed is not None:
-            for key in ALWAYS:
-                if key not in listed:
-                    problems.append(f"{tid}: Reviews section doesn't list {key}")
-            for key in listed:
+        if task.file_id is None:
+            problems.append("%s: task.md's first line is not '# <task-id>: <title>'" % task_id)
+        elif task.file_id != task_id or not task.title:
+            problems.append(
+                "%s: task.md's first line is %r, expected '# %s: <title>'" % (task_id, task.first, task_id)
+            )
+        for name in SECTIONS:
+            if name not in task.sections:
+                problems.append("%s: task.md has no '## %s' section" % (task_id, name))
+        for name in set(task.sections):
+            if task.sections.count(name) > 1:
+                problems.append("%s: task.md has %d '## %s' sections" % (task_id, task.sections.count(name), name))
+        if task.sections != [s for s in SECTIONS if s in task.sections]:
+            problems.append(
+                "%s: task.md's sections are out of order (%s)" % (task_id, ", ".join(task.sections))
+            )
+        if task.has_reviews:
+            for key in ("code", "feature"):
+                if key not in task.review_bullets:
+                    problems.append("%s: the Reviews section does not list `%s`" % (task_id, key))
+            for key in task.review_bullets:
                 if key not in ROSTER:
-                    problems.append(f"{tid}: Reviews section lists {key!r}, which isn't a "
-                                    f"roster key ({', '.join(ROSTER)})")
-        for dep in tf.dependencies():
-            if dep == tid:
-                problems.append(f"{tid} depends on itself")
+                    problems.append("%s: the Reviews section lists %r, which is not a roster key" % (task_id, key))
+            if ("ui" in task.review_bullets) == task.ui_none:
+                warnings.append(
+                    "%s: `ui` should be listed exactly when the UI section isn't 'UI: none'" % task_id
+                )
+        if "Depends on" in task.sections and not task.depends:
+            problems.append("%s: the Depends on section needs a bullet per task-id, or '- none'" % task_id)
+        for dep in task.dependencies():
+            if dep == task_id:
+                problems.append("%s depends on itself" % task_id)
+            elif dep in ids[:pos]:
+                continue
             elif dep in ids:
-                if ids.index(dep) > pos:
-                    problems.append(f"{tid} depends on {dep}, which comes later in backlog.md")
+                problems.append("%s depends on %s, which comes later in backlog.md" % (task_id, dep))
             elif not is_merged(dep):
-                problems.append(f"{tid} depends on {dep}, which is neither earlier in "
-                                "backlog.md nor a merged task from an earlier run")
-    if problems:
-        print(f"plan: {len(problems)} problem{'s' if len(problems) != 1 else ''}")
-        for p in problems:
-            print(f"- {p}")
+                problems.append(
+                    "%s depends on %s, which is neither earlier in this backlog nor a merged task" % (task_id, dep)
+                )
+    return problems, warnings
+
+
+def archived_stack():
+    root = os.path.join(ROOT, "factory", "archive")
+    if not os.path.isdir(root):
+        return None
+    found = []
+    for name in os.listdir(root):
+        path = os.path.join(root, name, "stack.md")
+        if os.path.isfile(path):
+            found.append((os.path.getmtime(path), path))
+    if not found:
+        return None
+    return rel(max(found)[1])
+
+
+# --------------------------------------------------------------------------
+# First lines
+
+
+def first_line_problems(task_id=None):
+    problems = []
+
+    def check(path, kind):
+        if os.path.isfile(path) and not FIRST_LINES[kind].fullmatch(first_line(path)):
+            problems.append((rel(path), first_line(path)))
+
+    if task_id is None:
+        check(state_path("preflight.md"), "preflight")
+        ids = task_dirs()
     else:
-        print(f"plan: ok ({len(ids)} tasks)")
+        ids = [task_id]
+    for tid in ids:
+        task = Task(tid)
+        if task.exists and (task.file_id != tid or not task.title):
+            problems.append((rel(task.path), task.first))
+        for r in round_dirs(tid):
+            check(rpath(tid, r, "build-notes.md"), "build")
+            for key in ROSTER:
+                check(rpath(tid, r, key + "-review.md"), "review")
+            check(rpath(tid, r, "verdict.md"), "verdict")
+    return problems
 
 
-def cmd_max_serial(args):
-    highest = max(used_serials(), default=0)
-    print(f"highest-used: {highest:03d}" if highest else "highest-used: none")
-    print(f"next: {highest + 1:03d}")
+# --------------------------------------------------------------------------
+# Summary (for /factory status)
 
 
-# -------------------------------------------------------------- rounds ----
+def describe_step(task_id, s):
+    step = s["step"]
+    if step == "merged":
+        return "mark %s Complete and delete its branch, then start the next task" % task_id
+    if step == "new-round":
+        return "create round-1 and run the builder"
+    if step == "complete-round":
+        return "finish creating %s (%s), then run the builder" % (s["round"], s["kind"])
+    if step == "build":
+        return "run a fresh builder for %s" % s["round"]
+    if step == "verify-build":
+        return "check the builder's work in %s, then start the reviewers" % s["round"]
+    if step == "review":
+        return "run the missing reviewers in %s: %s" % (s["round"], s["missing"])
+    if step == "fix-round":
+        return "start the fix round %s" % s["round"]
+    if step == "approve":
+        return "run the Approver for %s" % s["round"]
+    if step == "merge":
+        return "merge factory/%s into main (APPROVE in %s)" % (task_id, s["round"])
+    if step == "approver-rework":
+        return "start the Approver rework round %s" % s["round"]
+    if step == "escalate":
+        return "escalate %s (%s in %s)" % (task_id, s["reason"], s["round"])
+    return step
+
+
+def continue_action(backlog, board):
+    if backlog is None:
+        if os.path.isfile(state_path("preflight.md")):
+            return "re-copy the spec from spec-source and run the Planner again (preflight)"
+        return "nothing to continue: no plan in factory/state/ (use /factory start <spec>)"
+    if backlog.problems:
+        return "halt: " + "; ".join(backlog.problems)
+    rows = backlog.rows
+    esc = [r["id"] for r in rows if r["status"] == "Escalated"]
+    if esc:
+        return "refuse: %s is Escalated; use /factory approve, rework or abandon" % esc[0]
+    prefix = "" if board is not None else "rebuild board.json, then "
+    loop_state = (board or {}).get("loop", {}).get("state")
+    untouched = rows and all(r["status"] == "Planned" for r in rows) and not any(
+        round_dirs(r["id"]) for r in rows
+    )
+    if untouched and loop_state != "awaiting-plan-review":
+        return prefix + "check the plan and halt for plan review"
+    if loop_state == "awaiting-plan-review":
+        prefix += "check the plan again and rebuild board.json, then "
+    nxt = [r["id"] for r in rows if r["status"] == "Planned"]
+    after = ("start %s" % nxt[0]) if nxt else "halt: construction is complete"
+    active = [r["id"] for r in rows if r["status"] == "In progress"]
+    if active:
+        task_id = active[0]
+        if is_merged(task_id):
+            return prefix + "mark %s Complete, delete factory/%s, then %s" % (task_id, task_id, after)
+        return prefix + "resume %s: %s" % (task_id, describe_step(task_id, next_step(task_id)))
+    return prefix + after
+
+
+def summary():
+    backlog = read_backlog()
+    try:
+        board = load_board()
+        board_note = None
+    except FactoryError as e:
+        board, board_note = None, str(e)
+    if board is not None:
+        loop = board.get("loop", {})
+        print("loop: %s%s" % (loop.get("state"), (" - " + loop["message"]) if loop.get("message") else ""))
+    else:
+        print("loop: board.json %s" % ("is invalid" if board_note else "is missing"))
+    print("branch: %s" % (current_branch() or "(detached)"))
+    changes = tree_changes()
+    print("tree: %s" % ("clean" if not changes else "%d uncommitted or untracked paths" % len(changes)))
+    print("factory/state ignored by git: %s" % ("yes" if state_ignored() else "no"))
+    src = state_path("spec-source")
+    if os.path.isfile(src):
+        print("spec-source: %s" % read_text(src).strip())
+    if backlog is None:
+        pre = state_path("preflight.md")
+        if os.path.isfile(pre):
+            lines = read_lines(pre)
+            print("preflight: %s" % (lines[0] if lines else ""))
+            sections = md_sections(lines)
+            for name in ("Spec issues", "Environment issues", "Tools on offer"):
+                body = sections.get(name)
+                print("")
+                print("%s:" % name)
+                text = "\n".join(body).strip() if body else ""
+                print(text or "(none)")
+        else:
+            print("plan: none (no backlog.md or preflight.md)")
+    else:
+        print("")
+        print("backlog:")
+        for r in backlog.rows:
+            print("  %s  %s" % (r["id"], r["status"]))
+        for problem in backlog.problems:
+            print("  problem: %s" % problem)
+        active = [r for r in backlog.rows if r["status"] in ("In progress", "Escalated")]
+        if active and not backlog.problems:
+            r = active[0]
+            entry = task_entry(r["id"], r["status"])
+            print("")
+            print("current: %s (%s), stage %s" % (r["id"], r["status"], entry["stage"]))
+            if entry["rounds"]:
+                latest = entry["rounds"][-1]
+                print("round: %s (%s), build %s, reviews %s, verdict %s" % (
+                    latest["id"], latest["kind"], latest["build"],
+                    " ".join("%s %s" % kv for kv in latest["reviews"].items()) or "none",
+                    latest["verdict"] or "none"))
+        else:
+            print("")
+            print("current: none")
+    print("")
+    print("continue would: %s" % continue_action(backlog, board))
+
+
+# --------------------------------------------------------------------------
+# Command line
+
+
+def cmd_board(args):
+    if args.action == "build":
+        if args.state is not None and args.state not in LOOP_STATES:
+            fail("unknown loop state %r" % args.state)
+        board = build_board(args.state, args.message)
+        loop = board["loop"]
+        print("board.json built: %d tasks, loop.state %s" % (len(board["tasks"]), loop["state"]))
+    elif args.action == "loop":
+        if args.state not in LOOP_STATES:
+            fail("unknown loop state %r" % args.state)
+        board = board_or_build()
+        loop = board["loop"]
+        loop["state"] = args.state
+        loop["message"] = args.message or ""
+        if args.no_current:
+            loop["current"] = None
+        elif args.current is not None:
+            loop["current"] = args.current
+        loop.setdefault("current", None)
+        save_board(board)
+        print("loop: %s" % json.dumps(loop, ensure_ascii=False))
+    elif args.action == "agent":
+        board = board_or_build()
+        board["agents"][args.name] = args.agent_id
+        save_board(board)
+        print("agents: %s" % json.dumps(board["agents"], ensure_ascii=False))
+    elif args.action == "task":
+        board = board_or_build()
+        entry = update_task_entry(board, args.id)
+        save_board(board)
+        latest = entry["rounds"][-1] if entry["rounds"] else None
+        print("%s: status %s, stage %s, latest round %s" % (
+            entry["id"], entry["status"], entry["stage"],
+            json.dumps(latest, ensure_ascii=False) if latest else "none"))
+    elif args.action == "show":
+        board = load_board()
+        if board is None:
+            fail("factory/state/board.json does not exist; run 'board build'")
+        print("loop: %s" % json.dumps(board.get("loop"), ensure_ascii=False))
+        print("agents: %s" % json.dumps(board.get("agents", {}), ensure_ascii=False))
+        if args.id:
+            entries = [t for t in board.get("tasks", []) if t.get("id") == args.id]
+            if not entries:
+                print("task %s: not on the board" % args.id)
+            else:
+                t = entries[0]
+                latest = t["rounds"][-1] if t.get("rounds") else None
+                print("task %s: status %s, stage %s" % (t["id"], t.get("status"), t.get("stage")))
+                print("latest round: %s" % (json.dumps(latest, ensure_ascii=False) if latest else "none"))
+
+
+def cmd_spec(args):
+    if args.action == "copy":
+        print_spec_copy(copy_spec(args.path))
+    else:
+        src = state_path("spec-source")
+        if not os.path.isfile(src):
+            fail("factory/state/spec-source does not exist")
+        print_spec_copy(copy_spec(read_text(src).strip()))
+
+
+def cmd_plan(args):
+    if args.action == "check":
+        problems, warnings = check_plan()
+        print("PLAN: %s" % ("OK" if not problems else "PROBLEMS"))
+        for p in problems:
+            print("- %s" % p)
+        for w in warnings:
+            print("- warning: %s" % w)
+    elif args.action == "highest-serial":
+        h = highest_serial()
+        print("highest: %s" % (serial_text(h) if h is not None else "none"))
+        print("next: %s" % serial_text((h or 0) + 1))
+    elif args.action == "archived-stack":
+        print(archived_stack() or "none")
+
 
 def cmd_round(args):
-    tid = args.task
-    require_task(tid)
-    if args.action == "latest":
-        print(latest_round(tid) or "none")
-    elif args.action == "next":
-        print(next_round(tid))
+    if args.action == "list":
+        rounds = round_dirs(args.id)
+        latest = rounds[-1] if rounds else None
+        print("latest: %s" % (latest or "none"))
+        if latest:
+            print("latest-kind: %s" % round_kind(args.id, latest))
+            print("latest-base-commit: %s" % ("yes" if has_base(args.id, latest) else "no"))
+            print("latest-build-notes: %s" % (
+                "yes" if os.path.isfile(rpath(args.id, latest, "build-notes.md")) else "no"))
+            print("latest-reviews-started: %s" % (
+                "yes" if os.path.isfile(rpath(args.id, latest, "reviews-started")) else "no"))
+            prev = previous_round(args.id, latest)
+            print("previous: %s" % (prev or "none"))
+        else:
+            print("previous: none")
+        print("next: %s" % next_round_id(args.id))
     elif args.action == "previous":
-        round_number(args.round)
-        print(previous_round(tid, args.round) or "none")
+        round_num(args.round)
+        print(previous_round(args.id, args.round) or "none")
     elif args.action == "kind":
-        rdir = existing_round(tid, args.round)
-        print(round_kind(rdir))
-    else:  # state
-        rid = args.round or latest_round(tid)
-        if rid is None:
-            print("round: none")
-            return
-        rdir = existing_round(tid, rid)
-        info = round_info(tid, rdir, task_reviewers(tid))
-        print(f"round: {rid}")
-        print(f"kind: {info['kind']}")
-        print(f"base-commit: {'yes' if info['base'] else 'no'}")
-        print(f"build: {info['build'] or 'missing'}")
-        reviews = " ".join(f"{k}={v or 'missing'}" for k, v in info["reviews"].items())
-        print(f"reviews: {reviews}")
-        print(f"verdict: {info['verdict'] or 'missing'}")
-        print(f"previous: {previous_round(tid, rid) or 'none'}")
+        round_num(args.round)
+        print(round_kind(args.id, args.round))
+    elif args.action == "rework-count":
+        round_num(args.round)
+        print(rework_count(args.id, args.round))
+    elif args.action == "rework-note":
+        has_text, text = rework_note(args.id, args.round)
+        print("rework-note: %s" % ("yes" if has_text else "no"))
+        if has_text:
+            if args.write:
+                path = os.path.join(ROOT, args.write) if not os.path.isabs(args.write) else args.write
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(text)
+                print("written: %s" % rel(path))
+            else:
+                sys.stdout.write(text)
 
 
-def existing_round(tid, rid):
-    round_number(rid)
-    rdir = TASKS / tid / rid
-    if not rdir.is_dir():
-        raise FactoryError(f"no round directory tasks/{tid}/{rid}/")
-    return rdir
+def cmd_task(args):
+    if args.action == "reviewers":
+        task = Task(args.id)
+        if not task.exists:
+            fail("factory/state/tasks/%s/task.md does not exist" % args.id)
+        print(" ".join(task.reviewers()))
+    elif args.action == "dependents":
+        backlog = valid_backlog()
+        found = []
+        for r in backlog.rows:
+            if args.id in Task(r["id"]).dependencies():
+                found.append("%s %s" % (r["id"], r["status"]))
+        print("\n".join(found) if found else "none")
+    elif args.action == "merged":
+        print("yes" if is_merged(args.id) else "no")
+    elif args.action == "next-step":
+        for key, value in next_step(args.id).items():
+            print("%s: %s" % (key, value))
 
 
-def cmd_rework_count(args):
-    require_task(args.task)
-    print(count_reworks(args.task, args.round))
+def cmd_backlog(args):
+    if args.action == "next":
+        backlog = valid_backlog()
+        nxt = [r["id"] for r in backlog.rows if r["status"] == "Planned"]
+        print(nxt[0] if nxt else "none")
+    elif args.action == "set":
+        old = set_status(args.id, args.status)
+        if os.path.isfile(board_path()):
+            board = board_or_build()
+            update_task_entry(board, args.id)
+            save_board(board)
+        print("%s: %s -> %s" % (args.id, old, args.status))
 
 
-def cmd_rework_note(args):
-    require_task(args.task)
-    rdir = existing_round(args.task, args.round)
-    verdict = rdir / "verdict.md"
-    if not verdict.is_file():
-        raise FactoryError(f"no verdict.md in tasks/{args.task}/{args.round}/")
-    note = rework_note_text(verdict)
-    if note is None:
-        print("rework-note: none")
-        return
-    if args.out:
-        out = Path(args.out)
-        if not out.is_absolute():
-            out = Path.cwd() / out
-        write_atomic(out, note)
-        print(f"rework-note: yes, written to {args.out}")
-    else:
-        print("rework-note: yes")
-        print(note, end="")
+def cmd_first_lines(args):
+    problems = first_line_problems(args.id)
+    print("FIRST-LINES: %s" % ("INVALID" if problems else "OK"))
+    for path, line in problems:
+        print("- %s: %s" % (path, json.dumps(line, ensure_ascii=False)))
 
-
-# --------------------------------------------------------------- tasks ----
-
-def cmd_reviewers(args):
-    require_task(args.task)
-    if not TaskFile(args.task).exists:
-        raise FactoryError(f"tasks/{args.task}/task.md is missing")
-    print(" ".join(task_reviewers(args.task)))
-
-
-def cmd_dependents(args):
-    rows = backlog()
-    if rows is None:
-        raise FactoryError("factory/state/backlog.md is missing")
-    found = [(t, s) for t, s in rows if t != args.task and args.task in TaskFile(t).dependencies()]
-    if not found:
-        print("none")
-    for t, s in found:
-        print(f"{t} {s}")
-
-
-def cmd_merged(args):
-    print("yes" if is_merged(args.task) else "no")
-
-
-def cmd_tasks(args):
-    rows = backlog()
-    if rows is None:
-        print("phase: preflight" if preflight_state() else "phase: none")
-        return
-    print("phase: backlog")
-    for tid, status in rows:
-        tf = TaskFile(tid)
-        reviewers = tf.reviewers() if tf.exists else list(ALWAYS)
-        infos = [round_info(tid, d, reviewers) for _, d in round_dirs(tid)]
-        stage = derive_stage(tid, status, infos)
-        print(f"task: {tid} | {status} | {stage} | {latest_round(tid) or '-'}")
-    active = [(t, s) for t, s in rows if s in ("In progress", "Escalated")]
-    print("active: " + (" ".join(f"{t} ({s})" for t, s in active) if active else "none"))
-    nxt = next((t for t, s in rows if s == "Planned"), None)
-    print(f"next: {nxt or 'none'}")
-
-
-def cmd_backlog_set(args):
-    status = norm_status(args.status)
-    if status not in STATUSES:
-        raise FactoryError(f"unknown status {args.status!r}; use one of {', '.join(STATUSES)}")
-    rows = backlog_rows()
-    if rows is None:
-        raise FactoryError("factory/state/backlog.md is missing")
-    index = next((i for i, t, _ in rows if t == args.task), None)
-    if index is None:
-        raise FactoryError(f"task {args.task} is not in backlog.md")
-    raw = read_text(BACKLOG).splitlines(keepends=True)
-    line = raw[index]
-    body = line.rstrip("\r\n")
-    ending = line[len(body):]
-    parts = body.split("|")
-    # parts[0] is the text before the first pipe; parts[1] the id cell, parts[2] the status.
-    cell = parts[2]
-    pad_left = cell[:len(cell) - len(cell.lstrip())] or " "
-    pad_right = cell[len(cell.rstrip()):] or " "
-    parts[2] = f"{pad_left}{status}{pad_right}"
-    raw[index] = "|".join(parts) + ending
-    write_atomic(BACKLOG, "".join(raw))
-    msg = f"backlog: {args.task} is {status}"
-    if BOARD.is_file():
-        board = load_board() or rebuild_board()
-        tasks = [t for t in board.get("tasks", []) if t.get("id") != args.task]
-        tasks.append(task_entry(args.task, status))
-        order = [t for t, _ in backlog()]
-        tasks.sort(key=lambda t: order.index(t["id"]) if t.get("id") in order else len(order))
-        board["tasks"] = tasks
-        board.setdefault("agents", {})
-        save_board(board)
-        msg += " (board entry updated)"
-    print(msg)
-
-
-# --------------------------------------------------------- first lines ----
-
-def cmd_first_line(args):
-    path = Path(args.path)
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    kind = kind_of_file(path)
-    if kind is None:
-        raise FactoryError(f"{args.path} has no fixed first line")
-    value = first_line_value(path, kind)
-    if value is None:
-        raise FactoryError(f"{args.path} is missing")
-    if value == "invalid":
-        raise FactoryError(f"{args.path} has an invalid first line {first_line_raw(path)!r}; "
-                           f"allowed: {' | '.join(FIRST_LINES[kind])}")
-    print(value)
-
-
-def cmd_check_firstlines(args):
-    files = []
-    if args.task is None:
-        if PREFLIGHT.is_file():
-            files.append(PREFLIGHT)
-        tids = [d.name for d in sorted(TASKS.iterdir()) if d.is_dir()] if TASKS.is_dir() else []
-    else:
-        require_task(args.task)
-        tids = [args.task]
-    for tid in tids:
-        for _, rdir in round_dirs(tid):
-            for name in ["build-notes.md"] + [f"{k}-review.md" for k in ROSTER] + ["verdict.md"]:
-                if (rdir / name).is_file():
-                    files.append(rdir / name)
-    bad = [p for p in files if first_line_value(p, kind_of_file(p)) == "invalid"]
-    if not bad:
-        print(f"first-lines: ok ({len(files)} files)")
-    for p in bad:
-        print(f"invalid: {p.relative_to(ROOT).as_posix()}: {first_line_raw(p)!r}")
-
-
-# ---------------------------------------------------------------- main ----
 
 def parser():
     p = argparse.ArgumentParser(prog="factory.py", description="The factory script.")
     sub = p.add_subparsers(dest="command", required=True)
 
-    b = sub.add_parser("board", help="read or change board.json")
-    bsub = b.add_subparsers(dest="action", required=True)
-    br = bsub.add_parser("rebuild", help="create or rebuild the board from the files")
-    br.add_argument("--state")
-    br.add_argument("--message")
-    bs = bsub.add_parser("set", help="update the loop, agents and one task's entry")
-    bs.add_argument("--state")
-    bs.add_argument("--message")
-    g = bs.add_mutually_exclusive_group()
+    board = sub.add_parser("board").add_subparsers(dest="action", required=True)
+    b = board.add_parser("build")
+    b.add_argument("--state")
+    b.add_argument("--message")
+    b = board.add_parser("loop")
+    b.add_argument("state")
+    b.add_argument("--message")
+    g = b.add_mutually_exclusive_group()
     g.add_argument("--current")
-    g.add_argument("--clear-current", action="store_true")
-    bs.add_argument("--agent", action="append", metavar="NAME=ID")
-    bs.add_argument("--task")
-    bsh = bsub.add_parser("show", help="print the loop, the agents and one task")
-    bsh.add_argument("--task")
-    b.set_defaults(func=cmd_board)
+    g.add_argument("--no-current", action="store_true")
+    b = board.add_parser("agent")
+    b.add_argument("name")
+    b.add_argument("agent_id")
+    board.add_parser("task").add_argument("id")
+    board.add_parser("show").add_argument("id", nargs="?")
 
-    s = sub.add_parser("spec-copy", help="copy the spec and its linked documents")
-    s.add_argument("spec", nargs="?")
-    s.set_defaults(func=cmd_spec_copy)
+    spec = sub.add_parser("spec").add_subparsers(dest="action", required=True)
+    spec.add_parser("copy").add_argument("path")
+    spec.add_parser("recopy")
 
-    sub.add_parser("plan-check", help="mechanical plan checks").set_defaults(func=cmd_plan_check)
-    sub.add_parser("max-serial", help="highest serial used in git").set_defaults(func=cmd_max_serial)
+    plan = sub.add_parser("plan").add_subparsers(dest="action", required=True)
+    plan.add_parser("check")
+    plan.add_parser("highest-serial")
+    plan.add_parser("archived-stack")
 
-    r = sub.add_parser("round", help="round ids, kinds and state")
-    rsub = r.add_subparsers(dest="action", required=True)
-    for name in ("latest", "next"):
-        rsub.add_parser(name).add_argument("task")
-    for name in ("previous", "kind"):
-        rp = rsub.add_parser(name)
-        rp.add_argument("task")
-        rp.add_argument("round")
-    rs = rsub.add_parser("state")
-    rs.add_argument("task")
-    rs.add_argument("round", nargs="?")
-    r.set_defaults(func=cmd_round)
+    rnd = sub.add_parser("round").add_subparsers(dest="action", required=True)
+    rnd.add_parser("list").add_argument("id")
+    for name in ("previous", "kind", "rework-count"):
+        r = rnd.add_parser(name)
+        r.add_argument("id")
+        r.add_argument("round")
+    r = rnd.add_parser("rework-note")
+    r.add_argument("id")
+    r.add_argument("round")
+    r.add_argument("--write")
 
-    rc = sub.add_parser("rework-count", help="REWORK verdicts in rounds before ROUND")
-    rc.add_argument("task")
-    rc.add_argument("round")
-    rc.set_defaults(func=cmd_rework_count)
+    task = sub.add_parser("task").add_subparsers(dest="action", required=True)
+    for name in ("reviewers", "dependents", "merged", "next-step"):
+        task.add_parser(name).add_argument("id")
 
-    rn = sub.add_parser("rework-note", help="a verdict's '## Rework note' section")
-    rn.add_argument("task")
-    rn.add_argument("round")
-    rn.add_argument("--out")
-    rn.set_defaults(func=cmd_rework_note)
+    backlog = sub.add_parser("backlog").add_subparsers(dest="action", required=True)
+    backlog.add_parser("next")
+    s = backlog.add_parser("set")
+    s.add_argument("id")
+    s.add_argument("status")
 
-    for name, func, helptext in (("reviewers", cmd_reviewers, "a task's reviewer keys"),
-                                 ("dependents", cmd_dependents, "tasks that depend on a task"),
-                                 ("merged", cmd_merged, "whether a task is merged")):
-        sp = sub.add_parser(name, help=helptext)
-        sp.add_argument("task")
-        sp.set_defaults(func=func)
-
-    sub.add_parser("tasks", help="phase, tasks, active and next task").set_defaults(func=cmd_tasks)
-
-    bl = sub.add_parser("backlog-set", help="change a task's status in backlog.md")
-    bl.add_argument("task")
-    bl.add_argument("status")
-    bl.set_defaults(func=cmd_backlog_set)
-
-    fl = sub.add_parser("first-line", help="the result word of a file's fixed first line")
-    fl.add_argument("path")
-    fl.set_defaults(func=cmd_first_line)
-
-    cf = sub.add_parser("check-firstlines", help="check every fixed first line")
-    cf.add_argument("task", nargs="?")
-    cf.set_defaults(func=cmd_check_firstlines)
+    sub.add_parser("first-lines").add_argument("id", nargs="?")
+    sub.add_parser("summary")
     return p
 
 
 def main(argv=None):
+    global ROOT
     args = parser().parse_args(argv)
     try:
-        args.func(args)
+        ROOT = find_root()
+        {
+            "board": cmd_board,
+            "spec": cmd_spec,
+            "plan": cmd_plan,
+            "round": cmd_round,
+            "task": cmd_task,
+            "backlog": cmd_backlog,
+            "first-lines": cmd_first_lines,
+            "summary": lambda a: summary(),
+        }[args.command](args)
     except FactoryError as e:
-        print(f"factory.py: error: {e}", file=sys.stderr)
+        print("factory.py: error: %s" % e, file=sys.stderr)
         return 1
     except OSError as e:
-        print(f"factory.py: error: {e}", file=sys.stderr)
+        print("factory.py: error: %s" % e, file=sys.stderr)
         return 1
     return 0
 
