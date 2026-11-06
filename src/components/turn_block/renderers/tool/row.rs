@@ -6,7 +6,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use super::super::{TitleChrome, ellipsize, word_wrap};
+use super::super::{PADDING_REACH, TitleChrome, ellipsize, word_wrap};
 
 /// What stays at the end of a folded row when the description is cut.
 #[derive(Debug, Clone, Copy)]
@@ -177,48 +177,7 @@ impl OpenHint<'_> {
     fn hint_span(&self) -> Span<'static> {
         Span::styled(self.text.to_owned(), self.hint)
     }
-}
 
-/// Adds the rule and the hint to the description `rows` of a subagent call,
-/// whose text area is `text_width` cells wide. The title row is the last of
-/// `rows`; it is `text_width + 2` cells wide after its lead, so that it
-/// reaches two cells into the block's padding.
-///
-/// A folded row that has no room for the hint shows a rule alone, or nothing.
-/// An unfolded row always shows the hint: when it does not fit on the title
-/// row it gets a row of its own below the description, and the description's
-/// rows have no rule. Returns where the chrome is, before the lead.
-pub(super) fn with_open_hint(
-    rows: &mut Vec<Line<'static>>,
-    hint: &OpenHint<'_>,
-    text_width: usize,
-    folded: bool,
-) -> Option<TitleChrome> {
-    let row = text_width + 2;
-    let last = rows.len().checked_sub(1)?;
-    let text = rows[last].width();
-    let chrome = |rule| TitleChrome {
-        row: last,
-        from: text,
-        rule: Some(rule),
-    };
-    match Trailer::fit(text, row, hint.width()) {
-        Trailer::Full { rule } => Some(chrome(hint.extend(&mut rows[last], rule, true))),
-        Trailer::Rule { rule } if folded => Some(chrome(hint.extend(&mut rows[last], rule, false))),
-        _ if folded => None,
-        _ => {
-            let (own, rule) = hint.own_row(row);
-            rows.push(own);
-            Some(TitleChrome {
-                row: last + 1,
-                from: 0,
-                rule,
-            })
-        }
-    }
-}
-
-impl OpenHint<'_> {
     /// Appends a gap and a rule of `rule` cells to `line`, and a gap and the
     /// hint when `with_hint`. Returns the index of the rule's span.
     fn extend(&self, line: &mut Line<'static>, rule: usize, with_hint: bool) -> usize {
@@ -240,6 +199,45 @@ impl OpenHint<'_> {
                 (Line::from(spans), Some(0))
             }
             None => (ellipsize(Line::from(self.hint_span()), row, false), None),
+        }
+    }
+}
+
+/// Adds the rule and the hint to the description `rows` of a subagent call,
+/// whose text area is `text_width` cells wide. The title row is the last of
+/// `rows`; it is `text_width + 2` cells wide after its lead, so that it
+/// reaches two cells into the block's padding.
+///
+/// A folded row that has no room for the hint shows a rule alone, or nothing.
+/// An unfolded row always shows the hint: when it does not fit on the title
+/// row it gets a row of its own below the description, and the description's
+/// rows have no rule. Returns where the chrome is, before the lead.
+pub(super) fn with_open_hint(
+    rows: &mut Vec<Line<'static>>,
+    hint: &OpenHint<'_>,
+    text_width: usize,
+    folded: bool,
+) -> Option<TitleChrome> {
+    let row = text_width + usize::from(PADDING_REACH);
+    let last = rows.len().checked_sub(1)?;
+    let text = rows[last].width();
+    let chrome = |rule| TitleChrome {
+        row: last,
+        from: text,
+        rule: Some(rule),
+    };
+    match Trailer::fit(text, row, hint.width()) {
+        Trailer::Full { rule } => Some(chrome(hint.extend(&mut rows[last], rule, true))),
+        Trailer::Rule { rule } if folded => Some(chrome(hint.extend(&mut rows[last], rule, false))),
+        _ if folded => None,
+        _ => {
+            let (own, rule) = hint.own_row(row);
+            rows.push(own);
+            Some(TitleChrome {
+                row: last + 1,
+                from: 0,
+                rule,
+            })
         }
     }
 }

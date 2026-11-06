@@ -34,6 +34,9 @@ pub use user::UserPromptSection;
 pub const CHROME: u16 = 8;
 /// The cells of the lead in front of a row: the fold marker or two spaces.
 pub(crate) const LEAD: usize = 2;
+/// The cells of the block's right padding that a subagent's title row reaches
+/// into with its rule and hint: it ends at column `W - 3`.
+pub(crate) const PADDING_REACH: u16 = 2;
 /// The extra indent of the content below a label (column 7).
 pub const BODY_INDENT: u16 = 3;
 

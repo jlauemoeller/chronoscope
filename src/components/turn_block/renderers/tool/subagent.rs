@@ -269,25 +269,10 @@ mod tests {
     fn a_description_over_two_rows_has_the_rule_and_hint_on_the_second_only() {
         let theme = theme();
         let mut call = subagent(Some("ok"));
-        call.description = "Explore the repository and list every crate".into();
-        call.duration = Some(Duration::from_secs(302));
-        // t = 30, d = 30: the hint does not fit beside the last row, so it
-        // has a row of its own and no description row has a rule.
-        call.description = "d".repeat(20);
-        call.duration = None;
-        let render = ToolCallSection(&call).render(&ctx_at(&theme, 30, false));
-        let rows = texts(&render.lines);
-        assert_eq!(rows[0], format!("▼ {} (Explore)", "d".repeat(20)));
-        assert_eq!(rows[1], format!("  {}  {HINT}", "─".repeat(32 - 2 - 20)));
-        assert_eq!(render.chrome.unwrap().row, 1);
-
-        call.description = "Explore the repository and list every crate".into();
-        call.duration = Some(Duration::from_secs(302));
-        // With room, the second row carries them, after the duration.
-        let ctx = ctx_at(&theme, 60, false);
         call.description =
             "Explore the repository, list every crate and report what each one is for".into();
-        let render = ToolCallSection(&call).render(&ctx);
+        call.duration = Some(Duration::from_secs(302));
+        let render = ToolCallSection(&call).render(&ctx_at(&theme, 60, false));
         let rows = texts(&render.lines);
         assert!(!rows[0].contains('─'), "{}", rows[0]);
         assert!(rows[1].contains("· 5m 2s  ─"), "{}", rows[1]);

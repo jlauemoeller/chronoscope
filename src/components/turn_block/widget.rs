@@ -9,7 +9,9 @@ use ratatui::text::Line;
 use ratatui::widgets::Widget;
 
 use super::emphasis::emphasize;
-use super::renderers::{DEFAULT_OPEN_KEY, Rendered, SectionCtx, render_section, text_width};
+use super::renderers::{
+    CHROME, DEFAULT_OPEN_KEY, LEAD, PADDING_REACH, Rendered, SectionCtx, render_section, text_width,
+};
 use super::section::{FoldState, Section, SectionId, derive_sections};
 use super::title::TitleBar;
 use crate::model::Turn;
@@ -17,6 +19,11 @@ use crate::theme::{Role, Theme, Token};
 use crate::timestamp::TimestampFormatter;
 use crate::transcript_search::SearchQuery;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+/// The column of the first cell of a row's line: after the border and a blank.
+const CONTENT_COLUMN: u16 = 2;
+/// The columns after the text area: three of padding and the border.
+const RIGHT_MARGIN: u16 = CHROME / 2;
 
 /// A row of the block between the top and the bottom border.
 #[derive(Debug, Clone)]
@@ -38,13 +45,20 @@ impl BlockRow {
         let Some(from) = self.chrome else {
             return self.line.to_string();
         };
+        if from <= LEAD {
+            // The hint's own row: nothing but the lead comes before the chrome.
+            return String::new();
+        }
         let mut width = 0;
         let mut text = String::new();
         for c in self.line.spans.iter().flat_map(|s| s.content.chars()) {
-            if width >= from {
+            let cells = c.width().unwrap_or(0);
+            // A zero-width character (a combining mark) belongs to the
+            // character before it, even when that one ends the text.
+            if width >= from && cells > 0 {
                 break;
             }
-            width += c.width().unwrap_or(0);
+            width += cells;
             text.push(c);
         }
         text
@@ -54,8 +68,12 @@ impl BlockRow {
     /// `width` columns: the text area and the lead, or two cells more for a
     /// title row.
     fn drawn_cells(&self, width: u16) -> u16 {
-        let reach = if self.chrome.is_some() { 4 } else { 6 };
-        width.saturating_sub(reach)
+        let reach = if self.chrome.is_some() {
+            PADDING_REACH
+        } else {
+            0
+        };
+        width.saturating_sub(CONTENT_COLUMN + RIGHT_MARGIN - reach)
     }
 }
 
@@ -106,7 +124,7 @@ impl BlockLayout {
     /// rule or hint into the padding, the cells it draws there. Column
     /// `W - 2` is never part of a row.
     pub fn content_end(&self, row: usize) -> u16 {
-        let text_end = self.width.saturating_sub(4);
+        let text_end = self.width.saturating_sub(RIGHT_MARGIN);
         let Some(row) = row.checked_sub(1).and_then(|i| self.rows.get(i)) else {
             return text_end;
         };
@@ -114,8 +132,8 @@ impl BlockLayout {
             return text_end;
         }
         let drawn = u16::try_from(row.line.width()).unwrap_or(u16::MAX);
-        let limit = self.width.saturating_sub(2);
-        text_end.max(drawn.saturating_add(2).min(limit))
+        let limit = text_end.saturating_add(PADDING_REACH);
+        text_end.max(drawn.saturating_add(CONTENT_COLUMN).min(limit))
     }
 }
 

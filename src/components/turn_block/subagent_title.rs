@@ -525,6 +525,44 @@ fn both_exports_have_neither_rule_nor_hint() {
     }
 }
 
+#[test]
+fn a_zero_width_character_ending_the_description_stays_in_the_rows_text() {
+    // `cafe` + U+0301 is drawn `café`; with no agent type and no duration it
+    // ends the text of the title row, right before the chrome.
+    let turn = turn_of(call("Check the cafe\u{301}", None, None, "ok"));
+    let all: Vec<String> = with_block(&turn, &Opts::default(), |block| {
+        let layout = block.layout(80);
+        (0..layout.height())
+            .filter_map(|row| layout.row_text(row))
+            .collect()
+    });
+    assert_eq!(all[1], "▶ Check the cafe\u{301}");
+    // And the match lights the cells of `café`.
+    let cells = highlighted(&turn, &Opts::default(), "cafe\u{301}", 80, 2);
+    assert_eq!(cells, (14..18).collect::<Vec<_>>());
+}
+
+#[test]
+fn the_hints_own_rows_text_is_empty() {
+    let turn = repository();
+    let opts = unfolded(&turn).open_key("Ctrl-o");
+    let text = with_block(&turn, &opts, |block| block.layout(80).row_text(3));
+    assert_eq!(text.as_deref(), Some(""));
+}
+
+#[test]
+fn a_pending_subagent_without_an_agent_type_at_80() {
+    let turn = turn_of(tool_of(
+        ToolKind::Subagent,
+        "c1",
+        "Do the thing",
+        json!({"prompt": "p"}),
+        None,
+        ToolStatus::Pending,
+    ));
+    insta::assert_snapshot!(buffer_to_text(&draw(&turn, &Opts::default(), 80)));
+}
+
 // ---- Highlights ----
 
 /// The columns of row `y` drawn with the `search_match` background.
