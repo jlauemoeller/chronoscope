@@ -1291,9 +1291,24 @@ def continue_action(backlog, board):
     if backlog.problems:
         return "halt: " + "; ".join(backlog.problems)
     rows = backlog.rows
+    if not state_ignored():
+        return "refuse: factory/state/ is not ignored by git"
     esc = [r["id"] for r in rows if r["status"] == "Escalated"]
     if esc:
         return "refuse: %s is Escalated; use /factory approve, rework or abandon" % esc[0]
+    in_progress = [r["id"] for r in rows if r["status"] == "In progress"]
+    branch = current_branch()
+    task_branch = ("factory/" + in_progress[0]) if in_progress else None
+    if branch != "main" and branch != task_branch:
+        return "refuse: on branch %s; continue runs on main%s" % (
+            branch or "(detached)", (" or " + task_branch) if task_branch else "")
+    if tree_changes():
+        if branch == "main":
+            return "refuse: the working tree is not clean"
+        rounds = round_dirs(in_progress[0])
+        if rounds and os.path.isfile(rpath(in_progress[0], rounds[-1], "reviews-started")):
+            return ("halt: uncommitted changes on %s after the reviews started; "
+                    "inspect them and commit or remove them" % task_branch)
     prefix = "" if board is not None else "rebuild board.json, then "
     loop_state = (board or {}).get("loop", {}).get("state")
     untouched = rows and all(r["status"] == "Planned" for r in rows) and not any(
