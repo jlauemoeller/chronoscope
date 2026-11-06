@@ -246,9 +246,13 @@ The agent roles are:
   - **Later rounds:** it reads the reviews in the previous round directory
     (the `<key>-review.md` of each reviewer the task lists) and addresses
     every finding: every must-fix, and every nit unless its build notes list
-    that nit with the reason for leaving it. In a rework round it also reads
-    the `human-review.md` or `approver-review.md` in the current round
-    directory. Where that note conflicts with a review, the note wins. A
+    that nit with the reason for leaving it. It fixes a bug at its cause,
+    not only for the input the review reports: it finds why the code goes
+    wrong, fixes that, and tests other inputs that reach the same cause.
+    Where a review offers more than one fix, it takes one that removes the
+    cause, or its build notes say why it took another. In a rework round it
+    also reads the `human-review.md` or `approver-review.md` in the current
+    round directory. Where that note conflicts with a review, the note wins. A
     finding the rework note sets aside is left alone. If the previous round
     has no reviews because the Builder blocked, the note is its only input.
   - **A fresh builder** (in any round, including an interrupted round 1)
@@ -275,34 +279,45 @@ The agent roles are:
   - every acceptance criterion is met and covered by a test that would fail
     if the behaviour were wrong;
   - every UI state and size in the `UI` section has a snapshot;
+  - the work holds up against the focus of the Code Reviewer and the
+    Feature Reviewer in the roster, and nothing in it falls into a must-fix
+    category under "Review findings";
+  - it has tried the edge cases and error paths of the behaviour it adds, as
+    the Feature Reviewer will, and each one that could go wrong has a test;
   - for each specialist reviewer in the task's `Reviews` section, the work
     holds up against that reviewer's focus in the roster, its must-fix list
     under "Specialist reviewers", and its baseline;
   - for each reviewer the task lists, it has run the commands that `stack.md`
     gives for that key under **Reviewer checks**, and the build notes address
     each result or say why it doesn't apply;
-  - in later rounds, every must-fix finding has been addressed, and every nit
-    has been addressed or listed with a reason.
+  - in later rounds, every must-fix finding has been addressed at its cause,
+    and every nit has been addressed or listed with a reason;
+  - in a rework round, every concrete instruction in the rework note (a
+    value, a name, an assertion, a file to change) has been carried out as
+    written, and checked against the code and tests as they now stand.
 
   At the end of each round the Builder writes
   `factory/state/tasks/<task-id>/<round-id>/build-notes.md`. Its first line
   is `STATUS: DONE`, or `STATUS: BLOCKED` if it couldn't pass the test gate
-  or the task is unclear. The file then summarises the changes, the
+  or the task is unclear. The file then summarises the changes and gives the
   self-check (one line per acceptance criterion and UI state, with the test
-  that covers it), the test gate results, and (if blocked) the reason. The
-  Builder commits its work on the task branch, with messages prefixed
-  `<task-id>: `. When it is blocked, it still commits what it has, with the
-  subject `<task-id>: WIP (blocked) <summary>`, so the tree is clean and the
-  partial work is kept and clearly marked. It writes the build notes last
-  of all, after committing (see "Rules"). The build notes are not committed.
-  Apart from them, it never writes under `factory/state/`.
+  that covers it). In later rounds it also gives the cause of each must-fix
+  bug and how it was fixed, and in a rework round each instruction of the
+  rework note, quoted as written, with where it was carried out. Then come
+  the test gate results and, if blocked, the reason. The Builder commits its
+  work on the task branch, with messages prefixed `<task-id>: `. When it is
+  blocked, it still commits what it has, with the subject
+  `<task-id>: WIP (blocked) <summary>`, so the tree is clean and the partial
+  work is kept and clearly marked. It writes the build notes last of all,
+  after committing (see "Rules"). The build notes are not committed. Apart
+  from them, it never writes under `factory/state/`.
 
   When it is resumed with the uncommitted-changes message (see "Write
   verification"), it commits those changes. If they shouldn't be committed,
   it fixes the cause instead, for example by adding a missing `.gitignore`
   entry for build outputs. Either way it leaves a clean tree and updates its
   build notes. It follows the Builder's safety rules (see "Safety rules").
-  The Builder runs claude-sonnet-5-5 with High effort.
+  The Builder runs claude-opus-5-5 with Medium effort.
 
 - **The Code Reviewer** reviews the changes on the task branch
   (`git diff main...HEAD`). It checks that they follow best practices for the
@@ -553,12 +568,12 @@ after security and data protection, the Approver's priority order.
 
 | Key | Reviewer | Runs on | Focus |
 |---|---|---|---|
-| `code` | Code Reviewer | every task | As described above. |
-| `feature` | Feature Reviewer | every task | As described above. |
+| `code` | Code Reviewer | every task | Best practice for the language and frameworks, and any guidelines in `SPEC.md`. It re-runs the test gate in the no-update mode. |
+| `feature` | Feature Reviewer | every task | The implementation matches the feature description and every acceptance criterion in `task.md`; the Builder's self-check claims hold against the code and the tests; the edge cases and error paths of the behaviour the task adds. |
 | `security` | Security Reviewer | tasks that handle authentication, authorisation, sessions, secrets or untrusted input, run external commands, or add dependencies | Injection, access control, secret handling, unsafe deserialisation, dependency risk, and the security requirements in the spec. |
 | `privacy` | Privacy Reviewer | tasks that collect, store, log, process or transmit personal data | The data-protection requirements in the spec and the regime it names (for example GDPR which is also the default): data minimisation, purpose and consent, retention and deletion, access and export, personal data in logs, and transfer to third parties. |
 | `api` | API Reviewer | tasks that add or change a public interface: an HTTP or RPC API, a library's public API, a command-line interface, or a file or wire format | The interface matches the spec, stays backwards compatible or is versioned, names things and reports errors consistently, and is documented. |
-| `ui` | UI Reviewer | tasks whose `UI` section isn't `UI: none` | As described above. |
+| `ui` | UI Reviewer | tasks whose `UI` section isn't `UI: none` | The views, states and sizes in the task's `UI` section: it inspects the Builder's snapshots, and renders the views itself at those sizes and at edge cases such as the smallest size, long text and empty lists. |
 
 A task's `Reviews` section says which reviewers run on it, and `code` and
 `feature` always run, whatever it says. A `task.md` without one runs `code`,
@@ -644,7 +659,10 @@ API Reviewer's inconsistent naming or error reporting is best practice.
 ### Review findings
 
 Each reviewer labels every finding `[must-fix]` or `[nit]`, and describes
-precisely the change needed for each one.
+precisely the change needed for each one. For a bug, it names the cause as
+well as the input that shows it. When it offers more than one fix, it says
+which ones remove the cause and which only fix the input it reported, and
+puts one that removes the cause first.
 - **must-fix:** a failing test gate; an unmet acceptance criterion or spec
   requirement; a bug or wrong behaviour; a security or data-loss risk; a UI
   that contradicts the task's `UI` section; a breach of a guideline in
@@ -668,9 +686,11 @@ rounds alike), a reviewer:
 1. Reads its own review from the previous round, and the `approver-review.md`
    or `human-review.md` in the current round if there is one.
 2. Checks each must-fix finding from its previous review, and states in its
-   review whether that finding is resolved. A finding that isn't resolved
-   stays must-fix, unless the rework note sets it aside. No reviewer raises
-   a finding the rework note sets aside, whoever raised it first.
+   review whether that finding is resolved. A bug is resolved only when its
+   cause is gone: the reviewer checks the fix with other inputs that reach
+   the same cause, not only the one it reported. A finding that isn't
+   resolved stays must-fix, unless the rework note sets it aside. No reviewer
+   raises a finding the rework note sets aside, whoever raised it first.
 3. Reviews the task as in round 1, and also reads this round's changes with
    `git diff <base>..HEAD`, where `<base>` is the commit in the round's
    `base-commit` file.
@@ -1364,8 +1384,9 @@ The content comes from the role's description under "The Floor Plan", plus
 the sections that role depends on:
 - **The Planner:** "Identifiers", "Preflight", "Checking the plan", "The
   stack profile" and "The reviewer roster".
-- **The Builder:** "The stack profile", "The reviewer roster" and
-  "Specialist reviewers", for its self-check.
+- **The Builder:** "The stack profile", "The reviewer roster" (the focus of
+  every row, `code` and `feature` included), "Specialist reviewers" and
+  "Review findings", for its self-check.
 - **The reviewers:** "The stack profile" (for no-update mode and
   **Concurrency**), "The reviewer roster", "Specialist reviewers", "Review
   findings" and "Later rounds".
