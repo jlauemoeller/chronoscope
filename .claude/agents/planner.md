@@ -279,6 +279,8 @@ The `Reviews` section lists the keys of the reviewers that run on the task:
 - A specialist (`security`, `privacy`, `api`) applies only when the task
   touches its concern as the baseline in `preflight.md` defines it, and its
   line says why.
+- List only the reviewers that run. Don't add lines for specialists that
+  don't apply: every list item's key (its first backticked word) runs.
 - For each specialist you list, write the spec requirements that reviewer
   will check into the acceptance criteria, so the Builder knows them before
   it starts.
