@@ -163,7 +163,6 @@ impl ToolBodyRenderer for ReadBody {
             return Body {
                 blocks: vec![path_block(range_note(&call.input, None)), block],
                 remaining,
-                hint: None,
             };
         };
         // The output is read once; its error or emptiness is shown as such.
@@ -177,7 +176,6 @@ impl ToolBodyRenderer for ReadBody {
                 return Body {
                     blocks: vec![path_block(range_note(&call.input, None)), block],
                     remaining,
-                    hint: None,
                 };
             }
         };
@@ -207,7 +205,6 @@ impl ToolBodyRenderer for ReadBody {
                 },
             ],
             remaining: (cut > 0).then_some(cut),
-            hint: None,
         }
     }
 }

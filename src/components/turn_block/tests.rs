@@ -1479,6 +1479,9 @@ fn the_open_transcript_hint_follows_the_remapped_open_subagent_key() {
             .find(|r| r.contains("to open transcript"))
             .unwrap()
             .trim_matches(['│', ' '])
+            .rsplit("  ")
+            .next()
+            .unwrap()
             .to_owned()
     };
     let label = |km: &Keymap| km.label(Context::Browser, Action::OpenSubagent).unwrap();

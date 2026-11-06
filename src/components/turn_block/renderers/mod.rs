@@ -32,6 +32,8 @@ pub use user::UserPromptSection;
 /// The width the block leaves for the text: 4 cells on the left and 4 on the
 /// right of it (3 of padding and the border).
 pub const CHROME: u16 = 8;
+/// The cells of the lead in front of a row: the fold marker or two spaces.
+pub(crate) const LEAD: usize = 2;
 /// The extra indent of the content below a label (column 7).
 pub const BODY_INDENT: u16 = 3;
 
@@ -91,6 +93,11 @@ impl SectionCtx<'_> {
         Style::new().fg(self.theme.role(Role::MutedForeground))
     }
 
+    /// The `border` style: the colour of the block's own borders.
+    pub fn border(&self) -> Style {
+        Style::new().fg(self.theme.role(Role::Border))
+    }
+
     /// The `foreground` style.
     pub fn foreground(&self) -> Style {
         Style::new().fg(self.theme.role(Role::Foreground))
@@ -111,6 +118,39 @@ pub struct Rendered {
     pub lines: Vec<Line<'static>>,
     /// The truncation row, to be drawn directly below `lines`.
     pub more: Option<Line<'static>>,
+    /// Where the rule and the hint of a subagent's title row are in `lines`.
+    pub chrome: Option<TitleChrome>,
+}
+
+/// The chrome of a subagent's title row (SPEC cycle 4 §2): from cell `from`
+/// of the row on, its cells are the rule and the open hint. They are drawn,
+/// but they are not the section's text: they are not searched, highlighted
+/// or copied, and the rule is not emphasised.
+///
+/// The row is wider than the text area and reaches two cells into the
+/// block's padding, up to column `W - 3`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TitleChrome {
+    /// The index of the row in [`Rendered::lines`].
+    pub row: usize,
+    /// The cell of the row's line (lead included) where the chrome starts.
+    pub from: usize,
+    /// The index, in the row's spans, of the rule (it keeps the `border`
+    /// colour whatever the emphasis of the section). `None` when the row has
+    /// no rule.
+    pub rule: Option<usize>,
+}
+
+impl TitleChrome {
+    /// The chrome after [`with_lead`] put a two-cell span in front of its
+    /// row.
+    pub(crate) fn after_lead(self) -> Self {
+        Self {
+            row: self.row,
+            from: self.from + LEAD,
+            rule: self.rule.map(|span| span + 1),
+        }
+    }
 }
 
 /// The lines of `section`, folded or not, for `ctx`.
@@ -128,7 +168,11 @@ pub fn render_section(section: &Section<'_>, ctx: &SectionCtx<'_>) -> Rendered {
         SectionContent::Compaction(summary) => CompactionSection(summary).lines(ctx),
         SectionContent::System(entries) => SystemSection(entries).lines(ctx),
     };
-    Rendered { lines, more: None }
+    Rendered {
+        lines,
+        more: None,
+        chrome: None,
+    }
 }
 
 /// The marker of a foldable section.

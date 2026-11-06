@@ -263,20 +263,30 @@ fn the_transcript_passes_the_open_subagent_key_to_subagent_sections() {
     ));
     let mut t = transcript_of(vec![turn], 80, 24);
     t.set_folded(&tool_id(), false);
-    let last = |t: &Transcript| {
-        block_text(t)
-            .into_iter()
-            .rfind(|r| r.contains("to open transcript"))
+    // The hint is on the title row, ending at column W - 3 (79 is the
+    // border, 78 the blank cell).
+    let title = |t: &Transcript| {
+        let rows = block_text(t);
+        let row = rows
+            .iter()
+            .find(|r| r.contains("▼ Explore"))
             .unwrap()
+            .clone();
+        assert_eq!(
+            rows.iter()
+                .filter(|r| r.contains("to open transcript"))
+                .count(),
+            1,
+            "{rows:#?}"
+        );
+        row
     };
-    let hint = last(&t);
-    assert_eq!(hint.trim_matches(['│', '▒', ' ']), "a to open transcript");
-    assert_eq!(hint.chars().nth(4), Some('a'), "at the label column");
+    let row = title(&t);
+    assert!(row.ends_with("  a to open transcript │"), "{row}");
+    assert_eq!(row.chars().nth(77), Some('t'), "{row}");
     t.attr(OPEN_SUBAGENT_KEY_ATTR, AttrValue::String("Ctrl-o".into()));
-    assert_eq!(
-        last(&t).trim_matches(['│', '▒', ' ']),
-        "Ctrl-o to open transcript"
-    );
+    let row = title(&t);
+    assert!(row.ends_with("  Ctrl-o to open transcript │"), "{row}");
     assert_eq!(
         t.query(OPEN_SUBAGENT_KEY_ATTR).map(|q| q.into_attr()),
         Some(AttrValue::String("Ctrl-o".into()))
@@ -312,8 +322,22 @@ fn a_long_subagent_result_is_truncated_with_a_stop_that_expands_it() {
         .collect();
     assert_eq!(ids, [tool_id(), more_id()]);
     let rows = block_text(&t);
-    assert!(rows.iter().any(|r| r.contains("to open transcript")));
-    assert!(rows.iter().any(|r| r.contains("… 49 more lines")));
+    assert!(
+        rows.iter()
+            .any(|r| r.contains("▼ Explore") && r.contains("to open transcript"))
+    );
+    // The more row directly follows the result, and nothing is below it but
+    // the block's blank row.
+    let at = rows
+        .iter()
+        .position(|r| r.contains("… 49 more lines"))
+        .unwrap();
+    assert!(rows[at - 1].contains("line 5"), "{rows:#?}");
+    assert!(
+        rows[at + 1..]
+            .iter()
+            .all(|r| r.trim_matches(['│', '▒', ' ', '╰', '─', '╯']).is_empty())
+    );
     move_to(&mut t, &more_id());
     t.perform(Cmd::Submit);
     let rows = block_text(&t);

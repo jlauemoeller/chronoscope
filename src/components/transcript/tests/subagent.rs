@@ -17,6 +17,11 @@ use crate::model::{ItemId, ToolKind, ToolStatus};
 /// subagent calls: `s1` (an Explore agent) and `s2` (no agent type, so its
 /// description names it).
 fn with_subagents() -> Transcript {
+    with_subagents_at(100, 30)
+}
+
+/// [`with_subagents`] in a viewport of `width` by `height`.
+pub(super) fn with_subagents_at(width: u16, height: u16) -> Transcript {
     let subagent = |id: &str, description: &str, input: serde_json::Value| {
         blocks::tool_of(
             ToolKind::Subagent,
@@ -48,8 +53,8 @@ fn with_subagents() -> Transcript {
             arc(prompt("u1", "Do the thing")),
             arc(with_id(blocks::assistant(None, items, None), "a1")),
         ],
-        100,
-        30,
+        width,
+        height,
     )
 }
 

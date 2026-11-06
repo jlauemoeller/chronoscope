@@ -11,6 +11,10 @@
 //! `… N more lines` row is returned apart from the section's lines
 //! ([`Rendered::more`]) because it is a selection stop of its own.
 //!
+//! A subagent call's title row (its last description row) also holds a rule
+//! and the hint that opens the transcript ([`row::with_open_hint`]). They are
+//! chrome: drawn, but not part of the section's text.
+//!
 //! Output text is materialised (`ToolOutput::text()`) only by an unfolded
 //! body; a folded call renders its description and nothing else.
 
@@ -34,8 +38,8 @@ use serde_json::Value;
 
 use self::timing::duration_suffix;
 use super::{
-    BODY_INDENT, Rendered, SectionCtx, SectionRenderer, ellipsize, first_line, fold_marker, indent,
-    label, verbatim_lines, with_lead,
+    BODY_INDENT, Rendered, SectionCtx, SectionRenderer, TitleChrome, ellipsize, first_line,
+    fold_marker, indent, label, verbatim_lines, with_lead,
 };
 use crate::markdown::char_wrap;
 use crate::model::{ToolCall, ToolKind, ToolStatus};
@@ -72,10 +76,6 @@ pub struct Body {
     /// always the truncatable one. The `… N more lines` row goes directly
     /// under it.
     pub remaining: Option<usize>,
-    /// A row at the label column after the blocks, preceded by a blank row
-    /// (the subagent's "open transcript" hint). It comes before the
-    /// `… N more lines` row, if there is one.
-    pub hint: Option<Line<'static>>,
 }
 
 /// Renders the body of one kind of tool call.
@@ -104,7 +104,8 @@ pub fn body_renderer(kind: &ToolKind) -> &'static dyn ToolBodyRenderer {
 ///
 /// Folded: `▶ <description>` (plus the agent type for a subagent), then ` · `
 /// and the duration of a finished call. Unfolded: the same, word-wrapped,
-/// then the body of the call's kind.
+/// then the body of the call's kind. A subagent's title row also has a rule
+/// and the open hint (see [`render`](Self::render)).
 #[derive(Debug, Clone, Copy)]
 pub struct ToolCallSection<'a>(pub &'a ToolCall);
 
@@ -176,10 +177,31 @@ impl ToolCallSection<'_> {
         (description, body)
     }
 
-    /// The section's lines, with the truncation row apart.
+    /// The rule and the open hint of a subagent call's title row, added to
+    /// the description `rows`. Other calls have neither.
+    fn add_open_hint(
+        &self,
+        rows: &mut Vec<Line<'static>>,
+        ctx: &SectionCtx<'_>,
+    ) -> Option<TitleChrome> {
+        if self.0.tool != ToolKind::Subagent {
+            return None;
+        }
+        let text = format!("{} to open transcript", ctx.open_key);
+        let hint = row::OpenHint {
+            text: &text,
+            rule: ctx.border(),
+            hint: ctx.muted(),
+        };
+        row::with_open_hint(rows, &hint, usize::from(ctx.width), ctx.folded)
+    }
+
+    /// The section's lines, with the truncation row apart and, for a
+    /// subagent, where the rule and the hint are.
     pub fn render(&self, ctx: &SectionCtx<'_>) -> Rendered {
         let style = ctx.theme.style(Token::ToolDescription);
         let (mut lines, body) = self.parts(ctx);
+        let chrome = self.add_open_hint(&mut lines, ctx);
         let mut has_more = false;
         if let Some(body) = body {
             let label_style = ctx.theme.style(Token::Label);
@@ -188,10 +210,6 @@ impl ToolCallSection<'_> {
                 lines.push(label(block.label, label_style));
                 lines.push(Line::default());
                 lines.extend(indent_like_text(block.lines));
-            }
-            if let Some(hint) = body.hint {
-                lines.push(Line::default());
-                lines.push(hint);
             }
             if let Some(remaining) = body.remaining {
                 has_more = true;
@@ -202,12 +220,17 @@ impl ToolCallSection<'_> {
         }
         let mut lines = with_lead(lines, fold_marker(ctx.folded), style);
         let more = if has_more { lines.pop() } else { None };
-        Rendered { lines, more }
+        Rendered {
+            lines,
+            more,
+            chrome: chrome.map(TitleChrome::after_lead),
+        }
     }
 
     /// The section as plain text, in parts: the description rows, then (when
-    /// unfolded) each labelled block's rows without the column indent, the
-    /// subagent's "open transcript" hint and the `… N more lines` row.
+    /// unfolded) each labelled block's rows without the column indent and the
+    /// `… N more lines` row. The rule and the hint of a subagent are not
+    /// text.
     pub fn plain_parts(&self, ctx: &SectionCtx<'_>) -> PlainTool {
         let (description, body) = self.parts(ctx);
         let description = description.iter().map(ToString::to_string).collect();
@@ -227,16 +250,14 @@ impl ToolCallSection<'_> {
                     lines: block.lines.iter().map(ToString::to_string).collect(),
                 })
                 .collect(),
-            hint: body.hint.map(|hint| hint.to_string()),
             more: body.remaining.map(more_text),
         }
     }
 
     /// The section as plain text rows: what [`render`](Self::render) shows,
     /// without the fold marker and the column indents. Blank rows and labels
-    /// are kept, and so is the content's own indentation. The subagent's
-    /// "open transcript" hint is left out unless `with_hint`.
-    pub fn plain_lines(&self, ctx: &SectionCtx<'_>, with_hint: bool) -> Vec<String> {
+    /// are kept, and so is the content's own indentation.
+    pub fn plain_lines(&self, ctx: &SectionCtx<'_>) -> Vec<String> {
         let parts = self.plain_parts(ctx);
         let mut out = parts.description;
         for block in parts.blocks {
@@ -244,10 +265,6 @@ impl ToolCallSection<'_> {
             out.push(block.label.to_owned());
             out.push(String::new());
             out.extend(block.lines);
-        }
-        if let (true, Some(hint)) = (with_hint, parts.hint) {
-            out.push(String::new());
-            out.push(hint);
         }
         out.extend(parts.more);
         out
@@ -261,8 +278,6 @@ pub struct PlainTool {
     pub description: Vec<String>,
     /// The labelled blocks of an unfolded call.
     pub blocks: Vec<PlainBlock>,
-    /// The subagent's "open transcript" hint.
-    pub hint: Option<String>,
     /// The `… N more lines` row of a truncated output.
     pub more: Option<String>,
 }
@@ -286,9 +301,12 @@ fn more_text(remaining: usize) -> String {
 }
 
 impl SectionRenderer for ToolCallSection<'_> {
-    /// The section's lines with the truncation row, if any, at the end.
+    /// The section's lines with the truncation row, if any, at the end. A
+    /// subagent's title row is complete: it holds the rule and the hint.
     fn lines(&self, ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {
-        let Rendered { mut lines, more } = self.render(ctx);
+        let Rendered {
+            mut lines, more, ..
+        } = self.render(ctx);
         lines.extend(more);
         lines
     }
@@ -481,11 +499,7 @@ pub(super) fn with_result(
 ) -> Body {
     let (block, remaining) = result_block(label, call, ctx);
     blocks.push(block);
-    Body {
-        blocks,
-        remaining,
-        hint: None,
-    }
+    Body { blocks, remaining }
 }
 
 #[cfg(test)]

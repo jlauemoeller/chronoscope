@@ -702,9 +702,16 @@ fn copying_in_a_subagent_copies_its_text() {
 fn parent_with_a_subagent_selected_120x40_text() {
     let mut rig = subagent_rig(120, 40);
     let text = screen_text(&mut rig, 120, 40);
-    for want in ["Prompt:", "Result:", "to open transcript"] {
+    for want in ["Prompt:", "Result:"] {
         assert!(text.contains(want), "{want}\n{text}");
     }
+    // The hint is on the title row, not at the end of the body.
+    let title = text
+        .lines()
+        .find(|l| l.contains("▼ Ask story-writer"))
+        .unwrap();
+    assert!(title.contains("─  a to open transcript │"), "{title}");
+    assert_eq!(text.matches("to open transcript").count(), 1, "{text}");
     insta::assert_snapshot!(text);
 }
 
@@ -785,7 +792,15 @@ fn the_subagent_id_is_cut_from_the_start_at_80_columns() {
 fn the_selected_subagent_section_shows_the_hint() {
     let mut rig = subagent_rig(120, 40);
     let rows = rows_of(&screen_buffer(&mut rig, 120, 40));
-    assert!(rows.iter().any(|r| r.contains("a to open transcript")));
+    let title = rows
+        .iter()
+        .find(|r| r.contains("a to open transcript"))
+        .unwrap();
+    assert!(
+        title.contains("▼ Ask story-writer (story-writer)  ─"),
+        "{title}"
+    );
+    assert!(title.ends_with("a to open transcript │"), "{title}");
     // The selected block is the subagent call's.
     let selected = presentation(&rig.app, Id::Transcript).selected.unwrap();
     assert_eq!(selected.key, SectionKey::Item(ItemId::from("call-a")));
