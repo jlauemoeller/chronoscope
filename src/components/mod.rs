@@ -24,6 +24,7 @@ mod theme_selector;
 mod toast;
 pub mod transcript;
 pub mod turn_block;
+mod turn_rows;
 mod turn_sidebar;
 mod working_dir;
 
@@ -79,9 +80,10 @@ pub use turn_block::{
     BlockLayout, FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, TitleBar,
     TurnBlock, derive_sections, emphasize,
 };
+pub use turn_rows::{Entry, EntryKind, Row, TURN_ROWS_ATTR, TurnRows, entry_for};
 pub use turn_sidebar::{
-    COVER_ATTR, DEFAULT_KEY_LABEL, Entry, EntryKind, KEY_LABEL_ATTR, Row, SELECTED_TURN_ATTR,
-    TURN_ROWS_ATTR, TurnRows, TurnSidebar, entry_for, sidebar_list_rows,
+    COVER_ATTR, DEFAULT_KEY_LABEL, KEY_LABEL_ATTR, SELECTED_TURN_ATTR, TurnSidebar,
+    sidebar_list_rows,
 };
 pub use working_dir::{CWD_ATTR, WorkingDir};
 
