@@ -33,7 +33,7 @@ pub use user::UserPromptSection;
 /// right of it (3 of padding and the border).
 pub const CHROME: u16 = 8;
 /// The column of the first cell of a row's line: after the border and a blank.
-pub(crate) const CONTENT_COLUMN: u16 = 2;
+pub(super) const CONTENT_COLUMN: u16 = 2;
 /// The cells of the block's right padding that a subagent's title row reaches
 /// into with its rule and hint: it ends at column `W - 3`.
 pub(crate) const PADDING_REACH: u16 = 2;

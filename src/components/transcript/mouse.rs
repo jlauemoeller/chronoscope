@@ -16,7 +16,6 @@ use super::folding::FoldOp;
 use super::keys::{WHEEL_DOWN, WHEEL_UP};
 use crate::app::{Msg, RoutedMouse};
 use crate::components::turn_block::SectionId;
-use crate::components::turn_block::renderers::CONTENT_COLUMN;
 
 /// What a click landed on.
 struct Hit {
@@ -68,7 +67,7 @@ impl Transcript {
             .iter()
             .find(|placed| (placed.top..placed.top + placed.layout.height()).contains(&row))?;
         let within = row - placed.top;
-        let content = CONTENT_COLUMN..placed.layout.content_end(within);
+        let content = placed.layout.content_columns(within);
         if !content.contains(&mouse.column) {
             return None;
         }

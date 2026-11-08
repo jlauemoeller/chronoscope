@@ -105,12 +105,19 @@ impl BlockLayout {
         self.rows.get(interior).map(BlockRow::text)
     }
 
-    /// The first column after the part of row `row` (counted like
-    /// [`row_text`](Self::row_text)) that belongs to its section: the text
-    /// area, which ends at column `W - 5`, or on a title row that draws its
-    /// rule or hint into the padding, the cells it draws there. Column
-    /// `W - 2` is never part of a row.
-    pub fn content_end(&self, row: usize) -> u16 {
+    /// The columns of row `row` (counted like [`row_text`](Self::row_text))
+    /// that belong to its section, for hit testing: from the content column
+    /// (column 2) to the end of the text area, which ends at column `W - 5`,
+    /// or on a title row that draws its rule or hint into the padding, to the
+    /// last cell it draws there. Column `W - 2` is never part of a row. The
+    /// borders and rows that do not exist answer the text area.
+    pub fn content_columns(&self, row: usize) -> Range<u16> {
+        CONTENT_COLUMN..self.content_end(row)
+    }
+
+    /// The first column after the columns of
+    /// [`content_columns`](Self::content_columns).
+    fn content_end(&self, row: usize) -> u16 {
         let text_end = self.width.saturating_sub(RIGHT_MARGIN);
         let Some(row) = row.checked_sub(1).and_then(|i| self.rows.get(i)) else {
             return text_end;
@@ -151,6 +158,11 @@ pub struct TurnBlock<'a> {
 }
 
 impl<'a> TurnBlock<'a> {
+    /// The label of the default `open_subagent` key, which a new block
+    /// shows until [`open_subagent_key`](Self::open_subagent_key) sets
+    /// another.
+    pub const DEFAULT_OPEN_KEY: &'static str = DEFAULT_OPEN_KEY;
+
     /// A block for `turn`, with every section at its default fold, nothing
     /// selected, system sections shown and unselected sections dimmed (the
     /// defaults of the configuration).
