@@ -1,4 +1,4 @@
-//! Keeping an OpenCode session live (SPEC §7.1): a separate read-write
+//! Keeping an OpenCode session live (product §6.1): a separate read-write
 //! connection plays OpenCode and writes to a temporary copy of the fixture
 //! database, while the harness's worker watches (or polls) it.
 

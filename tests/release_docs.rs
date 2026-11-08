@@ -1,4 +1,4 @@
-//! The README and the release workflow (SPEC §9.3, §9.4, §6.8, §8.5, §11).
+//! The README and the release workflow (product §8.3, §8.4, §5.8, §7.5, §10).
 //!
 //! The README is documentation, but parts of it are checked against the code
 //! so that it cannot drift: the config example must load without warnings,
@@ -117,7 +117,7 @@ fn readme_config_example_loads_without_warnings() {
 }
 
 #[test]
-fn readme_config_example_is_the_one_in_the_spec() {
+fn readme_config_example_is_the_one_in_the_product_doc() {
     let normalise = |s: &str| -> Vec<String> {
         s.lines()
             .map(|l| l.trim_end().to_owned())
@@ -125,10 +125,10 @@ fn readme_config_example_is_the_one_in_the_spec() {
             .collect()
     };
     let readme = readme();
-    let spec = read("doc/SPEC.md");
+    let product = read("doc/product.md");
     let in_readme = block_containing(&readme, "toml", "[harness.claude]");
-    let in_spec = block_containing(&spec, "toml", "[harness.claude]");
-    assert_eq!(normalise(&in_readme), normalise(&in_spec));
+    let in_product = block_containing(&product, "toml", "[harness.claude]");
+    assert_eq!(normalise(&in_readme), normalise(&in_product));
 }
 
 #[test]

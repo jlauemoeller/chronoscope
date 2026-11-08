@@ -1,5 +1,5 @@
 //! Time from `load()` to the first batch of turns of a 100 MiB session
-//! (budget: 300 ms, SPEC §9.2).
+//! (budget: 300 ms, product §8.2).
 
 use criterion::{Criterion, criterion_group, criterion_main};
 
