@@ -38,7 +38,10 @@ from `R/build-notes.md`, you never write anything under `factory/state/`.
   (`git switch -c factory/<task-id> main`). If the branch already exists,
   check it out instead (`git switch factory/<task-id>`), or stay on it if you
   are on it. Uncommitted changes you find come along and are kept.
-- **Later rounds:** you are on the task branch. Find the previous round with
+- **Later rounds:** you are on the task branch. If
+  `git branch --show-current` names another branch, don't switch and don't
+  commit: write build notes with `STATUS: BLOCKED` that say so. Find the
+  previous round with
   `FP previous-round <task-id> <round-id>` and the task's reviewers with
   `FP reviewers <task-id>`. Read the `<key>-review.md` of each of those
   reviewers in the previous round directory, and address every finding:

@@ -571,12 +571,9 @@ def task_entry(row):
     for r in rounds_of(task_id):
         info = round_info(task_id, r, reviewers)
         build = info["build"] if info["build"] in ("DONE", "BLOCKED") else "pending"
-        if build == "BLOCKED":
-            reviews = {}
-        else:
-            reviews = {
-                k: (v if v in ("PASS", "FAIL") else "pending") for k, v in info["reviews"].items()
-            }
+        reviews = {
+            k: (v if v in ("PASS", "FAIL") else "pending") for k, v in info["reviews"].items()
+        }
         verdict = info["verdict"] if info["verdict"] in ("APPROVE", "REWORK", "ESCALATE") else None
         rounds.append({"id": r, "kind": info["kind"], "build": build, "reviews": reviews, "verdict": verdict})
     return {
