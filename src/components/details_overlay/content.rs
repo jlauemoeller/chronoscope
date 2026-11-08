@@ -2,7 +2,7 @@
 //! rows, and how they are laid out in the overlay.
 //!
 //! The content is plain data, so it can ride in a message and be snapshotted
-//! as a whole. How the rows are made from the model is in [`super::rows`].
+//! as a whole. How the rows are made from the model is in [`crate::section_details`].
 
 use ratatui::buffer::CellWidth;
 use ratatui::layout::Size;

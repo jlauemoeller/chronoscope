@@ -22,7 +22,7 @@ use super::section::{Section, SectionContent};
 use crate::theme::{Role, Theme};
 
 pub use compaction::CompactionSection;
-pub use stats::{StatsSection, format_cost, format_stats};
+pub use stats::{StatsSection, format_stats};
 pub use system::SystemSection;
 pub use text::{AssistantTextSection, ModelChangeSection, NoticeSection};
 pub use thinking::ThinkingSection;
@@ -33,10 +33,10 @@ pub use user::UserPromptSection;
 /// right of it (3 of padding and the border).
 pub const CHROME: u16 = 8;
 /// The column of the first cell of a row's line: after the border and a blank.
-pub(crate) const CONTENT_COLUMN: u16 = 2;
+pub(super) const CONTENT_COLUMN: u16 = 2;
 /// The cells of the block's right padding that a subagent's title row reaches
 /// into with its rule and hint: it ends at column `W - 3`.
-pub(crate) const PADDING_REACH: u16 = 2;
+pub(super) const PADDING_REACH: u16 = 2;
 /// The extra indent of the content below a label (column 7).
 pub const BODY_INDENT: u16 = 3;
 
@@ -66,8 +66,9 @@ pub struct SectionCtx<'a> {
     pub verbatim: bool,
 }
 
-/// The label of the default `open_subagent` key.
-pub const DEFAULT_OPEN_KEY: &str = "a";
+/// The label of the default `open_subagent` key; outside the turn block it
+/// is [`TurnBlock::DEFAULT_OPEN_KEY`](super::TurnBlock::DEFAULT_OPEN_KEY).
+pub(super) const DEFAULT_OPEN_KEY: &str = "a";
 
 impl<'a> SectionCtx<'a> {
     /// A context with the default truncation, nothing expanded and the

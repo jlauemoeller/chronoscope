@@ -7,7 +7,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use chronoscope::components::section_source;
 use chronoscope::components::turn_block::{SectionId, SectionKey};
 use chronoscope::harness::Harness;
 use chronoscope::harness::claude::{Assembler, ClaudeHarness};
@@ -16,6 +15,7 @@ use chronoscope::model::{
     SourceGroup, SourceGroupKind, SourceKey, SourceKind, SourceRef, SourceValue, ToolCallId,
     ToolStatus, Turn,
 };
+use chronoscope::section_details::section_source;
 use serde_json::{Value, json};
 
 /// A Claude section's lines.

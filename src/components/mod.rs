@@ -10,6 +10,7 @@ mod global_events;
 mod harness_tabs;
 mod help_line;
 mod help_overlay;
+mod list_cursor;
 mod list_pane;
 mod overlay_frame;
 mod panel_row;
@@ -19,10 +20,13 @@ mod selector_frame;
 mod session_list;
 mod session_time;
 mod session_tokens;
+pub mod text_fit;
 mod theme_selector;
+mod titled_block;
 mod toast;
 pub mod transcript;
 pub mod turn_block;
+mod turn_rows;
 mod turn_sidebar;
 mod working_dir;
 
@@ -35,11 +39,9 @@ pub use browser_header::{
     BREADCRUMB_ATTR, BrowserHeader, HEADER_HEIGHT, LIVE_ATTR, PARSE_WARNINGS_ATTR, SESSION_ID_ATTR,
     parse_warning_note,
 };
-#[cfg(test)]
-pub(crate) use details_overlay::section_details;
 pub use details_overlay::{
     DESIRED_SIZE_ATTR, DetailsContent, DetailsGroup, DetailsOverlay, DetailsRequest, DetailsRow,
-    MAX_WIDTH_ATTR, compose, max_width_value, section_source,
+    MAX_WIDTH_ATTR, compose, max_width_value,
 };
 pub use empty_state::{
     EMPTY_SESSION, EmptyState, LOCAL_COMMANDS_ONLY, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL,
@@ -52,13 +54,13 @@ pub use help_overlay::{
     HELP_CONTEXT_ATTR, HelpContent, HelpContext, HelpGroup, HelpOverlay, HelpRow,
     MIN_WIDTH as HELP_MIN_WIDTH, SHIFT_NOTE, context_from_value, context_value,
 };
-pub use list_pane::{
-    ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
-    selected_value, visible_rows,
+pub use list_cursor::{
+    ListCursor, SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_from_value, selected_value,
 };
+pub use list_pane::{SESSION_OPEN_ATTR, visible_rows};
 pub use overlay_frame::{INTERIOR_ATTR, interior_of, interior_value};
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
-pub use prompt::{Prompt, PromptMode, tail_fitting};
+pub use prompt::{Prompt, PromptMode};
 pub use selector_frame::SelectorFrame;
 pub use session_list::{
     ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_FILTERED_ATTR, SESSION_ROWS_ATTR,
@@ -67,7 +69,7 @@ pub use session_list::{
 pub use session_time::{SESSION_TIME_ATTR, SessionTime, SessionTimes};
 pub use session_tokens::{SESSION_TOKENS_ATTR, SessionTokens};
 pub use theme_selector::{ThemeItem, ThemeRows, ThemeSelector, theme_items};
-pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast, truncate_with_ellipsis};
+pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast};
 pub use transcript::{
     DIM_UNSELECTED_ATTR, FOLLOWING_ATTR, GO_TO_TURN_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR,
     OPEN_SUBAGENT_KEY_ATTR, PRESENTATION_ATTR, Presentation, SEARCH_POSITION_ATTR,
@@ -80,9 +82,10 @@ pub use turn_block::{
     BlockLayout, FoldState, Section, SectionContent, SectionId, SectionKey, SectionKind, TitleBar,
     TurnBlock, derive_sections, emphasize,
 };
+pub use turn_rows::{Entry, EntryKind, Row, TURN_ROWS_ATTR, TurnRows, entry_for};
 pub use turn_sidebar::{
-    COVER_ATTR, DEFAULT_KEY_LABEL, Entry, EntryKind, KEY_LABEL_ATTR, Row, SELECTED_TURN_ATTR,
-    TURN_ROWS_ATTR, TurnRows, TurnSidebar, entry_for, sidebar_list_rows,
+    COVER_ATTR, DEFAULT_KEY_LABEL, KEY_LABEL_ATTR, SELECTED_TURN_ATTR, TurnSidebar,
+    sidebar_list_rows,
 };
 pub use working_dir::{CWD_ATTR, WorkingDir};
 

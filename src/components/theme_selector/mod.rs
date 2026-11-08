@@ -18,7 +18,8 @@ use unicode_width::UnicodeWidthStr;
 
 pub use rows::{ThemeItem, ThemeRows};
 
-use super::list_pane::{ListCursor, VISIBLE_ROWS_ATTR, titled_block};
+use super::list_cursor::{ListCursor, VISIBLE_ROWS_ATTR};
+use super::titled_block::titled_block;
 use super::{HelpLine, Hint, THEME_ATTR, theme_from_value, theme_value};
 use crate::app::{Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, Keymap};

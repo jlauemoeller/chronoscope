@@ -1,13 +1,11 @@
-//! The references of a section, for the harness to read (SPEC cycle 2 §5.2),
-//! and the composition of what it reads with the rows the model knows.
+//! What the details key asks the overlay to show ([`DetailsRequest`]), and
+//! the composition of what the harness reads with the rows the model knows.
+//! The rows the model knows and the references the harness reads from are
+//! made in [`crate::section_details`].
 
 use super::content::{DetailsContent, DetailsGroup, DetailsRow};
-use super::rows::{ENVIRONMENT, MESSAGE, PROMPT, TOOL_CALL, TURN};
-use crate::components::turn_block::{SectionContent, SectionId, SectionKey, derive_sections};
-use crate::model::{
-    SectionSource, SourceGroup, SourceGroupKind, SourceKey, SourceKind, SourceRow, SourceValue,
-    Turn,
-};
+use crate::model::{SectionSource, SourceGroup, SourceGroupKind, SourceRow, SourceValue};
+use crate::section_details::{ENVIRONMENT, MESSAGE, PROMPT, TOOL_CALL, TURN};
 use crate::timestamp::TimestampFormatter;
 use crate::tokens::format_tokens;
 
@@ -30,34 +28,6 @@ impl From<DetailsContent> for DetailsRequest {
             source: None,
         }
     }
-}
-
-/// The references of the section `id` of `turn`, and what the section is, for
-/// [`Harness::section_details`](crate::harness::Harness::section_details).
-/// `None` when the turn has no section like that or keeps no reference for
-/// it (a harness that gives no source details, a footer without a
-/// `turn_duration` line).
-pub fn section_source(turn: &Turn, id: &SectionId) -> Option<SectionSource> {
-    let id = id.more_parent().unwrap_or_else(|| id.clone());
-    let sections = derive_sections(turn, true);
-    let section = sections.iter().find(|s| s.id == id)?;
-    let (key, kind) = match (&id.key, &section.content) {
-        (SectionKey::Prompt, _) => (SourceKey::Own, SourceKind::Prompt),
-        (SectionKey::Summary, _) => (SourceKey::Own, SourceKind::Other),
-        (SectionKey::Footer, _) => (SourceKey::Footer, SourceKind::Other),
-        (SectionKey::Item(item) | SectionKey::More(item), content) => {
-            let kind = match content {
-                SectionContent::Tool(_) => SourceKind::ToolCall,
-                SectionContent::Text(_)
-                | SectionContent::Thinking(_)
-                | SectionContent::Notice(..) => SourceKind::Message,
-                _ => SourceKind::Other,
-            };
-            (SourceKey::Item(item.clone()), kind)
-        }
-    };
-    let refs = turn.sources().get(&key)?;
-    Some(SectionSource { kind, refs })
 }
 
 /// The overlay's content: the rows the model knows, with the rows the harness
@@ -140,18 +110,13 @@ fn format_value(value: &SourceValue, formatter: &TimestampFormatter) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use serde_json::json;
-
     use super::*;
-    use crate::components::details_overlay::section_details;
-    use crate::components::turn_block::SectionKey;
     use crate::components::turn_block::fixtures::{
-        assistant, compaction, formatter, item_id, key_id, text, tool, user, with_duration,
+        compaction, formatter, item_id, key_id, text_and_call, user,
     };
-    use crate::harness::claude::Assembler;
-    use crate::model::{ToolStatus, TurnStats};
+    use crate::components::turn_block::{SectionId, SectionKey};
+    use crate::model::Turn;
+    use crate::section_details::section_details;
 
     fn row(label: &str, value: SourceValue) -> SourceRow {
         SourceRow::new(label, value)
@@ -187,31 +152,6 @@ mod tests {
         content.groups().iter().map(|g| g.title.as_str()).collect()
     }
 
-    fn call_turn() -> Turn {
-        assistant(
-            Some("high"),
-            vec![
-                text("t1", "Hello"),
-                with_duration(
-                    tool(
-                        "c1",
-                        "Run ls",
-                        json!({}),
-                        Some(("ok", false)),
-                        ToolStatus::Ok,
-                    ),
-                    62_000,
-                ),
-            ],
-            Some(TurnStats {
-                duration: std::time::Duration::from_secs(5),
-                message_count: 1,
-                tokens: None,
-                cost: None,
-            }),
-        )
-    }
-
     fn compose_for(turn: &Turn, id: &SectionId, read: &[SourceGroup]) -> DetailsContent {
         let model = section_details(turn, id, &formatter()).unwrap();
         compose(model, read, &formatter())
@@ -219,7 +159,7 @@ mod tests {
 
     #[test]
     fn nothing_read_leaves_the_models_rows_alone_and_adds_no_unavailable_row() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "c1");
         let model = section_details(&turn, &id, &formatter()).unwrap();
         assert_eq!(compose(model.clone(), &[], &formatter()), model);
@@ -231,7 +171,7 @@ mod tests {
 
     #[test]
     fn a_tool_call_is_start_then_the_models_duration_and_status_then_the_rest() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "c1");
         let read = [
             group(
@@ -270,7 +210,7 @@ mod tests {
 
     #[test]
     fn the_groups_come_in_the_order_of_the_table() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "t1");
         // The harness lists them in another order.
         let read = [
@@ -291,7 +231,7 @@ mod tests {
 
     #[test]
     fn values_are_formatted_by_their_type() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "t1");
         let read = [group(
             SourceGroupKind::Message,
@@ -383,7 +323,7 @@ mod tests {
 
     #[test]
     fn the_turn_groups_read_rows_follow_the_models() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "t1");
         let read = [group(
             SourceGroupKind::Turn,
@@ -422,7 +362,7 @@ mod tests {
 
     #[test]
     fn an_unavailable_group_ends_with_one_muted_row_after_what_the_model_knows() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "c1");
         let read = [
             SourceGroup {
@@ -454,73 +394,10 @@ mod tests {
 
     #[test]
     fn a_group_the_harness_read_nothing_of_is_left_out() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "t1");
         let read = [group(SourceGroupKind::Environment, vec![], vec![])];
         let content = compose_for(&turn, &id, &read);
         assert_eq!(titles(&content), ["Turn"]);
-    }
-
-    // -- section_source, on turns the Claude assembler made
-
-    const LINES: [&str; 4] = [
-        r#"{"type":"user","uuid":"u1","origin":{"kind":"human"},"timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"go"}}"#,
-        r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","message":{"id":"m1","model":"x","content":[{"type":"text","text":"Hi"},{"type":"thinking","thinking":"hm","signature":"s"},{"type":"tool_use","id":"c1","name":"Bash","input":{"command":"ls"}}]}}"#,
-        r#"{"type":"user","uuid":"r1","timestamp":"2026-01-01T00:00:02Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"c1","content":"ok"}]}}"#,
-        r#"{"type":"system","subtype":"turn_duration","uuid":"d1","timestamp":"2026-01-01T00:00:03Z","durationMs":3000}"#,
-    ];
-
-    fn assembled() -> Vec<Arc<Turn>> {
-        let text = LINES.join("\n");
-        Assembler::from_memory(Arc::from(text.as_bytes())).into_turns()
-    }
-
-    #[test]
-    fn a_sections_kind_is_what_the_harness_is_asked_for() {
-        let turns = assembled();
-        let kind = |turn: usize, key: SectionKey| {
-            let id = SectionId {
-                turn: turns[turn].id().clone(),
-                key,
-            };
-            section_source(&turns[turn], &id).map(|s| s.kind)
-        };
-        let item = |id: &str| SectionKey::Item(crate::model::ItemId::from(id));
-        assert_eq!(kind(0, SectionKey::Prompt), Some(SourceKind::Prompt));
-        assert_eq!(kind(1, item("m1:0")), Some(SourceKind::Message));
-        assert_eq!(kind(1, item("m1:1")), Some(SourceKind::Message));
-        assert_eq!(kind(1, item("c1")), Some(SourceKind::ToolCall));
-        assert_eq!(kind(1, SectionKey::Footer), Some(SourceKind::Other));
-        // The `… N more lines` row is its tool call.
-        let more = SectionKey::More(crate::model::ItemId::from("c1"));
-        assert_eq!(kind(1, more), Some(SourceKind::ToolCall));
-        // A section that is not there has no source.
-        assert_eq!(kind(1, item("nope")), None);
-        assert_eq!(kind(1, SectionKey::Prompt), None);
-    }
-
-    #[test]
-    fn a_tool_call_has_both_lines_and_a_message_one() {
-        let turns = assembled();
-        let id = |item: &str| SectionId {
-            turn: turns[1].id().clone(),
-            key: SectionKey::Item(crate::model::ItemId::from(item)),
-        };
-        let call = section_source(&turns[1], &id("c1")).unwrap();
-        assert!(call.refs.lines().unwrap().result.is_some());
-        let text = section_source(&turns[1], &id("m1:0")).unwrap();
-        assert!(text.refs.lines().unwrap().result.is_none());
-    }
-
-    #[test]
-    fn a_turn_that_keeps_no_references_has_no_source() {
-        let turn = call_turn();
-        assert_eq!(section_source(&turn, &item_id(&turn, "c1")), None);
-        assert_eq!(section_source(&turn, &item_id(&turn, "t1")), None);
-        let turn = user("Hello", Vec::new());
-        assert_eq!(
-            section_source(&turn, &key_id(&turn, SectionKey::Prompt)),
-            None
-        );
     }
 }

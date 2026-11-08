@@ -8,10 +8,10 @@ use tuirealm::event::{Event, MouseEventKind};
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 
-use super::list_pane::{
-    PaneKey, PaneState, Part, RowParts, border_role, pane_key, render_rows, titled_block,
-};
-use super::{payload_from_value, payload_value, truncate_with_ellipsis};
+use super::list_pane::{PaneKey, PaneState, Part, RowParts, pane_key, render_rows};
+use super::text_fit::truncate_with_ellipsis;
+use super::titled_block::{border_role, titled_block};
+use super::{payload_from_value, payload_value};
 use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
 use crate::keymap::Keymap;
 use crate::model::ProjectId;
@@ -173,7 +173,8 @@ impl AppComponent<Msg, UserEvent> for ProjectList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_value};
+    use crate::components::list_cursor::{SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value};
+    use crate::components::list_pane::SESSION_OPEN_ATTR;
     use crate::test_support::{buffer_to_styled, render};
     use crate::theme::builtin;
     use tuirealm::event::{Key, KeyEvent, KeyModifiers};

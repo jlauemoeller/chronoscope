@@ -7,7 +7,7 @@ use ratatui::style::Style;
 use ratatui::widgets::Widget;
 use unicode_width::UnicodeWidthStr;
 
-use super::truncate_with_ellipsis;
+use super::text_fit::truncate_with_ellipsis;
 use crate::theme::{Role, Theme};
 
 /// The columns between a panel's border and its rows' text on each side:

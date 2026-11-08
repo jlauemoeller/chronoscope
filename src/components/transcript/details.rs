@@ -3,7 +3,8 @@
 
 use super::Transcript;
 use crate::app::Msg;
-use crate::components::details_overlay::{DetailsRequest, section_details, section_source};
+use crate::components::DetailsRequest;
+use crate::section_details::{section_details, section_source};
 
 impl Transcript {
     /// [`Msg::OpenDetails`] with the details of the selected section, a

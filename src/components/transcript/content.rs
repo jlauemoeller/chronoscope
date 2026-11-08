@@ -48,8 +48,7 @@ impl Content {
             dim_unselected: true,
             show_system: true,
             truncate_output_lines: crate::config::DEFAULT_TRUNCATE_OUTPUT_LINES,
-            open_subagent_key: crate::components::turn_block::renderers::DEFAULT_OPEN_KEY
-                .to_owned(),
+            open_subagent_key: TurnBlock::DEFAULT_OPEN_KEY.to_owned(),
             turns: Vec::new(),
             index: HashMap::new(),
             folds: FoldState::new(),

@@ -1,5 +1,7 @@
 //! What the turns sidebar lists (product §5.2, §5.6): one entry per turn that
-//! has a block, and the rows drawn from them.
+//! has a block, and the rows drawn from them. The `Transcript` builds them
+//! from its turns and the `TurnSidebar` shows them, so they live here, in a
+//! module both use.
 //!
 //! [`TurnRows`] keeps one *slot* per turn, in transcript order, whether or
 //! not the turn has an entry, plus a map from the turn's id to its slot. An
@@ -15,8 +17,20 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use tuirealm::props::Attribute;
+
 use crate::components::turn_block::derive_sections;
 use crate::model::{ModelUpdate, Turn, TurnId};
+
+#[cfg(test)]
+pub(crate) mod fixtures;
+#[cfg(test)]
+mod tests;
+
+/// The rows of a transcript, as a [`TurnRows`] payload. Setting it on the
+/// sidebar replaces its rows; querying a `Transcript` builds them in one pass
+/// over its turns.
+pub const TURN_ROWS_ATTR: Attribute = Attribute::Custom("turn_rows");
 
 #[cfg(test)]
 thread_local! {

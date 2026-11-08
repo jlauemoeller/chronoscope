@@ -15,7 +15,7 @@ use unicode_width::UnicodeWidthStr;
 
 mod fit;
 
-use super::working_dir::truncate_start;
+use super::text_fit::truncate_start;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme, Token};

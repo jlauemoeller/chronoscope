@@ -9,6 +9,7 @@ pub mod cli;
 pub mod clipboard;
 pub mod components;
 pub mod config;
+pub mod cost;
 pub mod duration;
 pub mod harness;
 pub mod index;
@@ -18,6 +19,7 @@ pub mod logging;
 pub mod markdown;
 pub mod model;
 pub mod paths;
+pub mod section_details;
 pub mod terminal;
 #[doc(hidden)]
 pub mod test_support;

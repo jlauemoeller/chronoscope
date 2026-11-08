@@ -9,7 +9,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use super::rows::{Entry, EntryKind, Row};
+use crate::components::turn_rows::{Entry, EntryKind, Row};
 use crate::duration::format_duration;
 use crate::theme::{Role, Theme, Token};
 

@@ -15,8 +15,8 @@ use ratatui::widgets::{Block, Clear, Paragraph};
 use tuirealm::event::{KeyEvent, MouseEventKind};
 use tuirealm::props::{AttrValue, Attribute};
 
-use super::list_pane::titled_block;
 use super::payload_value;
+use super::titled_block::titled_block;
 use crate::app::RoutedMouse;
 use crate::keymap::{Action, Context, Keymap};
 use crate::theme::{Role, Theme};

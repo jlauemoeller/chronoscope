@@ -43,7 +43,6 @@
 //! border, the margin, below the last row) answers nothing.
 
 mod line;
-mod rows;
 
 #[cfg(test)]
 mod fixtures;
@@ -63,21 +62,19 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
 use self::line::Look;
-pub use self::rows::{Entry, EntryKind, Row, TurnRows, entry_for};
-use super::list_pane::{ListCursor, border_role, titled_block};
+use super::list_cursor::{
+    ListCursor, SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_from_value, selected_value,
+};
+use super::titled_block::{border_role, titled_block};
+use super::turn_rows::{TURN_ROWS_ATTR, TurnRows};
 use super::{
-    MODEL_UPDATE_ATTR, SELECTED_ATTR, THEME_ATTR, VISIBLE_ROWS_ATTR, payload_from_value,
-    payload_value, selected_from_value, selected_value, theme_from_value, theme_value,
+    MODEL_UPDATE_ATTR, THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value,
 };
 use crate::app::{Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
 use crate::model::{ModelUpdate, TurnId};
 use crate::theme::{Role, Theme};
 
-/// The rows of a transcript, as a [`TurnRows`] payload. Setting it on the
-/// sidebar replaces its rows; querying a `Transcript` builds them in one pass
-/// over its turns.
-pub const TURN_ROWS_ATTR: Attribute = Attribute::Custom("turn_rows");
 /// The turn to select (a [`TurnId`] payload). A turn without an entry leaves
 /// the selection as it is. Setting it produces no message.
 pub const SELECTED_TURN_ATTR: Attribute = Attribute::Custom("selected_turn");

@@ -145,6 +145,33 @@ fn unfolded_with_a_wider_key_the_hint_has_a_row_below_the_description() {
 }
 
 #[test]
+fn only_a_title_rows_content_columns_reach_into_the_padding() {
+    let turn = turn_of(call(
+        "Explore the UVC descriptors",
+        Some("Explore"),
+        None,
+        "ok",
+    ));
+    with_block(&turn, &unfolded(&turn), |block| {
+        let layout = block.layout(100);
+        // The hint of the title row ends at column W - 3.
+        assert_eq!(layout.content_columns(2), 2..98);
+        // Every other row, the borders and a row past the end: the text
+        // area, which ends at column W - 5.
+        let last = layout.height() - 1;
+        for row in (0..2).chain(3..=last + 1) {
+            assert_eq!(layout.content_columns(row), 2..96, "row {row}");
+        }
+    });
+    // A title row that draws nothing into the padding keeps to the text area.
+    let full = turn_of(call(&"d".repeat(62), Some("Explore"), None, "ok"));
+    let columns = with_block(&full, &Opts::default(), |block| {
+        block.layout(80).content_columns(2)
+    });
+    assert_eq!(columns, 2..76);
+}
+
+#[test]
 fn only_title_rows_use_the_padding() {
     let turn = repository();
     let cases = [

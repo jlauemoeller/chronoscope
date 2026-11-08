@@ -4,7 +4,7 @@
 
 use unicode_width::UnicodeWidthStr;
 
-use crate::components::working_dir::truncate_start;
+use crate::components::text_fit::{truncate_start, truncate_with_ellipsis};
 
 /// A name keeps at least this many columns while the titles still fit that
 /// way.
@@ -84,7 +84,7 @@ fn cut(name: &str, width: usize) -> String {
     if width == 0 {
         String::new()
     } else {
-        crate::components::truncate_with_ellipsis(name, width)
+        truncate_with_ellipsis(name, width)
     }
 }
 
