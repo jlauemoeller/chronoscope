@@ -11,11 +11,10 @@ use ratatui::style::{Color, Modifier};
 
 use super::fixtures::*;
 use super::*;
-use crate::components::THEME_ATTR;
-use crate::components::transcript::Transcript;
 use crate::components::transcript::fixtures::{arc, long_output_turn, transcript_of, with_id};
-use crate::components::turn_block::block_work;
+use crate::components::turn_block::fixtures::block_work;
 use crate::components::turn_rows::entry_builds;
+use crate::components::{THEME_ATTR, Transcript};
 use crate::model::{Item, Turn, TurnId, source_reads, text_calls};
 use crate::test_support::buffer_to_text;
 use crate::theme::{Role, Theme, Token, builtin};

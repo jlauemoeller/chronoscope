@@ -7,6 +7,8 @@ use ratatui::buffer::Buffer;
 use ratatui::widgets::Widget;
 use serde_json::json;
 
+/// How many blocks were laid out or rendered on this thread.
+pub(crate) use super::widget::block_work;
 use super::*;
 use crate::model::{
     AssistantTurn, CompactionTurn, InjectedEntry, Item, ItemId, Thinking, TokenUsage, ToolCall,
