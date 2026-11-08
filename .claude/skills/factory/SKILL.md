@@ -1,317 +1,299 @@
 ---
 name: factory
-description: "Runs the software factory: plans a spec into tasks, then builds, reviews and merges them one by one. Commands: start <spec>, continue, approve <task-id>, rework <task-id> <note>, abandon <task-id>, status."
+description: "Run the software factory: plan a spec into tasks, then build, review and approve each task. Commands: start <spec>, continue, approve <task-id>, rework <task-id> <note>, abandon <task-id>, status."
 disable-model-invocation: true
 argument-hint: "start <spec> | continue | approve <task-id> | rework <task-id> <note> | abandon <task-id> | status"
 ---
 
 # /factory
 
-Arguments: $ARGUMENTS
+The command and its arguments: `$ARGUMENTS`
 
-The first word of the arguments is the command. The rest are its
-arguments: `start <spec>`, `continue`, `approve <task-id>`,
-`rework <task-id> <note>` (everything after the task-id is the note),
-`abandon <task-id>` or `status`. With no command or an unknown one, list
-the commands and stop.
+First of all, read `.claude/skills/factory/conventions.md` in full. It
+defines `S`, `T`, `R`, `FP` (the factory script), the ground rules, the
+agent prompts, write verification, rounds, the board, and the shared Merge,
+Complete a task and Halting steps. This file uses them without repeating
+them. Shell snippets that use the dollar sign are in `conventions.md`, not
+here.
 
-**First, read `.claude/skills/factory/conventions.md`** in full. It defines
-the paths, the ground rules, the factory script (`factory.py` below is short
-for `python3 -I .claude/skills/factory/factory.py`, always run from the
-repository root), the fixed agent prompts, write verification, and the
-Merge and Halting steps. Follow them exactly.
-
-This session is now the **main orchestrator**. It handles the commands and
-their preconditions, the Planner, reconciliation, choosing the next task,
-and the backlog bookkeeping around a task. It spawns only the Planner and
-task orchestrators, never two task orchestrators at once, and never does an
-agent's work itself. It reports every halt to the human.
+The session running this skill is the **main orchestrator**. It handles the
+commands and their preconditions, the Planner, reconciliation, choosing the
+next task, the backlog bookkeeping around a task, and reporting to the human.
+It never does an agent's work itself. It spawns only the `planner` and
+`task-orchestrator` agents, and never two task orchestrators at once. All
+mechanics go through `FP`; the main orchestrator keeps the judgement: what to
+do next and what to tell the human. If an `FP` command exits non-zero, halt
+with its stderr as the reason.
 
 ## Preconditions
 
-Every command except `status` checks these, in this order. When one fails,
-the command refuses: say why and what to do, and do nothing else (no board
-change, no git change).
+Parse the first word of the arguments as the command. With no or an unknown
+command, print the command list from the `argument-hint` above and stop.
 
-1. `factory/state/` is ignored by git (`git check-ignore -q factory/state`,
-   a plain git check).
-2. `continue` only: if a task in `backlog.md` is `Escalated`, refuse and
-   point the human to `/factory approve <task-id>`,
-   `/factory rework <task-id> <note>` and `/factory abandon <task-id>`.
-   This check comes before the branch and tree checks, because an
-   escalation leaves the session on the task branch.
-3. The branch (`git branch --show-current`):
+Every command except `status` needs, checked with `FP preconditions`:
+1. `state-ignored: yes`. Otherwise refuse: `factory/state/` must be ignored by
+   git (the `/factory/state` entry in `.gitignore`).
+2. The right branch:
    - `start`: `main`.
-   - `continue`: `main`, or `factory/<task-id>` of the task that is
-     `In progress`.
+   - `continue`: `main`, or `factory/<task-id>` of the `In progress` task.
    - `approve`, `rework`, `abandon`: `main` or `factory/<task-id>` of the
-     task named in the arguments.
-4. A clean tree (`git status --porcelain --untracked-files=all` prints
-   nothing). One exception, for `continue` on the branch of the
-   `In progress` task: look at its latest round (`factory.py round list
-   <task-id>`, the `latest-reviews-started:` line):
-   - `no`, no `reviews-started` marker: the changes are the Builder's own.
-     Allow them, and leave them for the resumed builder.
-   - `yes`, the marker exists: the changes came from a reviewer or the
-     Approver.
-     Don't refuse silently: use the Halting step with the reason
-     `Uncommitted changes on factory/<task-id> after the reviews started:
-     inspect them and commit or remove them, then /factory continue`, so a
-     builder never commits changes no reviewer saw.
+     task named.
+3. `tree: clean` (no uncommitted changes and no untracked files that git
+   doesn't ignore). `continue` has one exception, described below.
+
+`continue` checks for an `Escalated` task (`FP run-info`, `active:` line)
+before it checks the branch or the tree: an escalation leaves the session on
+the task branch, so a branch refusal would hide the real reason. If one is
+`Escalated`, refuse and point the user to `/factory approve <task-id>`,
+`/factory rework <task-id> <note>` and `/factory abandon <task-id>`.
+
+If a precondition fails, refuse with a message saying which one and what to
+do, and change nothing.
 
 ## /factory start <spec>
 
 1. Check the preconditions.
-2. Refuse if `factory/state/backlog.md`, `factory/state/tasks/` or
-   `factory/state/preflight.md` exists. Tell the human to archive the
-   previous run (move `factory/state/` to a folder under
+2. Refuse if `S/backlog.md`, `S/tasks/` or `S/preflight.md` exists: tell the
+   user to archive `factory/state/` (move it to a folder under
    `factory/archive/`) or remove it first. The factory never deletes a
    previous run.
-3. `factory.py spec copy <spec>`. It writes the spec's absolute path (with
-   `~` expanded) to `spec-source`, copies the spec to `SPEC.md` and every
-   Markdown file it links to into `spec/`, and lists any missing linked
-   document. If it fails (for example, the spec doesn't exist), refuse with
-   its error.
-4. Run the Planner (below).
+3. `FP spec-copy <spec>`. It writes the absolute path of the spec (with `~`
+   expanded) to `S/spec-source` and copies the spec, the project documents and
+   the linked documents. Note any `missing:` lines for the summary.
+4. `FP board-rebuild --loop-state planning --message "Planning"`.
+5. Run the Planner (see "The Planner step").
 
-## Running the Planner
+Tell the user how to open the dashboard in the first halt of a run: run
+`python3 -m http.server -d factory` from the repository root and open
+`http://localhost:8000/dashboard/`.
 
-Used by `start` and by `continue` in the preflight state.
+## The Planner step
 
-1. `factory.py board build --state planning --message "Planning: preflight and plan"`.
-2. Write the Planner's snapshot to `factory/state/.snapshot` (see "Write
-   verification" in conventions.md).
-3. Spawn the `planner` agent with the prompt
-   `Spec: factory/state/SPEC.md.` and end the turn with `WAITING`.
-4. When it has finished, verify its writes: the branch is still `main`, the
-   tree is clean, and the state comparison shows only the Planner's allowed
-   files. On a violation, use the Halting step.
-5. `factory.py first-lines`. If it says `INVALID`, use the Halting step
-   with the files it lists.
-6. Then:
-   - If `factory/state/backlog.md` exists: the plan-review halt (below).
-   - Else, if `factory/state/preflight.md` exists: the preflight halt
-     (below).
-   - Else: use the Halting step with the reason
-     `The Planner wrote neither preflight.md nor backlog.md`.
+1. `FP snapshot --planner`.
+2. Spawn the Planner (`subagent_type: planner`) with exactly the prompt
+   `Spec: factory/state/SPEC.md.` and wait for it to finish (it may run in
+   the foreground).
+3. Write verification (see `conventions.md`): `FP preconditions` must show a
+   clean tree on `main`; then
+   `FP check-writes --planner --allow preflight.md --allow stack.md --allow backlog.md --allow 'tasks/*/task.md'`.
+   On a violation, halt as `conventions.md` says.
+4. `FP first-lines`. If `preflight.md` is missing or invalid, halt.
+5. If `S/backlog.md` exists, go to "The plan review halt".
+6. Otherwise the preflight stopped. Run "The preflight halt".
 
-## The plan-review halt
+### The preflight halt
 
-1. `factory.py plan check`.
-2. If it says `PLAN: OK`:
-   `factory.py board build --state awaiting-plan-review --message "Review the plan, then /factory continue"`.
-   If it says `PLAN: PROBLEMS`:
-   `factory.py board build --state awaiting-plan-review --message "The plan check failed: fix the plan, then /factory continue"`.
-3. Halt with a summary for the human:
-   - any problems from the plan check, each one, and that the next
-     `/factory continue` checks the plan again;
-   - any warnings from the plan check;
-   - the backlog: for each task in order, its id and title (the first line
-     of its `task.md`), its reviewers (`factory.py task reviewers <task-id>`)
-     and what it depends on;
-   - the preflight assumptions (the **Assumptions** section of
-     `preflight.md`);
-   - the stack profile from `stack.md`: the stack, the test gate, and
-     everything under **Not available**;
-   - that the human may edit `backlog.md`, the `task.md` files and
-     `stack.md`, and that removing a task from `backlog.md` also means
-     deleting its task directory;
-   - that building starts with `/factory continue`;
-   - how to open the dashboard (see conventions.md).
+1. `FP board-rebuild --loop-state awaiting-preflight --message "Preflight: <READY|TOOLS|BLOCKED>; fix the spec or install tools, then /factory continue"`.
+2. Read `S/preflight.md` and `S/stack.md` and halt with a summary:
+   - the result line;
+   - each **Spec issue**: where it is, what is wrong, what would resolve it.
+     Tell the user to fix the spec at the path in `S/spec-source`; if the
+     Planner is wrong about an issue, to add a sentence to the spec that
+     settles it; and if the spec is in the repository, to commit the change;
+   - each **Environment issue**, with the failing command and its fix;
+   - each **Tool on offer**: what it checks, which reviewer or gate section
+     it serves, and its install command, which the user runs themselves (in
+     Claude Code, for example, with `! <command>`). The orchestrator never
+     installs anything. A tool the user doesn't install counts as declined,
+     and the next preflight doesn't offer it again;
+   - the **Assumptions** and the **Stack profile changes**, briefly, and
+     anything under **Not available** in `stack.md`;
+   - any `missing:` linked documents from the spec copy;
+   - then: run `/factory continue`.
 
-## The preflight halt
+### The plan review halt
 
-1. `factory.py board build` (with `preflight.md` and no `backlog.md`, it
-   derives `loop.state` `awaiting-preflight`).
-2. Halt with a summary of `preflight.md`: its result line, its
-   **Spec issues**, **Environment issues** and **Tools on offer**, and the
-   stack profile from `stack.md`, including everything under
-   **Not available**. Then the next steps:
-   - For each spec issue: fix the spec at the path in
-     `factory/state/spec-source`. If the Planner is wrong about an issue,
-     add a sentence to the spec that settles it. If the spec is in the
-     repository, commit the change.
-   - For each environment issue: what would resolve it, from
-     `preflight.md`.
-   - For each tool on offer: its install command, which the human runs
-     themselves (in Claude Code, for example, as `! <command>`). The
-     factory never installs anything. A tool the human doesn't install is
-     declined, and the next preflight doesn't offer it again.
-   - Then run `/factory continue`.
-   - How to open the dashboard (see conventions.md).
+1. Check the plan (see "Checking the plan").
+2. `FP board-rebuild --loop-state awaiting-plan-review --message "<Plan ready for review | Plan problems: …>; /factory continue starts building"`.
+3. Halt with:
+   - the backlog: each task-id, its title (first line of `task.md`), its
+     reviewers (`FP reviewers`) and its dependencies;
+   - the preflight assumptions, including the specialist baselines;
+   - the stack profile in brief: the test gate commands, and everything under
+     **Not available**;
+   - any plan problems, each saying what is wrong;
+   - that the human may edit the plan (`backlog.md`, the `task.md` files and
+     `stack.md`), that removing a task from `backlog.md` also means deleting
+     its task directory, and that `/factory continue` checks the plan again
+     and starts building;
+   - on the first halt of a run, how to open the dashboard.
+
+## Checking the plan
+
+The plan is sound when every task in `backlog.md` has a `task.md` with all
+its sections and every task directory appears in `backlog.md` exactly once;
+every status is `Planned`; every `Reviews` section lists `code` and
+`feature`; every dependency names an earlier task in this backlog or a task
+from an earlier run that is already merged; and every task-id follows the
+identifier rules, with serials continuing above those used by earlier runs.
+
+Run `FP plan-check`. `plan: sound` means the mechanical checks pass;
+`warning:` lines are worth showing but don't make the plan unsound. On
+`plan: problems`, the plan is not sound: report each `problem:` line, and
+leave `loop.state` at `awaiting-plan-review` so the next `/factory continue`
+checks again. Never fix the plan yourself.
 
 ## /factory continue
 
-Check the preconditions. If neither `backlog.md` nor `preflight.md` exists,
-refuse: there is no run to continue; use `/factory start <spec>`. Then
-reconcile the state, taking the cases in this order:
+Check the `Escalated` task first, then the other preconditions. The branch
+may be `main` or the `In progress` task's branch.
 
-1. **The preflight state** (`preflight.md` exists, `backlog.md` doesn't):
-   `factory.py spec recopy`, which re-copies the spec from the path in
-   `spec-source` and replaces `SPEC.md` and `spec/`. Then run the Planner
-   again and act on its result as `start` does. Nothing else in this list
-   applies.
-2. **No board:** if `factory/state/board.json` is missing,
-   `factory.py board build`.
-3. **The plan hasn't been shown:** if every task in `backlog.md` is
-   `Planned`, no task has a round directory, and `loop.state`
-   (`factory.py board show`) isn't `awaiting-plan-review`, the human hasn't
-   seen the plan yet (for example, the Planner step halted after
-   `backlog.md` was written). Do the plan-review halt. Nothing else in this
-   list applies.
-4. **Leaving the plan review:** if `loop.state` is `awaiting-plan-review`,
-   the human may have edited the plan. `factory.py plan check`. On
-   `PLAN: PROBLEMS`, halt and say what is wrong, leaving `loop.state` at
-   `awaiting-plan-review` (`factory.py board build --state awaiting-plan-review --message "The plan check failed: fix the plan, then /factory continue"`),
-   so the next `/factory continue` checks again. On `PLAN: OK`,
-   `factory.py board build` to rebuild the board from `backlog.md` and the
-   task files, and carry on.
-5. **A task is `In progress` and merged** (`factory.py task merged
-   <task-id>` prints `yes`; the human resolved a merge conflict and
-   completed the merge): if not on `main`, `git switch main`. Then complete
-   the task (below) and carry on.
-6. **A task is `In progress` and not merged** (an interrupted run): if its
-   branch `factory/<task-id>` exists and you're not on it,
-   `git switch factory/<task-id>`. If it doesn't exist yet (round 1 never
-   got as far as the builder creating it), stay on `main`. Then run the task
-   orchestrator for it (below). It works out the right step of the latest
-   round from the task's files, including starting the Approver rework
-   round that a REWORK verdict asks for. Any uncommitted changes allowed by
-   the preconditions stay in place for the resumed builder.
+The tree exception: on the `In progress` task's branch, uncommitted changes
+are allowed while the latest round has no `reviews-started` marker
+(`FP round-info <task-id>` prints `reviews-started: no`). They are then the
+Builder's own, and are left for the resumed builder. Once the marker exists,
+the changes came from a reviewer or the Approver: halt
+(`FP board-update --loop-state halted --message "Uncommitted changes on <branch> after the reviews started"`)
+and ask the human to inspect them and commit or remove them, because
+otherwise a builder would commit changes no reviewer saw. Everywhere else a
+dirty tree is refused.
 
-Otherwise, start the next task (below).
+Then reconcile, using `FP run-info`, taking the first case that applies:
+
+1. **The preflight state** (`preflight-state: yes`): re-copy the spec from
+   `spec-source` with the command in `conventions.md` ("The preflight
+   state"), run `FP board-rebuild --loop-state planning --message "Planning"`,
+   and run "The Planner step" again. Nothing else in this list applies.
+2. If `board: absent`, run `FP board-rebuild`.
+3. **The plan hasn't been shown** (`all-planned-no-rounds: yes` and
+   `loop-state` isn't `awaiting-plan-review`; for example the Planner step
+   halted after `backlog.md` was written): run "The plan review halt".
+   Nothing else in this list applies.
+4. **Leaving the plan review** (`loop-state: awaiting-plan-review`): the human
+   may have edited the plan. Run `FP plan-check`. On problems, run
+   `FP board-rebuild --loop-state awaiting-plan-review --message "Plan problems: …"`
+   and halt with the problems. Otherwise run `FP board-rebuild`, and go on.
+5. **A task is `In progress`** (`active: <task-id> In progress`):
+   - If `FP merged <task-id>` says `yes` (the user resolved a merge
+     conflict): switch to `main` if you aren't on it, run "Complete a task"
+     (`conventions.md`), and carry on with "Running tasks".
+   - Otherwise it is an interrupted run. If `factory/<task-id>` exists,
+     check it out (or stay on it); if it doesn't, stay on `main` (round 1's
+     builder creates it). Then run the task ("Running a task", step 1
+     onwards). The task orchestrator works out the step from the task's
+     files, including an Approver rework round that a REWORK verdict asks
+     for.
+6. Otherwise, carry on with "Running tasks".
+
+## Running tasks
+
+On `main`, take `FP next-task`.
+- If it prints `none`, run
+  `FP board-update --loop-state complete --message "Construction is complete" --current none`
+  and halt with a message that construction is complete (mention any
+  `Abandoned` tasks and their branches).
+- Otherwise start it: `FP set-status <task-id> "In progress"`, then run it
+  ("Running a task").
+
+### Running a task
+
+1. `FP board-update --loop-state running --message "Working on <task-id>" --current <task-id>`.
+   This clears any earlier `halted`. Don't touch the board again until
+   step 4.
+2. Spawn the task orchestrator: `subagent_type: task-orchestrator`, prompt
+   exactly `Task-id: <task-id>.`, with `run_in_background: true`. Note its
+   agent id.
+3. End the turn with `WAITING`. You are woken by a hand-back message from
+   that agent or by a `<task-notification>` that carries its id. Never poll
+   it, send it messages, read its output file or start other work.
+4. **Each time either one wakes you**, decide from `FP backlog`,
+   `FP board-show`, the current branch and `FP preconditions`, not from what
+   the message says. A hand-back can arrive while the task orchestrator's own
+   agents are still running, and a notification may never follow one. Take
+   the first case that applies:
+   - `loop-state: halted`: report the reason from `loop-message` (and, for
+     a write violation or merge conflict, what the user must inspect or
+     resolve). `/factory continue` resumes.
+   - The task is `Escalated`: run "The escalation summary".
+   - The task is `In progress`, `FP merged <task-id>` says `yes`, you are on
+     `main` and the tree is clean: run "Complete a task" and carry on with
+     "Running tasks", in this same session.
+   - Anything else, woken by a hand-back: the task orchestrator is still
+     working. Take no action and end the turn with `WAITING`.
+   - Anything else, woken by the notification: the task orchestrator stopped
+     early. Revert nothing, run
+     `FP board-update --loop-state halted --message "Task orchestrator stopped early on <task-id>"`,
+     and tell the user that `/factory continue` resumes the task from its
+     files.
+5. Once you have acted on a task orchestrator, ignore any later message from
+   it.
+
+### The escalation summary
+
+Read the latest round's `verdict.md`, or its `build-notes.md` if the builder
+blocked (`FP round-info <task-id>`), and show the user:
+- the reason: the Approver escalated, the Builder blocked, the REWORK limit
+  was reached, or a REWORK verdict had no rework note. When the Builder
+  blocked, warn that the branch `factory/<task-id>` holds unfinished work
+  that didn't pass the gate;
+- a summary of the remaining issues, and the Approver's options with their
+  suggested rework notes, and whether it says approving as is would be
+  reasonable;
+- the commands: `/factory approve <task-id>`, `/factory rework <task-id> <note>`
+  (text, or the path of a file outside the repository), and
+  `/factory abandon <task-id>`.
+
+The session stays on the task branch.
 
 ## /factory approve <task-id>
 
-A human uses this after reviewing an escalated task. The task branch
-already holds the code and documentation.
-
+Merge an `Escalated` task after human review.
 1. Check the preconditions. Refuse if the task isn't `Escalated`.
-2. The Merge step (conventions.md). If it halts with a conflict, first
-   `factory.py backlog set <task-id> "In progress"`, then halt and tell the
-   human how to finish (conventions.md, Merge step 4).
-3. If the merge succeeded, complete the task (below) and start the next
-   task, in this session.
+2. Run the Merge step (`conventions.md`). On a conflict it marks the task
+   `In progress` and halts: tell the user to resolve the conflicts, complete
+   the merge, and run `/factory continue`, which finds the task merged and
+   marks it `Complete`.
+3. If the merge succeeds, run "Complete a task" and carry on with "Running
+   tasks" in this session.
 
 ## /factory rework <task-id> <note>
 
-Sends an escalated task back to the builder with the human's feedback. The
-note is everything after the task-id: either text, or the path of a file
-outside the repository.
+Send an `Escalated` task back to the builder with the human's feedback. The
+note is everything after the task-id: either text, or the path of an
+existing file outside the repository (a file inside it would make the tree
+unclean; refuse such a path).
+1. Check the preconditions. Refuse if the task isn't `Escalated`.
+2. Check out `factory/<task-id>`, creating it from main
+   (`git switch -c factory/<task-id> main`) if it doesn't exist.
+3. Work out the round with `FP round-info <task-id>`: if the latest round has
+   no build notes (`build: pending`; an earlier `rework` was interrupted),
+   reuse it. Otherwise create the `next-round` directory.
+4. Write the note to `R/human-review.md`, replacing any earlier one: copy the
+   file, or write the text with a heading line `# Human review` followed by
+   the note as given.
+5. `FP write-base-commit <task-id> <round-id>`.
+6. Only then `FP set-status <task-id> "In progress"`.
+7. Run the task ("Running a task"). The task orchestrator spawns a fresh
+   builder, then the reviewers, then the Approver straight away: a rework
+   round never triggers an automatic fix round. Human rework rounds count
+   against neither the automatic round limit nor the Approver's REWORK limit.
 
-1. Check the preconditions. Refuse if the task isn't `Escalated`. If the
-   note is the path of an existing file (expand `~`) and the file is inside
-   the repository (compare `realpath` of the file with
-   `git rev-parse --show-toplevel`), refuse: a file inside the repository
-   makes the tree unclean; move it outside first.
-2. Work in this order, so that an interrupted `rework` can simply be run
-   again:
-   1. Check out `factory/<task-id>`: `git switch factory/<task-id>`. If the
-      branch doesn't exist
-      (`git rev-parse --verify --quiet refs/heads/factory/<task-id>`, a
-      plain git check: exit 1 means it doesn't exist), create it from main
-      with `git switch -c factory/<task-id> main`.
-   2. `factory.py round list <task-id>`. If the latest round has no build
-      notes (`latest-build-notes: no`, an earlier `rework` was
-      interrupted), reuse that round directory. Otherwise create the
-      directory of the next round-id. Call it `R`.
-   3. Write the note to `R/human-review.md`, replacing any earlier one:
-      text with the Write tool, a file with `cp <file> R/human-review.md`.
-      Only then write the base commit:
-      `git rev-parse HEAD > R/base-commit`.
-   4. Only then `factory.py backlog set <task-id> "In progress"`.
-3. Run the task orchestrator for the task (below). It spawns a fresh
-   builder for the round, which revises the work according to the note.
-   After the reviewers, the Approver runs straight away; a rework round
-   never triggers an automatic fix round. Human rework rounds count against
-   neither the automatic round limit nor the Approver's REWORK limit, and
-   any number of them are allowed.
+Because of this order, an interrupted `rework` can simply be run again.
 
 ## /factory abandon <task-id>
 
+Give up on an `Escalated` task.
 1. Check the preconditions. Refuse if the task isn't `Escalated`.
-2. If not on `main`, `git switch main`.
-3. `factory.py backlog set <task-id> Abandoned`. Keep the unmerged branch
-   `factory/<task-id>` so no work is lost; tell the human they can delete
-   it by hand.
-4. `factory.py task dependents <task-id>`. If any later task depends on
-   the abandoned one, warn the human and name those tasks.
-5. Start the next task (below), in this session.
+2. `git switch main`.
+3. `FP set-status <task-id> Abandoned`, then
+   `FP board-update --loop-state running --message "Abandoned <task-id>" --current none`.
+4. Keep the unmerged branch `factory/<task-id>` so no work is lost; tell the
+   user they can delete it by hand.
+5. `FP dependents <task-id>`: warn the user about every later task that
+   depends on the abandoned one.
+6. Carry on with "Running tasks" in this session.
 
 ## /factory status
 
-Read-only and allowed on any branch, with no preconditions. Run
-`factory.py summary` and show its output: the loop state, the branch and
-tree, the backlog, the current task with its stage and latest round, and
-the action `/factory continue` would take next. In the preflight state it
-shows the preflight result, its open issues and the tools on offer instead
-of the backlog. Run nothing else that writes: no board rebuild, even when
-`board.json` is missing, and no git command that changes anything.
-
-## Starting the next task
-
-1. `factory.py backlog next`.
-2. If it prints `none`:
-   `factory.py board loop complete --message "Construction is complete" --no-current`,
-   and tell the human that construction is complete (the run can be
-   archived by moving `factory/state/` under `factory/archive/`).
-3. Otherwise, on `main`, `factory.py backlog set <task-id> "In progress"`,
-   and run the task orchestrator for it.
-
-## Running the task orchestrator
-
-1. `factory.py board loop running --message "Building <task-id>" --current <task-id>`.
-   This clears any earlier `halted`. Don't touch the board again until
-   step 4.
-2. Spawn the `task-orchestrator` agent with the prompt exactly
-   `Task-id: <task-id>.` and note its agent id.
-3. End the turn with `WAITING`. You are woken by a hand-back message from
-   that agent, or by a `<task-notification>` that carries that agent's id.
-   Never poll the task orchestrator, send it messages, read its output
-   file, or start other work.
-4. **Each time either one wakes you**, decide from `backlog.md`,
-   `factory.py board show <task-id>`, the current branch and
-   `git status --porcelain --untracked-files=all`, not from what the
-   message says. A hand-back can arrive while the task orchestrator's own
-   agents are still running, and a notification may never follow one, so
-   act on neither alone. Take the first case that applies:
-   - `loop.state` is `halted`: report the reason from `loop.message`, and
-     that `/factory continue` resumes once it is dealt with.
-   - The task is `Escalated`: show the escalation summary (below).
-   - The task is `In progress` and merged (`factory.py task merged
-     <task-id>`), you are on `main`, and the tree is clean: complete the
-     task (below) and start the next task.
-   - Anything else, woken by a hand-back: the task orchestrator is still
-     working. Take no action and end the turn with `WAITING`.
-   - Anything else, woken by the notification: the task orchestrator
-     stopped early. Revert nothing.
-     `factory.py board loop halted --message "Task orchestrator stopped early on <task-id>"`,
-     and tell the human that `/factory continue` resumes the task from its
-     files.
-5. Once you have acted on a task orchestrator, ignore any later message
-   from it.
-
-## Completing a task
-
-1. `factory.py backlog set <task-id> Complete`.
-2. `git branch -d factory/<task-id>`. If git refuses, use the Halting step
-   with its message; never force the deletion.
-
-## The escalation summary
-
-`factory.py task next-step <task-id>` gives the reason (`reason:`) and the
-round. Read that round's `verdict.md`, or its `build-notes.md` if the
-Builder blocked, and show the human:
-
-- the reason: the Approver escalated (`approver`), the Builder blocked
-  (`blocked`), the Approver's REWORK limit was reached (`rework-limit`), or
-  a REWORK verdict had no rework note (`no-rework-note`);
-- a summary of the verdict or of the build notes: the open findings, the
-  options the Approver laid out with the rework note it suggests for each,
-  and whether it says approving the branch as it is would be reasonable;
-- when the Builder blocked, a warning that the branch holds unfinished work
-  that didn't pass the test gate;
-- the commands: `/factory approve <task-id>` (merge the branch as it is),
-  `/factory rework <task-id> <note>` (another round with the human's note),
-  `/factory abandon <task-id>` (give up and keep the branch);
-- the paths of the files to read, and how to open the dashboard.
+Read-only, allowed on any branch, and changes nothing (not even the board).
+Use `FP run-info`, `FP backlog`, `FP board-show` and, for the current task,
+`FP round-info <task-id>`. Print:
+- in the preflight state: the preflight result, its open spec and
+  environment issues, and the tools on offer, instead of the backlog;
+- otherwise the backlog (task-id and status), the current task with its
+  stage and latest round (kind, build, reviews, verdict);
+- the loop state and its message;
+- the action `/factory continue` would take next, worked out from the cases
+  under "/factory continue" (for example "refuses: 004-x is Escalated",
+  "resumes 003-y at the reviews of round-2", "starts 005-z", "shows the plan
+  for review").
