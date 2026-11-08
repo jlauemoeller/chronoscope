@@ -35,31 +35,9 @@ pub fn section_source(turn: &Turn, id: &SectionId) -> Option<SectionSource> {
 mod tests {
     use std::sync::Arc;
 
-    use serde_json::json;
-
     use super::*;
-    use crate::components::turn_block::fixtures::{assistant, item_id, key_id, text, tool, user};
+    use crate::components::turn_block::fixtures::{item_id, key_id, text_and_call, user};
     use crate::harness::claude::Assembler;
-    use crate::model::ToolStatus;
-
-    /// An Assistant turn with a text and a tool call, made without the
-    /// assembler: it keeps no references.
-    fn call_turn() -> Turn {
-        assistant(
-            Some("high"),
-            vec![
-                text("t1", "Hello"),
-                tool(
-                    "c1",
-                    "Run ls",
-                    json!({}),
-                    Some(("ok", false)),
-                    ToolStatus::Ok,
-                ),
-            ],
-            None,
-        )
-    }
 
     // Turns the Claude assembler made, which keep their references.
     const LINES: [&str; 4] = [
@@ -113,7 +91,7 @@ mod tests {
 
     #[test]
     fn a_turn_that_keeps_no_references_has_no_source() {
-        let turn = call_turn();
+        let turn = text_and_call();
         assert_eq!(section_source(&turn, &item_id(&turn, "c1")), None);
         assert_eq!(section_source(&turn, &item_id(&turn, "t1")), None);
         let turn = user("Hello", Vec::new());

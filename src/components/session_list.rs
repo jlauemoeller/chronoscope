@@ -12,11 +12,9 @@ use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
 use super::empty_state::{EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS};
-use super::list_pane::{
-    PaneKey, PaneState, Part, RowParts, pane_key, render_rows, title_width, visible_rows,
-};
+use super::list_pane::{PaneKey, PaneState, Part, RowParts, pane_key, render_rows, visible_rows};
 use super::text_fit::truncate_with_ellipsis;
-use super::titled_block::{border_role, titled_block};
+use super::titled_block::{border_role, title_width, titled_block};
 use super::{THEME_ATTR, payload_from_value, payload_value};
 use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
 use crate::duration::format_duration;

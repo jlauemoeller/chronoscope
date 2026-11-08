@@ -1,6 +1,6 @@
 //! What `ProjectList` and `SessionList` share (product §3.1, §7.2): the state
-//! and attributes of a selector list, the row layout and styles, the pane
-//! title's width, and the resolution of selector keys through the keymap.
+//! and attributes of a selector list, the row layout and styles, and the
+//! resolution of selector keys through the keymap.
 //! The cursor is in [`list_cursor`](super::list_cursor) and the pane border
 //! in [`titled_block`](super::titled_block), which other components use too.
 
@@ -201,12 +201,6 @@ pub(super) fn pane_key(keymap: &Keymap, event: &Event<UserEvent>) -> Option<Pane
         Action::Harness4 => harness(4),
         _ => None,
     }
-}
-
-/// The most columns a pane title can use: the corner, a dash and a space
-/// either side leave this much of the width.
-pub(super) fn title_width(pane_width: u16) -> usize {
-    usize::from(pane_width).saturating_sub(6)
 }
 
 /// Which part of a row a piece of text is; it decides the style.

@@ -110,14 +110,12 @@ fn format_value(value: &SourceValue, formatter: &TimestampFormatter) -> String {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
     use crate::components::turn_block::fixtures::{
-        assistant, compaction, formatter, item_id, key_id, text, tool, user, with_duration,
+        compaction, formatter, item_id, key_id, text_and_call, user,
     };
     use crate::components::turn_block::{SectionId, SectionKey};
-    use crate::model::{ToolStatus, Turn, TurnStats};
+    use crate::model::Turn;
     use crate::section_details::section_details;
 
     fn row(label: &str, value: SourceValue) -> SourceRow {
@@ -154,31 +152,6 @@ mod tests {
         content.groups().iter().map(|g| g.title.as_str()).collect()
     }
 
-    fn call_turn() -> Turn {
-        assistant(
-            Some("high"),
-            vec![
-                text("t1", "Hello"),
-                with_duration(
-                    tool(
-                        "c1",
-                        "Run ls",
-                        json!({}),
-                        Some(("ok", false)),
-                        ToolStatus::Ok,
-                    ),
-                    62_000,
-                ),
-            ],
-            Some(TurnStats {
-                duration: std::time::Duration::from_secs(5),
-                message_count: 1,
-                tokens: None,
-                cost: None,
-            }),
-        )
-    }
-
     fn compose_for(turn: &Turn, id: &SectionId, read: &[SourceGroup]) -> DetailsContent {
         let model = section_details(turn, id, &formatter()).unwrap();
         compose(model, read, &formatter())
@@ -186,7 +159,7 @@ mod tests {
 
     #[test]
     fn nothing_read_leaves_the_models_rows_alone_and_adds_no_unavailable_row() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "c1");
         let model = section_details(&turn, &id, &formatter()).unwrap();
         assert_eq!(compose(model.clone(), &[], &formatter()), model);
@@ -198,7 +171,7 @@ mod tests {
 
     #[test]
     fn a_tool_call_is_start_then_the_models_duration_and_status_then_the_rest() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "c1");
         let read = [
             group(
@@ -237,7 +210,7 @@ mod tests {
 
     #[test]
     fn the_groups_come_in_the_order_of_the_table() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "t1");
         // The harness lists them in another order.
         let read = [
@@ -258,7 +231,7 @@ mod tests {
 
     #[test]
     fn values_are_formatted_by_their_type() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "t1");
         let read = [group(
             SourceGroupKind::Message,
@@ -350,7 +323,7 @@ mod tests {
 
     #[test]
     fn the_turn_groups_read_rows_follow_the_models() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "t1");
         let read = [group(
             SourceGroupKind::Turn,
@@ -389,7 +362,7 @@ mod tests {
 
     #[test]
     fn an_unavailable_group_ends_with_one_muted_row_after_what_the_model_knows() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "c1");
         let read = [
             SourceGroup {
@@ -421,7 +394,7 @@ mod tests {
 
     #[test]
     fn a_group_the_harness_read_nothing_of_is_left_out() {
-        let turn = call_turn();
+        let turn = text_and_call();
         let id = item_id(&turn, "t1");
         let read = [group(SourceGroupKind::Environment, vec![], vec![])];
         let content = compose_for(&turn, &id, &read);

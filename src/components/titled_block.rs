@@ -22,6 +22,13 @@ pub(super) fn titled_block(theme: &Theme, title: &str, border: Role) -> Block<'s
         .title(title)
 }
 
+/// The most columns the title of a [`titled_block`] `pane_width` columns
+/// wide can use: a corner, a dash and a space on either side leave this much
+/// of the width.
+pub(super) fn title_width(pane_width: u16) -> usize {
+    usize::from(pane_width).saturating_sub(6)
+}
+
 /// The border role of a pane.
 pub(super) fn border_role(focused: bool) -> Role {
     if focused { Role::Ring } else { Role::Border }
@@ -46,6 +53,21 @@ mod tests {
         assert_eq!(buffer[(1, 0)].fg, theme.role(Role::Ring));
         assert_eq!(buffer[(3, 0)].fg, theme.role(Role::Foreground));
         assert_eq!(buffer[(0, 1)].fg, theme.role(Role::Ring));
+    }
+
+    #[test]
+    fn a_title_of_title_width_columns_fills_the_top_border() {
+        assert_eq!(title_width(20), 14);
+        assert_eq!(title_width(6), 0);
+        assert_eq!(title_width(5), 0);
+        assert_eq!(title_width(0), 0);
+        let theme = builtin::default_theme();
+        let title = "t".repeat(title_width(20));
+        let buffer = render(20, 3, |frame| {
+            frame.render_widget(titled_block(&theme, &title, Role::Border), frame.area());
+        });
+        let top = buffer_to_text(&buffer).lines().next().unwrap().to_owned();
+        assert_eq!(top, format!("╭─ {title} ─╮"));
     }
 
     #[test]

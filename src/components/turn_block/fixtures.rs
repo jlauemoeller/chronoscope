@@ -141,6 +141,34 @@ pub fn user(text: &str, items: Vec<Item>) -> Turn {
     })
 }
 
+/// An Assistant turn of effort `high` with a text `t1` and a finished tool
+/// call `c1` of 62 s, and stats of 5 s and one message. Made without the
+/// assembler, it keeps no references.
+pub fn text_and_call() -> Turn {
+    assistant(
+        Some("high"),
+        vec![
+            text("t1", "Hello"),
+            with_duration(
+                tool(
+                    "c1",
+                    "Run ls",
+                    json!({}),
+                    Some(("ok", false)),
+                    ToolStatus::Ok,
+                ),
+                62_000,
+            ),
+        ],
+        Some(TurnStats {
+            duration: Duration::from_secs(5),
+            message_count: 1,
+            tokens: None,
+            cost: None,
+        }),
+    )
+}
+
 pub fn assistant(effort: Option<&str>, items: Vec<Item>, stats: Option<TurnStats>) -> Turn {
     Turn::Assistant(AssistantTurn {
         id: TurnId::from("a1"),
