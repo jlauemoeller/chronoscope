@@ -23,7 +23,7 @@
 | testing.md, Where tests live | Test code is test-only because of where it sits, not because of its name; a file's own tests are in its `mod tests`; tests across files in `<module>/tests/`; only `fixtures` may sit beside the code |
 | testing.md, Snapshots | Snapshots stay where and under the name insta gives them; no test changes a snapshot's path or name |
 
-**Departures from the guidelines.** Six rules are amended rather than enforced as written. The code changes below follow the amended rule, and the final task (§13) writes the amendment into the guideline. Reviewers judge these points against the amended rule, not the old text:
+**Departures from the guidelines.** Seven rules are amended rather than enforced as written. The code changes below follow the amended rule, and the final task (§13) writes the amendment into the guideline. Reviewers judge these points against the amended rule, not the old text:
 
 1. **Emphasis modifiers** (coding.md, Components: "All colours and modifiers come from theme tokens"). Product §7.2 and §4.5 fix the bold, reverse-video, italic, underline and strikethrough modifiers, and no theme token carries them. Amended rule: colours come from theme roles and tokens. The fixed modifiers of product §7.2 and §4.5 come from one module, `src/theme/emphasis.rs` (§5). No component writes a `Modifier` itself.
 2. **Input-mode keys** (architecture.md, Events, focus and keys: "Components never match literal `KeyEvent`s, except that `Prompt` takes printable characters as text"). Product §5 fixes `Enter`, `Esc`, `Backspace` and the arrow keys in input mode, and product §7.5 has no input context. Amended rule: `Prompt` also matches those fixed input-mode keys. No code change.
@@ -42,6 +42,7 @@
    - The component alone decides what the event means: selection, folding, focus, double-clicks, a press outside an overlay.
    - The `App` interprets no click and keeps no click state, apart from which component got the last left press (§8.3).
    - `Msg::Pointer`, the raw pointer event that `GlobalEvents` hands to `update`, is the one `Msg` that is not in application terms, and it exists for this routing only.
+7. **Snapshots named per case** (testing.md, Snapshots: "Snapshots stay … under the name insta gives them"). A test that loops over cases (kinds, sizes, themes) and takes one snapshot per case may name each snapshot after its case, as `details_overlay` (`every_kind_of_section_at_both_sizes_in_both_themes`, `content_taller_than_the_screen_at_80x24_scrolled_to_the_top_and_to_the_end`) and `turn_sidebar` (the helper `snapshot_state` and the 12 tests that call it) do. Amended rule: a test that takes one snapshot names none; a test that loops over cases names each snapshot after its case, and nothing else names snapshots. No code change: these tests keep their names and their snapshots are only moved and renamed by §3.1.
 
 **Invariants.** These hold for every task:
 
@@ -62,7 +63,7 @@ The guidelines were split out of the factory prompt and the base spec in commit 
 | 1 | `cargo test` fails on main: a test reads `doc/SPEC.md`, which `bca8a7d` renamed to `product.md` | `tests/release_docs.rs:128` | Fix, §2 |
 | 2 | Test modules named as tests and sitting beside the code (`*_tests.rs`, `snapshots.rs`, `testing.rs`, test-only `durations.rs`, `subagent_title.rs`) | `src/app/mod.rs:34-53`, `src/harness/opencode/mod.rs:11-25`, `src/components/turn_block/mod.rs:34-43` and others | Fix, §3 |
 | 3 | Extra inline test modules beside `mod tests` | `opencode/assemble.rs:941,1134`, `harness/mod.rs:228,291` | Fix, §3 |
-| 4 | Tests that name their snapshots | `transcript/snapshots.rs:74`, `details_overlay/snapshots.rs:295`, `browser_tests/launch.rs:202` | Fix, §3 |
+| 4 | Tests that name their snapshots | `transcript/snapshots.rs:74`, `details_overlay/snapshots.rs:295,305`, `browser_tests/launch.rs:202`; the looping tests in `details_overlay/snapshots.rs:256,274,281` and `turn_sidebar/snapshots.rs:35` | Fix, §3; amend for the looping tests, §0 item 7 |
 | 5 | Components use helpers that live in another component's module | `truncate_start` (working_dir), `truncate_with_ellipsis` (toast), `tail_fitting` (prompt, a duplicate of `truncate_start`), `format_cost` (turn_block renderers), `section_details`/`section_source` (details_overlay, used by transcript), `TurnRows` (turn_sidebar, built by transcript), `CONTENT_COLUMN` (renderers, used by transcript mouse), `titled_block`/`ListCursor` (list_pane, used by seven components) | Fix, §4 |
 | 6 | Modifiers written in components; ThemeSelector's `>` marker ignores the `selection_marker` token | `Modifier::` in production code across components, the sidebar and markdown (§5 lists them); `theme_selector/rows.rs:88` | Fix and amend, §5 |
 | 7 | Render functions over 50 lines or drawing several elements | `ReadBody::body` 66 lines, `BrowserHeader::cwd_row` 56, `Prompt::view` 52, `EditBody::body` 50 | Fix, §6 |
@@ -127,8 +128,8 @@ Restores testing.md, Where tests live and Snapshots. This is a move: no test cha
 
 - Moving a test module renames its snapshots, as testing.md says. Insta names a snapshot `<crate>__<module path>__<test name>.snap` and puts it in `snapshots/` next to the test file. For example, `src/app/browser_tests/snapshots/chronoscope__app__browser_tests__copy__copied_toast_120x40_text.snap` becomes `src/app/tests/browser/snapshots/chronoscope__app__tests__browser__copy__copied_toast_120x40_text.snap`.
 - Accept the renamed snapshots, and delete the old files in the same commit. Only the header may differ (`source:`, `expression:`). The body below the header must be byte-for-byte the same.
-- The three tests that pass a name to `assert_snapshot!` stop doing so:
-  - `a_long_value_wraps_to_the_value_column_at_80x24` (`details_overlay/snapshots.rs:295`) and `after_esc_the_screen_is_the_normal_startup_screen` (`browser_tests/launch.rs:202`) take one snapshot each. They drop the name, and the snapshot is renamed after the test.
+- The four tests that pass a name to `assert_snapshot!` without looping over cases stop doing so (the looping tests keep their names, §0 item 7):
+  - `a_long_value_wraps_to_the_value_column_at_80x24` (`details_overlay/snapshots.rs:295`), `an_unavailable_group_is_one_muted_row` (`details_overlay/snapshots.rs:305`) and `after_esc_the_screen_is_the_normal_startup_screen` (`browser_tests/launch.rs:202`) take one snapshot each. They drop the name, and the snapshot is renamed after the test.
   - `after_a_resize_from_120_to_80_columns_text_is_wrapped_again_at_80x24_text` (`transcript/snapshots.rs:74`) takes two. It becomes two tests, each with one snapshot and a name that states the state and the size (testing.md, Prefer): one for the 120-column view before the resize, and one for the 80-column view after it, which keeps its assertions.
   - The renamed snapshots have the bodies of the old ones.
 - §3.1 may be split into two tasks: `src/app/` in one, everything else in the other.
@@ -485,7 +486,7 @@ The guidelines are updated to the code as built, and to the amended rules. Each 
 **testing.md:**
 
 - Where tests live: the `src/app/tests/` layout as an example beside `src/components/transcript/tests/`.
-- Snapshots: when a test needs two snapshots, it is two tests.
+- Snapshots: when a test needs two snapshots of different states, it is two tests; a test that loops over cases names each snapshot after its case (§0 item 7).
 - What is tested: the OpenCode compaction exception (§11).
 
 **product.md:** §6.1 gets the resize exception to the 50 ms limit (§0 item 3).
