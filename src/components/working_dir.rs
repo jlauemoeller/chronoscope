@@ -10,8 +10,8 @@ use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 
-use super::list_pane::titled_block;
 use super::text_fit::truncate_start;
+use super::titled_block::titled_block;
 use super::{THEME_ATTR, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme};

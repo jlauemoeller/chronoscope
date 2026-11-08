@@ -62,11 +62,13 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
 use self::line::Look;
-use super::list_pane::{ListCursor, border_role, titled_block};
+use super::list_cursor::{
+    ListCursor, SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_from_value, selected_value,
+};
+use super::titled_block::{border_role, titled_block};
 use super::turn_rows::{TURN_ROWS_ATTR, TurnRows};
 use super::{
-    MODEL_UPDATE_ATTR, SELECTED_ATTR, THEME_ATTR, VISIBLE_ROWS_ATTR, payload_from_value,
-    payload_value, selected_from_value, selected_value, theme_from_value, theme_value,
+    MODEL_UPDATE_ATTR, THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value,
 };
 use crate::app::{Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};

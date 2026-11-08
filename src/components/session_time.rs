@@ -11,8 +11,8 @@ use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 
-use super::list_pane::titled_block;
 use super::panel_row::PanelRows;
+use super::titled_block::titled_block;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::duration::format_duration;

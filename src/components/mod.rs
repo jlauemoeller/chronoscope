@@ -10,6 +10,7 @@ mod global_events;
 mod harness_tabs;
 mod help_line;
 mod help_overlay;
+mod list_cursor;
 mod list_pane;
 mod overlay_frame;
 mod panel_row;
@@ -21,6 +22,7 @@ mod session_time;
 mod session_tokens;
 pub mod text_fit;
 mod theme_selector;
+mod titled_block;
 mod toast;
 pub mod transcript;
 pub mod turn_block;
@@ -52,10 +54,10 @@ pub use help_overlay::{
     HELP_CONTEXT_ATTR, HelpContent, HelpContext, HelpGroup, HelpOverlay, HelpRow,
     MIN_WIDTH as HELP_MIN_WIDTH, SHIFT_NOTE, context_from_value, context_value,
 };
-pub use list_pane::{
-    ListCursor, SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_from_value,
-    selected_value, visible_rows,
+pub use list_cursor::{
+    ListCursor, SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_from_value, selected_value,
 };
+pub use list_pane::{SESSION_OPEN_ATTR, visible_rows};
 pub use overlay_frame::{INTERIOR_ATTR, interior_of, interior_value};
 pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
 pub use prompt::{Prompt, PromptMode};

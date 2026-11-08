@@ -13,10 +13,10 @@ use unicode_width::UnicodeWidthStr;
 
 use super::empty_state::{EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS};
 use super::list_pane::{
-    PaneKey, PaneState, Part, RowParts, border_role, pane_key, render_rows, title_width,
-    titled_block, visible_rows,
+    PaneKey, PaneState, Part, RowParts, pane_key, render_rows, title_width, visible_rows,
 };
 use super::text_fit::truncate_with_ellipsis;
+use super::titled_block::{border_role, titled_block};
 use super::{THEME_ATTR, payload_from_value, payload_value};
 use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
 use crate::duration::format_duration;
@@ -426,7 +426,8 @@ impl AppComponent<Msg, UserEvent> for SessionList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{SELECTED_ATTR, SESSION_OPEN_ATTR, VISIBLE_ROWS_ATTR, selected_value};
+    use crate::components::list_cursor::{SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value};
+    use crate::components::list_pane::SESSION_OPEN_ATTR;
     use crate::model::HarnessId;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
     use crate::theme::{Role, builtin};
