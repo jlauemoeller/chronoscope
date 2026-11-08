@@ -1,0 +1,44 @@
+---
+source: src/app/tests/browser/details.rs
+expression: "screen_with_details(120, 40, \"default\", 3)"
+---
+╭─ Project BRIO ──────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                                                                                                                      │
+│ /home/user/projects/brio                                                                                             │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                            │ │                                                                                       │
+│  ┬   Start                 │ │ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine   │
+│  │                         │ │   - both camera and microphone - but I don't have a way to access settings that…      │
+│  ├   User                  │ │                                                                                       │
+│  │                         │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│  ▒   Assistant      5m 2s  │ ╭─ Assi╭─ Details ───────────────────────────────╮─────────────── 2026-10-21 08:35:18Z ─╮
+│  │                         │ │      │                                         │                                      │
+│  ├   User                  │ │   I'l│  Turn                                   │es over USB:                          │
+│  │                         │ │      │                                         │                                      │
+│  ├   Assistant      5m 2s  │ │   • C│    model          claude-opus-5.5       │                                      │
+│  │                         │ │   • L│    effort         high                  │                                      │
+│  ├╶╶ Compaction ╶╶╶╶╶╶╶╶╶  │ │      │    start          2026-10-21 08:35:18Z  │                                      │
+│  │                         │ │   The│    duration       5m 2s                 │                                      │
+│  ├   User                  │ │      │    messages       112                   │                                      │
+│  │                         │ │ ▶ Thi│    input tokens   5.2k                  │ts. Start with lsusb.                 │
+│  ├   Assistant             │ │      │    output tokens  40.0k                 │                                      │
+│  │                         │ ▒ ▶ Fin│                                         │                                      │
+│  ├   Assistant             │ │      │  Tool call                              │                                      │
+│  │                         │ │ ▶ Dum│                                         │                                      │
+│  ┴   End                   │ │      │    status         ok                    │                                      │
+│                            │ │   mod│                                         │                                      │
+│                            │ │      ╰─────────────────────────────────────────╯                                      │
+│                            │ │   5m 2s · 112 messages · 45.2k tokens                                                 │
+│                            │ │                                                                                       │
+│                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│                            │ ╭─ User ───────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                            │ │                                                                                       │
+│                            │ │ ▶ Dump the full descriptors and look for extension units.                             │
+│                            │ │                                                                                       │
+│                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│                            │ ╭─ Assistant ── claude-opus-5.5 @ high ────────────────────────── 2026-10-21 08:35:18Z ─╮
+╰────────────────────────────╯ │                                                                                       │
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

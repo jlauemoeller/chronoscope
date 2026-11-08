@@ -1,0 +1,28 @@
+---
+source: src/app/tests/browser/opencode_details.rs
+expression: "screen(80, 24)"
+---
+╭─ Project Alpha App ─────────────────────────────────────────────── ses_main ─╮
+│                 ╭─ Details ────────────────────────────────╮                 │
+│ /home/user/alpha│                                          │                 │
+│                 │  Turn                                    │                 │
+╰─────────────────│                                          │─────────────────╯
+╭─ User ──────────│    model           acme/coder-1          │10-28 09:00:01Z ─╮
+│                 │    effort          high                  │                 │
+│ ▶ synthetic: <sy│    start           2026-10-28 09:00:03Z  │ src/settings…   │
+│                 │    duration        17s                   │                 │
+│ ▶ system: Instru│    messages        2                     │                 │
+│                 │    input tokens    3.0k                  │                 │
+│ ▶ Add a settings│    output tokens   300                   │                 │
+│                 │    cost            $0.03                 │                 │
+╰─────────────────│    provider        acme                  │─────────────────╯
+╭─ Assistant ── ac│    agent           build                 │10-28 09:00:03Z ─╮
+│                 │                                          │                 │
+│ ▶ Thinking: I sh│  Message                                 │                 │
+│                 │                                          │                 │
+▒   Let me look at│    row id          msg_main_04           │                 │
+│                 │    time.created    2026-10-28 09:00:03Z  │                 │
+│ ▶ Read src/main.│    time.streamed   2026-10-28 09:00:09Z  │                 │
+│                 │    time.completed  2026-10-28 09:00:09Z  │                 │
+                  ╰───────────────────────────────── ↓ more ─╯                  
+ / to search | ENTER to fold or unfold sections | y to copy current

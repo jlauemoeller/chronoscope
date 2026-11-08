@@ -20,6 +20,15 @@ use crate::model::HarnessId;
 use crate::test_support::{buffer_to_styled, buffer_to_text, render};
 use crate::theme::{TerminalEnv, Theme, ThemeRegistry, resolve_by_id};
 
+mod browser;
+mod mouse;
+mod search;
+mod selection;
+mod selector;
+mod selector_totals;
+mod session_panels;
+mod session_panels_values;
+
 fn env() -> TerminalEnv {
     TerminalEnv {
         colorterm: Some("truecolor".to_owned()),
@@ -35,7 +44,7 @@ fn init_with(theme: Theme) -> AppInit {
     AppInit {
         config: Config::default(),
         registry: ThemeRegistry::builtin(),
-        theme_id: super::selector_tests::id_of(&theme),
+        theme_id: selector::id_of(&theme),
         env: env(),
         config_path: None,
         theme,

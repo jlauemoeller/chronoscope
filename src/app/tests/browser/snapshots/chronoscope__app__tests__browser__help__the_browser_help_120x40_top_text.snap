@@ -1,0 +1,44 @@
+---
+source: src/app/tests/browser/help.rs
+expression: "screen_text(&mut rig, 120, 40)"
+---
+╭─ Project BRIO ──────────────────────────────────────────────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                       ╭─ Keybindings ────────────────────────────────────────────────────────╮                       │
+│ /home/user/projects/br│                                                                      │                       │
+│                       │  Navigation                                                          │                       │
+╰───────────────────────│                                                                      │───────────────────────╯
+╭─ [1] Turns  ──────────│    Up / k                            Previous section                │ 2026-10-21 08:35:15Z ─╮
+│                       │    Down / j                          Next section                    │                       │
+│  ┬   Start            │    [                                 Previous turn                   │a USB. It works fine   │
+│  │                    │    ]                                 Next turn                       │ss settings that…      │
+│  ▒   User             │    Ctrl-u                            Scroll half a page up           │                       │
+│  │                    │    Ctrl-d                            Scroll half a page down         │───────────────────────╯
+│  ├   Assistant      5m│    PgUp                              Scroll a page up                │ 2026-10-21 08:35:18Z ─╮
+│  │                    │    PgDn                              Scroll a page down              │                       │
+│  ├   User             │    g / Home                          Jump to start                   │                       │
+│  │                    │    G / End                           Jump to end and follow          │                       │
+│  ├   Assistant      5m│                                                                      │                       │
+│  │                    │  Sections                                                            │                       │
+│  ├╶╶ Compaction ╶╶╶╶╶╶│                                                                      │                       │
+│  │                    │    ENTER / SPACE                     Fold or unfold current section  │                       │
+│  ├   User             │    Left / h                          Fold current section            │                       │
+│  │                    │    Right / l                         Unfold current section          │lsusb.                 │
+│  ├   Assistant        │    -                                 Fold all sections               │                       │
+│  │                    │    + / =                             Unfold all sections             │                       │
+│  ├   Assistant        │    s                                 Show or hide system content     │                       │
+│  │                    │    y                                 Copy section as displayed       │                       │
+│  ┴   End              │    Y                                 Copy full section               │                       │
+│                       │    w / Ctrl-s                        Save section as displayed       │                       │
+│                       │    W                                 Save full section               │                       │
+│                       │    i                                 Show section details            │                       │
+│                       │                                                                      │                       │
+│                       │  Search                                                              │───────────────────────╯
+│                       │                                                                      │ 2026-10-21 08:35:15Z ─╮
+│                       │    /                                 Search transcript               │                       │
+│                       │    n                                 Next match                      │                       │
+│                       │    N                                 Previous match                  │                       │
+│                       │    ESC                               Clear search                    │───────────────────────╯
+│                       │                                                                      │ 2026-10-21 08:35:18Z ─╮
+╰───────────────────────│  Sessions                                                            │                       │
+                        ╰───────────────────────────────────────────────────────────── ↓ more ─╯                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

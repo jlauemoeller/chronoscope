@@ -1,0 +1,28 @@
+---
+source: src/app/tests/browser/details.rs
+expression: "screen_with_details(80, 24, \"default\", 3)"
+---
+╭─ Project BRIO ──────────────────────── 85a86657-11a7-4318-a21a-0f4476babd5c ─╮
+│                                                                              │
+│ /home/user/projects/brio                                                     │
+│                 ╭─ Details ───────────────────────────────╮                  │
+╰─────────────────│                                         │──────────────────╯
+│                 │  Turn                                   │                  │
+│ ▶ I have a Logit│                                         │e via USB. It     │
+│   works fine - b│    model          claude-opus-5.5       │e a way to…       │
+│                 │    effort         high                  │                  │
+╰─────────────────│    start          2026-10-21 08:35:18Z  │──────────────────╯
+╭─ Assistant ── cl│    duration       5m 2s                 │-10-21 08:35:18Z ─╮
+│                 │    messages       112                   │                  │
+│   I'll start by │    input tokens   5.2k                  │:                 │
+│                 │    output tokens  40.0k                 │                  │
+│   • Check lsusb │                                         │                  │
+│   • Look at v4l2│  Tool call                              │                  │
+│                 │                                         │                  │
+│   Then I'll comp│    status         ok                    │                  │
+│                 │                                         │                  │
+│ ▶ Thinking: The ╰─────────────────────────────────────────╯ith lsusb.        │
+│                                                                              │
+▒ ▶ Find the BRIO on USB and check available tools                             │
+                                                                                
+ / to search | ENTER to fold or unfold sections | y to copy current
