@@ -1245,6 +1245,15 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_with_an_overridden_selection_marker_styled() {
+        let theme = builtin::default_theme().with_token(
+            Token::SelectionMarker,
+            TokenOverride::fg(Color::Rgb(255, 0, 0)),
+        );
+        insta::assert_snapshot!(buffer_to_styled(&draw_terminal_selected(&theme)));
+    }
+
+    #[test]
     fn snapshot_with_an_invalid_user_theme_styled() {
         let registry = registry_with(&[("alpha", true), ("my-theme", false)]);
         let mut s = selector_for(&registry, "nord");

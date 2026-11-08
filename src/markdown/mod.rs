@@ -10,7 +10,8 @@
 //!
 //! Colours come from the theme's roles and tokens or from the base style, and
 //! the fixed emphasis of product §4.5 (bold, italic, underline, strikethrough)
-//! from `src/theme/emphasis.rs`; nothing here names a colour or a modifier.
+//! from `src/theme/emphasis.rs`. The renderer itself names no colour and no
+//! modifier.
 
 mod blocks;
 mod highlight;
