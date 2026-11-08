@@ -6,12 +6,12 @@
 
 use ratatui::buffer::CellWidth;
 use ratatui::layout::Size;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::theme::{Role, Theme, Token};
+use crate::theme::{Role, Theme, Token, emphasis};
 
 /// The overlay is at least this wide.
 pub const MIN_WIDTH: u16 = 40;
@@ -204,9 +204,7 @@ impl DetailsContent {
     /// The rows, top to bottom, styled with `theme`, for an interior
     /// `interior_width` columns wide.
     pub fn lines(&self, theme: &Theme, interior_width: u16) -> Vec<Line<'static>> {
-        let heading = Style::new()
-            .fg(theme.role(Role::Foreground))
-            .add_modifier(Modifier::BOLD);
+        let heading = emphasis::details_heading(theme);
         let label_style = theme.style(Token::Label);
         let value_style = Style::new().fg(theme.role(Role::Foreground));
         let muted_style = Style::new().fg(theme.role(Role::MutedForeground));
@@ -297,6 +295,8 @@ fn char_wrap(text: &str, width: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::style::Modifier;
+
     use super::*;
     use crate::theme::builtin;
 

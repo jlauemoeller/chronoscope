@@ -3,13 +3,12 @@
 //! rows.
 
 use ratatui::layout::Size;
-use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::keymap::{Action, Binding, Context, Keymap};
 use crate::model::HarnessId;
-use crate::theme::{Role, Theme, Token};
+use crate::theme::{Theme, Token, emphasis};
 
 /// What follows the keys of `quit`: `Ctrl-c` always quits.
 const CTRL_C_LABEL: &str = "Ctrl-c";
@@ -190,9 +189,7 @@ impl HelpContent {
 
     /// The rows, top to bottom, styled with `theme`.
     pub fn lines(&self, theme: &Theme) -> Vec<Line<'static>> {
-        let heading = Style::new()
-            .fg(theme.role(Role::Foreground))
-            .add_modifier(Modifier::BOLD);
+        let heading = emphasis::help_heading(theme);
         let key_style = theme.style(Token::HelpKey);
         let text_style = theme.style(Token::HelpText);
         let keys_width = self.keys_width();

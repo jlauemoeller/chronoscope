@@ -5,13 +5,14 @@
 //! right margin ends two cells before the right border, `pane_width - 4`.
 //! The line returned starts in column 1, inside the border.
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::components::turn_rows::{Entry, EntryKind, Row};
 use crate::duration::format_duration;
-use crate::theme::{Role, Theme, Token};
+use crate::theme::emphasis::Selection;
+use crate::theme::{Role, Theme};
 
 #[cfg(test)]
 thread_local! {
@@ -49,34 +50,19 @@ pub enum Look {
     SelectedUnfocused,
 }
 
-/// The styles of the marker and of the rest of the row.
-struct Styles {
-    marker: Style,
-    body: Style,
-}
-
-impl Styles {
-    fn new(theme: &Theme, look: Look) -> Self {
-        let muted = Style::new().fg(theme.role(Role::MutedForeground));
-        match look {
-            Look::Plain => Self {
+/// The styles of the marker and of the rest of the row: muted when not
+/// selected, and selected as in the selector's lists (product §7.2).
+fn row_styles(theme: &Theme, look: Look) -> Selection {
+    match look {
+        Look::Plain => {
+            let muted = Style::new().fg(theme.role(Role::MutedForeground));
+            Selection {
                 marker: muted,
                 body: muted,
-            },
-            Look::SelectedFocused => Self {
-                marker: theme.style(Token::SelectionMarker),
-                body: Style::new()
-                    .fg(theme.role(Role::Foreground))
-                    .add_modifier(Modifier::REVERSED),
-            },
-            Look::SelectedUnfocused => {
-                let secondary = Style::new().fg(theme.role(Role::SecondaryForeground));
-                Self {
-                    marker: secondary,
-                    body: secondary.add_modifier(Modifier::BOLD),
-                }
             }
         }
+        Look::SelectedFocused => Selection::new(theme, true),
+        Look::SelectedUnfocused => Selection::new(theme, false),
     }
 }
 
@@ -90,7 +76,7 @@ pub fn row_line(theme: &Theme, row: Row, look: Look, pane_width: usize) -> Optio
     LINES_BUILT.with(|n| n.set(n.get() + 1));
     // The cells from column 4 to the right margin.
     let body_width = pane_width - RIGHT_CHROME - MARKER_COLUMN;
-    let styles = Styles::new(theme, look);
+    let styles = row_styles(theme, look);
     let (glyph, body) = match row {
         Row::Blank => return Some(Line::default()),
         Row::Connector => ("│", String::new()),

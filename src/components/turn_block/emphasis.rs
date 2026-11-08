@@ -1,8 +1,9 @@
 //! Selected versus unselected text (product §7.2).
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::Line;
 
+use crate::theme::emphasis::selected_section;
 use crate::theme::{Role, Theme};
 
 /// Applies the emphasis of one section to its lines.
@@ -22,7 +23,7 @@ pub fn emphasize(
     keep: Option<(usize, usize)>,
 ) -> Vec<Line<'static>> {
     let patch = if selected {
-        Style::new().add_modifier(Modifier::BOLD)
+        selected_section()
     } else if dim_unselected {
         Style::new().fg(theme.role(Role::MutedForeground))
     } else {
