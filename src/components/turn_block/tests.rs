@@ -17,6 +17,11 @@ use crate::model::{Item, ItemId, Thinking, TokenUsage, ToolStatus, Turn, TurnSta
 use crate::test_support::buffer_to_text;
 use crate::theme::{Role, Token};
 
+mod durations;
+mod notice_snapshots;
+mod snapshots;
+mod subagent_title;
+
 fn kinds(turn: &Turn, show_system: bool) -> Vec<SectionKind> {
     derive_sections(turn, show_system)
         .iter()

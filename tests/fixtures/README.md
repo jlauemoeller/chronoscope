@@ -109,10 +109,10 @@ neutral `/home/user/project`.
 
 - **Origin:** as `local_commands.jsonl`.
 - **Used by:** `tests/claude_local_commands_only.rs`,
-  `src/app/browser_tests/local_commands.rs` (the `local_commands_only_*` and
+  `src/app/tests/browser/local_commands.rs` (the `local_commands_only_*` and
   `the_first_frame_after_a_turn_arrives_120x40_text` snapshots),
   `tests/claude_stats.rs` (its row is `0 turns · 0s`, its run time the span of
-  the commands) and `src/app/selector_totals_tests.rs` (the
+  the commands) and `src/app/tests/selector_totals.rs` (the
   `a_local_commands_only_row_*` snapshots).
 - **Covers:** SPEC cycle 3 §2.3 and §2.5: a session that holds nothing but
   local commands, so it has no turn: the `<local-command-caveat>` meta entry,
@@ -199,8 +199,8 @@ Claude Code 2.1.304 to 2.1.311 sessions.
   `rusqlite` (rollback-journal mode, so read-only opens create no side
   files); no `.db` file is committed.
 - **Used by:** `src/harness/opencode/tests.rs`,
-  `src/harness/opencode/stats_tests.rs` (which adds a grandchild session and
-  other rows with `TempDb::exec`, not here), `src/app/browser_tests/opencode.rs`,
+  `src/harness/opencode/tests/stats.rs` (which adds a grandchild session and
+  other rows with `TempDb::exec`, not here), `src/app/tests/browser/opencode.rs`,
   `tests/opencode_log.rs`, `tests/harness_registry.rs` and
   `tests/index_opencode.rs` (which adds a grandchild session and writes rows
   to the copy, as OpenCode would; the stats-key tests of

@@ -1,0 +1,85 @@
+---
+source: src/components/details_overlay/tests/snapshots.rs
+expression: "draw(&mut overlay, area, width, height)"
+---
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                ╭─ Details ───────────────────────────────────────────────────────────────────────────╮                 
+                │                                                                                     │                 
+                │  Prompt                                                                             │                 
+                │                                                                                     │                 
+                │    timestamp       2026-10-21 08:35:15Z                                             │                 
+                │    permissionMode  default                                                          │                 
+                │    promptSource    user                                                             │                 
+                │                                                                                     │                 
+                │  Environment                                                                        │                 
+                │                                                                                     │                 
+                │    gitBranch       feature/camera-profiles                                          │                 
+                │    cwd             /home/user/projects/brio/crates/camera-profiles/src/descriptors  │                 
+                │    version         2.1.0                                                            │                 
+                │    entrypoint      cli                                                              │                 
+                │                                                                                     │                 
+                ╰─────────────────────────────────────────────────────────────────────────────────────╯                 
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+--- styles (fg/bg/modifiers) ---
+0: 0..120 Reset/Reset/NONE
+1: 0..120 Reset/Reset/NONE
+2: 0..120 Reset/Reset/NONE
+3: 0..120 Reset/Reset/NONE
+4: 0..120 Reset/Reset/NONE
+5: 0..120 Reset/Reset/NONE
+6: 0..120 Reset/Reset/NONE
+7: 0..120 Reset/Reset/NONE
+8: 0..120 Reset/Reset/NONE
+9: 0..120 Reset/Reset/NONE
+10: 0..120 Reset/Reset/NONE
+11: 0..120 Reset/Reset/NONE
+12: 0..16 Reset/Reset/NONE | 16..18 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 18..27 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 27..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+13: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+14: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..19 Reset/Rgb(18, 18, 18)/NONE | 19..25 Rgb(250, 250, 250)/Rgb(18, 18, 18)/BOLD | 25..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+15: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+16: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..21 Reset/Rgb(18, 18, 18)/NONE | 21..30 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 30..37 Reset/Rgb(18, 18, 18)/NONE | 37..57 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 57..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+17: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..21 Reset/Rgb(18, 18, 18)/NONE | 21..35 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 35..37 Reset/Rgb(18, 18, 18)/NONE | 37..44 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 44..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+18: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..21 Reset/Rgb(18, 18, 18)/NONE | 21..33 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 33..37 Reset/Rgb(18, 18, 18)/NONE | 37..41 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 41..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+19: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+20: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..19 Reset/Rgb(18, 18, 18)/NONE | 19..30 Rgb(250, 250, 250)/Rgb(18, 18, 18)/BOLD | 30..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+21: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+22: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..21 Reset/Rgb(18, 18, 18)/NONE | 21..30 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 30..37 Reset/Rgb(18, 18, 18)/NONE | 37..60 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 60..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+23: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..21 Reset/Rgb(18, 18, 18)/NONE | 21..24 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 24..37 Reset/Rgb(18, 18, 18)/NONE | 37..100 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 100..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+24: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..21 Reset/Rgb(18, 18, 18)/NONE | 21..28 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 28..37 Reset/Rgb(18, 18, 18)/NONE | 37..42 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 42..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+25: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..21 Reset/Rgb(18, 18, 18)/NONE | 21..31 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 31..37 Reset/Rgb(18, 18, 18)/NONE | 37..40 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 40..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+26: 0..16 Reset/Reset/NONE | 16..17 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 17..102 Reset/Rgb(18, 18, 18)/NONE | 102..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+27: 0..16 Reset/Reset/NONE | 16..103 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 103..120 Reset/Reset/NONE
+28: 0..120 Reset/Reset/NONE
+29: 0..120 Reset/Reset/NONE
+30: 0..120 Reset/Reset/NONE
+31: 0..120 Reset/Reset/NONE
+32: 0..120 Reset/Reset/NONE
+33: 0..120 Reset/Reset/NONE
+34: 0..120 Reset/Reset/NONE
+35: 0..120 Reset/Reset/NONE
+36: 0..120 Reset/Reset/NONE
+37: 0..120 Reset/Reset/NONE
+38: 0..120 Reset/Reset/NONE
+39: 0..120 Reset/Reset/NONE

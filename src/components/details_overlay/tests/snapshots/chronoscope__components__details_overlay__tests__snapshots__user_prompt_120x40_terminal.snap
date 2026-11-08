@@ -1,0 +1,85 @@
+---
+source: src/components/details_overlay/tests/snapshots.rs
+expression: "draw(&mut overlay, area, width, height)"
+---
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                ╭─ Details ───────────────────────────────────────────────────────────────────────────╮                 
+                │                                                                                     │                 
+                │  Prompt                                                                             │                 
+                │                                                                                     │                 
+                │    timestamp       2026-10-21 08:35:15Z                                             │                 
+                │    permissionMode  default                                                          │                 
+                │    promptSource    user                                                             │                 
+                │                                                                                     │                 
+                │  Environment                                                                        │                 
+                │                                                                                     │                 
+                │    gitBranch       feature/camera-profiles                                          │                 
+                │    cwd             /home/user/projects/brio/crates/camera-profiles/src/descriptors  │                 
+                │    version         2.1.0                                                            │                 
+                │    entrypoint      cli                                                              │                 
+                │                                                                                     │                 
+                ╰─────────────────────────────────────────────────────────────────────────────────────╯                 
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+--- styles (fg/bg/modifiers) ---
+0: 0..120 Reset/Reset/NONE
+1: 0..120 Reset/Reset/NONE
+2: 0..120 Reset/Reset/NONE
+3: 0..120 Reset/Reset/NONE
+4: 0..120 Reset/Reset/NONE
+5: 0..120 Reset/Reset/NONE
+6: 0..120 Reset/Reset/NONE
+7: 0..120 Reset/Reset/NONE
+8: 0..120 Reset/Reset/NONE
+9: 0..120 Reset/Reset/NONE
+10: 0..120 Reset/Reset/NONE
+11: 0..120 Reset/Reset/NONE
+12: 0..16 Reset/Reset/NONE | 16..18 White/Black/NONE | 18..27 Reset/Black/NONE | 27..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+13: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+14: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..19 Reset/Black/NONE | 19..25 Reset/Black/BOLD | 25..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+15: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+16: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..21 Reset/Black/NONE | 21..30 Gray/Black/NONE | 30..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+17: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..21 Reset/Black/NONE | 21..35 Gray/Black/NONE | 35..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+18: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..21 Reset/Black/NONE | 21..33 Gray/Black/NONE | 33..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+19: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+20: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..19 Reset/Black/NONE | 19..30 Reset/Black/BOLD | 30..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+21: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+22: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..21 Reset/Black/NONE | 21..30 Gray/Black/NONE | 30..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+23: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..21 Reset/Black/NONE | 21..24 Gray/Black/NONE | 24..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+24: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..21 Reset/Black/NONE | 21..28 Gray/Black/NONE | 28..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+25: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..21 Reset/Black/NONE | 21..31 Gray/Black/NONE | 31..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+26: 0..16 Reset/Reset/NONE | 16..17 White/Black/NONE | 17..102 Reset/Black/NONE | 102..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+27: 0..16 Reset/Reset/NONE | 16..103 White/Black/NONE | 103..120 Reset/Reset/NONE
+28: 0..120 Reset/Reset/NONE
+29: 0..120 Reset/Reset/NONE
+30: 0..120 Reset/Reset/NONE
+31: 0..120 Reset/Reset/NONE
+32: 0..120 Reset/Reset/NONE
+33: 0..120 Reset/Reset/NONE
+34: 0..120 Reset/Reset/NONE
+35: 0..120 Reset/Reset/NONE
+36: 0..120 Reset/Reset/NONE
+37: 0..120 Reset/Reset/NONE
+38: 0..120 Reset/Reset/NONE
+39: 0..120 Reset/Reset/NONE

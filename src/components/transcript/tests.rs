@@ -18,12 +18,14 @@ mod copy;
 mod details;
 mod follow;
 mod go_to_turn;
+mod key_snapshots;
 pub(super) mod keys;
 mod mouse;
 mod notice;
 mod property;
 mod save;
 mod search;
+mod snapshots;
 mod subagent;
 mod truncation;
 

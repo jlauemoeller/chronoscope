@@ -1,0 +1,9 @@
+---
+source: src/components/turn_block/tests/durations.rs
+expression: "buffer_to_text(&draw(&turn, &Opts::default(), 40))"
+---
+╭─ Assistant ── claude-opus-5.5 @ h… ──╮
+│                                      │
+│ ▶ Explore … (story-writer) · 5m 2s   │
+│                                      │
+╰──────────────────────────────────────╯

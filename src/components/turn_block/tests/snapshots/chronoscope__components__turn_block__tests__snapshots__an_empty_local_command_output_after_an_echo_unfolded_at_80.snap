@@ -1,0 +1,15 @@
+---
+source: src/components/turn_block/tests/snapshots.rs
+expression: "buffer_to_text(&draw(&turn, &opts, 80))"
+---
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                              │
+│ ▼ 2 injected items                                                           │
+│   local_command                                                              │
+│      /clear                                                                  │
+│                                                                              │
+│   local_command                                                              │
+│                                                                              │
+│ ▶ <command-message>factory</command-message>                                 │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯

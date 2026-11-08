@@ -64,7 +64,7 @@ impl ToolBodyRenderer for WriteBody {
 mod tests {
     use serde_json::json;
 
-    use super::super::testing::*;
+    use super::super::fixtures::*;
     use super::super::{SectionRenderer, ToolCallSection, ToolKind, ToolStatus};
     use super::*;
     use crate::theme::Role;

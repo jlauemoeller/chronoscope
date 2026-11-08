@@ -20,6 +20,8 @@ use crate::model::{Item, Thinking, Turn, TurnId, source_reads, text_calls};
 use crate::test_support::buffer_to_text;
 use crate::theme::{Role, Theme, Token, builtin};
 
+mod snapshots;
+
 fn id(id: &str) -> TurnId {
     TurnId::from(id)
 }

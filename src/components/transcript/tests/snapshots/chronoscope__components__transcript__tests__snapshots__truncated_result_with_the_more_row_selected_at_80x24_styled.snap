@@ -1,0 +1,53 @@
+---
+source: src/components/transcript/tests/snapshots.rs
+expression: "buffer_to_styled(&draw(&mut t, 80, 24))"
+---
+│      line 180                                                                │
+│      line 181                                                                │
+│      line 182                                                                │
+│      line 183                                                                │
+│      line 184                                                                │
+│      line 185                                                                │
+│      line 186                                                                │
+│      line 187                                                                │
+│      line 188                                                                │
+│      line 189                                                                │
+│      line 190                                                                │
+│      line 191                                                                │
+│      line 192                                                                │
+│      line 193                                                                │
+│      line 194                                                                │
+│      line 195                                                                │
+│      line 196                                                                │
+│      line 197                                                                │
+│      line 198                                                                │
+│      line 199                                                                │
+│      line 200                                                                │
+▒      … 1 234 more lines                                                      │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+1: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+2: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+3: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+4: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+5: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+6: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+7: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+8: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+9: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+10: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+11: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+12: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+13: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+14: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+15: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+16: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+17: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+18: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+19: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+20: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..15 Rgb(161, 161, 161)/Rgb(10, 10, 10)/NONE | 15..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+21: 0..1 Rgb(229, 229, 229)/Rgb(10, 10, 10)/NONE | 1..2 Reset/Rgb(10, 10, 10)/NONE | 2..4 Rgb(250, 250, 250)/Rgb(10, 10, 10)/BOLD | 4..25 Rgb(161, 161, 161)/Rgb(10, 10, 10)/BOLD | 25..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+22: 0..1 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE | 1..79 Reset/Rgb(10, 10, 10)/NONE | 79..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE
+23: 0..80 Rgb(94, 94, 94)/Rgb(10, 10, 10)/NONE

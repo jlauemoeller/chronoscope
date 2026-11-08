@@ -211,7 +211,7 @@ pub fn wal_path(db: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::opencode::testing::TempDb;
+    use crate::harness::opencode::fixtures::TempDb;
 
     /// Writes through the connection itself, bypassing the helper: SQLite
     /// must refuse, because the connection was opened read-only.

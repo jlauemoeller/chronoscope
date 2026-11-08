@@ -1,0 +1,10 @@
+---
+source: src/components/turn_block/tests/snapshots.rs
+expression: "buffer_to_text(&draw(&turn, &Opts::default(), 120))"
+---
+╭─ User ──────────────────────────────────────────────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                                                                      │
+│ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It works fine - both camera and microphone -   │
+│   but I don't have a way to access settings that would have been available on say a mac or windows, since there…     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

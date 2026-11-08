@@ -1,0 +1,20 @@
+---
+source: src/components/turn_block/tests/snapshots.rs
+expression: "buffer_to_text(&draw(&turn, &unfolded(&turn), 100))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                  │
+│ ▼ Read the camera module                                                                         │
+│                                                                                                  │
+│   Path:                                                                                          │
+│                                                                                                  │
+│      /home/jacob/projects/brio/src/camera.rs (lines 8–11)                                        │
+│                                                                                                  │
+│   Content:                                                                                       │
+│                                                                                                  │
+│       8  use std::fs::File;                                                                      │
+│       9                                                                                          │
+│      10  pub fn open(path: &str) -> File {                                                       │
+│      11      File::open(path).expect("camera device")                                            │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

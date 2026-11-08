@@ -1,0 +1,28 @@
+---
+source: src/components/transcript/tests/key_snapshots.rs
+expression: text
+---
+│ ▶ ── context compacted ──                                                    │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                              │
+▒ ▶ file: /home/jacob/notes.md                                                 │
+│                                                                              │
+│ ▶ Continue with the extension units.                                         │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 ──────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│   The extension units are listed under VideoControl:                         │
+│                                                                              │
+│   • one for exposure                                                         │
+│   • one for pan and tilt                                                     │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 ──────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│   That is everything the camera exposes over plain UVC. Anything beyond      │
+│   that needs the vendor protocol, which is not documented.                   │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
