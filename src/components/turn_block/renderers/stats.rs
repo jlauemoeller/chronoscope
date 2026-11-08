@@ -3,14 +3,10 @@
 use ratatui::text::Line;
 
 use super::{SectionCtx, SectionRenderer, with_lead, word_wrap};
+use crate::cost::format_cost;
 use crate::duration::format_duration;
 use crate::model::TurnStats;
 use crate::tokens::format_tokens;
-
-/// A cost in US dollars: `$0.42`.
-pub fn format_cost(cost: f64) -> String {
-    format!("${cost:.2}")
-}
 
 /// The footer text: `<duration> · <n> messages · <tokens> tokens ·
 /// <cached> cached`, with ` · $<cost>` last when the cost is known. Unknown
