@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::UnicodeWidthStr;
 
-use crate::components::truncate_with_ellipsis;
+use crate::components::text_fit::truncate_with_ellipsis;
 use crate::theme::{Role, Theme};
 
 /// The columns before the marker, counted from the inside of the border: the

@@ -22,7 +22,8 @@ use std::process::Command;
 use unicode_width::UnicodeWidthStr;
 
 use super::{App, Id};
-use crate::components::{MAX_TOAST_WIDTH, Prompt, TOAST_CHROME, tail_fitting};
+use crate::components::text_fit::truncate_start;
+use crate::components::{MAX_TOAST_WIDTH, Prompt, TOAST_CHROME};
 use crate::model::{HarnessId, SessionId, SessionSummary};
 use crate::theme::Role;
 
@@ -100,7 +101,7 @@ fn missing_dir_toast(cwd: &Path, screen_width: u16) -> String {
         .saturating_sub(PREFIX.width() + SUFFIX.width());
     format!(
         "{PREFIX}{}{SUFFIX}",
-        tail_fitting(&cwd.display().to_string(), room)
+        truncate_start(&cwd.display().to_string(), room)
     )
 }
 

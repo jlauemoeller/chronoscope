@@ -20,7 +20,8 @@ use super::layout::Screen;
 use super::{App, Id};
 use unicode_width::UnicodeWidthStr;
 
-use crate::components::{MAX_TOAST_WIDTH, Prompt, PromptMode, TOAST_CHROME, tail_fitting};
+use crate::components::text_fit::truncate_start;
+use crate::components::{MAX_TOAST_WIDTH, Prompt, PromptMode, TOAST_CHROME};
 use crate::paths::expand_tilde;
 use crate::theme::Role;
 
@@ -57,7 +58,7 @@ impl WriteKind {
             WriteKind::Export => "Exported to ",
         };
         let room = usize::from(MAX_TOAST_WIDTH - TOAST_CHROME).saturating_sub(prefix.width());
-        format!("{prefix}{}", tail_fitting(path, room))
+        format!("{prefix}{}", truncate_start(path, room))
     }
 
     fn failed(self, error: &std::io::Error) -> String {

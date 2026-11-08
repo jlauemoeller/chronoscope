@@ -9,9 +9,9 @@ use tuirealm::component::{AppComponent, Component};
 use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::list_pane::titled_block;
+use super::text_fit::truncate_start;
 use super::{THEME_ATTR, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme};
@@ -25,29 +25,6 @@ const TITLE: &str = "Working Directory";
 const TEXT_COLUMN: u16 = 3;
 /// The rows above the directory inside the box: the border and a blank row.
 const ROWS_ABOVE_TEXT: u16 = 2;
-
-/// `text` cut to at most `width` columns from the left, starting with `…`
-/// when it was cut, so the end of a path stays visible.
-pub fn truncate_start(text: &str, width: usize) -> String {
-    if text.width() <= width {
-        return text.to_owned();
-    }
-    if width == 0 {
-        return String::new();
-    }
-    let mut tail: Vec<char> = Vec::new();
-    let mut used = 1;
-    for c in text.chars().rev() {
-        let w = c.width().unwrap_or(0);
-        if used + w > width {
-            break;
-        }
-        tail.push(c);
-        used += w;
-    }
-    tail.push('…');
-    tail.into_iter().rev().collect()
-}
 
 /// A rounded box in `border` titled `Working Directory` that shows the
 /// working directory of the selected project in `foreground`. A directory
@@ -177,23 +154,6 @@ mod tests {
         assert_eq!(buffer[(3, 2)].fg, theme.role(Role::Foreground));
         assert_eq!(buffer[(0, 0)].fg, theme.role(Role::Border));
         assert_eq!(buffer[(0, 2)].fg, theme.role(Role::Border));
-    }
-
-    #[test]
-    fn truncate_start_keeps_the_end() {
-        assert_eq!(truncate_start("/a/b/c", 6), "/a/b/c");
-        assert_eq!(truncate_start("/a/b/c/d", 6), "…b/c/d");
-        assert_eq!(truncate_start("/a/b/c/d", 1), "…");
-        assert_eq!(truncate_start("/a/b", 0), "");
-    }
-
-    #[test]
-    fn truncate_start_never_exceeds_the_width_with_wide_characters() {
-        for width in 1..12 {
-            let cut = truncate_start("/home/日本語/プロジェクト", width);
-            assert!(cut.width() <= width, "{cut:?} in {width}");
-        }
-        assert!(truncate_start("/home/日本語/プロジェクト", 6).starts_with('…'));
     }
 
     #[test]

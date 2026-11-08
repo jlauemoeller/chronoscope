@@ -16,7 +16,8 @@ use super::list_pane::{
     PaneKey, PaneState, Part, RowParts, border_role, pane_key, render_rows, title_width,
     titled_block, visible_rows,
 };
-use super::{THEME_ATTR, payload_from_value, payload_value, truncate_with_ellipsis};
+use super::text_fit::truncate_with_ellipsis;
+use super::{THEME_ATTR, payload_from_value, payload_value};
 use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
 use crate::duration::format_duration;
 use crate::keymap::Keymap;

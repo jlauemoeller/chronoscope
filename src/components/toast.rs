@@ -13,8 +13,8 @@ use tuirealm::component::{AppComponent, Component};
 use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use super::text_fit::truncate_with_ellipsis;
 use super::{THEME_ATTR, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Theme, Token};
@@ -110,27 +110,6 @@ impl Toast {
         }
         style
     }
-}
-
-/// `text` cut to at most `width` columns, ending in `…` when it was cut.
-pub fn truncate_with_ellipsis(text: &str, width: usize) -> String {
-    if text.width() <= width {
-        return text.to_owned();
-    }
-    let mut out = String::new();
-    let mut used = 0;
-    for c in text.chars() {
-        let w = c.width().unwrap_or(0);
-        if used + w + 1 > width {
-            break;
-        }
-        out.push(c);
-        used += w;
-    }
-    if width > 0 {
-        out.push('…');
-    }
-    out
 }
 
 impl Component for Toast {
@@ -242,15 +221,6 @@ mod tests {
             assert_eq!(cell.bg, ratatui::style::Color::Reset);
         }
         assert_eq!(buffer[(2, 1)].symbol(), "h");
-    }
-
-    #[test]
-    fn truncation_keeps_the_result_within_the_width() {
-        assert_eq!(truncate_with_ellipsis("hello", 5), "hello");
-        assert_eq!(truncate_with_ellipsis("hello!", 5), "hell…");
-        assert_eq!(truncate_with_ellipsis("日本語です", 6), "日本…");
-        assert_eq!(truncate_with_ellipsis("hello", 0), "");
-        assert_eq!(truncate_with_ellipsis("hello", 1), "…");
     }
 
     #[test]

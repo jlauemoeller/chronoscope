@@ -10,7 +10,8 @@ use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 
-use super::{THEME_ATTR, theme_from_value, theme_value, truncate_with_ellipsis};
+use super::text_fit::truncate_with_ellipsis;
+use super::{THEME_ATTR, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme};
 

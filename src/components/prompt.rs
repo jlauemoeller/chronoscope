@@ -19,6 +19,7 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 use unicode_width::UnicodeWidthChar;
 
+use super::text_fit::truncate_start;
 use super::{THEME_ATTR, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::keymap::KeySpec;
@@ -211,7 +212,7 @@ impl Prompt {
             + question.second.width()
             + question.after.width();
         let room = usize::from(row.width).saturating_sub(fixed);
-        let subject = tail_fitting(&question.subject, room);
+        let subject = truncate_start(&question.subject, room);
         let mut spans = vec![
             Span::styled(question.before.clone(), text_style),
             Span::styled(subject, subject_style),
@@ -259,30 +260,6 @@ impl Prompt {
         }
         (text, cursor_column.saturating_sub(skipped))
     }
-}
-
-/// `text` cut at its start, with `…` in front, to fit `width` columns; the
-/// text itself when it fits.
-pub fn tail_fitting(text: &str, width: usize) -> String {
-    use unicode_width::UnicodeWidthStr;
-    if text.width() <= width {
-        return text.to_owned();
-    }
-    if width == 0 {
-        return String::new();
-    }
-    let mut kept: Vec<char> = Vec::new();
-    let mut used = 1;
-    for c in text.chars().rev() {
-        let w = c.width().unwrap_or(0);
-        if used + w > width {
-            break;
-        }
-        used += w;
-        kept.push(c);
-    }
-    kept.push('…');
-    kept.into_iter().rev().collect()
 }
 
 /// Whether a key with `modifiers` types its character: plain, shifted, or
@@ -833,16 +810,6 @@ mod tests {
     fn a_subject_too_long_for_the_row_is_cut_at_its_start() {
         let text = buffer_to_text(&draw(&mut confirm("/very/long/directory/notes.txt"), 30));
         assert_eq!(text, "Overwrite …ry/notes.txt? (y/n)\n");
-    }
-
-    #[test]
-    fn tail_fitting_keeps_the_end() {
-        assert_eq!(tail_fitting("abcdef", 6), "abcdef");
-        assert_eq!(tail_fitting("abcdef", 4), "…def");
-        assert_eq!(tail_fitting("abcdef", 1), "…");
-        assert_eq!(tail_fitting("abcdef", 0), "");
-        assert_eq!(tail_fitting("日本語", 5), "…本語");
-        assert_eq!(tail_fitting("日本語", 4), "…語");
     }
 
     #[test]

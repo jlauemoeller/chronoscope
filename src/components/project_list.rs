@@ -11,7 +11,8 @@ use tuirealm::state::State;
 use super::list_pane::{
     PaneKey, PaneState, Part, RowParts, border_role, pane_key, render_rows, titled_block,
 };
-use super::{payload_from_value, payload_value, truncate_with_ellipsis};
+use super::text_fit::truncate_with_ellipsis;
+use super::{payload_from_value, payload_value};
 use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
 use crate::keymap::Keymap;
 use crate::model::ProjectId;
