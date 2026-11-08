@@ -1,4 +1,4 @@
-//! Incremental assembly of Claude JSONL lines into turns (SPEC §5.1, §7.1).
+//! Incremental assembly of Claude JSONL lines into turns (product §4.1, §6.1).
 //!
 //! Feed lines (or raw byte chunks) as they arrive; each call returns the
 //! [`ModelUpdate`]s it caused. Feeding a transcript in any chunking yields the
@@ -1389,7 +1389,7 @@ fn take_message_text(
 /// and in `calls` (for a tool result still to come) are renewed.
 ///
 /// Injected items that the removal leaves side by side collapse into the
-/// first one (consecutive injected entries are one section, SPEC §5.6).
+/// first one (consecutive injected entries are one section, product §4.6).
 fn remove(
     turn: &mut AssistantTurn,
     b: &mut Builder,

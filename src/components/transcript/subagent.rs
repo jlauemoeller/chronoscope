@@ -1,4 +1,4 @@
-//! Opening a subagent's transcript from its section (SPEC §5.4).
+//! Opening a subagent's transcript from its section (product §4.4).
 
 use super::Transcript;
 use crate::app::Msg;

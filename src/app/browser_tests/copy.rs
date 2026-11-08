@@ -1,4 +1,4 @@
-//! Copying to the clipboard (SPEC §6.4, §9.4): `y` and `Y` through the app as
+//! Copying to the clipboard (product §5.4, §8.4): `y` and `Y` through the app as
 //! the running application drives it, what the `App` does with the text, and
 //! the toast screens.
 //!

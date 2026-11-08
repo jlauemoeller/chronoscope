@@ -1,5 +1,5 @@
 //! What the command line asks for, resolved against the loaded index before
-//! the terminal is set up (SPEC §6.8).
+//! the terminal is set up (product §5.8).
 //!
 //! [`resolve`] is a pure function of the arguments ([`Request`]), the working
 //! directory and the index ([`HarnessIndex`]); it gives what to start with
@@ -302,7 +302,7 @@ fn latest(
     }
 }
 
-/// The project whose `cwd` is `dir` or its deepest ancestor (SPEC §4.1): the
+/// The project whose `cwd` is `dir` or its deepest ancestor (product §3.1): the
 /// deepest one wins, the lowest harness number among equals, and the first
 /// of a harness's list (the most recently active) among those.
 ///

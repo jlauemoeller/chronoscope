@@ -1,5 +1,5 @@
 //! Following a loaded session: reads what changed in the database since the
-//! last read and turns it into [`ModelUpdate`]s (SPEC §7.1).
+//! last read and turns it into [`ModelUpdate`]s (product §6.1).
 //!
 //! A change is one pass of [`Follower::refresh`]:
 //!

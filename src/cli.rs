@@ -1,4 +1,4 @@
-//! The command line (SPEC §6.8).
+//! The command line (product §5.8).
 
 use std::path::PathBuf;
 

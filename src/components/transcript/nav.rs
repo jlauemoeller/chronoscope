@@ -165,7 +165,7 @@ impl Transcript {
 
     /// Selects the next or previous section and scrolls it into view. A
     /// selected section taller than the viewport is first scrolled through a
-    /// page at a time (SPEC §6.3).
+    /// page at a time (product §5.3).
     pub(super) fn move_selection(&mut self, step: Step) -> CmdResult {
         let before = self.offset;
         let Some(cur) = self.cursor() else {

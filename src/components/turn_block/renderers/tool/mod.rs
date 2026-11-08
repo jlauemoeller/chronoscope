@@ -1,5 +1,5 @@
 //! The tool call section: the description row, then one body per
-//! [`ToolKind`] (SPEC §5.3).
+//! [`ToolKind`] (product §4.3).
 //!
 //! Each kind has its own [`ToolBodyRenderer`] type in its own module. A body
 //! is a list of labelled blocks (`Command:`, `Result:`, ...); the section lays

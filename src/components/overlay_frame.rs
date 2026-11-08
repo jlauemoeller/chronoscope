@@ -1,5 +1,5 @@
 //! The frame and the scrolling that the help overlay and the details overlay
-//! share (SPEC §4.3): the rounded `ring` border with a title, the `surface`
+//! share (product §3.3): the rounded `ring` border with a title, the `surface`
 //! fill, the ` ↑ more ` and ` ↓ more ` indicators, the scroll offset, and the
 //! overlay-context keys and the wheel that move it.
 //!

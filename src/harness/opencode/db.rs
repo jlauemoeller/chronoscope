@@ -1,4 +1,4 @@
-//! Read-only access to OpenCode's SQLite database (SPEC §3.2, §7.1, §9.5).
+//! Read-only access to OpenCode's SQLite database (product §2.2, §6.1, §8.5).
 //!
 //! [`Db`] is the only way the adapter touches the database. It opens the file
 //! with `SQLITE_OPEN_READ_ONLY` and runs every statement through

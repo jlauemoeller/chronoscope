@@ -1,4 +1,4 @@
-//! The user config file (`config.toml`, SPEC §8.5).
+//! The user config file (`config.toml`, product §7.5).
 //!
 //! Every key is optional. Loading never fails: a missing file means defaults,
 //! and unknown keys, invalid values and malformed TOML each produce a

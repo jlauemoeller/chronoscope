@@ -1,4 +1,4 @@
-//! What `ProjectList` and `SessionList` share (SPEC §4.1, §8.2): the cursor
+//! What `ProjectList` and `SessionList` share (product §3.1, §7.2): the cursor
 //! with its scroll offset, the pane border, the row layout and styles, and the
 //! resolution of selector keys through the keymap.
 
@@ -386,7 +386,7 @@ pub(super) struct RowParts {
     pub stats: Option<String>,
 }
 
-/// How a row is drawn (SPEC §8.2).
+/// How a row is drawn (product §7.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RowKind {
     Unselected,

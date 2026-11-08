@@ -1,4 +1,4 @@
-//! Token count display (SPEC §5.2): one format for the turn stats footer, the
+//! Token count display (product §4.2): one format for the turn stats footer, the
 //! details overlay and the session selector's Session Tokens panel.
 
 /// A token count: `950`, `45.2k` or `1.2M`.

@@ -1,4 +1,4 @@
-//! The search worker (SPEC §1.1): matching thousands of sessions against a
+//! The search worker (architecture.md#data-flow): matching thousands of sessions against a
 //! query takes longer than a frame, so the selector's search runs on a
 //! thread. Requests go in over a channel; results come back over another, a
 //! [`SearchPort`] reads it and turns the results into user events.

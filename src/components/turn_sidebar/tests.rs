@@ -1,4 +1,4 @@
-//! Tests of the turns sidebar: the rows it builds from turns (SPEC §6.2,
+//! Tests of the turns sidebar: the rows it builds from turns (product §5.2,
 //! §6.5, §6.6), its look (§6.3) and the way it takes updates.
 
 use std::sync::Arc;
@@ -383,7 +383,7 @@ fn rows_built_from_a_transcript_match_those_built_from_its_turns() {
     assert_eq!(from_transcript, rows_of(&turns));
 }
 
-// -- what building rows must not do (SPEC §6.6)
+// -- what building rows must not do (product §5.6)
 
 #[test]
 fn building_rows_neither_lays_out_nor_renders_nor_reads_output() {

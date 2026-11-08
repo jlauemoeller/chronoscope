@@ -1,4 +1,4 @@
-//! Tool results, with lazily materialised output (SPEC §9.2).
+//! Tool results, with lazily materialised output (product §8.2).
 
 use std::borrow::Cow;
 use std::fmt;

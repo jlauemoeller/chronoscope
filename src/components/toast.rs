@@ -1,5 +1,5 @@
 //! The toast: a small notification in the bottom-right corner that expires
-//! on `Tick` (SPEC §4.2).
+//! on `Tick` (product §3.2).
 
 use std::fmt;
 use std::sync::Arc;

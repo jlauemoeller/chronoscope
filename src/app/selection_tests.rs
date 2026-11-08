@@ -1,5 +1,5 @@
 //! Update tests and screen snapshots for the selector's selection rules
-//! (SPEC §4.1, §6.6): startup preselection, clearing and keeping the session
+//! (product §3.1, §5.6): startup preselection, clearing and keeping the session
 //! selection, `Enter`, `Esc` and the empty state.
 
 use tuirealm::event::Key;

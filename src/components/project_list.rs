@@ -1,4 +1,4 @@
-//! The Projects pane of the session selector (SPEC §4.1, §8.2).
+//! The Projects pane of the session selector (product §3.1, §7.2).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

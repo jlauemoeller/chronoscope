@@ -1,4 +1,4 @@
-//! Resuming a session in its harness (SPEC §6.7).
+//! Resuming a session in its harness (product §5.7).
 //!
 //! 1. `R` in the browser, or on a selected session in the selector, answers
 //!    [`Msg::RequestResume`](super::Msg::RequestResume). The browser's target

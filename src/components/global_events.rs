@@ -1,5 +1,5 @@
 //! The component that turns global keys, resizes and ticks into messages
-//! (SPEC §1.4).
+//! (architecture.md#events-focus-and-keys).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

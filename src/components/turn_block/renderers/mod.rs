@@ -1,4 +1,4 @@
-//! One renderer per section kind (SPEC §5.2). Each is a small pure type that
+//! One renderer per section kind (product §4.2). Each is a small pure type that
 //! turns its data into styled lines for a width.
 //!
 //! The lines start at column 2 of the block: the first two cells of the first

@@ -1,4 +1,4 @@
-//! The help overlay (SPEC §4.3): the keybindings grouped by purpose, generated
+//! The help overlay (product §3.3): the keybindings grouped by purpose, generated
 //! from the active keymap, in a centred rounded overlay that scrolls when it
 //! is taller than the screen.
 

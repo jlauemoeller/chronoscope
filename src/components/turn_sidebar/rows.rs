@@ -1,4 +1,4 @@
-//! What the turns sidebar lists (SPEC §6.2, §6.6): one entry per turn that
+//! What the turns sidebar lists (product §5.2, §5.6): one entry per turn that
 //! has a block, and the rows drawn from them.
 //!
 //! [`TurnRows`] keeps one *slot* per turn, in transcript order, whether or

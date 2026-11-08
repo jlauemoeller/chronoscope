@@ -1,6 +1,6 @@
 //! A strip of the screen that belongs to no pane but must not be left
 //! unpainted, such as the column between the turns sidebar and the
-//! transcript (SPEC §6.1).
+//! transcript (product §5.1).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -17,7 +17,7 @@ use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme};
 
 /// Paints its area with `background`, or nothing when the theme is
-/// transparent (SPEC §8.1). It draws no text, takes no focus and no events.
+/// transparent (product §7.1). It draws no text, takes no focus and no events.
 #[derive(Debug, Clone)]
 pub struct BackgroundFill {
     theme: Theme,

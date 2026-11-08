@@ -1,4 +1,4 @@
-//! A centred message that fills a whole area (SPEC §4.2).
+//! A centred message that fills a whole area (product §3.2).
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};

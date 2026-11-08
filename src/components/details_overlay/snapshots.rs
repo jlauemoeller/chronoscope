@@ -1,4 +1,4 @@
-//! Snapshots of the details overlay (SPEC §5.3): one section of each kind,
+//! Snapshots of the details overlay (product §4.3): one section of each kind,
 //! fully populated from plain data (the harness is not involved), at 80x24
 //! and 120x40 in the `default` and `terminal` themes, and content taller than
 //! the screen scrolled to the top and to the end.

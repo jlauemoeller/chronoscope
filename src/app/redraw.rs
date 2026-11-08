@@ -1,4 +1,4 @@
-//! Deciding when to draw (SPEC §1.1, §7.1).
+//! Deciding when to draw (architecture.md#data-flow, product §6.1).
 
 use std::time::{Duration, Instant};
 

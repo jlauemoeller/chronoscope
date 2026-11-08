@@ -1,4 +1,4 @@
-//! The linkage from a `subagent` tool call to its child session (SPEC §5.4).
+//! The linkage from a `subagent` tool call to its child session (product §4.4).
 //!
 //! A subagent run is a session of its own whose `parent_id` is the session
 //! that started it. The parent's `subagent` tool part names it in

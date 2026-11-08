@@ -1,4 +1,4 @@
-//! Searching the transcript in the browser (SPEC §6.2, §1.1): the worker
+//! Searching the transcript in the browser (product §5.2, architecture.md#data-flow): the worker
 //! thread that matches, the port that brings its answers back, and the
 //! `App`'s part of the flow.
 //!

@@ -1,4 +1,4 @@
-//! Subagent transcripts (SPEC §5.4, task 027): `a` opens one over the
+//! Subagent transcripts (product §4.4, task 027): `a` opens one over the
 //! session, `Backspace` returns, through the app as the running application
 //! drives it; and the screens that show them.
 

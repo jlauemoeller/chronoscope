@@ -1,5 +1,5 @@
 //! The Port that turns the open session's [`ModelUpdate`]s into user events
-//! (SPEC §1.1, §1.4).
+//! (architecture.md#data-flow, architecture.md#events-focus-and-keys).
 //!
 //! A harness streams a session over a plain `Sender<ModelUpdate>`. Every
 //! load gets a number, its *generation*, and a small forwarding thread

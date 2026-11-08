@@ -1,4 +1,4 @@
-//! The theme selector in the app (SPEC §8.4): opening, previewing on every
+//! The theme selector in the app (product §7.4): opening, previewing on every
 //! mounted component, keeping and cancelling, saving to the config file, and
 //! the screens. Keys travel through the app's ports and `GlobalEvents`, as
 //! they do in the running application.

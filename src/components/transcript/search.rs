@@ -1,4 +1,4 @@
-//! Searching the transcript (SPEC §6.2): the transcript's part of it.
+//! Searching the transcript (product §5.2): the transcript's part of it.
 //!
 //! The search itself runs on a worker (see [`crate::transcript_search`]); the
 //! `Transcript` owns what is shown of it. The exchange is made of attributes,

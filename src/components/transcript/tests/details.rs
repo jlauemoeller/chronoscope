@@ -1,4 +1,4 @@
-//! The details key (SPEC §5.1): the transcript answers [`Msg::OpenDetails`]
+//! The details key (product §4.1): the transcript answers [`Msg::OpenDetails`]
 //! with the rows of the selected section, a `… N more lines` row as its tool
 //! call, and nothing with no selection.
 

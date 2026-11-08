@@ -1,4 +1,4 @@
-//! The turns sidebar in the browser (SPEC §6.1): where it sits, when it is
+//! The turns sidebar in the browser (product §5.1): where it sits, when it is
 //! hidden, what it lists for the transcript on top, and how it follows the
 //! updates, the theme and the mouse.
 

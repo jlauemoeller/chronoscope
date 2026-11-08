@@ -1,7 +1,7 @@
-//! The details overlay in the app (SPEC §1.4, §5): opening it gives it the
-//! focus, closing it returns the focus to who had it. The content is made by
-//! the transcript when the key is pressed and never changes while the overlay
-//! is open.
+//! The details overlay in the app (architecture.md#events-focus-and-keys,
+//! product §4): opening it gives it the focus, closing it returns the focus
+//! to who had it. The content is made by the transcript when the key is
+//! pressed and never changes while the overlay is open.
 
 use ratatui::layout::Rect;
 use tuirealm::component::{AppComponent, Component};

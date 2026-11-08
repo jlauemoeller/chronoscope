@@ -1,4 +1,4 @@
-//! The command line in the app (SPEC §6.8): the filtered selector, a session
+//! The command line in the app (product §5.8): the filtered selector, a session
 //! opened directly, and where the selector starts. Everything is resolved
 //! with [`launch::resolve`] and started with the same `start_with` the
 //! running application uses.

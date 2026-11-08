@@ -1,4 +1,4 @@
-//! Assembly of `session_message` rows into turns (SPEC §5.1, §5.6).
+//! Assembly of `session_message` rows into turns (product §4.1, §4.6).
 //!
 //! Feed the rows of one session in `seq` order with
 //! [`push_row`](Assembler::push_row) and collect what changed with
@@ -16,7 +16,7 @@
 //!   current turn.
 //! - `idle` rows are skipped.
 //!
-//! Compaction is not supported yet: SPEC §11 lists the OpenCode compaction
+//! Compaction is not supported yet: product §10 lists the OpenCode compaction
 //! format as unverified (`session_pending` rows of type `compaction`), the
 //! observed databases have no such table and no compaction row among the
 //! messages, so no `Turn::Compaction` is ever produced and no format is

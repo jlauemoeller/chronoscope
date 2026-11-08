@@ -1,4 +1,4 @@
-//! The theme selector in the app (SPEC §8.4): opening it gives it the focus,
+//! The theme selector in the app (product §7.4): opening it gives it the focus,
 //! moving its cursor previews a theme on everything that is mounted, `Enter`
 //! keeps the theme and saves it, `Esc` gives back the one that was active.
 

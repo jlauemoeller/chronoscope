@@ -1,4 +1,4 @@
-//! The theme model (SPEC §8.1).
+//! The theme model (product §7.1).
 //!
 //! A [`Theme`] has two layers: the base roles of a [`Palette`] and optional
 //! component-token overrides. Every [`Token`] resolves to a Ratatui

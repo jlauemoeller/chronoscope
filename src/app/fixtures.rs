@@ -182,7 +182,7 @@ pub fn stats_event(harness: HarnessId, session: &str, turns: usize, secs: u64) -
     }
 }
 
-/// The stats of the worked example (SPEC §4.2): 81h 33m in all and 17h 56m
+/// The stats of the worked example (product §3.2): 81h 33m in all and 17h 56m
 /// of agent time, 15.8k input, 6.3M output (2.2M of it thinking), 862.3M read
 /// from and 30.7M written to the cache.
 pub fn worked_example_stats() -> SessionStats {

@@ -1,4 +1,4 @@
-//! Timestamp display (SPEC §8.6).
+//! Timestamp display (product §7.6).
 
 use std::fmt::Write;
 

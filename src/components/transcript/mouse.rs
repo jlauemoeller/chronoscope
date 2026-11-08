@@ -1,4 +1,4 @@
-//! The mouse in the transcript (SPEC §6.9): the wheel scrolls, a click
+//! The mouse in the transcript (product §5.9): the wheel scrolls, a click
 //! selects the section under the pointer, a click on a section's summary line
 //! toggles its fold and a click on a `… N more lines` row expands the output.
 //!

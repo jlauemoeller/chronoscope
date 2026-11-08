@@ -1,4 +1,4 @@
-//! Keeping a loaded session live (SPEC §7.1).
+//! Keeping a loaded session live (product §6.1).
 //!
 //! After the initial load the worker watches the database's directory with
 //! `notify` (not the files themselves: the `-wal` file is created and removed

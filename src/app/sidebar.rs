@@ -1,4 +1,4 @@
-//! The turns sidebar's focus and keys in the app (SPEC §6.1, §6.3, §6.4):
+//! The turns sidebar's focus and keys in the app (product §5.1, §5.3, §5.4):
 //! which keys hand the focus to it and back, what selecting an entry does to
 //! the transcript, what happens to the focus when the sidebar is hidden, and
 //! the hints the help line shows while it has the focus.
@@ -18,7 +18,7 @@ use crate::model::TurnId;
 
 impl App {
     /// Whether the turns sidebar is on screen: the browser is shown, at least
-    /// 90 columns wide, and the session is not empty (SPEC §6.1).
+    /// 90 columns wide, and the session is not empty (product §5.1).
     pub(super) fn sidebar_shown(&self) -> bool {
         if !self.screen.has_browser()
             || self.browser.session_empty()

@@ -1,4 +1,4 @@
-//! The details overlay (SPEC §5): the metadata of one section, in groups of
+//! The details overlay (product §4): the metadata of one section, in groups of
 //! `label  value` rows, in a centred rounded overlay that scrolls when it is
 //! taller than the screen.
 //!

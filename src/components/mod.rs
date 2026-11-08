@@ -1,4 +1,4 @@
-//! The UI components (SPEC §1.3). Each is its own type and module, can be
+//! The UI components (architecture.md#components). Each is its own type and module, can be
 //! built from plain data and the theme, and rendered into a `TestBackend`
 //! frame without an `Application`.
 

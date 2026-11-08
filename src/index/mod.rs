@@ -1,4 +1,4 @@
-//! The background session index (SPEC §1.1, §7.3, §9.2).
+//! The background session index (architecture.md#data-flow, product §6.3, §8.2).
 //!
 //! [`SessionIndex::start`] spawns worker threads that build the project and
 //! session lists of every harness, rebuild them when the harness's store

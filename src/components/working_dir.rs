@@ -1,4 +1,4 @@
-//! The Working Directory box of the session selector (SPEC §4.1).
+//! The Working Directory box of the session selector (product §3.1).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

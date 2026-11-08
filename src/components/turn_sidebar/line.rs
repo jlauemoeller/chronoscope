@@ -1,4 +1,4 @@
-//! One row of the turns sidebar as a styled line (SPEC §6.2, §6.3).
+//! One row of the turns sidebar as a styled line (product §5.2, §5.3).
 //!
 //! Columns count from the pane's left border (column 0): the marker is in
 //! column 3, labels in column 7 (the Compaction rule from column 4), and the
@@ -38,7 +38,7 @@ pub const MIN_ROW_WIDTH: usize = LABEL_COLUMN + RIGHT_CHROME + 1;
 /// The label of the Compaction row.
 const COMPACTION: &str = "Compaction";
 
-/// How the row is shown (SPEC §6.3).
+/// How the row is shown (product §5.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Look {
     /// Not selected.

@@ -79,7 +79,7 @@ thread_local! {
 }
 
 /// How many blocks were laid out or rendered on this thread: the work the
-/// turns sidebar must not cause (SPEC §6.6).
+/// turns sidebar must not cause (product §5.6).
 #[cfg(test)]
 pub(crate) fn block_work() -> usize {
     BLOCK_WORK.with(std::cell::Cell::get)
@@ -124,7 +124,7 @@ impl BlockLayout {
     }
 }
 
-/// One turn drawn as a rounded block (SPEC §5.2).
+/// One turn drawn as a rounded block (product §4.2).
 ///
 /// The title shows the role (and model and effort) on the left and the
 /// timestamp on the right. The sections follow, separated by blank rows. The

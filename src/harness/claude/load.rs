@@ -1,5 +1,5 @@
 //! The session loader: parses a transcript on a worker thread and streams the
-//! result as [`ModelUpdate`]s (SPEC §1.1, §7.1, §9.2).
+//! result as [`ModelUpdate`]s (architecture.md#data-flow, product §6.1, §8.2).
 //!
 //! The worker reads the file line by line and feeds an [`Assembler`]. The
 //! assembler's updates are coalesced into batches: the first one goes out as

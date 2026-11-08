@@ -1,4 +1,4 @@
-//! The theme rows of the theme selector (SPEC §8.2, §8.4).
+//! The theme rows of the theme selector (product §7.2, §7.4).
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;

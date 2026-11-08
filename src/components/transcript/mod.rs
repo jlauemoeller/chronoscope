@@ -1,4 +1,4 @@
-//! The transcript (SPEC §4.2, §5, §9.2): the open session's turns as a
+//! The transcript (product §3.2, §4, §8.2): the open session's turns as a
 //! vertically scrolling stack of [`TurnBlock`](super::TurnBlock)s.
 //!
 //! [`Transcript`] is one mounted component, virtualised: it lays blocks out

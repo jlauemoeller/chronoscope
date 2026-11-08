@@ -1,4 +1,4 @@
-//! The OpenCode adapter (SPEC §3.2, §5.1).
+//! The OpenCode adapter (product §2.2, §4.1).
 //!
 //! OpenCode keeps everything in one SQLite database. The adapter reads it
 //! strictly read-only (see [`db`]): projects from `project`, top-level

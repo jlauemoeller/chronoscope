@@ -1,5 +1,5 @@
 //! The Port that turns the session index worker's events into user events
-//! (SPEC §1.1, §1.4).
+//! (architecture.md#data-flow, architecture.md#events-focus-and-keys).
 
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError};

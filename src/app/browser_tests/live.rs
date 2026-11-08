@@ -1,4 +1,4 @@
-//! The browser's live behaviour (SPEC §7.2): following, `↓ N new`, in-place
+//! The browser's live behaviour (product §6.2): following, `↓ N new`, in-place
 //! updates and the `● live` marker, through the app as the running
 //! application drives it, and the screens that show them.
 

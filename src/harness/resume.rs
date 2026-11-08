@@ -1,4 +1,4 @@
-//! Resume command templates shared by the harness adapters (SPEC §6.7).
+//! Resume command templates shared by the harness adapters (product §5.7).
 
 use std::process::Command;
 

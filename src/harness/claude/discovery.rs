@@ -1,4 +1,4 @@
-//! Claude session discovery: projects and session summaries (SPEC §3.1, §4.1,
+//! Claude session discovery: projects and session summaries (product §2.1, §3.1,
 //! §9.2).
 //!
 //! [`ClaudeHarness`] scans every transcript under the data directory once,
@@ -553,7 +553,7 @@ impl Harness for ClaudeHarness {
     }
 
     /// Returns at once: the worker thread finds the transcript, opens it and
-    /// parses it, then keeps watching it (SPEC §7.1) until the handle is
+    /// parses it, then keeps watching it (product §6.1) until the handle is
     /// dropped. A session that cannot be found or read ends in
     /// [`ModelUpdate::Loaded`] with the error logged, not in an `Err`.
     fn load(&self, session: &SessionId, tx: Sender<ModelUpdate>) -> Result<WatchHandle> {

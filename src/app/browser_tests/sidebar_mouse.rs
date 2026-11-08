@@ -1,4 +1,4 @@
-//! The turns sidebar and the mouse (SPEC §6.4, §6.9): the wheel selects the
+//! The turns sidebar and the mouse (product §5.4, §5.9): the wheel selects the
 //! previous or next entry, a click selects a row and focuses the pane, a
 //! double-click does what `Enter` does, and a click on the transcript
 //! focuses it.

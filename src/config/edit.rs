@@ -1,4 +1,4 @@
-//! Writing the chosen theme back to the config file (SPEC §8.4).
+//! Writing the chosen theme back to the config file (product §7.4).
 //!
 //! The file is edited with `toml_edit`, so the user's comments and formatting
 //! survive: only the value of the top-level `theme` key changes.

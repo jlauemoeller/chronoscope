@@ -1,4 +1,4 @@
-//! Tool descriptions shared by the harness adapters (SPEC §5.1): the tool's
+//! Tool descriptions shared by the harness adapters (product §4.1): the tool's
 //! own `description` input, else a label derived from its input, else the
 //! tool name.
 

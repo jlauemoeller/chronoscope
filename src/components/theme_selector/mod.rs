@@ -1,4 +1,4 @@
-//! The theme selector overlay (SPEC §8.4): a small centred list of the
+//! The theme selector overlay (product §7.4): a small centred list of the
 //! registry's themes. Moving the cursor previews the highlighted theme,
 //! `Enter` keeps it and `Esc` gives the old one back; the `App` does the
 //! applying and saving, this component says what the user asked for.

@@ -1,4 +1,4 @@
-//! Claude tool names to [`ToolKind`] and tool descriptions (SPEC §5.1).
+//! Claude tool names to [`ToolKind`] and tool descriptions (product §4.1).
 
 pub use crate::harness::describe::describe;
 use crate::model::ToolKind;

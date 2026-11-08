@@ -1,4 +1,4 @@
-//! The Sessions pane of the session selector (SPEC §4.1, §7.3, §8.2).
+//! The Sessions pane of the session selector (product §3.1, §6.3, §7.2).
 
 use std::sync::Arc;
 

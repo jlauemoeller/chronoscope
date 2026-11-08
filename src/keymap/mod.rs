@@ -1,7 +1,7 @@
-//! The shared keymap (SPEC §1.4, §6, §8.5).
+//! The shared keymap (architecture.md#events-focus-and-keys, product §5, §7.5).
 //!
 //! Every component turns key events into [`Action`]s through a [`Keymap`], for
-//! its own [`Context`]. The keymap holds the default bindings of SPEC §6 with
+//! its own [`Context`]. The keymap holds the default bindings of product §5 with
 //! the user's `[keys.<context>]` overrides applied, and the help metadata
 //! (group + description) from which the help line and the help overlay are
 //! generated.
@@ -162,7 +162,7 @@ pub struct Keymap {
 }
 
 impl Default for Keymap {
-    /// The default keymap of SPEC §6.
+    /// The default keymap of product §5.
     fn default() -> Self {
         let mut contexts: [Vec<Binding>; 5] = Default::default();
         for d in DEFAULTS {

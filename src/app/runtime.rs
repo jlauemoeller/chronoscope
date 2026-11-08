@@ -1,4 +1,4 @@
-//! The main loop (SPEC §1.1) and the startup sequence.
+//! The main loop (architecture.md#data-flow) and the startup sequence.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -88,7 +88,7 @@ fn start_index(harnesses: Vec<Arc<dyn Harness>>, paths: Option<&Paths>) -> Optio
     Some(SessionIndex::start(harnesses, paths.cache_dir.clone()))
 }
 
-/// What the command line asks the app to start with, resolved (SPEC §6.8).
+/// What the command line asks the app to start with, resolved (product §5.8).
 pub(super) struct Startup {
     pub(super) resolution: Resolution,
     /// The lists the request was resolved against; empty when it did not
@@ -259,7 +259,7 @@ pub fn run_app(cli: &Cli) -> anyhow::Result<()> {
     // The event listener stops before the terminal is restored.
     drop(app);
     match plan {
-        // Resume in the harness (SPEC §6.7): the terminal is restored first,
+        // Resume in the harness (product §5.7): the terminal is restored first,
         // then this process is replaced. It does not return.
         Some(plan) if result.is_ok() => {
             let mut guard = Some(guard);

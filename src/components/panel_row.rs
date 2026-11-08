@@ -1,5 +1,5 @@
 //! One label-and-value row of the Session Time and Session Tokens panels
-//! (SPEC §4.2).
+//! (product §3.2).
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;

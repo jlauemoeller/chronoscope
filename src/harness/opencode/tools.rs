@@ -1,4 +1,4 @@
-//! OpenCode tool names to [`ToolKind`] and tool descriptions (SPEC §5.1).
+//! OpenCode tool names to [`ToolKind`] and tool descriptions (product §4.1).
 
 use std::path::Path;
 

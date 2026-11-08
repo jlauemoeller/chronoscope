@@ -1,7 +1,7 @@
 # Copying and the terminal
 
 `y` copies the selected section as displayed, `Y` copies its full content
-(SPEC §6.4). A toast confirms it (`Copied 42 lines`).
+(product §5.4). A toast confirms it (`Copied 42 lines`).
 
 chronoscope puts the text on the system clipboard with `arboard`. When there is
 no display server (`$DISPLAY` and `$WAYLAND_DISPLAY` are both unset on Linux),
@@ -32,4 +32,4 @@ set -sg escape-time 10
 
 ## herdr
 
-herdr's OSC52 behaviour has not been verified yet (SPEC §9.4).
+herdr's OSC52 behaviour has not been verified yet (product §8.4).

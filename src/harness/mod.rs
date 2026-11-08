@@ -28,7 +28,7 @@ pub use anyhow::Result;
 /// there.
 pub(crate) const WRITES_TO_OPEN_FILES_RAISE_EVENTS: bool = !cfg!(target_os = "macos");
 
-/// A coding-agent harness whose sessions can be browsed (SPEC §1.1).
+/// A coding-agent harness whose sessions can be browsed (architecture.md#data-flow).
 ///
 /// Harnesses are shared with the index worker threads, hence `Send + Sync`.
 pub trait Harness: Send + Sync {
@@ -64,7 +64,7 @@ pub trait Harness: Send + Sync {
     /// The sessions of `project`, sorted by start time, newest first.
     fn sessions(&self, project: &ProjectId) -> Result<Vec<SessionSummary>>;
 
-    /// Computes the list stats of `session` (SPEC §4.1) with a full parse.
+    /// Computes the list stats of `session` (product §3.1) with a full parse.
     /// Reads the whole transcript, so it is for worker threads.
     fn stats(&self, session: &SessionSummary) -> Result<SessionStats>;
 
@@ -73,7 +73,7 @@ pub trait Harness: Send + Sync {
     /// (Claude: path, size and mtime, and the count, total size and newest
     /// mtime of the subagent transcripts; OpenCode: db, session id and the
     /// newest `time_updated` of the session and its descendants). It keys the
-    /// stats cache (SPEC §9.2), so equal keys must mean equal stats. Cheap: it
+    /// stats cache (product §8.2), so equal keys must mean equal stats. Cheap: it
     /// may stat files but never reads them.
     ///
     /// The key starts with [`HarnessId::cache_prefix`] and a colon
@@ -185,7 +185,7 @@ pub fn registered_harnesses(config: &Config) -> Vec<HarnessId> {
         .collect()
 }
 
-/// Constructs the enabled harnesses from `config` (SPEC §6.6), in tab order.
+/// Constructs the enabled harnesses from `config` (product §5.6), in tab order.
 ///
 /// A harness with `enabled = false` is not constructed, so its tab is hidden
 /// (its number stays reserved). One whose data store is missing is kept: its

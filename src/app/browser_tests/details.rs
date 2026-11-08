@@ -1,7 +1,7 @@
-//! The details overlay in the app (SPEC §1.4, §5): opening, focus, the keys
-//! that work while it is open, scrolling, the mouse and the screens. Keys
-//! travel through the app's ports and `GlobalEvents`, as they do in the
-//! running application.
+//! The details overlay in the app (architecture.md#events-focus-and-keys,
+//! product §4): opening, focus, the keys that work while it is open,
+//! scrolling, the mouse and the screens. Keys travel through the app's ports
+//! and `GlobalEvents`, as they do in the running application.
 
 use std::cell::RefCell;
 use std::rc::Rc;

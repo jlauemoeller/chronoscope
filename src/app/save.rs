@@ -1,4 +1,4 @@
-//! Saving a section and exporting the session to files (SPEC §6.4, §9.5).
+//! Saving a section and exporting the session to files (product §5.4, §8.5).
 //!
 //! 1. `w` / `W` in the transcript answer [`Msg::SaveSection`] with the text,
 //!    `e` / `E` answer [`Msg::Export`] with the markdown document.
@@ -264,7 +264,7 @@ impl App {
     }
 
     /// Whether `path` is inside a directory a harness reads its data from
-    /// (SPEC §9.5: chronoscope never writes there). The check is made when
+    /// (product §8.5: chronoscope never writes there). The check is made when
     /// the path is given, not again when the file is written, so a link made
     /// in between is not caught.
     fn is_harness_data(&self, path: &Path) -> bool {

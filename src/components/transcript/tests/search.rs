@@ -1,4 +1,4 @@
-//! Searching the transcript (SPEC §6.2, task 024): the attribute exchange
+//! Searching the transcript (product §5.2, task 024): the attribute exchange
 //! with the App, the jumps, the temporary unfolding, the highlights.
 
 use tuirealm::command::Cmd;

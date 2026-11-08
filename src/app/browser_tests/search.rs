@@ -1,4 +1,4 @@
-//! Searching the transcript (SPEC §6.2) through the app: the prompt, the
+//! Searching the transcript (product §5.2) through the app: the prompt, the
 //! worker and its port, the results, the help line and the screens.
 
 use tuirealm::state::{State, StateValue};

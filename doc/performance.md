@@ -1,6 +1,6 @@
 # Performance
 
-SPEC §9.2 sets four budgets for a session of about 100 MB: first content within
+product §8.2 sets four budgets for a session of about 100 MB: first content within
 300 ms, a full parse under 2 s, every frame under 16 ms, and memory within
 roughly 3x the file size. This page records what was measured against them and
 how to measure again.
@@ -194,7 +194,7 @@ to be far under a frame (the unfold is up to 10 ms).
 
 ## The turns sidebar (task 010)
 
-The turns sidebar (SPEC §4.2) keeps one slot per turn and the list of turns that
+The turns sidebar (product §3.2) keeps one slot per turn and the list of turns that
 have an entry, and derives only the sections of a turn (`derive_sections`),
 never a layout or a render. The budget test builds its rows during the load, as
 the application does, and draws the pane after each of 100 selection moves
@@ -230,14 +230,14 @@ starting at the ends of the list.
 
 ## Stats of a session with many subagents
 
-A session's stats (SPEC §5.1) include the tokens of its subagents, which are
-read from the subagent transcripts (SPEC §3.1). The largest local session has
+A session's stats (product §4.1) include the tokens of its subagents, which are
+read from the subagent transcripts (product §2.1). The largest local session has
 320 subagent files, 207 MB in total. Parsing all of them takes about 0.3 s with
 the files in the OS cache, so the first computation stays background work on
 the stats pool. A running session of that kind would parse them all again on
 every coalesced rebuild, for hours, so each file's usage is kept in memory,
 keyed by (path, size, mtime), and a recomputation reads only the files that
-changed (SPEC §9.2). `cargo bench --bench session_stats` measures both.
+changed (product §8.2). `cargo bench --bench session_stats` measures both.
 
 The fixture (`bench_support::generate_subagent_fixture`) is one Claude session
 with a main transcript of 4 MiB, made like the mixed session above (5% large

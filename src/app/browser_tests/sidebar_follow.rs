@@ -1,4 +1,4 @@
-//! The turns sidebar follows the transcript (SPEC §6.3): its selected row is
+//! The turns sidebar follows the transcript (product §5.3): its selected row is
 //! the turn that contains the transcript's selected section, whichever path
 //! moved that selection, and it stays visible.
 

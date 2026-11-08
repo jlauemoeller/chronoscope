@@ -2,7 +2,7 @@
 
 `w` / `Ctrl-s` save the selected section as displayed, `W` saves its full
 content, `e` / `Ctrl-e` export the session as markdown as currently folded, and
-`E` exports it in full (SPEC §6.4). Each asks for a path in the help line
+`E` exports it in full (product §5.4). Each asks for a path in the help line
 (`Save to: ` / `Export to: `) with a default filled in, asks `Overwrite
 <path>? (y/n)` when the file exists, and ends with a toast (`Saved to <path>`,
 `Exported to <path>`, `Save failed: <error>`, `Export failed: <error>`).
@@ -21,7 +21,7 @@ content, `e` / `Ctrl-e` export the session as markdown as currently folded, and
 - Relative paths are relative to the directory chronoscope was started in; `~`
   is the home directory. No directory is created: a missing parent is a
   failure.
-- chronoscope never writes inside a harness's data directory (SPEC §9.5): a
+- chronoscope never writes inside a harness's data directory (product §8.5): a
   path there is refused with `Refusing to write into harness data`. Paths are
   compared after resolving `..` and symlinks, including a symlink that points
   to a file that does not exist yet. The check is made when the path is given;

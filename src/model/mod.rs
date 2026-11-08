@@ -1,4 +1,4 @@
-//! The harness-agnostic conversation model (SPEC §5.1).
+//! The harness-agnostic conversation model (product §4.1).
 //!
 //! Harness adapters translate their native format into these types. Turns
 //! are shared as [`Arc<Turn>`] so that [`ModelUpdate`]s can be cloned cheaply
@@ -24,7 +24,7 @@ pub use sources::{
     SourceKind, SourceRef, SourceRow, SourceValue, TurnSources,
 };
 
-/// Tool results longer than this many bytes are stored lazily (SPEC §9.2).
+/// Tool results longer than this many bytes are stored lazily (product §8.2).
 pub const INLINE_OUTPUT_LIMIT: usize = 4096;
 
 macro_rules! string_id {
@@ -178,7 +178,7 @@ pub struct SessionSummary {
     pub project: ProjectId,
     /// The real working directory, when known.
     pub cwd: Option<PathBuf>,
-    /// The session title (SPEC §4.1).
+    /// The session title (product §3.1).
     pub title: String,
     /// The first human prompt, when there is one.
     pub first_prompt: Option<String>,
@@ -197,7 +197,7 @@ pub struct SessionSummary {
 /// A session counts as active when its last activity is at most this old.
 pub const ACTIVE_WINDOW: chrono::Duration = chrono::Duration::seconds(60);
 
-/// Whether `session` is active at `now` (SPEC §7.2): the harness says it is
+/// Whether `session` is active at `now` (product §6.2): the harness says it is
 /// not idle, or it had activity within the last [`ACTIVE_WINDOW`]. The
 /// selector's `●` marker and the browser's `● live` header share this rule.
 pub fn is_active(session: &SessionSummary, now: DateTime<Utc>) -> bool {
@@ -210,7 +210,7 @@ pub fn is_active_at(last_activity: DateTime<Utc>, idle: Option<bool>, now: DateT
     idle == Some(false) || now.signed_duration_since(last_activity) <= ACTIVE_WINDOW
 }
 
-/// What the session list shows to the right of a row (SPEC §4.1).
+/// What the session list shows to the right of a row (product §3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStats {
     /// The number of User turns.
@@ -593,7 +593,7 @@ pub enum ModelUpdate {
     /// [`apply`](Self::apply).
     LocalCommands(Vec<String>),
     /// When the session's data last changed, for the browser's `● live`
-    /// marker (SPEC §7.2). Sent after the initial load and after every
+    /// marker (product §6.2). Sent after the initial load and after every
     /// processed change. `idle` is the harness's own idleness flag
     /// (OpenCode's `time_idle`); `None` when the harness has none.
     Activity {

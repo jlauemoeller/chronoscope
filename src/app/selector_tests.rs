@@ -1179,7 +1179,7 @@ theme_snapshot!(sessions_focused_theme_nord, "nord");
 theme_snapshot!(sessions_focused_theme_tokyo_night, "tokyo-night");
 theme_snapshot!(sessions_focused_theme_solarized, "solarized");
 
-// -- cell-level checks of the geometry and styles (SPEC §8.2)
+// -- cell-level checks of the geometry and styles (product §7.2)
 
 /// The overlay's panes at 120x40: Projects at (4, 6) 36x24, Sessions at
 /// (41, 6) 75x13 (the panels take the other 11 rows). The first list row is

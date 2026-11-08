@@ -1,4 +1,4 @@
-//! Follow mode and the `↓ N new` count (SPEC §7.2).
+//! Follow mode and the `↓ N new` count (product §6.2).
 //!
 //! While the viewport shows the last row the transcript *follows*: new
 //! content scrolls into view. Once the user scrolls or selects so that the

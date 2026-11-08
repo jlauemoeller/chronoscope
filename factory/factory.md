@@ -37,10 +37,12 @@ Refuse if `factory/state/backlog.md`, `factory/state/tasks/` or
 spec with the factory script (see "The factory script"). It writes the
 absolute path of <spec>, with any `~` expanded, to
 `factory/state/spec-source`. It copies <spec> to `factory/state/SPEC.md`,
-and every Markdown file that <spec> links to with a relative link
-(following links transitively) into `factory/state/spec/`. It rewrites those
-links so they resolve from the copies, and reports any linked document that
-is missing. Then spawn the Planner. It runs the preflight first (see
+the project documents next to <spec> (see "The project documents") to
+`factory/state/project/`, and every Markdown file that <spec> or a project
+document links to with a relative link (following links transitively) into
+`factory/state/spec/`. It rewrites those links so they resolve from the
+copies, and reports any linked document that is missing. Then spawn the
+Planner. It runs the preflight first (see
 "Preflight"). When the Planner is done:
 - If it wrote `backlog.md`, the orchestrator checks the plan (see "Checking
   the plan"), builds `board.json`, and halts with a summary of the backlog,
@@ -64,9 +66,10 @@ is missing. Then spawn the Planner. It runs the preflight first (see
 Restart a stopped loop. The session using the command becomes the
 orchestrator. Before choosing work it reconciles state:
 - If `preflight.md` exists and `backlog.md` doesn't (the preflight state),
-  re-copy the spec from the path in `spec-source`, replacing `SPEC.md` and
-  `spec/` the same way `start` does. Then spawn the Planner again and act on
-  its result as `start` does. Nothing else in this list applies.
+  re-copy the spec from the path in `spec-source`, replacing `SPEC.md`,
+  `project/` and `spec/` the same way `start` does. Then spawn the Planner
+  again and act on its result as `start` does. Nothing else in this list
+  applies.
 - If `board.json` is missing, rebuild it from `backlog.md` and the files in
   `factory/state/tasks/`.
 - If every task is `Planned`, no task has a round directory, and
@@ -176,10 +179,14 @@ The agent roles are:
   unless the result is `PREFLIGHT: READY`. It then divides
   `factory/state/SPEC.md` (with its linked documents in
   `factory/state/spec/`) into a suitable number of tasks that together
-  implement the work described in them. Each task becomes a directory
+  implement the work described in them. It reads the project documents (see
+  "The project documents"): it plans only the changes the spec describes,
+  splits them along the parts that `architecture.md` describes, and ends the
+  plan with the documentation task. Each task becomes a directory
   `factory/state/tasks/<task-id>/`. In each task directory the Planner writes
   a `task.md` file containing everything from the spec that a builder needs
-  to implement the task.
+  to implement the task. It doesn't copy the project guidelines into
+  `task.md`, because the Builder and the reviewers read them.
 
   The factory script reads `task.md`, so its shape is fixed. The first line
   is `# <task-id>: <title>`. Then come these sections, as `##` headings with
@@ -263,7 +270,8 @@ The agent roles are:
   It implements the task from `factory/state/tasks/<task-id>/task.md` and
   tests the result against that file's acceptance criteria. It reads the
   baselines of the task's specialist reviewers under **Assumptions** in
-  `preflight.md`. It may read `SPEC.md` for context, but where the two
+  `preflight.md`. It follows the project guidelines, and may read `SPEC.md`
+  and `product.md` for context (see "The project documents"). Where they
   differ, `task.md` wins. The work is not done until every command in the
   test gate in `factory/state/stack.md` passes.
 
@@ -321,8 +329,9 @@ The agent roles are:
 
 - **The Code Reviewer** reviews the changes on the task branch
   (`git diff main...HEAD`). It checks that they follow best practices for the
-  language and frameworks, and any additional guidelines in
-  `factory/state/SPEC.md`. It re-runs the test gate in the no-update mode
+  language and frameworks, the project guidelines (see "The project
+  documents"), and any additional guidelines in `factory/state/SPEC.md`. It
+  re-runs the test gate in the no-update mode
   from `stack.md`, so that failing snapshots don't write files into the repo.
   It produces a review with all its findings, and marks it PASS or FAIL (see
   "Review findings"). The review is written to
@@ -375,8 +384,9 @@ The agent roles are:
 
 - **The Approver** reads `task.md`, the build notes, and all reviews from the
   current round, and the reviewers' evidence. It may also read earlier
-  rounds, `SPEC.md` and `stack.md` for context. Where `task.md` and `SPEC.md`
-  differ, `task.md` wins. It produces a final verdict by judging whether any
+  rounds, `SPEC.md`, the project documents and `stack.md` for context. Where
+  they differ, `task.md` wins over `SPEC.md`, and `SPEC.md` over the project
+  documents. It produces a final verdict by judging whether any
   remaining review issues are minor enough to ignore, can be fixed by
   another round, or need human review. It writes its findings and verdict to
   `factory/state/tasks/<task-id>/<round-id>/verdict.md` and marks the
@@ -447,6 +457,8 @@ The rest of `preflight.md` has these sections:
   on:
   - the spec contradicts itself, or contradicts the existing code, on
     something tasks would depend on;
+  - the spec contradicts a project guideline without saying that it
+    overrides it (see "The project documents");
   - information a plan needs is missing and no reasonable assumption covers
     it, such as an undefined core behaviour, or no way to tell the stack of a
     new project;
@@ -460,9 +472,9 @@ The rest of `preflight.md` has these sections:
   would resolve it.
 - **Assumptions:** smaller gaps, with the assumption the plan makes for each.
   It always includes the baseline for each specialist reviewer the plan is
-  likely to use (see "Specialist reviewers"), taken from the spec where the
-  spec states it. The UI Reviewer's baseline is each task's `UI` section, so
-  it isn't listed here.
+  likely to use (see "Specialist reviewers"), taken from the spec or the
+  project documents where they state it. The UI Reviewer's baseline is each
+  task's `UI` section, so it isn't listed here.
 - **Tools on offer:** each recommended tool that isn't installed, what it
   would check, the reviewer or gate section it serves, and the install
   command. A tool that a formatting, linting or test command needs is never
@@ -503,18 +515,79 @@ halts and says what is wrong, and leaves `loop.state` at
 plan-review halt tells the human that removing a task from `backlog.md` also
 means deleting its task directory.
 
+### The project documents
+
+A spec describes one cycle: the changes that cycle makes. What holds from one
+cycle to the next is in the project documents, which sit in the same
+directory as the spec. Each one is optional:
+- `product.md`: the product as built, as its users see it. The spec
+  describes its changes against it. It is context, never work to plan.
+- `architecture.md`: how the project is built: its parts, how they fit
+  together, and the stack decision with its reasons.
+- `coding.md`: how the project uses its language and frameworks: where files
+  go, naming, and the rules its parts follow.
+- `testing.md`: how the project is tested: where tests go and how they are
+  structured, which kinds of test a change needs, the test tooling, and the
+  coverage expected.
+
+`architecture.md`, `coding.md` and `testing.md` are the project guidelines.
+Every rule in them binds every task and every review, except a rule that
+starts with `Prefer:`, which is a preference. A breach of a rule is a hard
+must-fix and a breach of a preference is a nit (see "Review findings"), so
+each rule is written so that a reviewer can check it. Where the guidelines
+say nothing, best practice for the language and frameworks applies. A rule
+says what must or must not be done. What a guideline describes as it is
+today, such as an inventory, a table, a diagram, a list of dependencies or
+the reasons for a decision, is context and not a rule: adding to it isn't a
+breach, and the documentation task brings it up to date.
+
+The spec copy (see `/factory start`) copies the project documents to
+`factory/state/project/`, so a cycle runs against them as they were when it
+started, and its archive keeps them. Agents read the copies. Only the
+documentation task changes the originals, and its changes apply from the
+next cycle.
+
+Where the documents differ, `task.md` wins over the spec, and the spec over
+the project documents. A spec that departs from a guideline says so, because
+the preflight treats a silent contradiction as a spec issue (see
+"Preflight"). That way every departure is a decision, which the
+documentation task records.
+
+Each role reads what it needs:
+
+| Role | Reads |
+|---|---|
+| Planner | All four: `product.md` for what exists, `architecture.md` to split the work along the project's parts, `testing.md` for the stack profile and the tests each task needs. |
+| Builder | The guidelines, which it follows, and `product.md` for context. |
+| Code Reviewer | The guidelines. A breach of one is in its focus, whichever file it is in. |
+| Feature Reviewer | `testing.md`, for the tests a change needs, and `product.md`, for the behaviour a change must not break. |
+| UI Reviewer | `testing.md`, for the snapshot tests, and `product.md`, for the views a change must not break. |
+| Other specialists | `product.md` and `architecture.md`, for their baseline. |
+| Approver | All four, to judge whether a finding breaches a guideline. |
+
+Every plan ends with the documentation task, unless the spec says otherwise.
+It folds the cycle's changes into `product.md`, or writes `product.md` from
+the spec as built when there is none yet. It records every rule the cycle
+adds or changes in the guideline it belongs in, and carries out anything else
+the spec asks to document. The Planner writes these changes into its
+acceptance criteria. When the spec's directory is outside the repository,
+the plan has no documentation task.
+
 ### The stack profile
 
-`factory/state/stack.md` is the only place that names the project's tools.
-Everything else in this prompt refers to it, so the factory works the same on
-any stack. The Planner writes it during the preflight. If an earlier cycle's
-profile exists (the most recently modified `factory/archive/*/stack.md`), the
-Planner starts from it: it keeps its choices, the human's edits and the
-declined tools, re-checks every tool, and changes only what the project or the
-spec now needs. When the preflight runs again in the same cycle, the Planner
-starts from the current `stack.md` instead, so the same applies to it.
-Otherwise it writes the profile from `SPEC.md` and, when the
-project exists, from its manifests, lockfiles, CI configuration and scripts.
+`factory/state/stack.md` is the only place that gives the commands the
+agents run. `testing.md` may say which test tools the project uses and how,
+and the profile turns that into commands. Everything else in this prompt
+refers to the profile, so the factory works the same on any stack. The
+Planner writes it during the preflight. If an earlier cycle's profile exists
+(the most recently modified `factory/archive/*/stack.md`), the Planner starts
+from it: it keeps its choices, the human's edits and the declined tools,
+re-checks every tool, and changes only what the project, the spec or
+`testing.md` now needs. When the preflight runs again in the same cycle, the
+Planner starts from the current `stack.md` instead, so the same applies to
+it. Otherwise it writes the profile from `SPEC.md`, `testing.md` and, when
+the project exists, from its manifests, lockfiles, CI configuration and
+scripts.
 It prefers the tools the project already uses. The human sees the profile at
 any preflight halt and at the `awaiting-plan-review` halt. After planning,
 only the human changes it. It has these sections:
@@ -568,7 +641,7 @@ after security and data protection, the Approver's priority order.
 
 | Key | Reviewer | Runs on | Focus |
 |---|---|---|---|
-| `code` | Code Reviewer | every task | Best practice for the language and frameworks, and any guidelines in `SPEC.md`. It re-runs the test gate in the no-update mode. |
+| `code` | Code Reviewer | every task | Best practice for the language and frameworks, the project guidelines, and any guidelines in `SPEC.md`. It re-runs the test gate in the no-update mode. |
 | `feature` | Feature Reviewer | every task | The implementation matches the feature description and every acceptance criterion in `task.md`; the Builder's self-check claims hold against the code and the tests; the edge cases and error paths of the behaviour the task adds. |
 | `security` | Security Reviewer | tasks that handle authentication, authorisation, sessions, secrets or untrusted input, run external commands, or add dependencies | Injection, access control, secret handling, unsafe deserialisation, dependency risk, and the security requirements in the spec. |
 | `privacy` | Privacy Reviewer | tasks that collect, store, log, process or transmit personal data | The data-protection requirements in the spec and the regime it names (for example GDPR which is also the default): data minimisation, purpose and consent, retention and deletion, access and export, personal data in logs, and transfer to third parties. |
@@ -581,9 +654,11 @@ A task's `Reviews` section says which reviewers run on it, and `code` and
 
 Every reviewer follows the same contract:
 - It reviews the changes on the task branch (`git diff main...HEAD`) within
-  its focus, against `task.md`, `SPEC.md` and the documents in
-  `factory/state/spec/`. Where `task.md` and `SPEC.md` differ, `task.md`
-  wins: a difference from `SPEC.md` that `task.md` settles isn't a finding.
+  its focus, against `task.md`, `SPEC.md`, the documents in
+  `factory/state/spec/` and the project documents it reads (see "The project
+  documents"). Where `task.md` and `SPEC.md` differ, `task.md` wins: a
+  difference from `SPEC.md` that `task.md` settles isn't a finding. In the
+  same way, `SPEC.md` wins over the project documents.
   If the reviewer thinks `task.md` itself departs from the spec in a way
   that matters, it says so as a nit for the human.
 - Any tests it runs in the repo run in the no-update mode from `stack.md`. It
@@ -608,12 +683,13 @@ besides the new agent file, several of them list the roster's keys (see
 ### Specialist reviewers
 
 Each specialist judges its concern against a baseline: the scope of that
-concern for this project. The baseline comes from the spec, or else from
-**Assumptions** in `preflight.md`; the UI Reviewer's comes from the task's
-`UI` section. The specialist states the baseline at the top of its review. A
-finding that matters only under a wider baseline is a nit. Each description
-says what the reviewer reads beyond the diff and what is must-fix in its
-concern. Anything else in the concern is a nit.
+concern for this project. The baseline comes from the spec or the project
+documents, or else from **Assumptions** in `preflight.md`; the UI
+Reviewer's comes from the task's `UI` section. The specialist states the
+baseline at the top of its review. A finding that matters only under a wider
+baseline is a nit. Each description says what the reviewer reads beyond the
+diff and what is must-fix in its concern. Anything else in the concern is a
+nit.
 
 Each must-fix below is in a hard category (see "Review findings"): a bug, a
 security or data-loss risk, or an unmet spec requirement. There are two
@@ -665,14 +741,22 @@ which ones remove the cause and which only fix the input it reported, and
 puts one that removes the cause first.
 - **must-fix:** a failing test gate; an unmet acceptance criterion or spec
   requirement; a bug or wrong behaviour; a security or data-loss risk; a UI
-  that contradicts the task's `UI` section; a breach of a guideline in
-  `SPEC.md`; a missing or ineffective test for required behaviour; or a clear
-  violation of language or framework best practice that would cause real
-  problems. The last two are the *soft* categories and the rest are *hard*.
-  Later rounds treat the two kinds differently (see "Later rounds").
-- **nit:** anything else worth mentioning, such as style preferences, small
-  naming or documentation issues, minor inefficiencies off the hot path, and
-  cosmetic details the spec doesn't pin down.
+  that contradicts the task's `UI` section; a breach of a project guideline
+  or of a guideline in `SPEC.md`; a missing or ineffective test for required
+  behaviour; or a clear violation of language or framework best practice
+  that would cause real problems. The last two are the *soft* categories and
+  the rest are *hard*. Later rounds treat the two kinds differently (see
+  "Later rounds").
+- **nit:** anything else worth mentioning, such as style preferences, a
+  breach of a `Prefer:` rule, small naming or documentation issues, minor
+  inefficiencies off the hot path, and cosmetic details the spec doesn't pin
+  down.
+
+A guideline binds what a task adds. Where code on main already breaks a
+guideline, a change that extends that code in the same way, such as a test
+added to a test file that is in the wrong place, is a nit and not a
+must-fix. The nit names the code, so that the human can plan a clean-up
+instead of having it grow an unrelated task.
 
 A review is FAIL if it has at least one must-fix finding, and PASS otherwise.
 A PASS review still lists its nits. Reviewers don't raise a nit to must-fix
@@ -1050,7 +1134,8 @@ factory/
     backlog.md                     # queue of tasks
     SPEC.md                        # The spec file defining the work
     spec-source                    # path of the original spec
-    spec/                          # documents linked from SPEC.md
+    project/                       # the project documents, as the cycle started
+    spec/                          # documents linked from SPEC.md and project/
     preflight.md                   # Planner: PREFLIGHT: READY | TOOLS | BLOCKED
     stack.md                       # stack profile: test gate and tools
     tasks/                         # Tasks created by the planner
@@ -1334,15 +1419,20 @@ text under its heading.
 
 The spec copy:
 - writes the absolute path of the spec to `spec-source`;
-- follows relative links to Markdown files transitively, including
-  reference-style links and links whose text wraps across lines;
+- copies each project document that exists in the spec's directory to
+  `project/`, under its own name (see "The project documents");
+- follows relative links to Markdown files transitively, from the spec and
+  from the project documents alike, including reference-style links and
+  links whose text wraps across lines;
 - ignores links in code: inline code, fenced code and indented code
   blocks;
 - keeps anchors;
-- rewrites every link to the spec itself as a link to `SPEC.md`, so the spec
-  is never copied twice;
+- rewrites every link to the spec itself as a link to `SPEC.md`, and every
+  link to a project document as a link to its copy in `project/`, so
+  neither is ever copied twice;
 - gives copies with the same file name distinct names;
-- replaces `SPEC.md` and `spec/` when it runs again;
+- replaces `SPEC.md`, `project/` and `spec/` when it runs again, so a project
+  document deleted since the last copy is gone from `project/`;
 - lists every linked document that is missing.
 
 Before committing the script, run every command against a sample
@@ -1352,7 +1442,9 @@ repository, never the real one. Cover:
   with explanations in its bullets;
 - a spec whose linked documents link to each other, back to the spec and to
   a missing file, with a link that wraps across lines and one in an
-  indented code block.
+  indented code block;
+- a spec with some of the project documents next to it, one of which the
+  spec links to and one of which links to a document the spec doesn't.
 
 ### The task orchestrator
 
@@ -1383,14 +1475,16 @@ also gives the scratch-directory rule (see "Rules").
 The content comes from the role's description under "The Floor Plan", plus
 the sections that role depends on:
 - **The Planner:** "Identifiers", "Preflight", "Checking the plan", "The
-  stack profile" and "The reviewer roster".
-- **The Builder:** "The stack profile", "The reviewer roster" (the focus of
-  every row, `code` and `feature` included), "Specialist reviewers" and
-  "Review findings", for its self-check.
-- **The reviewers:** "The stack profile" (for no-update mode and
+  project documents", "The stack profile" and "The reviewer roster".
+- **The Builder:** "The project documents", "The stack profile", "The
+  reviewer roster" (the focus of every row, `code` and `feature` included),
+  "Specialist reviewers" and "Review findings", for its self-check.
+- **The reviewers:** "The project documents" (with the row of the table for
+  that reviewer), "The stack profile" (for no-update mode and
   **Concurrency**), "The reviewer roster", "Specialist reviewers", "Review
   findings" and "Later rounds".
-- **The Approver:** "Review findings", for the hard and soft categories.
+- **The Approver:** "The project documents", and "Review findings", for the
+  hard and soft categories.
 
 ### The dashboard
 

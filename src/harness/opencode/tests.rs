@@ -1,4 +1,4 @@
-//! Adapter tests against the fixture database (SPEC §9.6).
+//! Adapter tests against the fixture database (testing.md#what-is-tested).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1151,7 +1151,7 @@ fn for_every_session_the_selectors_turn_count_is_the_number_of_user_rows() {
             if session.id.as_str() == "ses_bad" {
                 // The known exception: the SQL count sees 2 `user` rows, but
                 // the second row's `data` is `[]`, which the assembler skips
-                // and counts (SPEC §9.5), so the sidebar shows 1.
+                // and counts (product §8.5), so the sidebar shows 1.
                 assert_eq!((counted, user_rows), (2, 1));
             } else {
                 assert_eq!(counted, user_rows, "{}", session.id);

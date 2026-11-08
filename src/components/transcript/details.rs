@@ -1,4 +1,4 @@
-//! The details of the selected section (SPEC §5): the content of the details
+//! The details of the selected section (product §4): the content of the details
 //! overlay, made when the key is pressed.
 
 use super::Transcript;

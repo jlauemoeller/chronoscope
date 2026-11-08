@@ -1,4 +1,4 @@
-//! Duration display (SPEC §2.4): one format for the session selector's rows
+//! Duration display (product §3.1): one format for the session selector's rows
 //! and the stats footer, and for every later place that shows a duration.
 
 use std::time::Duration;

@@ -1,4 +1,4 @@
-//! What the details overlay shows (SPEC §5.3): groups of `label  value`
+//! What the details overlay shows (product §4.3): groups of `label  value`
 //! rows, and how they are laid out in the overlay.
 //!
 //! The content is plain data, so it can ride in a message and be snapshotted
@@ -269,7 +269,7 @@ fn columns(text: &str) -> usize {
 }
 
 /// `text` cut into pieces at most `width` columns wide, at any grapheme
-/// (paths and long tokens are never hidden, SPEC §5.5). Always at least one
+/// (paths and long tokens are never hidden, product §4.5). Always at least one
 /// piece. A grapheme wider than `width` gets a piece of its own. A space
 /// the cut falls on is dropped, so a piece never starts with it and the
 /// text stays under the value column.

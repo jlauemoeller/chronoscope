@@ -1,6 +1,8 @@
 //! The session selector's part of the application: the index data of every
 //! harness, the selection, the focused pane, and the handlers that keep the
-//! selector components in step with them (SPEC §1.2, §1.4, §4.1, §7.3).
+//! selector components in step with them
+//! (architecture.md#application-structure,
+//! architecture.md#events-focus-and-keys, product §3.1, §6.3).
 //!
 //! The `App` owns the data and the selection. The lists own their cursor and
 //! scroll offset and report the user's moves as [`SelectorMsg`]s; when the
@@ -239,7 +241,7 @@ impl SelectorState {
         self.registered.iter().all(|h| self.data.contains_key(h))
     }
 
-    /// The harness and project to start on (SPEC §4.1): the project whose
+    /// The harness and project to start on (product §3.1): the project whose
     /// cwd is the working directory or its deepest ancestor, in the lowest
     /// numbered harness on a tie and the most recently active project of a
     /// harness on a tie; else the first project of the first available
@@ -686,7 +688,7 @@ impl App {
         let available = data.available;
         let old = self.selector.data.insert(harness, data);
         if !available && self.selector.current == Some(harness) {
-            // An unavailable harness cannot stay selected (SPEC §6.6): show
+            // An unavailable harness cannot stay selected (product §5.6): show
             // the preselection among the others, or nothing.
             self.selector.current = None;
             self.selector.project = None;

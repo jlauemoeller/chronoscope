@@ -1,4 +1,4 @@
-//! Deciding which theme is active (SPEC §8.1, §8.5, §9.4).
+//! Deciding which theme is active (product §7.1, §7.5, §8.4).
 //!
 //! Resolution picks a theme from the [`ThemeRegistry`], applies the
 //! `transparent_background` override from the config and then adapts it to the

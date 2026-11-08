@@ -1,5 +1,5 @@
 //! The text of the selected section for the clipboard and for files, and the
-//! session as a markdown document (SPEC §6.4).
+//! session as a markdown document (product §5.4).
 
 use super::Transcript;
 use crate::components::turn_block::export::{ExportSettings, export_markdown};

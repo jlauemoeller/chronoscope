@@ -1,6 +1,7 @@
-//! The session browser's part of the application (SPEC §1.2, §1.4, §4.1,
-//! §4.2): opening a session, the updates of its load, and the selector over
-//! the browser.
+//! The session browser's part of the application
+//! (architecture.md#application-structure,
+//! architecture.md#events-focus-and-keys, product §3.1, §4.2): opening a
+//! session, the updates of its load, and the selector over the browser.
 //!
 //! Opening a session loads it on a worker through its harness. The worker's
 //! [`ModelUpdate`](crate::model::ModelUpdate)s come back as
@@ -513,7 +514,7 @@ impl App {
         }
     }
 
-    // -- subagent transcripts (SPEC §5.4)
+    // -- subagent transcripts (product §4.4)
 
     /// `a` on a subagent section: asks the harness for the transcript of the
     /// subagent that tool call `call` started and mounts a `Transcript` for
@@ -795,7 +796,7 @@ impl App {
         }
     }
 
-    /// Re-evaluates whether the session is live (SPEC §7.2) and pushes the
+    /// Re-evaluates whether the session is live (product §6.2) and pushes the
     /// result to the header when it changed. Runs on every `Tick`, so the
     /// marker goes out once the session has been quiet for a minute.
     pub(super) fn refresh_live(&mut self) {
@@ -946,7 +947,7 @@ impl App {
     }
 
     /// Shows the status items in the help line: the progress of the load,
-    /// then `↓ N new`, then the search position (`3/17`, SPEC §4.2).
+    /// then `↓ N new`, then the search position (`3/17`, product §3.2).
     pub(super) fn refresh_status(&mut self) {
         let mut items = Vec::new();
         if let Some(percent) = self.browser.loading {

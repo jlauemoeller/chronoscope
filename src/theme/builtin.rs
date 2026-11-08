@@ -1,4 +1,4 @@
-//! The seven themes compiled into the binary (SPEC §8.3).
+//! The seven themes compiled into the binary (product §7.3).
 //!
 //! The palettes are ported from [ratcn](https://crates.io/crates/ratcn) 0.0.6
 //! (MIT, Copyright (c) 2026 Kristofer Lund; see `THIRD-PARTY-NOTICES.md`),

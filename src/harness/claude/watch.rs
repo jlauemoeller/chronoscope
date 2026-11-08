@@ -1,4 +1,4 @@
-//! Keeping a loaded session live (SPEC §7.1).
+//! Keeping a loaded session live (product §6.1).
 //!
 //! After the initial parse the worker watches the session file's directory
 //! (and the session's `subagents/` directory) with `notify`. Events are

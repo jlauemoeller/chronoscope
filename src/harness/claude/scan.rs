@@ -1,4 +1,4 @@
-//! The per-file scan behind session discovery (SPEC §3.1, §9.2).
+//! The per-file scan behind session discovery (product §2.1, §8.2).
 //!
 //! A scan reads one transcript once, front to back, and keeps only what the
 //! session list needs. Lines that are not valid entries are skipped, so a

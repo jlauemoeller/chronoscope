@@ -1,4 +1,4 @@
-//! Terminal setup and restore (SPEC §9.5).
+//! Terminal setup and restore (product §8.5).
 //!
 //! The terminal is put into raw mode on the alternate screen (with mouse
 //! capture only when the config asks for it) by a [`TerminalGuard`]. It is

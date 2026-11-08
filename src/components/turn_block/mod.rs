@@ -1,4 +1,4 @@
-//! The turn block (SPEC §5.2): one conversation turn as a rounded block of
+//! The turn block (product §4.2): one conversation turn as a rounded block of
 //! sections.
 //!
 //! * [`TurnBlock`] is the widget: border, titles, the `▒` selection marker.

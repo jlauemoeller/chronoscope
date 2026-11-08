@@ -1,4 +1,4 @@
-//! Sections: the unit of selection, folding, copying and saving (SPEC §5.2).
+//! Sections: the unit of selection, folding, copying and saving (product §4.2).
 //!
 //! [`derive_sections`] derives the sections of a turn; [`FoldState`] answers whether
 //! a section is folded, starting from the defaults of the §5.2 table.

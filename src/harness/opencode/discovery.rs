@@ -1,5 +1,5 @@
 //! OpenCode projects, session summaries and the [`Harness`] implementation
-//! (SPEC §3.2, §4.1, §9.2).
+//! (product §2.2, §3.1, §8.2).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -29,7 +29,7 @@ use crate::model::{
 ///
 /// `opencode --help` of OpenCode (checked on Linux) lists
 /// `--session, -s string  Session ID to continue, or to create if it does not
-/// exist`. SPEC §11 still lists the flag as unverified on other platforms.
+/// exist`. product §10 still lists the flag as unverified on other platforms.
 pub const DEFAULT_RESUME_COMMAND: &str = "opencode --session {id}";
 
 /// The built project and session lists.

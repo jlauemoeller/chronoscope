@@ -1,4 +1,4 @@
-//! Where OpenCode's database lives (SPEC §9.1).
+//! Where OpenCode's database lives (product §8.1).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -13,11 +13,11 @@ fn below(data_dir: &Path) -> PathBuf {
 /// - `$XDG_DATA_HOME/opencode/opencode.db` when `XDG_DATA_HOME` is set and
 ///   non-empty, on every platform.
 /// - On Windows, `%LOCALAPPDATA%\opencode\opencode.db`. **Unverified**: the
-///   location on Windows must be confirmed before the tier-3 release (SPEC
-///   §11).
+///   location on Windows must be confirmed before the tier-3 release (product
+///   §10).
 /// - `<home>/.local/share/opencode/opencode.db`: the default on Linux and,
 ///   by the same XDG-style convention, on macOS. **Unverified** on macOS
-///   (SPEC §11).
+///   (product §10).
 pub fn candidate_db_paths(
     home: &Path,
     xdg_data_home: Option<OsString>,

@@ -1,4 +1,4 @@
-//! What the help overlay lists (SPEC §4.3): the keybindings grouped by
+//! What the help overlay lists (product §3.3): the keybindings grouped by
 //! purpose, generated from the active keymap, and how they are laid out in
 //! rows.
 

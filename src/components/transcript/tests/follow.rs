@@ -1,4 +1,4 @@
-//! Follow mode, the `↓ N new` count and in-place updates (SPEC §7.2).
+//! Follow mode, the `↓ N new` count and in-place updates (product §6.2).
 
 use tuirealm::command::Position;
 use tuirealm::event::Key;

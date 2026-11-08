@@ -1,4 +1,4 @@
-//! Classification of Claude entries as injected content or noise (SPEC §5.6)
+//! Classification of Claude entries as injected content or noise (product §4.6)
 //! and extraction of their human-readable text.
 
 use serde_json::Value;

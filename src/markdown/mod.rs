@@ -1,4 +1,4 @@
-//! The markdown and code renderer (SPEC §5.5).
+//! The markdown and code renderer (product §4.5).
 //!
 //! [`render_markdown`] turns markdown into styled, wrapped Ratatui lines for
 //! a width, a base style and a theme. It works in two steps: [`blocks`] parses

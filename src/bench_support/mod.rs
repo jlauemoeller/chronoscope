@@ -1,4 +1,4 @@
-//! Support for the large-session benchmarks and the budget test (SPEC §9.2,
+//! Support for the large-session benchmarks and the budget test (product §8.2,
 //! §9.6): a deterministic generator of synthetic sessions, helpers that load a
 //! session the way the application does and time it, a frame-rendering
 //! scenario, and a counting allocator to measure the heap.
@@ -278,7 +278,7 @@ pub fn load_transcript(fixture: &Fixture, size: Size) -> (Transcript, LoadTiming
 
 /// Like [`load_transcript`], with the turns sidebar of the session built
 /// alongside: each update goes to both, as the application forwards it, so
-/// the timings include building the rows (SPEC §6.6).
+/// the timings include building the rows (product §5.6).
 pub fn load_with_sidebar(fixture: &Fixture, size: Size) -> (Transcript, TurnSidebar, LoadTimings) {
     let mut transcript = new_transcript().loading(true).viewport(size);
     let mut sidebar = TurnSidebar::new(builtin::default_theme());
@@ -340,7 +340,7 @@ impl SidebarScenario {
 /// A key press in the turns sidebar beside the transcript, as the
 /// application handles it: the pane's `on` selects the next or previous entry
 /// and names its turn, the transcript goes to that turn's block (the same
-/// scroll `]` / `[` give), and both are drawn (SPEC §6.4, §6.6). The screen is
+/// scroll `]` / `[` give), and both are drawn (product §5.4, §5.6). The screen is
 /// that of [`FRAME_SCREEN`]: the pane and the transcript take the sizes
 /// [`browser_areas`] gives them.
 pub struct SidebarKeyScenario {

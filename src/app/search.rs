@@ -1,4 +1,4 @@
-//! Fuzzy session search in the selector (SPEC §4.1): the matching, and the
+//! Fuzzy session search in the selector (product §3.1): the matching, and the
 //! `App`'s handling of the prompt that types the query.
 //!
 //! `/` mounts the [`Prompt`] over the help line and gives it the focus; the

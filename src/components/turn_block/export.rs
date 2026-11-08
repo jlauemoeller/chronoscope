@@ -1,4 +1,4 @@
-//! A session as a markdown document, for the export (SPEC §6.4).
+//! A session as a markdown document, for the export (product §5.4).
 //!
 //! [`export_markdown`] is pure: it needs the turns, the fold state and the
 //! few settings that decide what is shown ([`ExportSettings`]).

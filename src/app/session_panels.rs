@@ -1,4 +1,4 @@
-//! The Session Time and Session Tokens panels' values (SPEC §4.3): which
+//! The Session Time and Session Tokens panels' values (product §3.3): which
 //! session they show, and pushing its stats into them.
 //!
 //! One function works out the session ([`App::panels_session`]) and one

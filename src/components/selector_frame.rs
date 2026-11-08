@@ -1,4 +1,4 @@
-//! The session selector overlay's frame (SPEC §4.1, §4.3).
+//! The session selector overlay's frame (product §3.1, §3.3).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

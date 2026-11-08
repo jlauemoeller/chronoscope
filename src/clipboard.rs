@@ -1,4 +1,4 @@
-//! The clipboard (SPEC §6.4, §9.4), owned by the `App`.
+//! The clipboard (product §5.4, §8.4), owned by the `App`.
 //!
 //! Text goes to the system clipboard through `arboard`. Where that cannot be
 //! relied on (no display server reachable, or inside tmux, whose clipboard is

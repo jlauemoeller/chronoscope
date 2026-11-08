@@ -1,4 +1,4 @@
-//! The help-line prompt: search, file paths and `y/n` questions (SPEC §1.3,
+//! The help-line prompt: search, file paths and `y/n` questions (architecture.md#components,
 //! §4.2, §4.3, §6).
 //!
 //! While a prompt is active it has the focus (input mode): every printable

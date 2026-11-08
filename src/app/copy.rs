@@ -1,4 +1,4 @@
-//! Copying to the clipboard (SPEC §6.4, §9.4): what the `App` does with
+//! Copying to the clipboard (product §5.4, §8.4): what the `App` does with
 //! [`Msg::CopyText`].
 
 use std::io::Write;

@@ -1,5 +1,5 @@
 //! The session loader: reads a session's `session_message` rows in pages on a
-//! worker thread and streams the turns as [`ModelUpdate`]s (SPEC §9.2).
+//! worker thread and streams the turns as [`ModelUpdate`]s (product §8.2).
 //!
 //! Each page is `SELECT ... WHERE session_id = ? AND seq > ? ORDER BY seq
 //! LIMIT <page size>` (500 rows by default), so memory and the time to the

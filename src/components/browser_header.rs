@@ -1,4 +1,4 @@
-//! The header of the session browser (SPEC §4.2, §9.5): the project and the
+//! The header of the session browser (product §3.2, §8.5): the project and the
 //! session id in a rounded block over the working directory.
 
 use ratatui::Frame;
@@ -72,7 +72,7 @@ pub fn parse_warning_note(count: usize) -> Option<String> {
 /// its left.
 ///
 /// While subagent transcripts are open the left title carries one
-/// ` › Agent: <label>` segment per level (SPEC §5.4) and the right title is the
+/// ` › Agent: <label>` segment per level (product §4.4) and the right title is the
 /// id of the subagent: `╭─ Project BRIO › Agent: story-writer ─…─ <id> ─╮`.
 /// `›` and `Agent:` are `muted_foreground`, the labels `foreground`.
 ///

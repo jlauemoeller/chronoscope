@@ -1,4 +1,4 @@
-//! Selected versus unselected text (SPEC §8.2).
+//! Selected versus unselected text (product §7.2).
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;

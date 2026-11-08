@@ -1,5 +1,5 @@
 //! The Session Time and Session Tokens panels over an open session
-//! (`Ctrl-o`, SPEC §4.3): they show the open session's values on the first
+//! (`Ctrl-o`, product §3.3): they show the open session's values on the first
 //! frame the selector is drawn, and again after it was closed and reopened.
 
 use super::*;

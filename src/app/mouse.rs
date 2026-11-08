@@ -1,6 +1,7 @@
-//! Mouse routing (SPEC §1.4, §6.9): which component is under the pointer,
-//! what the selector and the theme selector do with the clicks and the wheel,
-//! and what a click outside an open overlay does.
+//! Mouse routing (architecture.md#events-focus-and-keys, product §5.9): which
+//! component is under the pointer, what the selector and the theme selector
+//! do with the clicks and the wheel, and what a click outside an open overlay
+//! does.
 //!
 //! `GlobalEvents` turns every left press and wheel step into
 //! [`Msg::Mouse`] (only when `mouse = true`). [`App::update`] finds the

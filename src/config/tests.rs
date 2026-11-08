@@ -16,7 +16,7 @@ fn messages(warnings: &[ConfigWarning]) -> Vec<&str> {
     warnings.iter().map(|w| w.message.as_str()).collect()
 }
 
-/// The example file of SPEC §8.5, verbatim.
+/// The example file of product §7.5, verbatim.
 const SPEC_EXAMPLE: &str = r#"
 theme = "tokyo-night"
 transparent_background = false   # overrides the theme's setting when present

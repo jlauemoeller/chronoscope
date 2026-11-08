@@ -1,6 +1,7 @@
-//! The help overlay in the app (SPEC §1.4, §4.3): opening, focus, which keys
-//! work while it is open, and the screens. Keys travel through the app's
-//! ports and `GlobalEvents`, as they do in the running application.
+//! The help overlay in the app (architecture.md#events-focus-and-keys,
+//! product §3.3): opening, focus, which keys work while it is open, and the
+//! screens. Keys travel through the app's ports and `GlobalEvents`, as they
+//! do in the running application.
 
 use super::*;
 use crate::components::{HelpContext, INTERIOR_ATTR};

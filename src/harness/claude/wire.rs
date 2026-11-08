@@ -192,7 +192,7 @@ impl Entry {
 
     /// The text of this entry when it is a human prompt, else `None`.
     ///
-    /// The one definition of "human prompt" (SPEC §3.1) shared by the
+    /// The one definition of "human prompt" (product §2.1) shared by the
     /// assembler and session discovery. Not a prompt: entries that carry any
     /// `tool_result` block, compaction summaries, `isMeta` entries (injected,
     /// not typed), entries whose `origin.kind` is not `human`, and, for

@@ -1,5 +1,5 @@
 //! The application: the tui-realm [`Application`] plus the domain state, and
-//! the three types that connect them (SPEC §1.2).
+//! the three types that connect them (architecture.md#application-structure).
 //!
 //! - [`Id`] names a mountable component.
 //! - [`Msg`] says what happened, in application terms.
@@ -96,7 +96,7 @@ pub use transcript_search::{
 };
 use unicode_width::UnicodeWidthStr;
 
-/// One variant per mountable component (SPEC §1.3).
+/// One variant per mountable component (architecture.md#components).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Id {
     /// Turns global keys, resizes and ticks into messages.
@@ -132,7 +132,7 @@ pub enum Id {
     Transcript,
     /// The turns of the subagent opened at this depth (1 for the first, 2 for
     /// one opened from it, ...). The transcripts below it stay mounted but
-    /// are not drawn (SPEC §1.3).
+    /// are not drawn (architecture.md#components).
     Subagent(usize),
     /// Key hints and status items of the browser.
     BrowserHelpLine,
@@ -384,7 +384,7 @@ pub struct App {
     clock: Box<dyn Fn() -> DateTime<Utc>>,
     index: Option<IndexHandle>,
     /// Who had the focus before each overlay or prompt that is open, oldest
-    /// first (SPEC §1.4).
+    /// first (architecture.md#events-focus-and-keys).
     focus_stack: Vec<Id>,
     /// The thread that runs the searches; without one they run on the UI
     /// thread (tests).
@@ -406,7 +406,7 @@ pub struct App {
     session_sink: Option<Sender<SessionEvent>>,
     /// The open session.
     browser: BrowserState,
-    /// Where copied text goes (SPEC §1.2).
+    /// Where copied text goes (architecture.md#application-structure).
     clipboard: Box<dyn Clipboard>,
     /// Where OSC52 sequences are written: the terminal. `None` when there is
     /// no terminal to write to.
@@ -443,7 +443,7 @@ impl App {
     /// `listener` configures the event listener: [`production_listener`] for
     /// the real application, or one without ports for tests. `working_dir`
     /// is the directory the user started in (`std::env::current_dir()`); the
-    /// selector starts on the project that contains it (SPEC §4.1).
+    /// selector starts on the project that contains it (product §3.1).
     pub fn new(
         init: AppInit,
         listener: EventListenerCfg<UserEvent>,
@@ -666,7 +666,7 @@ impl App {
 
     /// Mounts the overlay or prompt `id` and gives it the focus; the
     /// component that had it is remembered for [`close_overlay`](Self::close_overlay)
-    /// (SPEC §1.4).
+    /// (architecture.md#events-focus-and-keys).
     fn open_overlay(
         &mut self,
         id: Id,

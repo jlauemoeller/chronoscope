@@ -1,4 +1,4 @@
-//! The Claude Code adapter (SPEC §3.1, §5.1).
+//! The Claude Code adapter (product §2.1, §4.1).
 
 pub mod assemble;
 mod details;

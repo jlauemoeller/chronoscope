@@ -1,5 +1,5 @@
-//! The rows of the details overlay that the model already knows (SPEC
-//! §5.3): the Turn group, the duration and status of a tool call, and the
+//! The rows of the details overlay that the model already knows (product
+//! §4.3): the Turn group, the duration and status of a tool call, and the
 //! timestamp of a prompt, a compaction or an injected entry.
 //!
 //! Everything else the overlay can show lives in the harness's own source
@@ -27,7 +27,7 @@ pub const ENVIRONMENT: &str = "Environment";
 /// The details of the section `id` of `turn`, from the model alone.
 ///
 /// A `… N more lines` row is its tool call. Returns `None` when `turn` has
-/// no such section. Groups come in the order of SPEC §5.3: Turn, Message,
+/// no such section. Groups come in the order of product §4.3: Turn, Message,
 /// Tool call, Prompt, Environment. A group with no rows is left out.
 pub fn section_details(
     turn: &Turn,

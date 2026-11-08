@@ -1,4 +1,4 @@
-//! The turns sidebar (SPEC §6): a fixed pane to the left of the transcript
+//! The turns sidebar (product §5): a fixed pane to the left of the transcript
 //! that lists the turns and compaction events of the session, so the shape of
 //! a long session is visible.
 //!

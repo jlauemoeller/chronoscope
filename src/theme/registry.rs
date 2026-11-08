@@ -1,4 +1,4 @@
-//! The theme registry (SPEC §8.3, §8.4).
+//! The theme registry (product §7.3, §7.4).
 //!
 //! The registry lists the built-in themes in their §8.3 order, followed by the
 //! user themes found in the themes directory. A user theme's id is its file

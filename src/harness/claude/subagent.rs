@@ -1,5 +1,5 @@
 //! Session ids to files, and the linkage from an `Agent`/`Task` tool call to
-//! its subagent transcript (SPEC §3.1, §5.4).
+//! its subagent transcript (product §2.1, §4.4).
 //!
 //! A subagent transcript lives at
 //! `<project dir>/<session-uuid>/subagents/agent-<agentId>.jsonl`, next to

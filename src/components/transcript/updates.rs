@@ -1,4 +1,4 @@
-//! Model updates and the selection that must survive them (SPEC §7.2).
+//! Model updates and the selection that must survive them (product §6.2).
 
 use std::sync::Arc;
 
@@ -45,7 +45,7 @@ impl Transcript {
     ) {
         let pinned = self.following && !self.loading;
         let counting = !self.following && !self.loading;
-        // Whether the selection moves on to the new end (SPEC §7.2).
+        // Whether the selection moves on to the new end (product §6.2).
         let was_last = pinned
             && self.content.selected.is_some()
             && self.content.selected == self.last_section();

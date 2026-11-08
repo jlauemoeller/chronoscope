@@ -1,4 +1,4 @@
-//! The Session Tokens panel of the session selector (SPEC §4.2, §4.3): the
+//! The Session Tokens panel of the session selector (product §3.2, §3.3): the
 //! selected session's token counts, or an empty block.
 
 use ratatui::Frame;

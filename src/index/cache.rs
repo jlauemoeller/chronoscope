@@ -1,4 +1,4 @@
-//! The on-disk stats cache (base SPEC §9.2, SPEC cycle 3 §3.3): one JSON file, `stats-v2.json`,
+//! The on-disk stats cache (base product §8.2, SPEC cycle 3 §3.3): one JSON file, `stats-v2.json`,
 //! mapping a harness's `stats_key` to the [`SessionStats`] computed for it.
 //! The file of the version before, `stats-v1.json`, is removed when the cache
 //! loads and never read: its entries have another shape and their keys still

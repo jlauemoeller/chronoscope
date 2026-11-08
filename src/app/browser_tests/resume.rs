@@ -1,4 +1,4 @@
-//! Resuming a session in its harness (SPEC §6.7) through the app: `R` in the
+//! Resuming a session in its harness (product §5.7) through the app: `R` in the
 //! browser and in the selector, the `y/n` question, the plan, the toasts and
 //! the screens. The hand-off itself (`hand_off`) is tested with a recording
 //! fake of its steps.

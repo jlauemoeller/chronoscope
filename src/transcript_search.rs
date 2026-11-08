@@ -1,4 +1,4 @@
-//! Transcript search (SPEC §6.2): the matcher and the search over a snapshot
+//! Transcript search (product §5.2): the matcher and the search over a snapshot
 //! of the turns. Pure functions and plain data; the worker thread that runs
 //! it and the `Transcript` that shows the result are elsewhere.
 //!

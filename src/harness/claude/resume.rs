@@ -1,4 +1,4 @@
-//! The resume command of a Claude session (SPEC §6.7).
+//! The resume command of a Claude session (product §5.7).
 
 pub(super) use crate::harness::resume::build;
 

@@ -1,5 +1,6 @@
-//! The screen layout (SPEC §4, §1.4): a pure function from the screen state
-//! and size to the area of every visible component.
+//! The screen layout (product §3, architecture.md#events-focus-and-keys): a
+//! pure function from the screen state and size to the area of every visible
+//! component.
 //!
 //! `App::view` draws from it, and the mouse router hit-tests against it, so
 //! both always agree on where a component is.
@@ -64,7 +65,7 @@ pub const MAX_OVERLAY_WIDTH: u16 = 160;
 /// The browser's help line is this many rows high: a blank separator row and
 /// the row with the text.
 pub const BROWSER_HELP_HEIGHT: u16 = 2;
-/// The turns sidebar is this many columns wide (SPEC §6.1).
+/// The turns sidebar is this many columns wide (product §5.1).
 pub const SIDEBAR_WIDTH: u16 = 30;
 /// The columns between the sidebar and the transcript.
 pub const SIDEBAR_GAP: u16 = 1;
@@ -296,7 +297,7 @@ pub fn browser_areas(area: Rect) -> BrowserAreas {
     }
 }
 
-/// The two panels below the Sessions pane (SPEC §4.1). They come as a pair, so
+/// The two panels below the Sessions pane (product §3.1). They come as a pair, so
 /// one cannot be present without the other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SessionPanelAreas {
@@ -323,7 +324,7 @@ pub struct SelectorAreas {
     pub help_line: Rect,
 }
 
-/// Places the components inside the selector `overlay` (SPEC §4.1).
+/// Places the components inside the selector `overlay` (product §3.1).
 ///
 /// The content area runs from column 4 to column `width - 5` of the overlay,
 /// so its width is `width - 8`. The panes start on row 5 and are
@@ -1178,7 +1179,7 @@ mod tests {
         assert_eq!(with_toast(59, 24, 5).area(Id::Toast), None);
     }
 
-    // -- the session panels (SPEC §4.1)
+    // -- the session panels (product §3.1)
 
     fn panels(width: u16, height: u16) -> SessionPanelAreas {
         areas(width, height).panels.expect("the panels are shown")

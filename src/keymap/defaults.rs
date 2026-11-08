@@ -1,4 +1,4 @@
-//! The default bindings (SPEC §6) with their help metadata, in help order.
+//! The default bindings (product §5) with their help metadata, in help order.
 
 use super::{Action, Context};
 

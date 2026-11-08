@@ -542,7 +542,7 @@ fn a_click_in_the_empty_pane_area_only_focuses_the_pane() {
     assert_eq!(focus_of(&app), Some(Id::SessionList));
     assert!(project(&app).ends_with("/Agentmon"));
     // Gaining the focus with nothing selected selects the newest session
-    // (SPEC §4.1), as it does for any way of focusing the pane.
+    // (product §3.1), as it does for any way of focusing the pane.
     assert_eq!(session(&app), Some("s1"));
     // Under the last project row, on the blank row and on the border.
     for (column, row) in [(6, 12), (6, 1), (0, 5), (3, 0)] {

@@ -1,4 +1,4 @@
-//! Saving a section and exporting the session (SPEC §6.4, §9.5) through the
+//! Saving a section and exporting the session (product §5.4, §8.5) through the
 //! app: the keys, the path and overwrite prompts, the files, the toasts and
 //! the screens.
 //!

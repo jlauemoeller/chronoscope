@@ -1,5 +1,5 @@
 //! The help line: context-sensitive key hints and right-aligned status items
-//! (SPEC §4.2).
+//! (product §3.2).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
