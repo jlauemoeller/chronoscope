@@ -6,9 +6,8 @@
 //! [`OverlayFrame`]). The content is a snapshot, taken when the overlay
 //! opens: nothing updates it while it is open.
 
+mod compose;
 mod content;
-mod rows;
-mod source;
 
 use ratatui::Frame;
 use ratatui::layout::{Rect, Size};
@@ -18,9 +17,8 @@ use tuirealm::event::Event;
 use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
+pub use compose::{DetailsRequest, compose};
 pub use content::{DetailsContent, DetailsGroup, DetailsRow};
-pub use rows::section_details;
-pub use source::{DetailsRequest, compose, section_source};
 
 use super::overlay_frame::{FrameKey, INTERIOR_ATTR, OverlayFrame, interior_value};
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};

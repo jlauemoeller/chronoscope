@@ -10,13 +10,12 @@ use super::super::fixtures::TempDb;
 use super::{read_groups, section_details};
 use crate::components::turn_block::fixtures::formatter;
 use crate::components::turn_block::{SectionId, SectionKey};
-use crate::components::{
-    DetailsContent, compose, section_details as model_details, section_source,
-};
+use crate::components::{DetailsContent, compose};
 use crate::model::{
     Item, ItemId, NoticeLevel, SectionRefs, SourceGroup, SourceGroupKind, SourceKey, SourceKind,
     SourceValue, Turn,
 };
+use crate::section_details::{section_details as model_details, section_source};
 
 const SESSION: &str = "ses_details";
 
