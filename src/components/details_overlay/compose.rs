@@ -1,6 +1,7 @@
 //! What the details key asks the overlay to show ([`DetailsRequest`]), and
 //! the composition of what the harness reads with the rows the model knows.
-//! Both are made from the model in [`crate::section_details`].
+//! The rows the model knows and the references the harness reads from are
+//! made in [`crate::section_details`].
 
 use super::content::{DetailsContent, DetailsGroup, DetailsRow};
 use crate::model::{SectionSource, SourceGroup, SourceGroupKind, SourceRow, SourceValue};

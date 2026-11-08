@@ -66,8 +66,9 @@ pub struct SectionCtx<'a> {
     pub verbatim: bool,
 }
 
-/// The label of the default `open_subagent` key.
-pub const DEFAULT_OPEN_KEY: &str = "a";
+/// The label of the default `open_subagent` key; outside the turn block it
+/// is [`TurnBlock::DEFAULT_OPEN_KEY`](super::TurnBlock::DEFAULT_OPEN_KEY).
+pub(super) const DEFAULT_OPEN_KEY: &str = "a";
 
 impl<'a> SectionCtx<'a> {
     /// A context with the default truncation, nothing expanded and the
