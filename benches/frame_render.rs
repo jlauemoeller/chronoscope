@@ -1,6 +1,6 @@
 //! A frame of the transcript of a loaded 100 MiB session at 200x50, with the
 //! viewport in the middle and some sections unfolded, one of them a large
-//! output (budget: 16 ms per frame, SPEC §9.2).
+//! output (budget: 16 ms per frame, product §8.2).
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use ratatui::layout::Size;

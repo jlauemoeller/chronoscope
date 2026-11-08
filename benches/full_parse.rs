@@ -1,5 +1,5 @@
 //! Time from `load()` to `Loaded` for a 100 MiB session (budget: 2 s,
-//! SPEC §9.2).
+//! product §8.2).
 
 use criterion::{Criterion, criterion_group, criterion_main};
 

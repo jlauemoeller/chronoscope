@@ -1,4 +1,4 @@
-//! Live watching of a Claude session (SPEC §7.1): appended lines, partial
+//! Live watching of a Claude session (product §6.1): appended lines, partial
 //! lines, truncation and replacement, coalescing, activity, polling and
 //! stopping. The files are generated in a temp directory and changed while a
 //! worker watches them.

@@ -455,7 +455,7 @@ fn a_batch_ending_between_a_local_command_and_the_next_prompt_keeps_it_in_the_cu
     let bytes = fixture_bytes("local_commands_mixed.jsonl");
     let streamed = streamed_line_by_line(&bytes);
     // Reloading places the /effort in the next turn; live it stays in the
-    // current one (SPEC §2.2). The turns themselves are the same.
+    // current one (cycle 3 SPEC §2.2). The turns themselves are the same.
     let before = assistant(&streamed[1]);
     assert!(
         before

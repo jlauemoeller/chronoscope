@@ -1,4 +1,4 @@
-//! `build_harnesses`: which harnesses the config constructs (SPEC §6.6).
+//! `build_harnesses`: which harnesses the config constructs (product §5.6).
 
 use std::path::Path;
 

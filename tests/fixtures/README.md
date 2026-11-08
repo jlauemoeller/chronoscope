@@ -1,8 +1,9 @@
 # Test fixtures
 
-Fixture transcripts used by the adapter tests (SPEC §9.6). All fixtures are
-synthetic: no real session content, secrets, e-mail addresses, personal names,
-hostnames or home-directory paths. Paths use the neutral `/home/user/project`.
+Fixture transcripts used by the adapter tests (testing.md, What is tested).
+All fixtures are synthetic: no real session content, secrets, e-mail
+addresses, personal names, hostnames or home-directory paths. Paths use the
+neutral `/home/user/project`.
 
 ## claude/session.jsonl
 
