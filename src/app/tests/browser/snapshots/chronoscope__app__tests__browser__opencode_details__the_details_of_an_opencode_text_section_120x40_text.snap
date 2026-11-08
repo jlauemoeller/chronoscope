@@ -1,0 +1,44 @@
+---
+source: src/app/tests/browser/opencode_details.rs
+expression: "screen(120, 40)"
+---
+╭─ Project Alpha App ─────────────────────────────────────────────────────────────────────────────────────── ses_main ─╮
+│                                                                                                                      │
+│ /home/user/alpha                                                                                                     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ [1] Turns  ───────────────╮ ╭─ User╭─ Details ────────────────────────────────╮────────────── 2026-10-28 09:00:01Z ─╮
+│                            │ │      │                                          │                                     │
+│  ┬   Start                 │ │ ▶ syn│  Turn                                    │ed the file src/settings.rs.</sys…   │
+│  │                         │ │      │                                          │                                     │
+│  ├   User                  │ │ ▶ sys│    model           acme/coder-1          │ce                                   │
+│  │                         │ │      │    effort          high                  │                                     │
+│  ▒   Assistant        17s  │ │ ▶ Add│    start           2026-10-28 09:00:03Z  │                                     │
+│  │                         │ │      │    duration        17s                   │                                     │
+│  ├   User                  │ ╰──────│    messages        2                     │─────────────────────────────────────╯
+│  │                         │ ╭─ Assi│    input tokens    3.0k                  │────────────── 2026-10-28 09:00:03Z ─╮
+│  ├   Assistant        39s  │ │      │    output tokens   300                   │                                     │
+│  │                         │ │ ▶ Thi│    cost            $0.03                 │ first.                              │
+│  ┴   End                   │ │      │    provider        acme                  │                                     │
+│                            │ ▒   Let│    agent           build                 │                                     │
+│                            │ │      │                                          │                                     │
+│                            │ │ ▶ Rea│  Message                                 │                                     │
+│                            │ │      │                                          │                                     │
+│                            │ │ ▶ Lis│    row id          msg_main_04           │                                     │
+│                            │ │      │    time.created    2026-10-28 09:00:03Z  │                                     │
+│                            │ │ ▶ she│    time.streamed   2026-10-28 09:00:09Z  │                                     │
+│                            │ │      │    time.completed  2026-10-28 09:00:09Z  │                                     │
+│                            │ │ ▶ Wri│    finish          stop                  │                                     │
+│                            │ │      │    rawFinish       stop                  │                                     │
+│                            │ │   17s│                                          │                                     │
+│                            │ │      │  Environment                             │                                     │
+│                            │ ╰──────│                                          │─────────────────────────────────────╯
+│                            │ ╭─ User│    snapshot.start  4a1c9e07d3b2          │────────────── 2026-10-28 09:05:00Z ─╮
+│                            │ │      │    snapshot.end    7b2d5f3a91c4          │                                     │
+│                            │ │ ▶ Now│                                          │                                     │
+│                            │ │      ╰──────────────────────────────────────────╯                                     │
+│                            │ ╰───────────────────────────────────────────────────────────────────────────────────────╯
+│                            │ ╭─ Assistant ── acme/coder-1 ──────────────────────────────────── 2026-10-28 09:05:01Z ─╮
+╰────────────────────────────╯ │                                                                                       │
+                                                                                                                        
+ / to search | ENTER to fold or unfold sections | y to copy current | ? for keybindings

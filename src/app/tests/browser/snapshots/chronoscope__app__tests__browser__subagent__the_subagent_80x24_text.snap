@@ -1,0 +1,28 @@
+---
+source: src/app/tests/browser/subagent.rs
+expression: "screen_text(&mut rig, 80, 24)"
+---
+╭─ Project BRIO › Agent: story-writer ─ …a21a-0f4476babd5c/subagents/agent-r2 ─╮
+│                                                                              │
+│ /home/user/projects/brio                                              ● live │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                              │
+▒ ▶ Write a short story                                                        │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 ──────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│   I need some facts first.                                                   │
+│                                                                              │
+│ ▶ Ask Explore (Explore)  ─────────────────────────────  a to open transcript │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ / to search | Backspace to go back | ENTER to fold or unfold sections

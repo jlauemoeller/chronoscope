@@ -32,23 +32,7 @@ pub mod theme_selector;
 pub mod transcript_search;
 
 #[cfg(test)]
-mod browser_tests;
-#[cfg(test)]
 mod fixtures;
-#[cfg(test)]
-mod mouse_tests;
-#[cfg(test)]
-mod search_tests;
-#[cfg(test)]
-mod selection_tests;
-#[cfg(test)]
-mod selector_tests;
-#[cfg(test)]
-mod selector_totals_tests;
-#[cfg(test)]
-mod session_panels_tests;
-#[cfg(test)]
-mod session_panels_values_tests;
 #[cfg(test)]
 mod tests;
 

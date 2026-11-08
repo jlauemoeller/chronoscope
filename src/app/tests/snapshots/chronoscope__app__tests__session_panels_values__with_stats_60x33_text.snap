@@ -1,0 +1,36 @@
+---
+source: src/app/tests/session_panels_values.rs
+expression: "text(&mut example_selected(), 60, 33)"
+---
+                                                            
+╭──────────────────────────────────────────────────────────╮
+│                                                          │
+│    [1] Claude                                            │
+│    ━━━━━━━━━━                                            │
+│                                                          │
+│   ╭─ Projects ───────╮ ╭─ Sessions in Agentmon ──────╮   │
+│   │                  │ │                             │   │
+│   │  > Agentmon      │ │  > 2026-10-30 11:40Z  ● F…  │   │
+│   │    BRIO          │ │    2026-10-28 09:15Z    R…  │   │
+│   │    Calira        │ │    2026-10-12 17:02Z    (…  │   │
+│   │    CameraSetti…  │ ╰─────────────────────────────╯   │
+│   │    FactoryFight  │ ╭─ Session Time ──────────────╮   │
+│   │    Nayra         │ │ Total               81h 33m │   │
+│   │                  │ │ Agent               17h 56m │   │
+│   │                  │ ╰─────────────────────────────╯   │
+│   │                  │ ╭─ Session Tokens ────────────╮   │
+│   │                  │ │ Input                 15.8k │   │
+│   │                  │ │ Output                 6.3M │   │
+│   │                  │ │ Thinking               2.2M │   │
+│   │                  │ │ Cache read           862.3M │   │
+│   │                  │ │ Cache write           30.7M │   │
+│   ╰──────────────────╯ ╰─────────────────────────────╯   │
+│   ╭─ Working Directory ──────────────────────────────╮   │
+│   │                                                  │   │
+│   │  /home/jacob/Development/projects/Agentmon       │   │
+│   │                                                  │   │
+│   ╰──────────────────────────────────────────────────╯   │
+│                                                          │
+│    / to search sessions | ENTER to open                  │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
