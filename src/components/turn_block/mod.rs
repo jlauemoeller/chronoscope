@@ -32,12 +32,4 @@ pub(crate) use widget::block_work;
 pub use widget::{BlockLayout, TurnBlock};
 
 #[cfg(test)]
-mod durations;
-#[cfg(test)]
 pub(crate) mod fixtures;
-#[cfg(test)]
-mod notice_snapshots;
-#[cfg(test)]
-mod snapshots;
-#[cfg(test)]
-mod subagent_title;

@@ -7,7 +7,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use chrono::{DateTime, TimeZone, Utc};
 
-use super::testing::TempDb;
+use super::fixtures::TempDb;
 use super::*;
 use crate::config::Config;
 use crate::harness::Harness;
@@ -15,6 +15,9 @@ use crate::model::{
     HarnessId, Item, ModelUpdate, ProjectId, SessionId, SessionSummary, TokenUsage, ToolKind,
     ToolStatus, Turn,
 };
+
+mod notice;
+mod stats;
 
 fn at(day: u32, h: u32, m: u32, s: u32) -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, day, h, m, s)
@@ -1076,7 +1079,7 @@ fn a_cycle_in_parent_id_does_not_hang_the_index() {
     assert_eq!(h.stats_key(&session), key);
     // A session has one parent, so a cycle cannot hang off a root: the
     // recursion starts at the top-level sessions and never meets one. `UNION`
-    // is for the stats of a session inside a cycle (see `stats_tests`).
+    // is for the stats of a session inside a cycle (see `tests/stats.rs`).
     db.exec("UPDATE session_v2 SET time_updated = 1793190000001 WHERE id = 'ses_x'");
     h.refresh().unwrap();
     assert_eq!(h.stats_key(&session), key);

@@ -1,0 +1,32 @@
+---
+source: src/components/turn_block/tests/snapshots.rs
+expression: "buffer_to_text(&draw(&turn, &unfolded(&turn), 100))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                  │
+│ ▼ Dump full USB descriptors for the BRIO                                                         │
+│                                                                                                  │
+│   Command:                                                                                       │
+│                                                                                                  │
+│      sudo -n true 2>&1 && echo SUDO_OK; lsusb -v -d 046d:085e > /tmp/claude-1000/-home-jacob-D   │
+│      evelopment-projects-brio/85a86657-11a7-4318-a21a-0f4476babd5c/scratchpad/lsusb.txt 2>&1;    │
+│      wc -l /tmp/claude-1000/-home-jacob-Development-projects-brio/85a86657-11a7-4318-a21a-0f44   │
+│      76babd5c/scratchpad/lsusb.txt; grep -E 'bInterfaceClass|bInterfaceSubClass|bInterfaceNumb   │
+│      er|iInterface|bcdUVC|bcdDevice|iProduct|iSerial|guidExtensionCode' /tmp/claude-1000/-home   │
+│      -jacob-Development-projects-brio/85a86657-11a7-4318-a21a-0f4476babd5c/scratchpad/lsusb.tx   │
+│      t | head -200                                                                               │
+│                                                                                                  │
+│   Result:                                                                                        │
+│                                                                                                  │
+│      sudo: a password is required                                                                │
+│      1799                                                                                        │
+│      /tmp/claude-1000/-home-jacob-Development-projects-brio/85a86657-11a7-4318-a21a-0f4476babd   │
+│      5c/scratchpad/lsusb.txt                                                                     │
+│      Couldn't open device, some information will be missing                                      │
+│        bcdDevice            0.17                                                                 │
+│        iProduct                2 Logitech BRIO                                                   │
+│        iSerial                 3 8DF1E759                                                        │
+│            bInterfaceNumber        0                                                             │
+│            bInterfaceClass        14 Video                                                       │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

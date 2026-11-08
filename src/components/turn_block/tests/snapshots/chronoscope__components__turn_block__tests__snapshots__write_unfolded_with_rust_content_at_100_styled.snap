@@ -1,0 +1,37 @@
+---
+source: src/components/turn_block/tests/snapshots.rs
+expression: "buffer_to_styled(&draw(&turn, &unfolded(&turn), 100))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                  │
+│ ▼ Create the entry point                                                                         │
+│                                                                                                  │
+│   Path:                                                                                          │
+│                                                                                                  │
+│      /home/jacob/projects/brio/src/main.rs                                                       │
+│                                                                                                  │
+│   Content:                                                                                       │
+│                                                                                                  │
+│      fn main() {                                                                                 │
+│          let name = "brio";                                                                      │
+│          println!("hello {name}"); // greet                                                      │
+│      }                                                                                           │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..13 Rgb(139, 92, 246)/Reset/NONE | 13..15 Rgb(94, 94, 94)/Reset/NONE | 15..39 Rgb(139, 92, 246)/Reset/NONE | 39..76 Rgb(94, 94, 94)/Reset/NONE | 76..98 Rgb(161, 161, 161)/Reset/NONE | 98..100 Rgb(94, 94, 94)/Reset/NONE
+1: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..26 Rgb(250, 250, 250)/Reset/NONE | 26..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+4: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/NONE | 4..9 Rgb(161, 161, 161)/Reset/NONE | 9..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+5: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+6: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..44 Rgb(250, 250, 250)/Reset/NONE | 44..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+7: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+8: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/NONE | 4..12 Rgb(161, 161, 161)/Reset/NONE | 12..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+9: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+10: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..4 Rgb(250, 250, 250)/Reset/NONE | 4..9 Rgb(139, 92, 246)/Reset/NONE | 9..10 Rgb(250, 250, 250)/Reset/NONE | 10..14 Rgb(229, 229, 229)/Reset/NONE | 14..18 Rgb(250, 250, 250)/Reset/NONE | 18..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+11: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..11 Rgb(250, 250, 250)/Reset/NONE | 11..14 Rgb(139, 92, 246)/Reset/NONE | 14..20 Rgb(250, 250, 250)/Reset/NONE | 20..21 Rgb(139, 92, 246)/Reset/NONE | 21..22 Rgb(250, 250, 250)/Reset/NONE | 22..28 Rgb(250, 204, 21)/Reset/NONE | 28..29 Rgb(250, 250, 250)/Reset/NONE | 29..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+12: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..20 Rgb(250, 250, 250)/Reset/NONE | 20..34 Rgb(250, 204, 21)/Reset/NONE | 34..37 Rgb(250, 250, 250)/Reset/NONE | 37..45 Rgb(161, 161, 161)/Reset/NONE | 45..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+13: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..8 Rgb(250, 250, 250)/Reset/NONE | 8..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+14: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..99 Reset/Reset/NONE | 99..100 Rgb(94, 94, 94)/Reset/NONE
+15: 0..100 Rgb(94, 94, 94)/Reset/NONE

@@ -8,19 +8,13 @@
 pub mod assemble;
 pub mod db;
 mod details;
-#[cfg(test)]
-mod details_tests;
 mod discovery;
+#[cfg(test)]
+pub(crate) mod fixtures;
 mod follow;
 mod load;
 mod location;
-#[cfg(test)]
-mod notice_tests;
-#[cfg(test)]
-mod stats_tests;
 mod subagent;
-#[cfg(test)]
-pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
 pub mod tools;

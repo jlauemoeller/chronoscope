@@ -213,7 +213,7 @@ impl ToolBodyRenderer for ReadBody {
 mod tests {
     use serde_json::json;
 
-    use super::super::testing::*;
+    use super::super::fixtures::*;
     use super::super::{SectionRenderer, ToolCallSection, ToolKind};
     use super::*;
     use crate::theme::Role;

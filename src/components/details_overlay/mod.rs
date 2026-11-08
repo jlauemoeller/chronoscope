@@ -10,9 +10,6 @@ mod content;
 mod rows;
 mod source;
 
-#[cfg(test)]
-mod snapshots;
-
 use ratatui::Frame;
 use ratatui::layout::{Rect, Size};
 use tuirealm::command::{Cmd, CmdResult};
@@ -186,6 +183,8 @@ impl AppComponent<Msg, UserEvent> for DetailsOverlay {
 
 #[cfg(test)]
 mod tests {
+    mod snapshots;
+
     use super::*;
     use crate::test_support::{buffer_to_text, render};
     use crate::theme::{Role, builtin};

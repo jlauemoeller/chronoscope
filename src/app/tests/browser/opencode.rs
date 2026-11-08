@@ -7,7 +7,7 @@ use super::*;
 use crate::components::transcript::Presentation;
 use crate::components::{PRESENTATION_ATTR, SectionKey};
 use crate::harness::opencode::OpenCodeHarness;
-use crate::harness::opencode::testing::TempDb;
+use crate::harness::opencode::fixtures::TempDb;
 use crate::model::ItemId;
 
 use super::super::selector::{press as press_in_selector, project_rows, styled, tabs};

@@ -1,0 +1,15 @@
+---
+source: src/components/turn_block/tests/subagent_title.rs
+expression: "buffer_to_styled(&draw(&repository(), &opts, 80))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│ ▶ Explore the repository (story-writer) · 5m 2s  ─────  a to open transcript │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..13 Rgb(139, 92, 246)/Reset/NONE | 13..15 Rgb(94, 94, 94)/Reset/NONE | 15..39 Rgb(139, 92, 246)/Reset/NONE | 39..56 Rgb(94, 94, 94)/Reset/NONE | 56..78 Rgb(255, 100, 103)/Reset/NONE | 78..80 Rgb(94, 94, 94)/Reset/NONE
+1: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..51 Rgb(161, 161, 161)/Reset/NONE | 51..56 Rgb(94, 94, 94)/Reset/NONE | 56..78 Rgb(161, 161, 161)/Reset/NONE | 78..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+4: 0..80 Rgb(94, 94, 94)/Reset/NONE

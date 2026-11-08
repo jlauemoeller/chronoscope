@@ -89,7 +89,7 @@ mod tests {
     use ratatui::style::Modifier;
     use serde_json::json;
 
-    use super::super::testing::*;
+    use super::super::fixtures::*;
     use super::super::{SectionRenderer, ToolCallSection, ToolKind};
     use super::*;
     use crate::components::turn_block::renderers::TitleChrome;

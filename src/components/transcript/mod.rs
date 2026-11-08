@@ -99,10 +99,6 @@ mod window;
 #[cfg(test)]
 pub(crate) mod fixtures;
 #[cfg(test)]
-mod key_snapshots;
-#[cfg(test)]
-mod snapshots;
-#[cfg(test)]
 mod tests;
 
 use std::borrow::Cow;

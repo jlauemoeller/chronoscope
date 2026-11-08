@@ -1,0 +1,27 @@
+---
+source: src/components/turn_block/tests/notice_snapshots.rs
+expression: "draw_notice(NoticeLevel::Error, LONG_ERROR, true, true, 80)"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│   Running the build now.                                                     │
+│                                                                              │
+▒   provider.invalid-request: messages: text content blocks must be            │
+▒   non-empty, and the request was rejected before any tokens were             │
+▒   generated, so nothing was billed for it                                    │
+│                                                                              │
+│   Anything after the notice.                                                 │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+--- styles (fg/bg/modifiers) ---
+0: 0..2 Rgb(94, 94, 94)/Reset/NONE | 2..13 Rgb(139, 92, 246)/Reset/NONE | 13..15 Rgb(94, 94, 94)/Reset/NONE | 15..39 Rgb(139, 92, 246)/Reset/NONE | 39..56 Rgb(94, 94, 94)/Reset/NONE | 56..78 Rgb(161, 161, 161)/Reset/NONE | 78..80 Rgb(94, 94, 94)/Reset/NONE
+1: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+2: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..26 Rgb(161, 161, 161)/Reset/NONE | 26..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+3: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+4: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..67 Rgb(255, 100, 103)/Reset/BOLD | 67..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+5: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..66 Rgb(255, 100, 103)/Reset/BOLD | 66..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+6: 0..1 Rgb(229, 229, 229)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..43 Rgb(255, 100, 103)/Reset/BOLD | 43..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+7: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+8: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..2 Reset/Reset/NONE | 2..30 Rgb(161, 161, 161)/Reset/NONE | 30..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+9: 0..1 Rgb(94, 94, 94)/Reset/NONE | 1..79 Reset/Reset/NONE | 79..80 Rgb(94, 94, 94)/Reset/NONE
+10: 0..80 Rgb(94, 94, 94)/Reset/NONE

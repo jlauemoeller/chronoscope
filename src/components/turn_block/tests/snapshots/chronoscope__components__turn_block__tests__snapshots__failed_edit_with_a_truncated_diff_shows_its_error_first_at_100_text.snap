@@ -1,0 +1,26 @@
+---
+source: src/components/turn_block/tests/snapshots.rs
+expression: "buffer_to_text(&draw(&turn, &opts, 100))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                  │
+│ ▼ Drop the setup lines                                                                           │
+│                                                                                                  │
+│   Path:                                                                                          │
+│                                                                                                  │
+│      /home/jacob/projects/brio/src/main.rs                                                       │
+│                                                                                                  │
+│   Result:                                                                                        │
+│                                                                                                  │
+│      String to replace not found in file.                                                        │
+│                                                                                                  │
+│   Diff:                                                                                          │
+│                                                                                                  │
+│      @@ -1,10 +0,0 @@                                                                            │
+│      -let step_1 = 1;                                                                            │
+│      -let step_2 = 2;                                                                            │
+│      -let step_3 = 3;                                                                            │
+│      -let step_4 = 4;                                                                            │
+│      … 6 more lines                                                                              │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

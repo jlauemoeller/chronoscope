@@ -1,0 +1,28 @@
+---
+source: src/components/transcript/tests/snapshots.rs
+expression: "text_at(&mut t, 80, 24)"
+---
+╭─ User ──────────────────────────────────────────────── 2026-10-21 08:35:15Z ─╮
+│                                                                              │
+▒ ▶ I have a Logitech BRIO web camera attached to this machine via USB. It     │
+▒   works fine - both camera and microphone - but I don't have a way to…       │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                              │
+│   I'll start by looking at what the camera exposes over USB:                 │
+│                                                                              │
+│   • Check lsusb -v for the UVC descriptors                                   │
+│   • Look at v4l2-ctl --list-ctrls                                            │
+│                                                                              │
+│   Then I'll compare the results.                                             │
+│                                                                              │
+│ ▶ Thinking: The user wants the UVC extension units. Start with lsusb.        │
+│                                                                              │
+│ ▶ Find the BRIO on USB and check available tools                             │
+│                                                                              │
+│ ▶ Dump full USB descriptors for the BRIO                                     │
+│                                                                              │
+│   model → claude-sonnet-5.5                                                  │
+│                                                                              │
+│   5m 2s · 112 messages · 45.2k tokens                                        │

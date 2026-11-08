@@ -225,84 +225,85 @@ pub fn build_harnesses_with_home(config: &Config, home: &Path) -> Vec<Arc<dyn Ha
 }
 
 #[cfg(test)]
-mod default_details_tests {
-    use std::process::Command;
+mod tests {
+    mod default_details {
+        use std::process::Command;
 
-    use super::*;
-    use crate::model::{ByteSource, LineRefs, SectionRefs, SourceKind, SourceRef};
+        use super::super::*;
+        use crate::model::{ByteSource, LineRefs, SectionRefs, SourceKind, SourceRef};
 
-    /// A harness that implements only what the trait requires, as the Codex
-    /// and Pi adapters would.
-    struct Stub;
+        /// A harness that implements only what the trait requires, as the Codex
+        /// and Pi adapters would.
+        struct Stub;
 
-    impl Harness for Stub {
-        fn id(&self) -> HarnessId {
-            HarnessId::Codex
+        impl Harness for Stub {
+            fn id(&self) -> HarnessId {
+                HarnessId::Codex
+            }
+            fn available(&self) -> bool {
+                true
+            }
+            fn refresh(&self) -> Result<()> {
+                Ok(())
+            }
+            fn watch_paths(&self) -> Vec<PathBuf> {
+                Vec::new()
+            }
+            fn projects(&self) -> Result<Vec<Project>> {
+                Ok(Vec::new())
+            }
+            fn sessions(&self, _: &ProjectId) -> Result<Vec<SessionSummary>> {
+                Ok(Vec::new())
+            }
+            fn stats(&self, _: &SessionSummary) -> Result<SessionStats> {
+                anyhow::bail!("not used")
+            }
+            fn stats_key(&self, _: &SessionSummary) -> String {
+                String::new()
+            }
+            fn load(&self, _: &SessionId, _: Sender<ModelUpdate>) -> Result<WatchHandle> {
+                anyhow::bail!("not used")
+            }
+            fn subagent(&self, _: &SessionId, _: &ToolCallId) -> Option<SessionId> {
+                None
+            }
+            fn resume_command(&self, _: &SessionSummary) -> Option<Command> {
+                None
+            }
         }
-        fn available(&self) -> bool {
-            true
-        }
-        fn refresh(&self) -> Result<()> {
-            Ok(())
-        }
-        fn watch_paths(&self) -> Vec<PathBuf> {
-            Vec::new()
-        }
-        fn projects(&self) -> Result<Vec<Project>> {
-            Ok(Vec::new())
-        }
-        fn sessions(&self, _: &ProjectId) -> Result<Vec<SessionSummary>> {
-            Ok(Vec::new())
-        }
-        fn stats(&self, _: &SessionSummary) -> Result<SessionStats> {
-            anyhow::bail!("not used")
-        }
-        fn stats_key(&self, _: &SessionSummary) -> String {
-            String::new()
-        }
-        fn load(&self, _: &SessionId, _: Sender<ModelUpdate>) -> Result<WatchHandle> {
-            anyhow::bail!("not used")
-        }
-        fn subagent(&self, _: &SessionId, _: &ToolCallId) -> Option<SessionId> {
-            None
-        }
-        fn resume_command(&self, _: &SessionSummary) -> Option<Command> {
-            None
+
+        #[test]
+        fn a_harness_provides_no_section_details_by_default() {
+            let source = SectionSource {
+                kind: SourceKind::Message,
+                refs: SectionRefs::Lines(LineRefs {
+                    line: SourceRef {
+                        bytes: ByteSource::Memory(Arc::from(&b"{}"[..])),
+                        range: 0..2,
+                    },
+                    result: None,
+                }),
+            };
+            assert!(Stub.section_details(&source).is_empty());
         }
     }
 
-    #[test]
-    fn a_harness_provides_no_section_details_by_default() {
-        let source = SectionSource {
-            kind: SourceKind::Message,
-            refs: SectionRefs::Lines(LineRefs {
-                line: SourceRef {
-                    bytes: ByteSource::Memory(Arc::from(&b"{}"[..])),
-                    range: 0..2,
-                },
-                result: None,
-            }),
-        };
-        assert!(Stub.section_details(&source).is_empty());
-    }
-}
+    mod registered {
+        use super::super::*;
 
-#[cfg(test)]
-mod registered_tests {
-    use super::*;
-
-    #[test]
-    fn registered_harnesses_match_the_constructed_ones() {
-        let mut config = Config::default();
-        let home = Path::new("/nonexistent");
-        for (claude, opencode) in [(true, true), (false, true), (true, false), (false, false)] {
-            config.harness.claude.enabled = claude;
-            config.harness.opencode.enabled = opencode;
-            let built: Vec<HarnessId> = build_harnesses_with_home(&config, home)
-                .iter()
-                .map(|h| h.id())
-                .collect();
-            assert_eq!(registered_harnesses(&config), built);
+        #[test]
+        fn registered_harnesses_match_the_constructed_ones() {
+            let mut config = Config::default();
+            let home = Path::new("/nonexistent");
+            for (claude, opencode) in [(true, true), (false, true), (true, false), (false, false)] {
+                config.harness.claude.enabled = claude;
+                config.harness.opencode.enabled = opencode;
+                let built: Vec<HarnessId> = build_harnesses_with_home(&config, home)
+                    .iter()
+                    .map(|h| h.id())
+                    .collect();
+                assert_eq!(registered_harnesses(&config), built);
+            }
         }
     }
 }

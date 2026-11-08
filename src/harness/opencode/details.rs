@@ -341,3 +341,6 @@ struct PartHead {
     #[serde(default, deserialize_with = "lenient_object")]
     time: Option<TimeHead>,
 }
+
+#[cfg(test)]
+mod tests;

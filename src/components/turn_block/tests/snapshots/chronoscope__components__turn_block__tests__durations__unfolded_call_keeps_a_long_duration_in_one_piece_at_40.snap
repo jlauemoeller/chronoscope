@@ -1,0 +1,19 @@
+---
+source: src/components/turn_block/tests/durations.rs
+expression: "buffer_to_text(&draw(&turn, &unfolded(&turn), 40))"
+---
+╭─ Assistant ── claude-opus-5.5 @ h… ──╮
+│                                      │
+│ ▼ Investigate the descriptors of     │
+│   the camera sensor module cluster   │
+│   · 5m 2s                            │
+│                                      │
+│   Command:                           │
+│                                      │
+│      lsusb                           │
+│                                      │
+│   Result:                            │
+│                                      │
+│      lsusb output                    │
+│                                      │
+╰──────────────────────────────────────╯

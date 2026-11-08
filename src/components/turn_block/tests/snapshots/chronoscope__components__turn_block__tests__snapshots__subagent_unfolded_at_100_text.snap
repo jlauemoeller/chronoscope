@@ -1,0 +1,23 @@
+---
+source: src/components/turn_block/tests/snapshots.rs
+expression: "buffer_to_text(&draw(&turn, &unfolded(&turn), 100))"
+---
+╭─ Assistant ── claude-opus-5.5 @ high ───────────────────────────────────── 2026-10-21 08:35:18Z ─╮
+│                                                                                                  │
+│ ▼ Explore the UVC descriptors (Explore)  ─────────────────────────────────  a to open transcript │
+│                                                                                                  │
+│   Prompt:                                                                                        │
+│                                                                                                  │
+│      Look through lsusb.txt and list:                                                            │
+│                                                                                                  │
+│      • every extension unit                                                                      │
+│      • its GUID                                                                                  │
+│                                                                                                  │
+│   Result:                                                                                        │
+│                                                                                                  │
+│      Found two extension units:                                                                  │
+│                                                                                                  │
+│      1. exposure                                                                                 │
+│      2. pan and tilt                                                                             │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

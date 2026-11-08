@@ -30,7 +30,7 @@ mod web;
 mod write;
 
 #[cfg(test)]
-mod testing;
+mod fixtures;
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -544,7 +544,7 @@ mod tests {
             "Prompt:", "Input:",
         ];
         for (kind, first) in kinds.into_iter().zip(labels) {
-            let call = testing::call(kind, serde_json::json!({}), Some("out"));
+            let call = fixtures::call(kind, serde_json::json!({}), Some("out"));
             let theme = crate::theme::builtin::default_theme();
             let body = body_renderer(&call.tool).body(&call, &SectionCtx::new(&theme, 60, false));
             assert_eq!(body.blocks[0].label, first, "{:?}", call.tool);

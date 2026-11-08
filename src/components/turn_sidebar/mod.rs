@@ -48,8 +48,6 @@ mod rows;
 #[cfg(test)]
 mod fixtures;
 #[cfg(test)]
-mod snapshots;
-#[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
