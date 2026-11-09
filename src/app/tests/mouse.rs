@@ -710,10 +710,10 @@ fn a_double_click_with_a_wheel_step_between_its_presses_still_opens() {
 
 #[test]
 fn a_press_not_on_a_row_ends_a_double_click_wherever_the_router_sends_it() {
-    // The reset runs at the next press, whatever the press between reached:
-    // a component that answers nothing (the tabs' underline row), nothing
-    // (the frame's border inside it), or the base selector as an outside
-    // press, which it ignores.
+    // The press between ends it whatever it reached (the router tells the
+    // Sessions pane): a component that answers nothing (the tabs' underline
+    // row), nothing (the frame's border inside it), or the base selector as
+    // an outside press, which it ignores.
     let probe = loaded();
     let underline = pos(&probe, Id::HarnessTabs, 0, 1);
     let border = pos(&probe, Id::SelectorFrame, 0, 5);
