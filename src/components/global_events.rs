@@ -61,7 +61,7 @@ impl GlobalEvents {
     ///
     /// With `mouse` it is also subscribed to the mouse anywhere on the
     /// screen and turns the left press and the wheel (see [`MOUSE_KINDS`])
-    /// into [`Msg::Mouse`]; the `App` finds the component under the pointer.
+    /// into [`Msg::Pointer`]; the router finds the component under the pointer.
     /// Without, no mouse event reaches it.
     pub fn subscriptions(keymap: &Keymap, mouse: bool) -> Vec<Sub<Id, UserEvent>> {
         let mut subs: Vec<Sub<Id, UserEvent>> = quit_key_events(keymap)
@@ -224,7 +224,7 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
             Event::Keyboard(key) => self.on_key(key),
             Event::WindowResize(width, height) => Some(Msg::Resized(*width, *height)),
             Event::Tick => Some(Msg::Tick),
-            Event::Mouse(mouse) if is_acted_on(mouse) => Some(Msg::Mouse(*mouse)),
+            Event::Mouse(mouse) if is_acted_on(mouse) => Some(Msg::Pointer(*mouse)),
             Event::User(UserEvent::Index(update)) => Some(Msg::Index(update.clone())),
             Event::User(UserEvent::Search(update)) => Some(Msg::SearchResults(update.clone())),
             Event::User(UserEvent::TranscriptSearch(matches)) => {
@@ -421,7 +421,7 @@ mod tests {
             let Event::Mouse(raw) = event.clone() else {
                 unreachable!()
             };
-            assert_eq!(component.on(&event), Some(Msg::Mouse(raw)), "{kind:?}");
+            assert_eq!(component.on(&event), Some(Msg::Pointer(raw)), "{kind:?}");
         }
     }
 

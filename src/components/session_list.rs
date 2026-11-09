@@ -401,7 +401,7 @@ impl Component for SessionList {
 
 impl AppComponent<Msg, UserEvent> for SessionList {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
-        if let Event::User(UserEvent::Mouse(mouse)) = ev {
+        if let Event::User(UserEvent::Pointer(mouse)) = ev {
             return self.on_mouse(mouse);
         }
         match pane_key(&self.keymap, ev)? {
@@ -1189,7 +1189,7 @@ mod tests {
 
     /// A pane `rows` list rows high and 60 wide: its rows start at row 2.
     fn mouse(kind: MouseEventKind, column: u16, row: u16, rows: u16) -> Event<UserEvent> {
-        Event::User(UserEvent::Mouse(RoutedMouse {
+        Event::User(UserEvent::Pointer(RoutedMouse {
             kind,
             column,
             row,

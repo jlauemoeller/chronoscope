@@ -93,7 +93,7 @@ impl Rig {
 
     pub(super) fn wheel(&mut self, kind: MouseEventKind) {
         let area = self.app.routing().area(Id::Transcript).unwrap();
-        self.app.update(Msg::Mouse(MouseEvent {
+        self.app.update_routed(Msg::Pointer(MouseEvent {
             kind,
             modifiers: KeyModifiers::NONE,
             column: area.x + 10,

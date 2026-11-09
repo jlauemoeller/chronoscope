@@ -180,7 +180,7 @@ impl Component for HarnessTabs {
 impl AppComponent<Msg, UserEvent> for HarnessTabs {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
-            Event::User(UserEvent::Mouse(mouse)) => self.on_mouse(mouse),
+            Event::User(UserEvent::Pointer(mouse)) => self.on_mouse(mouse),
             _ => None,
         }
     }
@@ -301,7 +301,7 @@ mod tests {
     use tuirealm::event::{MouseButton, MouseEventKind};
 
     fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Event<UserEvent> {
-        Event::User(UserEvent::Mouse(RoutedMouse {
+        Event::User(UserEvent::Pointer(RoutedMouse {
             kind,
             column,
             row,

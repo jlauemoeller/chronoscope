@@ -2,8 +2,11 @@
 //! the three types that connect them (architecture.md#application-structure).
 //!
 //! - [`Id`] names a mountable component.
-//! - [`Msg`] says what happened, in application terms.
-//! - [`UserEvent`] is what the Ports deliver.
+//! - [`Msg`] says what happened, in application terms (all but
+//!   [`Msg::Pointer`], which exists for the pointer routing only).
+//! - [`UserEvent`] is what the Ports deliver, and the pointer events the
+//!   router hands to components ([`UserEvent::Pointer`],
+//!   [`UserEvent::PointerOutside`]).
 //!
 //! [`App::update`] is the only place that changes domain state or the mounted
 //! components. [`App::view`] only asks [`layout`] where each component goes and
@@ -36,7 +39,7 @@ mod fixtures;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -277,10 +280,31 @@ pub enum Msg {
     /// `Enter` in the turns sidebar on the entry of this turn: scroll the
     /// transcript to its block and focus it.
     OpenTurn(TurnId),
+    /// A left press on the transcript on top, on a section or not: it asks
+    /// for the focus, and says what the press did to its view.
+    TranscriptPressed(ViewChange),
     /// A left press or a wheel step at this position of the screen (only
-    /// with `mouse = true`). The `App` routes it to the component under the
-    /// pointer.
-    Mouse(MouseEvent),
+    /// with `mouse = true`), in screen coordinates. `GlobalEvents` builds it
+    /// from the raw event; no Port delivers it. The router gives it to the
+    /// component that [`hit_test`](layout::hit_test) finds (cycle 5 spec, §0
+    /// item 6).
+    ///
+    /// It is the one `Msg` that is not in application terms: it exists for
+    /// that routing only, and what it means is the component's to decide.
+    Pointer(MouseEvent),
+}
+
+/// What an event did to the transcript's view, as its answer reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewChange {
+    /// Nothing changed.
+    Unchanged,
+    /// The selection, scroll or folds changed: nothing but a redraw is
+    /// needed (as for [`Msg::TranscriptChanged`]).
+    Changed,
+    /// The count of new sections changed to this (as for
+    /// [`Msg::NewSections`]).
+    NewSections(usize),
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large
@@ -305,11 +329,16 @@ pub enum UserEvent {
         generation: u64,
         found: Option<SessionId>,
     },
-    /// A mouse event the `App` routed to the component under the pointer,
+    /// A pointer event the router gave the component under the pointer,
     /// with the position relative to the component's area. Built by the
-    /// `App`, never delivered by a Port: the raw `Event::Mouse` goes to the
-    /// focused component too, in screen coordinates.
-    Mouse(RoutedMouse),
+    /// router (cycle 5 spec, §0 item 6), never delivered by a Port: the raw
+    /// `Event::Mouse` goes to the focused component too, in screen
+    /// coordinates, and components ignore it.
+    Pointer(RoutedMouse),
+    /// A left press outside the overlay on top, which the router gives to
+    /// that overlay: it closes as on `Esc`, unless it is modal. Built by the
+    /// router, never delivered by a Port.
+    PointerOutside,
 }
 
 /// How often the event listener sends `Event::Tick`.
@@ -398,9 +427,10 @@ pub struct App {
     /// Numbers the transcript searches. Never reset, so an answer cannot be
     /// taken for one to a search of another session.
     transcript_seq: u64,
-    /// Messages `update` made for itself or for the browser; `tick` hands
-    /// them out with the components'.
-    queued: Vec<Msg>,
+    /// Messages `update` made for itself, the browser or a component's
+    /// answer to a pointer event, oldest first; [`App::handle`] handles
+    /// them, and `tick` hands out any that are left with the components'.
+    queued: VecDeque<Msg>,
     /// The harnesses sessions can be loaded from.
     harnesses: HashMap<HarnessId, Arc<dyn Harness>>,
     /// Where the forwarding threads of session loads send their updates.
@@ -500,7 +530,7 @@ impl App {
             search_seq: 0,
             transcript_worker: None,
             transcript_seq: 0,
-            queued: Vec::new(),
+            queued: VecDeque::new(),
             harnesses: HashMap::new(),
             session_sink: None,
             browser: BrowserState::default(),
@@ -641,26 +671,39 @@ impl App {
     /// Polls the components' event sources once and returns the messages the
     /// components produced.
     ///
-    /// The messages that `update` queued come after them.
+    /// The messages that `update` queued and [`handle`](Self::handle) has
+    /// not handled come after them.
     pub fn tick(&mut self) -> Result<Vec<Msg>, ApplicationError> {
         let mut msgs = self
             .application
             .tick(PollStrategy::UpTo(MAX_EVENTS_PER_TICK, POLL_TIMEOUT))?;
-        msgs.append(&mut self.queued);
+        msgs.extend(self.queued.drain(..));
         Ok(msgs)
     }
 
-    /// Queues `msg` to be handled after the current one: [`update`](Self::update)
-    /// returns nothing, so this is how it passes a request on (to the
-    /// browser, for the sessions the selector opens).
-    fn emit(&mut self, msg: Msg) {
-        self.queued.push(msg);
+    /// The run loop's step: [`update`](Self::update)s `msg`, then each
+    /// message that queued, in the order they were queued, until none is
+    /// left. A pointer event's answer is thus handled before any later
+    /// event. Never called from inside `update`.
+    pub fn handle(&mut self, msg: Msg) {
+        self.update(msg);
+        while let Some(next) = self.queued.pop_front() {
+            self.update(next);
+        }
     }
 
-    /// Takes the messages that `update` queued and `tick` has not handed
-    /// out yet.
+    /// Queues `msg` to be handled after the current one: [`update`](Self::update)
+    /// returns nothing and never calls itself, so this is how it passes a
+    /// request on (to the browser, for the sessions the selector opens) and
+    /// how the router passes on a component's answer to a pointer event.
+    fn emit(&mut self, msg: Msg) {
+        self.queued.push_back(msg);
+    }
+
+    /// Takes the messages that `update` queued and that neither
+    /// [`handle`](Self::handle) nor `tick` has handed out yet.
     pub fn take_queued(&mut self) -> Vec<Msg> {
-        std::mem::take(&mut self.queued)
+        self.queued.drain(..).collect()
     }
 
     // -- focus
@@ -735,11 +778,7 @@ impl App {
             }
             Msg::PromptChanged(text) => self.search_changed(text),
             Msg::PromptMoved | Msg::TranscriptChanged => self.request_redraw(RedrawRequest::Dirty),
-            Msg::NewSections(count) => {
-                // The key that reported it moved the view too.
-                self.request_redraw(RedrawRequest::Dirty);
-                self.set_new_sections(count);
-            }
+            Msg::NewSections(count) => self.new_sections_reported(count),
             Msg::PromptSubmit(text) if self.browser.search.prompt_open => {
                 self.transcript_prompt_submit(text);
             }
@@ -776,7 +815,8 @@ impl App {
             Msg::TurnSelected(id) => self.go_to_turn(&id, false),
             Msg::OpenTurn(id) => self.go_to_turn(&id, true),
             Msg::TurnClicked(id) => self.turn_clicked(id),
-            Msg::Mouse(event) => self.mouse(event),
+            Msg::TranscriptPressed(change) => self.transcript_pressed(change),
+            Msg::Pointer(event) => self.pointer(event),
         }
         // Any message may have moved the transcript's selection, or the focus.
         self.sync_sidebar_selection();
@@ -828,6 +868,7 @@ impl App {
             screen: self.screen,
             toast_text_width: self.toast_text.as_deref().map(UnicodeWidthStr::width),
             prompt: self.application.mounted(&Id::Prompt),
+            selector_search: self.selector.search.is_some(),
             session_empty: self.browser.session_empty(),
             help: self.help_size,
             details: self.details_size,

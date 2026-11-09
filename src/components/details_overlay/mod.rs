@@ -133,8 +133,7 @@ impl Component for DetailsOverlay {
 
 impl DetailsOverlay {
     /// The wheel scrolls [`WHEEL_ROWS`](super::overlay_frame::WHEEL_ROWS)
-    /// rows; clicks do nothing (the `App` closes the overlay for one outside
-    /// it).
+    /// rows; clicks inside it do nothing.
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         let total = self.total();
         self.frame
@@ -154,8 +153,10 @@ impl AppComponent<Msg, UserEvent> for DetailsOverlay {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let key = match ev {
             Event::Keyboard(key) => key,
-            // Only what the `App` routed here, in the overlay's coordinates.
-            Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
+            // Only what the router sent here, in the overlay's coordinates.
+            Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
+            // A press outside closes it, as `Esc` does.
+            Event::User(UserEvent::PointerOutside) => return Some(Msg::CloseDetails),
             _ => return None,
         };
         // The `details` key has a resolver of its own, because it can be a
@@ -223,7 +224,7 @@ mod tests {
             row: 4,
             area: Size::new(60, 12),
         };
-        overlay.on(&Event::User(UserEvent::Mouse(mouse)))
+        overlay.on(&Event::User(UserEvent::Pointer(mouse)))
     }
 
     /// 30 rows, a blank row, the heading, a blank row and a blank row.
@@ -458,6 +459,15 @@ mod tests {
         });
         assert_eq!(overlay.on(&raw), None);
         assert_eq!(offset(&overlay), 0);
+    }
+
+    #[test]
+    fn a_press_outside_it_closes_it_as_esc_does() {
+        let mut overlay = overlay(10);
+        let outside = Event::User(UserEvent::PointerOutside);
+        assert_eq!(overlay.on(&outside), Some(Msg::CloseDetails));
+        wheel(&mut overlay, MouseEventKind::ScrollDown);
+        assert_eq!(overlay.on(&outside), Some(Msg::CloseDetails));
     }
 
     #[test]

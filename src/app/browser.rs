@@ -24,7 +24,7 @@ use super::layout::Screen;
 use super::redraw::RedrawRequest;
 use super::selector::{SELECTOR_IDS, mount_selector};
 use super::session_port::{SessionEvent, SessionUpdate, forward_to, look_up_subagent};
-use super::{App, Id};
+use super::{App, Id, ViewChange};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
     BREADCRUMB_ATTR, BackgroundFill, BrowserHeader, COVER_ATTR, EMPTY_SESSION, EmptyState,
@@ -892,6 +892,29 @@ impl App {
             .map(tuirealm::props::QueryResult::into_attr);
         if let Some(AttrValue::Length(count)) = count {
             self.set_new_sections(count);
+        }
+    }
+
+    /// A key or the pointer moved the view, and the transcript now counts
+    /// `count` new sections.
+    pub(super) fn new_sections_reported(&mut self, count: usize) {
+        self.request_redraw(RedrawRequest::Dirty);
+        self.set_new_sections(count);
+    }
+
+    /// A left press on the transcript on top: it gets the focus, if
+    /// something else has it, and the view is redrawn as `change` says.
+    pub(super) fn transcript_pressed(&mut self, change: ViewChange) {
+        let top = self.top_transcript();
+        if self.application.focus() != Some(&top)
+            && let Err(err) = self.application.active(&top)
+        {
+            log::warn!("could not focus the transcript: {err}");
+        }
+        match change {
+            ViewChange::Unchanged => {}
+            ViewChange::Changed => self.request_redraw(RedrawRequest::Dirty),
+            ViewChange::NewSections(count) => self.new_sections_reported(count),
         }
     }
 

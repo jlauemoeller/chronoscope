@@ -59,9 +59,11 @@ pub use list_cursor::{
 };
 pub use list_pane::{SESSION_OPEN_ATTR, visible_rows};
 pub use overlay_frame::{INTERIOR_ATTR, interior_of, interior_value};
-pub use project_list::{PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows};
+pub use project_list::{
+    PROJECT_ROWS_ATTR, PROJECTS_FILTERED_ATTR, ProjectList, ProjectRow, ProjectRows,
+};
 pub use prompt::{Prompt, PromptMode};
-pub use selector_frame::SelectorFrame;
+pub use selector_frame::{RESUME_OPEN_ATTR, SelectorFrame};
 pub use session_list::{
     ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_FILTERED_ATTR, SESSION_ROWS_ATTR,
     SESSION_STATS_ATTR, SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_stats,

@@ -2,8 +2,9 @@
 //! selects the section under the pointer, a click on a section's summary line
 //! toggles its fold and a click on a `… N more lines` row expands the output.
 //!
-//! The `App` routes the event here with the position relative to the
-//! transcript's area (see [`RoutedMouse`]). The row is mapped to a block and a
+//! The router sends the event here with the position relative to the
+//! transcript's area (see [`RoutedMouse`]). A left press asks for the focus
+//! ([`Msg::TranscriptPressed`]), whether or not it hits a section. The row is mapped to a block and a
 //! row of that block through the prepared window (the layout cache's blocks,
 //! laid out for the viewport), and from there to a section or selection stop.
 
@@ -14,7 +15,7 @@ use tuirealm::event::MouseEventKind;
 use super::Transcript;
 use super::folding::FoldOp;
 use super::keys::{WHEEL_DOWN, WHEEL_UP};
-use crate::app::{Msg, RoutedMouse};
+use crate::app::{Msg, RoutedMouse, ViewChange};
 use crate::components::turn_block::SectionId;
 
 /// What a click landed on.
@@ -26,21 +27,34 @@ struct Hit {
 }
 
 impl Transcript {
-    /// A wheel step or a left press. Answers what keys answer: the new count
-    /// when it changed, else [`Msg::TranscriptChanged`] if the view changed.
+    /// A wheel step or a left press. A wheel step answers what keys answer:
+    /// the new count when it changed, else [`Msg::TranscriptChanged`] if the
+    /// view changed. A left press answers [`Msg::TranscriptPressed`] with the
+    /// same change, as it also asks for the focus.
     pub(super) fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         let new_before = self.new_sections;
+        let press = mouse.is_left_press();
         let result = match mouse.kind {
             MouseEventKind::ScrollUp => self.perform(Cmd::Custom(WHEEL_UP)),
             MouseEventKind::ScrollDown => self.perform(Cmd::Custom(WHEEL_DOWN)),
-            _ if mouse.is_left_press() => self.clicked(mouse),
+            _ if press => self.clicked(mouse),
             _ => return None,
         };
-        if self.new_sections != new_before {
-            return Some(Msg::NewSections(self.new_sections));
+        let change = if self.new_sections != new_before {
+            ViewChange::NewSections(self.new_sections)
+        } else if matches!(result, CmdResult::NoChange | CmdResult::Invalid(_)) {
+            ViewChange::Unchanged
+        } else {
+            ViewChange::Changed
+        };
+        if press {
+            return Some(Msg::TranscriptPressed(change));
         }
-        let changed = !matches!(result, CmdResult::NoChange | CmdResult::Invalid(_));
-        changed.then_some(Msg::TranscriptChanged)
+        match change {
+            ViewChange::Unchanged => None,
+            ViewChange::Changed => Some(Msg::TranscriptChanged),
+            ViewChange::NewSections(count) => Some(Msg::NewSections(count)),
+        }
     }
 
     /// A left press at (`column`, `row`) of the transcript's area.

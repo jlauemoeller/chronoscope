@@ -66,12 +66,13 @@
 //!   `/` is not a `Cmd`: the key answers [`Msg::OpenSearch`].
 //!
 //! The mouse (see the `mouse` module) arrives as a [`RoutedMouse`](crate::app::RoutedMouse)
-//! the `App` made for the pointer's position in the transcript's area. A wheel
+//! the router made for the pointer's position in the transcript's area. A wheel
 //! step is `Custom(`[`WHEEL_UP`]`/`[`WHEEL_DOWN`]`)`: it scrolls [`WHEEL_ROWS`]
 //! rows the way the page keys scroll. A left press selects the section under
 //! the pointer, toggles its fold when it is on the section's first row, and
 //! expands the output on a `… N more lines` row; the borders, the padding and
-//! the blank rows are not sections.
+//! the blank rows are not sections. Wherever it lands, a left press answers
+//! [`Msg::TranscriptPressed`], which asks for the focus.
 //!
 //! The keys that focus the turns sidebar are not `Cmd`s either: they answer
 //! [`Msg::FocusTurns`]. The sidebar's selection reaches the transcript through
@@ -693,9 +694,9 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let key = match ev {
             Event::Keyboard(key) => key,
-            // Only what the `App` routed here: the raw event reaches the
+            // Only what the router sent here: the raw event reaches the
             // focused component in screen coordinates.
-            Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
+            Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
             _ => return None,
         };
         let Resolved::Action(action) = self.resolver.feed(&self.keymap, key) else {

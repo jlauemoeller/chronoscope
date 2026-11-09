@@ -11,7 +11,7 @@ use super::super::fixtures::*;
 use super::super::*;
 use super::keys::{ch, press};
 use super::{item_section, section_id};
-use crate::app::RoutedMouse;
+use crate::app::{RoutedMouse, ViewChange};
 use crate::components::turn_block::SectionKey;
 use crate::model::ItemId;
 use tuirealm::event::Key;
@@ -19,7 +19,7 @@ use tuirealm::event::Key;
 const LEFT: MouseEventKind = MouseEventKind::Down(MouseButton::Left);
 
 fn routed(t: &Transcript, kind: MouseEventKind, column: u16, row: u16) -> Event<UserEvent> {
-    Event::User(UserEvent::Mouse(RoutedMouse {
+    Event::User(UserEvent::Pointer(RoutedMouse {
         kind,
         column,
         row,
@@ -36,8 +36,19 @@ fn wheel(t: &mut Transcript, down: bool) -> Option<Msg> {
     t.on(&routed(t, kind, 10, 3))
 }
 
+/// A left press at (`column`, `row`). It always asks for the focus
+/// ([`Msg::TranscriptPressed`]); this returns what it says about the view as
+/// the message a key would answer.
 fn click_at(t: &mut Transcript, column: u16, row: u16) -> Option<Msg> {
-    t.on(&routed(t, LEFT, column, row))
+    let answer = t.on(&routed(t, LEFT, column, row));
+    let Some(Msg::TranscriptPressed(change)) = answer else {
+        panic!("a left press asks for the focus, got {answer:?}");
+    };
+    match change {
+        ViewChange::Unchanged => None,
+        ViewChange::Changed => Some(Msg::TranscriptChanged),
+        ViewChange::NewSections(count) => Some(Msg::NewSections(count)),
+    }
 }
 
 /// The rows of section `id` in the transcript, from the layout cache.
@@ -355,18 +366,51 @@ fn a_click_below_the_last_block_selects_nothing() {
 fn a_click_before_the_viewport_is_announced_does_nothing() {
     let mut t =
         Transcript::new(super::blocks::theme(), super::blocks::formatter()).with_turns(session());
-    let event = Event::User(UserEvent::Mouse(RoutedMouse {
+    let event = Event::User(UserEvent::Pointer(RoutedMouse {
         kind: LEFT,
         column: 10,
         row: 3,
         area: Size::new(80, 24),
     }));
-    assert_eq!(t.on(&event), None);
+    // It still asks for the focus, as a press anywhere on the transcript.
+    assert_eq!(
+        t.on(&event),
+        Some(Msg::TranscriptPressed(ViewChange::Unchanged))
+    );
     assert_eq!(wheel_event(&mut t), None);
 }
 
+#[test]
+fn a_left_press_asks_for_the_focus_on_a_section_or_not_and_the_wheel_does_not() {
+    let mut t = session_transcript(80, 60);
+    // Assistant text, which does not fold.
+    let id = sections(&t, 1)[0].clone();
+    let row = screen_row(&mut t, &id, 1);
+    assert_eq!(
+        t.on(&routed(&t, LEFT, 10, row)),
+        Some(Msg::TranscriptPressed(ViewChange::Changed)),
+        "on a section"
+    );
+    assert_eq!(
+        t.on(&routed(&t, LEFT, 10, row)),
+        Some(Msg::TranscriptPressed(ViewChange::Unchanged)),
+        "on the section that is selected already"
+    );
+    assert_eq!(
+        t.on(&routed(&t, LEFT, 0, row)),
+        Some(Msg::TranscriptPressed(ViewChange::Unchanged)),
+        "on the border"
+    );
+    for down in [true, false] {
+        assert!(
+            !matches!(wheel(&mut t, down), Some(Msg::TranscriptPressed(_))),
+            "the wheel"
+        );
+    }
+}
+
 fn wheel_event(t: &mut Transcript) -> Option<Msg> {
-    t.on(&Event::User(UserEvent::Mouse(RoutedMouse {
+    t.on(&Event::User(UserEvent::Pointer(RoutedMouse {
         kind: MouseEventKind::ScrollDown,
         column: 10,
         row: 3,

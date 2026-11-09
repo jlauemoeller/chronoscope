@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, TimeZone, Utc};
 
-use super::{IndexUpdate, Msg};
+use super::{App, IndexUpdate, Msg};
 use crate::index::{IndexEvent, SessionMap};
 use crate::model::{
     HarnessId, Project, ProjectId, SessionId, SessionStats, SessionSummary, TokenUsage,
@@ -389,4 +389,21 @@ pub fn big_data(count: usize) -> (Vec<Project>, SessionMap) {
         sessions.entry(p.id.clone()).or_default().push(s);
     }
     (projects, sessions)
+}
+
+impl App {
+    /// [`update`](Self::update)s `msg`, a pointer message, and then the
+    /// answer the router queued for it, if any, as the run loop's
+    /// [`handle`](Self::handle) would. Unlike `handle`, it leaves what that
+    /// answer queued in turn (an `OpenSession` on a double-click) for the
+    /// test to find in [`take_queued`](Self::take_queued).
+    pub(crate) fn update_routed(&mut self, msg: Msg) {
+        let before = self.queued.len();
+        self.update(msg);
+        if self.queued.len() > before
+            && let Some(answer) = self.queued.pop_back()
+        {
+            self.update(answer);
+        }
+    }
 }

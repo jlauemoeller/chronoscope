@@ -160,7 +160,8 @@ impl OverlayFrame {
     }
 
     /// The wheel scrolls [`WHEEL_ROWS`] rows; nothing else does anything
-    /// (the `App` closes the overlay for a click outside it). Returns
+    /// (a press outside the overlay closes it, as its component decides).
+    /// Returns
     /// whether the view moved.
     pub fn on_mouse(&mut self, mouse: &RoutedMouse, total: usize) -> bool {
         match mouse.kind {

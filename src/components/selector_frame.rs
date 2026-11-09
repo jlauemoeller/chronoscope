@@ -14,8 +14,19 @@ use super::{THEME_ATTR, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme};
 
+/// The attribute that says whether the resume confirmation is open
+/// (`AttrValue::Flag`): it is modal, so a press outside the selector does
+/// nothing then.
+pub const RESUME_OPEN_ATTR: Attribute = Attribute::Custom("resume_open");
+
 /// Draws the border, sizing and background of the selector overlay and
 /// nothing inside it or outside it. It never takes focus.
+///
+/// A left press outside it (`UserEvent::PointerOutside`) closes the selector
+/// over a session with [`Msg::CloseSelector`], as `Esc` does. When the
+/// selector is the base screen there is nothing to return to, and while the
+/// resume confirmation is open ([`RESUME_OPEN_ATTR`]) it is modal: the press
+/// does nothing then.
 ///
 /// `view` gets the overlay rect as its area. When the selector is the base
 /// screen, the rest of the screen is painted by a
@@ -27,12 +38,29 @@ use crate::theme::{Role, Theme};
 #[derive(Debug, Clone)]
 pub struct SelectorFrame {
     theme: Theme,
+    /// Whether the selector is the base screen, not over a session.
+    base: bool,
+    /// Whether the resume confirmation is open.
+    resume_open: bool,
 }
 
 impl SelectorFrame {
-    /// A frame in `theme`.
+    /// A frame in `theme` for the selector as the base screen.
     pub fn new(theme: Theme) -> Self {
-        Self { theme }
+        Self {
+            theme,
+            base: true,
+            resume_open: false,
+        }
+    }
+
+    /// The same frame for the selector over a session.
+    #[must_use]
+    pub fn over_session(self) -> Self {
+        Self {
+            base: false,
+            ..self
+        }
     }
 
     fn border(&self) -> Block<'static> {
@@ -56,14 +84,22 @@ impl Component for SelectorFrame {
     }
 
     fn query<'a>(&'a self, attr: Attribute) -> Option<QueryResult<'a>> {
-        (attr == THEME_ATTR).then(|| QueryResult::Owned(theme_value(&self.theme)))
+        match attr {
+            THEME_ATTR => Some(QueryResult::Owned(theme_value(&self.theme))),
+            RESUME_OPEN_ATTR => Some(QueryResult::Owned(AttrValue::Flag(self.resume_open))),
+            _ => None,
+        }
     }
 
     fn attr(&mut self, attr: Attribute, value: AttrValue) {
-        if attr == THEME_ATTR
-            && let Some(theme) = theme_from_value(&value)
-        {
-            self.theme = theme;
+        match (attr, value) {
+            (THEME_ATTR, value) => {
+                if let Some(theme) = theme_from_value(&value) {
+                    self.theme = theme;
+                }
+            }
+            (RESUME_OPEN_ATTR, AttrValue::Flag(open)) => self.resume_open = open,
+            _ => {}
         }
     }
 
@@ -77,8 +113,13 @@ impl Component for SelectorFrame {
 }
 
 impl AppComponent<Msg, UserEvent> for SelectorFrame {
-    fn on(&mut self, _ev: &Event<UserEvent>) -> Option<Msg> {
-        None
+    /// Only a press outside the selector (see the type) does something.
+    fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
+        let closes = !self.base && !self.resume_open;
+        match ev {
+            Event::User(UserEvent::PointerOutside) if closes => Some(Msg::CloseSelector),
+            _ => None,
+        }
     }
 }
 
@@ -193,6 +234,55 @@ mod tests {
         component.attr(THEME_ATTR, theme_value(&other));
         let queried = component.query(THEME_ATTR).unwrap().into_attr();
         assert_eq!(theme_from_value(&queried), Some(other));
+    }
+
+    fn outside(frame: &mut SelectorFrame) -> Option<Msg> {
+        frame.on(&Event::User(UserEvent::PointerOutside))
+    }
+
+    #[test]
+    fn a_press_outside_the_selector_over_a_session_closes_it() {
+        let mut frame = SelectorFrame::new(default_theme()).over_session();
+        assert_eq!(outside(&mut frame), Some(Msg::CloseSelector));
+    }
+
+    #[test]
+    fn a_press_outside_the_base_selector_does_nothing() {
+        let mut frame = SelectorFrame::new(default_theme());
+        assert_eq!(outside(&mut frame), None);
+        frame.attr(RESUME_OPEN_ATTR, AttrValue::Flag(false));
+        assert_eq!(outside(&mut frame), None);
+    }
+
+    #[test]
+    fn a_press_outside_during_the_resume_confirmation_does_nothing() {
+        let mut frame = SelectorFrame::new(default_theme()).over_session();
+        frame.attr(RESUME_OPEN_ATTR, AttrValue::Flag(true));
+        assert_eq!(
+            frame.query(RESUME_OPEN_ATTR).unwrap().into_attr(),
+            AttrValue::Flag(true)
+        );
+        assert_eq!(outside(&mut frame), None);
+        // Once it is answered, a press outside closes the selector again.
+        frame.attr(RESUME_OPEN_ATTR, AttrValue::Flag(false));
+        assert_eq!(outside(&mut frame), Some(Msg::CloseSelector));
+    }
+
+    #[test]
+    fn a_routed_press_or_wheel_step_inside_does_nothing() {
+        let mut frame = SelectorFrame::new(default_theme()).over_session();
+        for kind in [
+            tuirealm::event::MouseEventKind::Down(tuirealm::event::MouseButton::Left),
+            tuirealm::event::MouseEventKind::ScrollDown,
+        ] {
+            let inside = Event::User(UserEvent::Pointer(crate::app::RoutedMouse {
+                kind,
+                column: 3,
+                row: 3,
+                area: ratatui::layout::Size::new(26, 6),
+            }));
+            assert_eq!(frame.on(&inside), None, "{kind:?}");
+        }
     }
 
     #[test]

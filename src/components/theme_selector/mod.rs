@@ -265,8 +265,10 @@ impl AppComponent<Msg, UserEvent> for ThemeSelector {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let key = match ev {
             Event::Keyboard(key) => key,
-            // Only what the `App` routed here, in the overlay's coordinates.
-            Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
+            // Only what the router sent here, in the overlay's coordinates.
+            Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
+            // A press outside gives the previous theme back, as `Esc` does.
+            Event::User(UserEvent::PointerOutside) => return Some(Msg::CancelTheme),
             _ => return None,
         };
         match self.keymap.resolve(Context::Overlay, key)? {
@@ -568,7 +570,7 @@ mod tests {
     // -- the mouse
 
     fn mouse(s: &ThemeSelector, kind: MouseEventKind, column: u16, row: u16) -> Event<UserEvent> {
-        Event::User(UserEvent::Mouse(RoutedMouse {
+        Event::User(UserEvent::Pointer(RoutedMouse {
             kind,
             column,
             row,
@@ -630,7 +632,7 @@ mod tests {
         // Two themes in an overlay with room for five.
         let items = vec![ThemeItem::valid("a", "A"), ThemeItem::valid("b", "B")];
         let mut s = ThemeSelector::new(items, "a", builtin::default_theme(), Keymap::default());
-        let event = Event::User(UserEvent::Mouse(RoutedMouse {
+        let event = Event::User(UserEvent::Pointer(RoutedMouse {
             kind: PRESS,
             column: 6,
             row: 5,
@@ -658,7 +660,7 @@ mod tests {
         s.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(5));
         let area = Size::new(41, 10);
         let at = |line: u16| {
-            Event::User(UserEvent::Mouse(RoutedMouse {
+            Event::User(UserEvent::Pointer(RoutedMouse {
                 kind: PRESS,
                 column: 6,
                 row: 2 + line,
@@ -668,6 +670,16 @@ mod tests {
         assert_eq!(s.on(&at(0)), Some(Msg::ThemeClicked("t5".into())));
         assert_eq!(s.on(&at(4)), Some(Msg::ThemeClicked("t9".into())));
         assert_eq!(selected(&s).as_deref(), Some("t9"));
+    }
+
+    #[test]
+    fn a_press_outside_it_cancels_as_esc_does() {
+        let mut s = selector_for(&ThemeRegistry::builtin(), "default");
+        click_line(&mut s, 3);
+        let outside = Event::User(UserEvent::PointerOutside);
+        assert_eq!(s.on(&outside), Some(Msg::CancelTheme));
+        assert_eq!(press(&mut s, Key::Esc), Some(Msg::CancelTheme));
+        assert_eq!(selected(&s).as_deref(), Some("gruvbox"), "the cursor stays");
     }
 
     #[test]
