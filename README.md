@@ -47,7 +47,7 @@ officially supported but you should be able to build the tool for the platform.
 
 ### From source
 
-You need a Rust toolchain (1.88 or newer).
+You need a Rust toolchain (1.99.1 or newer).
 
 ```sh
 git clone <this repository>
