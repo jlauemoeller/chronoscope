@@ -284,10 +284,10 @@ pub enum Msg {
     /// for the focus, and says what the press did to its view.
     TranscriptPressed(ViewChange),
     /// A left press or a wheel step at this position of the screen (only
-    /// with `mouse = true`), in screen coordinates. `GlobalEvents` builds it
-    /// from the raw event; no Port delivers it. The router gives it to the
-    /// component that [`hit_test`](layout::hit_test) finds (cycle 5 spec, §0
-    /// item 6).
+    /// with `mouse = true`), in screen coordinates. It is built on the
+    /// router's path (cycle 5 spec, §0 item 6), not by a Port: `GlobalEvents`
+    /// makes it from the raw event, and the router gives it to the component
+    /// that [`hit_test`](layout::hit_test) finds.
     ///
     /// It is the one `Msg` that is not in application terms: it exists for
     /// that routing only, and what it means is the component's to decide.
@@ -305,6 +305,18 @@ pub enum ViewChange {
     /// The count of new sections changed to this (as for
     /// [`Msg::NewSections`]).
     NewSections(usize),
+}
+
+impl ViewChange {
+    /// The message a key that made this change answers: none,
+    /// [`Msg::TranscriptChanged`] or [`Msg::NewSections`].
+    pub fn key_answer(self) -> Option<Msg> {
+        match self {
+            Self::Unchanged => None,
+            Self::Changed => Some(Msg::TranscriptChanged),
+            Self::NewSections(count) => Some(Msg::NewSections(count)),
+        }
+    }
 }
 
 /// What the Ports deliver to the application. Must be `Eq + Clone`, so large

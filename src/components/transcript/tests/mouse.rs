@@ -44,11 +44,7 @@ fn click_at(t: &mut Transcript, column: u16, row: u16) -> Option<Msg> {
     let Some(Msg::TranscriptPressed(change)) = answer else {
         panic!("a left press asks for the focus, got {answer:?}");
     };
-    match change {
-        ViewChange::Unchanged => None,
-        ViewChange::Changed => Some(Msg::TranscriptChanged),
-        ViewChange::NewSections(count) => Some(Msg::NewSections(count)),
-    }
+    change.key_answer()
 }
 
 /// The rows of section `id` in the transcript, from the layout cache.

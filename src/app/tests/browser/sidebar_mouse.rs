@@ -3,8 +3,9 @@
 //! double-click does what `Enter` does, and a click on the transcript
 //! focuses it.
 //!
-//! The events go through `App::update(Msg::Pointer(..))`, as `GlobalEvents`
-//! sends them in the running application; what they must do is what the keys
+//! The events go through `App::update_routed(Msg::Pointer(..))`, which
+//! handles the router's answer as the running application does; what they
+//! must do is what the keys
 //! do (`j` / `k` / `Enter`), which the tests compare with.
 
 use std::cell::Cell;

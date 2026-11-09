@@ -48,12 +48,9 @@ impl Transcript {
             ViewChange::Changed
         };
         if press {
-            return Some(Msg::TranscriptPressed(change));
-        }
-        match change {
-            ViewChange::Unchanged => None,
-            ViewChange::Changed => Some(Msg::TranscriptChanged),
-            ViewChange::NewSections(count) => Some(Msg::NewSections(count)),
+            Some(Msg::TranscriptPressed(change))
+        } else {
+            change.key_answer()
         }
     }
 

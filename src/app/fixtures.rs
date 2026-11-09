@@ -1,5 +1,7 @@
 //! Fixed index data for the selector's tests: fixed times, a fixed clock and
-//! UTC timestamps, so nothing depends on the machine.
+//! UTC timestamps, so nothing depends on the machine. Also
+//! [`App::update_routed`], which the pointer tests send their events
+//! through.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
