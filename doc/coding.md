@@ -18,7 +18,7 @@ This file says how code is written in this project, which is Rust with tui-realm
 
 ## Files and modules
 
-- **A module with submodules is a file named after it, with its submodules in a directory of the same name.** `src/theme.rs` is the `theme` module, and declares `mod emphasis;`, which is `src/theme/emphasis.rs`. There are no `mod.rs` files anywhere in the package (`src/`, `tests/` and `benches/`). Clippy's `mod_module_files` lint, denied in `Cargo.toml`, enforces this. Helpers that several integration tests share go in `src/test_support.rs`, not in a `tests/<name>/mod.rs`.
+- **A module with submodules is a file named after it, with its submodules in a directory of the same name.** `src/theme.rs` is the `theme` module, and declares `pub mod emphasis;`, which is `src/theme/emphasis.rs`. There are no `mod.rs` files anywhere in the package (`src/`, `tests/` and `benches/`). Clippy's `mod_module_files` lint, denied in `Cargo.toml`, enforces this in `src/` and `benches/`. It does not check `tests/`, where Clippy allows `mod.rs` files. Helpers that several integration tests share go in `src/test_support.rs`, not in a `tests/<name>/mod.rs`.
 - Each component type has its own module under `src/components/`, named after the type in snake case (`TurnSidebar` is `src/components/turn_sidebar.rs`, with its submodules in `src/components/turn_sidebar/`). One type may be mounted under several `Id`s: `BackgroundFill` paints the `SidebarGap` and the `ScreenBackground`.
 - Each harness adapter has its own module under `src/harness/`, named after the harness (`claude`, `opencode`), and implements the `Harness` trait ([architecture.md](architecture.md#data-flow)). Code that several adapters share sits beside them in `src/harness/`.
 

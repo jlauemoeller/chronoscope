@@ -74,11 +74,11 @@ The UI follows tui-realm's model: components turn events into messages, and one 
 - **`App::new`** is construction: it builds the `Application`, mounts the components every screen needs (`GlobalEvents`, the selector's components, `EmptyState`) and sets the first focus. `run_app` then hands the app its workers, harnesses, clipboard and session channel.
 - **Startup goes through `update`.** `run_app` resolves the command line before the terminal is set up, then starts the application with one message, `Msg::Start(Box<Startup>)`: the startup warnings' toast, the preselection, the lists the command line was resolved against, and the session to open or the sessions to list. The loop then sends `Msg::Resized` with the terminal size. The handlers that start it (`set_preselection`, `seed_index`, `open_summary`, `show_filtered`, `show_toast`) are not `pub`: only `update` reaches them. The `pub` setters (`set_harnesses`, `set_session_sink`, `set_index`, the workers and the clipboard) are wiring that `run_app` calls around startup, and `set_clock` and `set_click_clock` are the tests' hooks for a fixed clock.
 - **`App::update(Msg)`** is the only place that changes domain state, mounts and unmounts components, moves focus and pushes new data into components. It is a dispatcher, with no guards on its arms: each global message calls a small handler, and each nested enum goes to the dispatcher of its concern (`selector_msg`, `browser_msg`, …), which calls a small handler. It never interprets keys and never calls itself: a message it makes for itself (a session the selector opens) and a component's answer to a pointer event are queued with `emit`, and `App::handle` handles them.
-- **Handler modules** in `src/app/`, by concern:
+- **Handler modules** in `src/app.rs` and `src/app/`, by concern:
 
   | Concern | Messages | Modules |
   |---|---|---|
-  | Global | `Start`, `Quit`, `Resized`, `Tick`, `ToastExpired` | `mod.rs`, `runtime.rs` (`Start`) |
+  | Global | `Start`, `Quit`, `Resized`, `Tick`, `ToastExpired` | `src/app.rs`, `runtime.rs` (`Start`) |
   | Selector | `SelectorMsg` | `selector.rs` (dispatcher), `search.rs`, `resume.rs` (`R` on a session) |
   | Browser | `BrowserMsg`: opening a session and the updates of its load, the selector over the browser, subagents, the turns sidebar | `browser.rs` (dispatcher), `sidebar.rs` |
   | Transcript | `TranscriptMsg`: what the transcript on top reports of its view, and its search | `transcript.rs` (dispatcher), `browser.rs`, `transcript_search.rs` |
