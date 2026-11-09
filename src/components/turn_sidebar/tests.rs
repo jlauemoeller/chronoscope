@@ -557,7 +557,7 @@ fn down_and_up_select_the_next_and_previous_entry_and_name_its_turn() {
         let before = sidebar.selected_entry().unwrap();
         assert_eq!(
             sidebar.on(&event),
-            Some(Msg::TurnSelected(turn_of(before + 1)))
+            Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(before + 1))))
         );
         assert_eq!(sidebar.selected_entry(), Some(before + 1));
     }
@@ -566,7 +566,7 @@ fn down_and_up_select_the_next_and_previous_entry_and_name_its_turn() {
         let before = sidebar.selected_entry().unwrap();
         assert_eq!(
             sidebar.on(&event),
-            Some(Msg::TurnSelected(turn_of(before - 1)))
+            Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(before - 1))))
         );
     }
     assert_eq!(sidebar.selected_entry(), Some(1));
@@ -590,7 +590,10 @@ fn with_no_selection_the_first_move_in_either_direction_selects_the_first_entry(
     for event in [ch('j'), ch('k')] {
         let mut sidebar = sidebar(&wireframe()).focused(true);
         assert_eq!(sidebar.selected_entry(), None);
-        assert_eq!(sidebar.on(&event), Some(Msg::TurnSelected(turn_of(0))));
+        assert_eq!(
+            sidebar.on(&event),
+            Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(0))))
+        );
         assert_eq!(sidebar.selected_entry(), Some(0));
     }
     // The second move goes on from there.
@@ -601,7 +604,10 @@ fn with_no_selection_the_first_move_in_either_direction_selects_the_first_entry(
         None,
         "the first entry has no previous"
     );
-    assert_eq!(sidebar.on(&ch('j')), Some(Msg::TurnSelected(turn_of(1))));
+    assert_eq!(
+        sidebar.on(&ch('j')),
+        Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(1))))
+    );
 }
 
 #[test]
@@ -634,7 +640,7 @@ fn enter_names_the_selected_turn_and_does_not_move_the_selection() {
     let mut sidebar = selected(4, true);
     assert_eq!(
         sidebar.on(&key(Key::Enter)),
-        Some(Msg::OpenTurn(turn_of(4)))
+        Some(Msg::Browser(BrowserMsg::OpenTurn(turn_of(4))))
     );
     assert_eq!(sidebar.selected_entry(), Some(4));
     // With nothing selected it has no block to go to.
@@ -648,7 +654,10 @@ fn the_pane_keys_ask_for_the_transcripts_focus_and_leave_the_selection() {
     let mut sidebar = selected(2, true);
     let shift_tab = Event::Keyboard(KeyEvent::new(Key::BackTab, KeyModifiers::SHIFT));
     for event in [key(Key::Tab), shift_tab, key(Key::Right), ch('l')] {
-        assert_eq!(sidebar.on(&event), Some(Msg::FocusTranscript));
+        assert_eq!(
+            sidebar.on(&event),
+            Some(Msg::Browser(BrowserMsg::FocusTranscript))
+        );
     }
     assert_eq!(sidebar.selected_entry(), Some(2));
 }
@@ -705,12 +714,24 @@ fn the_keys_come_from_the_keymap_it_is_given() {
     let mut sidebar = selected(1, true).keymap(keymap);
     assert_eq!(sidebar.on(&ch('j')), None, "the default is replaced");
     assert_eq!(sidebar.on(&key(Key::Down)), None);
-    assert_eq!(sidebar.on(&ch('s')), Some(Msg::TurnSelected(turn_of(2))));
-    assert_eq!(sidebar.on(&ch('o')), Some(Msg::OpenTurn(turn_of(2))));
-    assert_eq!(sidebar.on(&ch('x')), Some(Msg::FocusTranscript));
+    assert_eq!(
+        sidebar.on(&ch('s')),
+        Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(2))))
+    );
+    assert_eq!(
+        sidebar.on(&ch('o')),
+        Some(Msg::Browser(BrowserMsg::OpenTurn(turn_of(2))))
+    );
+    assert_eq!(
+        sidebar.on(&ch('x')),
+        Some(Msg::Browser(BrowserMsg::FocusTranscript))
+    );
     assert_eq!(sidebar.on(&ch('l')), None);
     // Untouched actions keep their keys.
-    assert_eq!(sidebar.on(&ch('k')), Some(Msg::TurnSelected(turn_of(1))));
+    assert_eq!(
+        sidebar.on(&ch('k')),
+        Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(1))))
+    );
 }
 
 #[test]
@@ -724,7 +745,10 @@ fn a_chord_in_the_turns_context_works() {
     let mut sidebar = selected(0, true).keymap(keymap);
     assert_eq!(sidebar.on(&ch('g')), None, "the prefix waits");
     assert_eq!(sidebar.selected_entry(), Some(0));
-    assert_eq!(sidebar.on(&ch('g')), Some(Msg::TurnSelected(turn_of(1))));
+    assert_eq!(
+        sidebar.on(&ch('g')),
+        Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(1))))
+    );
 }
 
 #[test]
@@ -1026,10 +1050,10 @@ mod mouse {
 
     /// The answer to a press on the entry of `turn`.
     fn chosen(turn: &str, enter: bool) -> Option<Msg> {
-        Some(Msg::ChooseTurn {
+        Some(Msg::Browser(BrowserMsg::ChooseTurn {
             id: id(turn),
             enter,
-        })
+        }))
     }
 
     /// The wireframe's list rows: 0 Start, 1 |, 2 u1, 3 |, 4 a1, 5 |, 6 u2,
@@ -1127,10 +1151,10 @@ mod mouse {
         for entry in [18, 19, 20] {
             assert_eq!(
                 sidebar.on(&press(10, pane_row(entry))),
-                Some(Msg::ChooseTurn {
+                Some(Msg::Browser(BrowserMsg::ChooseTurn {
                     id: sidebar.rows().entry(entry).unwrap().0.clone(),
                     enter: false,
-                }),
+                })),
                 "entry {entry}"
             );
         }
@@ -1182,16 +1206,16 @@ mod mouse {
         let mut sidebar = selected(1, false);
         assert_eq!(
             sidebar.on(&wheel(true)),
-            Some(Msg::TurnSelected(turn_of(2)))
+            Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(2))))
         );
         assert_eq!(sidebar.selected_entry(), Some(2));
         assert_eq!(
             sidebar.on(&wheel(true)),
-            Some(Msg::TurnSelected(turn_of(3)))
+            Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(3))))
         );
         assert_eq!(
             sidebar.on(&wheel(false)),
-            Some(Msg::TurnSelected(turn_of(2)))
+            Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(2))))
         );
         assert_eq!(sidebar.selected_entry(), Some(2));
         // It does not need the focus, and does not take it.
@@ -1207,7 +1231,7 @@ mod mouse {
             let mut sidebar = sidebar_of(&wireframe());
             assert_eq!(
                 sidebar.on(&wheel(down)),
-                Some(Msg::TurnSelected(turn_of(0)))
+                Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(0))))
             );
         }
     }
@@ -1309,7 +1333,7 @@ mod mouse {
         clock.set_ms(100);
         assert_eq!(
             sidebar.on(&wheel(true)),
-            Some(Msg::TurnSelected(turn_of(0)))
+            Some(Msg::Browser(BrowserMsg::TurnSelected(turn_of(0))))
         );
         clock.set_ms(200);
         assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", true));

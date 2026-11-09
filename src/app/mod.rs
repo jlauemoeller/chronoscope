@@ -3,7 +3,9 @@
 //!
 //! - [`Id`] names a mountable component.
 //! - [`Msg`] says what happened, in application terms (all but
-//!   [`Msg::Pointer`], which exists for the pointer routing only).
+//!   [`Msg::Pointer`], which exists for the pointer routing only): the
+//!   global messages, and one nested enum per concern, which its handler
+//!   module defines and dispatches.
 //! - [`UserEvent`] is what the Ports deliver, and the pointer events the
 //!   router hands to components ([`UserEvent::Pointer`],
 //!   [`UserEvent::PointerOutside`], [`UserEvent::PointerElsewhere`]).
@@ -20,6 +22,9 @@ pub mod hints;
 pub mod index_port;
 pub mod layout;
 pub mod mouse;
+mod output;
+mod overlay;
+mod prompt;
 pub mod redraw;
 pub mod resume;
 pub mod runtime;
@@ -32,7 +37,9 @@ pub mod session_port;
 mod sidebar;
 pub mod startup;
 pub mod theme_selector;
+mod transcript;
 pub mod transcript_search;
+mod worker;
 
 #[cfg(test)]
 mod fixtures;
@@ -48,7 +55,6 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 use ratatui::Frame;
 use tuirealm::application::{Application, ApplicationError, PollStrategy};
-use tuirealm::command::Direction;
 use tuirealm::component::AppComponent;
 use tuirealm::event::MouseEvent;
 use tuirealm::listener::EventListenerCfg;
@@ -56,21 +62,23 @@ use tuirealm::subscription::{EventClause, Sub, SubClause};
 
 use crate::clipboard::{Clipboard, NoClipboard};
 use crate::components::turn_block::SectionId;
-use crate::components::{
-    DetailsRequest, EmptyState, GlobalEvents, HelpContext, TOAST_DURATION, TOO_SMALL, Toast,
-};
+use crate::components::{EmptyState, GlobalEvents, TOAST_DURATION, TOO_SMALL, Toast};
 use crate::config::{Config, ConfigWarning};
 use crate::harness::Harness;
 use crate::index::{IndexEvent, IndexHandle};
 use crate::keymap::Keymap;
-use crate::model::{HarnessId, SessionId, ToolCallId, TurnId};
+use crate::model::{HarnessId, SessionId};
 use crate::theme::{TerminalEnv, Theme, ThemeRegistry};
 use crate::timestamp::{DisplayTz, TimestampFormatter};
-use crate::transcript_search::{SearchCorpus, SearchMatches, SearchPosition};
+use crate::transcript_search::SearchMatches;
+pub use browser::BrowserMsg;
 use browser::BrowserState;
 pub use index_port::{IndexPort, IndexUpdate};
 use layout::{LayoutInput, Screen, layout};
 pub use mouse::RoutedMouse;
+pub use output::OutputMsg;
+pub use overlay::OverlayMsg;
+pub use prompt::{PromptMsg, PromptPurpose};
 use redraw::RedrawRequest;
 pub use runtime::Startup;
 pub use search::{Hit, search_sessions};
@@ -79,10 +87,13 @@ use selector::SelectorState;
 pub use selector::{Pane, SelectorMsg};
 pub use session_port::{SessionEvent, SessionPort, SessionUpdate, session_channel};
 pub use startup::AppInit;
+pub use theme_selector::ThemeMsg;
+pub use transcript::TranscriptMsg;
 pub use transcript_search::{
     TranscriptSearchPort, TranscriptSearchWorker, transcript_search_event_kind,
 };
 use unicode_width::UnicodeWidthStr;
+pub use worker::WorkerMsg;
 
 /// One variant per mountable component (architecture.md#components).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -142,6 +153,10 @@ pub enum Id {
 }
 
 /// What happened, in application terms. Never raw keys.
+///
+/// The top level holds what is global; everything else is in the nested
+/// enum of its concern, which [`App::update`] hands to that concern's
+/// handler module (architecture.md#application-structure).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Msg {
     /// `run_app` starts the application with what the command line resolved
@@ -152,162 +167,30 @@ pub enum Msg {
     Start(Box<Startup>),
     /// Leave the application.
     Quit,
-    /// The help key: open the keybindings overlay for this screen.
-    OpenHelp(HelpContext),
-    /// `Esc` or the help key in the overlay: close it and return the focus.
-    CloseHelp,
-    /// A key scrolled the help overlay: nothing but a redraw is needed.
-    HelpScrolled,
-    /// The details key on a section: open the details overlay with what the
-    /// model knows of it, a snapshot made when the key was pressed, and the
-    /// section's references, which the harness reads when the overlay opens.
-    OpenDetails(DetailsRequest),
-    /// `Esc` or the details key in the details overlay: close it and return
-    /// the focus.
-    CloseDetails,
-    /// A key or the wheel scrolled the details overlay: nothing but a
-    /// redraw is needed.
-    DetailsScrolled,
-    /// The theme key: open the theme selector.
-    OpenThemeSelector,
-    /// The cursor of the theme selector moved to the theme with this id:
-    /// show it as a preview.
-    PreviewTheme(String),
-    /// `Enter` in the theme selector on the theme with this id: keep it,
-    /// save it to the config and close the selector.
-    SelectTheme(String),
-    /// A left press on the theme with this id in the theme selector (its
-    /// cursor is there now): show it as a preview, or, with `keep` (the
-    /// press completed a double-click), keep it as `Enter` does.
-    ChooseTheme { id: String, keep: bool },
-    /// `Esc` in the theme selector: restore the theme that was active when
-    /// it opened and close it.
-    CancelTheme,
     /// The terminal now has this many columns and rows.
     Resized(u16, u16),
     /// A tick of the event loop.
     Tick,
     /// The toast with this id has been shown for its duration.
     ToastExpired(u64),
-    /// The session index worker reported something.
-    Index(IndexUpdate),
-    /// The search worker answered a search.
-    SearchResults(SearchUpdate),
     /// Something happened in the session selector.
     Selector(SelectorMsg),
-    /// The user asked to open this session of this harness.
-    OpenSession(HarnessId, SessionId),
-    /// The user asked for the session selector over the open session.
-    OpenSelector,
-    /// `Esc` in the selector with a session open behind it: close the
-    /// selector.
-    CloseSelector,
-    /// The load of the open session reported something. `generation` is the
-    /// number of the load; updates of a load that has been replaced are
-    /// dropped.
-    Session {
-        generation: u64,
-        update: SessionUpdate,
-    },
-    /// The lookup that `a` on a subagent section started answered:
-    /// `generation` numbers the lookup and the load of the subagent, and
-    /// `found` is its session, `None` when it has no transcript. The answer
-    /// to a lookup that is no longer waited for is dropped.
-    SubagentLookedUp {
-        generation: u64,
-        found: Option<SessionId>,
-    },
-    /// The text of the prompt changed.
-    PromptChanged(String),
-    /// Only the prompt's cursor moved: nothing but a redraw is needed.
-    PromptMoved,
-    /// A key or the wheel changed what the transcript shows (scroll, folds)
-    /// but not its selection: nothing but a redraw is needed.
-    TranscriptChanged,
-    /// A key or the wheel moved the transcript's selection to this section,
-    /// and changed nothing else the App shows: the turns sidebar follows it.
-    SelectionChanged(SectionId),
-    /// The transcript counts `count` sections that arrived while the user
-    /// was away from the end (`↓ N new`); 0 once following resumes. A key or
-    /// the wheel reports it this way, with `selection`, the section it
-    /// selected, when it also moved the selection (`G`). After the updates
-    /// and viewport changes the App pushes, it reads the count right after
-    /// the push (cycle 5 spec, §0 item 5).
-    NewSections {
-        count: usize,
-        selection: Option<SectionId>,
-    },
-    /// `Enter` in the prompt, with its text (`"y"` for a yes in a `y/n`
-    /// prompt).
-    PromptSubmit(String),
-    /// `Esc` in the prompt, or a no in a `y/n` prompt.
-    PromptCancel,
-    /// `↑` or `↓` in the prompt, for its owner to use: over search results
-    /// in the selector, the App moves the selected result it keeps and
-    /// pushes it to the Sessions pane.
-    PromptNav(Direction),
-    /// `/` in the transcript: open the search prompt in the help line.
-    OpenSearch,
-    /// The transcript asks for this search to be run on a snapshot of its
-    /// turns. `generation` numbers the search; answers to any other are
-    /// dropped.
-    StartTranscriptSearch {
-        query: String,
-        corpus: SearchCorpus,
-        generation: u64,
-    },
-    /// The worker answered a search of the transcript.
-    TranscriptSearchResults(SearchMatches),
-    /// A key moved among the matches (`3/17`) or cleared the search
-    /// (`None`), and did to the transcript's view what `view` says (the
-    /// selection a jump moved, the count of new sections).
-    SearchPosition {
-        position: Option<SearchPosition>,
-        view: ViewChange,
-    },
-    /// The transcript asks for this text to be put on the clipboard: the
-    /// selected section as displayed (`y`) or in full (`Y`).
-    CopyText(String),
-    /// `a` on a subagent section: open the transcript of the subagent that
-    /// tool call `call_id` started. `label` (the agent type) is the
-    /// breadcrumb's segment.
-    OpenSubagent { call_id: ToolCallId, label: String },
-    /// The back key in a subagent's transcript: return to the one it was
-    /// opened from.
-    CloseSubagent,
-    /// The transcript asks for the selected section's text to be saved to a
-    /// file (`w`, or `W` for its full content). `kind` is the word for the
-    /// section in the default file name (`shell`, `user`, ...).
-    SaveSection { text: String, kind: &'static str },
-    /// The transcript asks for the session to be exported to a markdown file
-    /// (`e` as currently folded, `E` in full, as `full` says). `document` is
-    /// the markdown.
-    Export { full: bool, document: String },
-    /// `R`: the user asks to resume a session in its harness. The target is
-    /// the session of that harness the selector has selected; `None` (the
-    /// browser) is the open session, whatever transcript is on top.
-    RequestResume(Option<(HarnessId, SessionId)>),
-    /// `1`, `Tab` or `Shift-Tab` in the transcript: focus the turns sidebar.
-    /// Nothing happens while the sidebar is hidden.
-    FocusTurns,
-    /// `Tab`, `Shift-Tab`, `→` or `l` in the turns sidebar: focus the
-    /// transcript on top, leaving it as it is.
-    FocusTranscript,
-    /// A key in the turns sidebar selected the entry of this turn: scroll the
-    /// transcript to its block.
-    TurnSelected(TurnId),
-    /// A left press on the entry of this turn in the turns sidebar: focus
-    /// the sidebar, select the entry and scroll the transcript to its block;
-    /// with `enter` (the press completed a double-click), then do what
-    /// `Enter` does: focus the transcript.
-    ChooseTurn { id: TurnId, enter: bool },
-    /// `Enter` in the turns sidebar on the entry of this turn: scroll the
-    /// transcript to its block and focus it.
-    OpenTurn(TurnId),
-    /// A left press on the transcript on top, on a section or not: it asks
-    /// for the focus, and says what the press did to its view (the section
-    /// it selected, among others).
-    TranscriptPressed(ViewChange),
+    /// Something happened to the open session, its subagents or the turns
+    /// sidebar.
+    Browser(BrowserMsg),
+    /// The transcript on top reported a change of its view or asked for a
+    /// search.
+    Transcript(TranscriptMsg),
+    /// Something happened to the help or details overlay.
+    Overlay(OverlayMsg),
+    /// Something happened in the theme selector.
+    Theme(ThemeMsg),
+    /// The help-line prompt reported an edit or an answer.
+    Prompt(PromptMsg),
+    /// The user asked to copy, save, export or resume.
+    Output(OutputMsg),
+    /// A worker thread answered.
+    Worker(WorkerMsg),
     /// A left press or a wheel step at this position of the screen (only
     /// with `mouse = true`), in screen coordinates. It is built on the
     /// router's path (cycle 5 spec, §0 item 6), not by a Port: `GlobalEvents`
@@ -338,21 +221,22 @@ pub struct ViewChange {
 
 impl ViewChange {
     /// The message a key or a wheel step that made this change answers:
-    /// [`Msg::NewSections`] when the count changed (with the selection, if
-    /// it moved too), else [`Msg::SelectionChanged`] when the selection
-    /// moved, else [`Msg::TranscriptChanged`] when anything else changed,
+    /// [`TranscriptMsg::NewSections`] when the count changed (with the selection, if
+    /// it moved too), else [`TranscriptMsg::SelectionChanged`] when the selection
+    /// moved, else [`TranscriptMsg::Changed`] when anything else changed,
     /// else none.
     pub fn key_answer(self) -> Option<Msg> {
         if let Some(count) = self.new_sections {
-            return Some(Msg::NewSections {
+            return Some(Msg::Transcript(TranscriptMsg::NewSections {
                 count,
                 selection: self.selection,
-            });
+            }));
         }
         if let Some(section) = self.selection {
-            return Some(Msg::SelectionChanged(section));
+            return Some(Msg::Transcript(TranscriptMsg::SelectionChanged(section)));
         }
-        self.changed.then_some(Msg::TranscriptChanged)
+        self.changed
+            .then_some(Msg::Transcript(TranscriptMsg::Changed))
     }
 }
 
@@ -795,90 +679,22 @@ impl App {
     }
 
     /// Applies `msg`: the only place that changes domain state or components.
-    /// It dispatches to one small handler per message.
+    /// It hands each message to the dispatcher of its concern.
     pub fn update(&mut self, msg: Msg) {
         match msg {
             Msg::Start(startup) => self.start(*startup),
             Msg::Quit => self.quit(),
-            Msg::OpenHelp(context) => self.open_help(context),
-            Msg::CloseHelp => self.close_help(),
-            Msg::HelpScrolled | Msg::DetailsScrolled => self.request_redraw(RedrawRequest::Dirty),
-            Msg::OpenDetails(request) => self.open_details(request),
-            Msg::CloseDetails => self.close_details(),
-            Msg::OpenThemeSelector => self.open_theme_selector(),
-            Msg::PreviewTheme(id) => self.preview_theme(&id),
-            Msg::SelectTheme(id) => self.select_theme(&id),
-            Msg::ChooseTheme { id, keep } => self.choose_theme(&id, keep),
-            Msg::CancelTheme => self.cancel_theme(),
             Msg::Resized(width, height) => self.resized(width, height),
             Msg::Tick => self.tick_elapsed(),
             Msg::ToastExpired(id) => self.toast_expired(id),
-            Msg::Index(update) => self.index_update(&update),
-            Msg::SearchResults(update) => self.search_result_arrived(&update),
             Msg::Selector(msg) => self.selector_msg(msg),
-            Msg::PromptSubmit(answer) if self.resume.pending() => self.resume_answered(&answer),
-            Msg::PromptCancel if self.resume.pending() => self.resume_declined(),
-            Msg::PromptChanged(_) | Msg::PromptNav(_) if self.resume.pending() => {}
-            Msg::PromptChanged(_) if self.browser.write.is_some() => {
-                self.request_redraw(RedrawRequest::Dirty);
-            }
-            Msg::PromptSubmit(answer) if self.browser.write.is_some() => {
-                self.write_prompt_submit(&answer);
-            }
-            Msg::PromptCancel if self.browser.write.is_some() => self.write_prompt_cancel(),
-            Msg::PromptNav(_) if self.browser.write.is_some() => {}
-            Msg::PromptChanged(_) if self.browser.search.prompt_open => {
-                self.transcript_prompt_changed();
-            }
-            Msg::PromptChanged(text) => self.search_changed(text),
-            Msg::PromptMoved | Msg::TranscriptChanged => self.request_redraw(RedrawRequest::Dirty),
-            Msg::SelectionChanged(section) => self.view_changed(ViewChange {
-                changed: true,
-                new_sections: None,
-                selection: Some(section),
-            }),
-            Msg::NewSections { count, selection } => self.view_changed(ViewChange {
-                changed: true,
-                new_sections: Some(count),
-                selection,
-            }),
-            Msg::PromptSubmit(text) if self.browser.search.prompt_open => {
-                self.transcript_prompt_submit(text);
-            }
-            Msg::PromptSubmit(_) => self.search_submit(),
-            Msg::PromptCancel if self.browser.search.prompt_open => {
-                self.transcript_prompt_cancel();
-            }
-            Msg::PromptCancel => self.search_cancel(),
-            Msg::PromptNav(_) if self.browser.search.prompt_open => {}
-            Msg::PromptNav(direction) => self.search_nav(direction),
-            Msg::OpenSearch => self.open_transcript_search(),
-            Msg::StartTranscriptSearch {
-                query,
-                corpus,
-                generation,
-            } => self.start_transcript_search(query, corpus, generation),
-            Msg::TranscriptSearchResults(matches) => self.transcript_matches_arrived(&matches),
-            Msg::SearchPosition { position, view } => self.search_position_changed(position, view),
-            Msg::CopyText(text) => self.copy_text(&text),
-            Msg::SaveSection { text, kind } => self.save_section(text, kind),
-            Msg::Export { full: _, document } => self.export_session(document),
-            Msg::RequestResume(target) => self.request_resume(target),
-            Msg::OpenSubagent { call_id, label } => self.open_subagent(&call_id, label),
-            Msg::CloseSubagent => self.close_subagent(),
-            Msg::OpenSession(harness, session) => self.open_session(harness, &session),
-            Msg::OpenSelector => self.open_selector(),
-            Msg::CloseSelector => self.close_selector(),
-            Msg::Session { generation, update } => self.session_update(generation, &update),
-            Msg::SubagentLookedUp { generation, found } => {
-                self.subagent_looked_up(generation, found)
-            }
-            Msg::FocusTurns => self.focus_turns(),
-            Msg::FocusTranscript => self.focus_transcript_from_sidebar(),
-            Msg::TurnSelected(id) => self.go_to_turn(&id, false),
-            Msg::OpenTurn(id) => self.go_to_turn(&id, true),
-            Msg::ChooseTurn { id, enter } => self.choose_turn(id, enter),
-            Msg::TranscriptPressed(change) => self.transcript_pressed(change),
+            Msg::Browser(msg) => self.browser_msg(msg),
+            Msg::Transcript(msg) => self.transcript_msg(msg),
+            Msg::Overlay(msg) => self.overlay_msg(msg),
+            Msg::Theme(msg) => self.theme_msg(msg),
+            Msg::Prompt(msg) => self.prompt_msg(msg),
+            Msg::Output(msg) => self.output_msg(msg),
+            Msg::Worker(msg) => self.worker_msg(msg),
             Msg::Pointer(event) => self.pointer(event),
         }
         // Any message may have moved the focus, which decides whether the

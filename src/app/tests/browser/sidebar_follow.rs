@@ -467,7 +467,7 @@ fn pushing_the_selection_produces_no_message() {
     rig.press(Key::Char(']'));
     rig.settle();
     assert_eq!(sidebar_entry(&rig.app), Some(1));
-    rig.app.update(Msg::TranscriptChanged);
+    rig.app.update(Msg::Transcript(TranscriptMsg::Changed));
     assert_eq!(rig.app.take_queued(), []);
     // A live update that moves the following selection.
     rig.press(Key::Char('G'));
@@ -496,11 +496,12 @@ fn the_app_takes_the_selection_from_the_transcripts_report_not_after_every_messa
     // A tick, a redraw request and a prompt's cursor ask the transcript
     // nothing: the sidebar stays.
     rig.app.update(Msg::Tick);
-    rig.app.update(Msg::TranscriptChanged);
-    rig.app.update(Msg::PromptMoved);
+    rig.app.update(Msg::Transcript(TranscriptMsg::Changed));
+    rig.app.update(Msg::Prompt(PromptMsg::Moved));
     assert_eq!(sidebar_entry(&rig.app), Some(before));
     // The report is what it follows.
-    rig.app.update(Msg::SelectionChanged(moved));
+    rig.app
+        .update(Msg::Transcript(TranscriptMsg::SelectionChanged(moved)));
     assert_follows(&rig.app, "after the report");
 }
 
@@ -560,10 +561,10 @@ fn closing_a_subagent_follows_the_parents_selection_that_moved_while_it_was_cove
     rig.press(Key::Char('G'));
     rig.settle();
     let before = assert_follows(&rig.app, "at the end");
-    rig.app.update(Msg::OpenSubagent {
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSubagent {
         call_id: crate::model::ItemId::from("call-a"),
         label: "story-writer".to_owned(),
-    });
+    }));
     rig.pump_until(|app| app.subagent_depth() == 1 && app.session_loaded());
     rig.settle();
     // The covered parent follows its end: a late turn moves its selection.
@@ -600,7 +601,7 @@ fn the_selection_is_pushed_only_when_the_transcripts_section_changed() {
         .unwrap();
     assert_eq!(sidebar_entry(&rig.app), Some(6));
     // Messages that do not move the transcript's selection leave it be.
-    rig.app.update(Msg::TranscriptChanged);
+    rig.app.update(Msg::Transcript(TranscriptMsg::Changed));
     rig.app.update(Msg::Tick);
     rig.app.update(session_msg(
         &rig.app,

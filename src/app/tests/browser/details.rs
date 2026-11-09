@@ -192,7 +192,8 @@ fn the_details_key_opens_the_overlay_for_the_selected_section_and_gives_it_the_f
     rig.press(Key::Char('i'));
     let seen = rig.pump_until(open);
     assert!(
-        seen.iter().any(|m| matches!(m, Msg::OpenDetails(_))),
+        seen.iter()
+            .any(|m| matches!(m, Msg::Overlay(OverlayMsg::OpenDetails(_)))),
         "{seen:?}"
     );
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
@@ -240,9 +241,14 @@ fn the_details_key_closes_it_too_and_does_not_reopen_it() {
     rig.open_details();
     rig.press(Key::Char('i'));
     let seen = rig.pump_until(|app| !open(app));
-    assert!(seen.contains(&Msg::CloseDetails), "{seen:?}");
     assert!(
-        !seen.iter().any(|m| matches!(m, Msg::OpenDetails(_))),
+        seen.contains(&Msg::Overlay(OverlayMsg::CloseDetails)),
+        "{seen:?}"
+    );
+    assert!(
+        !seen
+            .iter()
+            .any(|m| matches!(m, Msg::Overlay(OverlayMsg::OpenDetails(_)))),
         "the same key must not reopen it: {seen:?}"
     );
     assert_eq!(rig.focus(), Some(Id::Transcript));
@@ -315,7 +321,9 @@ fn with_no_selection_the_key_does_nothing() {
     let seen = rig.settle();
     assert!(!open(&rig.app));
     assert!(
-        !seen.iter().any(|m| matches!(m, Msg::OpenDetails(_))),
+        !seen
+            .iter()
+            .any(|m| matches!(m, Msg::Overlay(OverlayMsg::OpenDetails(_)))),
         "{seen:?}"
     );
     assert_eq!(rig.focus(), Some(Id::Transcript));
@@ -335,21 +343,23 @@ fn an_open_request_while_it_is_open_changes_nothing() {
     rig.open_loaded();
     rig.open_details();
     let before = overlay_rows(&mut rig, 120, 40);
-    rig.app.update(Msg::OpenDetails(some_details().into()));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenDetails(some_details().into())));
     assert_eq!(overlay_rows(&mut rig, 120, 40), before);
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
     // The other overlays do not open over it either.
-    rig.app.update(Msg::OpenHelp(HelpContext::Browser));
-    rig.app.update(Msg::OpenThemeSelector);
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
+    rig.app.update(Msg::Theme(ThemeMsg::Open));
     assert!(!rig.app.application().mounted(&Id::HelpOverlay));
     assert!(!rig.app.application().mounted(&Id::ThemeSelector));
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
     assert_eq!(overlay_rows(&mut rig, 120, 40), before);
-    rig.app.update(Msg::CloseDetails);
+    rig.app.update(Msg::Overlay(OverlayMsg::CloseDetails));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::Transcript));
     // A close without an overlay is harmless.
-    rig.app.update(Msg::CloseDetails);
+    rig.app.update(Msg::Overlay(OverlayMsg::CloseDetails));
     assert_eq!(rig.focus(), Some(Id::Transcript));
 }
 
@@ -357,21 +367,25 @@ fn an_open_request_while_it_is_open_changes_nothing() {
 fn it_does_not_open_over_the_help_overlay_the_theme_selector_or_a_prompt() {
     let mut rig = rig();
     rig.open_loaded();
-    rig.app.update(Msg::OpenHelp(HelpContext::Browser));
-    rig.app.update(Msg::OpenDetails(some_details().into()));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenDetails(some_details().into())));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
-    rig.app.update(Msg::CloseHelp);
+    rig.app.update(Msg::Overlay(OverlayMsg::CloseHelp));
 
-    rig.app.update(Msg::OpenThemeSelector);
-    rig.app.update(Msg::OpenDetails(some_details().into()));
+    rig.app.update(Msg::Theme(ThemeMsg::Open));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenDetails(some_details().into())));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::ThemeSelector));
-    rig.app.update(Msg::CancelTheme);
+    rig.app.update(Msg::Theme(ThemeMsg::Cancel));
 
     rig.press(Key::Char('/'));
     rig.pump_until(|app| app.application().mounted(&Id::Prompt));
-    rig.app.update(Msg::OpenDetails(some_details().into()));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenDetails(some_details().into())));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::Prompt));
 }
@@ -381,7 +395,10 @@ fn opening_another_session_drops_the_overlay() {
     let mut rig = rig();
     rig.open_loaded();
     rig.open_details();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     assert!(!open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::Transcript));
 }
@@ -653,7 +670,8 @@ fn it_does_not_open_on_a_screen_that_is_too_small_to_show_it() {
     let seen = rig.settle();
     assert!(!open(&rig.app), "{seen:?}");
     assert_eq!(rig.focus(), Some(Id::Transcript));
-    rig.app.update(Msg::OpenDetails(some_details().into()));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenDetails(some_details().into())));
     assert!(!open(&rig.app));
     // Grown, the key works.
     rig.app.update(Msg::Resized(120, 40));
@@ -698,7 +716,9 @@ fn copy_save_and_export_do_nothing_while_it_is_open() {
     assert!(
         !seen.iter().any(|m| matches!(
             m,
-            Msg::CopyText(_) | Msg::SaveSection { .. } | Msg::Export { .. }
+            Msg::Output(OutputMsg::CopyText(_))
+                | Msg::Output(OutputMsg::SaveSection { .. })
+                | Msg::Output(OutputMsg::Export { .. })
         )),
         "{seen:?}"
     );
@@ -731,8 +751,11 @@ fn the_global_keys_do_nothing_while_it_is_open() {
     assert!(
         !seen.iter().any(|m| matches!(
             m,
-            Msg::Quit | Msg::OpenSelector | Msg::OpenSearch | Msg::OpenHelp(_)
-        ) || matches!(m, Msg::OpenThemeSelector)),
+            Msg::Quit
+                | Msg::Browser(BrowserMsg::OpenSelector)
+                | Msg::Transcript(TranscriptMsg::OpenSearch)
+                | Msg::Overlay(OverlayMsg::OpenHelp(_))
+        ) || matches!(m, Msg::Theme(ThemeMsg::Open))),
         "{seen:?}"
     );
     assert!(open(&rig.app));

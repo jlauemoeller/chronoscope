@@ -715,7 +715,8 @@ fn with_an_overlay_open_the_sidebar_gets_no_mouse() {
     type Open = fn(&mut Rig);
     let overlays: [(&str, Id, Open); 3] = [
         ("help", Id::HelpOverlay, |rig| {
-            rig.app.update(Msg::OpenHelp(HelpContext::Browser));
+            rig.app
+                .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
         }),
         ("themes", Id::ThemeSelector, Rig::open_themes),
         ("selector", Id::SelectorFrame, |rig| {
@@ -792,7 +793,9 @@ fn the_sidebar_gets_no_mouse_when_it_is_hidden() {
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert!(!rig.app.take_queued().iter().any(|msg| matches!(
         msg,
-        Msg::TurnSelected(_) | Msg::ChooseTurn { .. } | Msg::OpenTurn(_)
+        Msg::Browser(BrowserMsg::TurnSelected(_))
+            | Msg::Browser(BrowserMsg::ChooseTurn { .. })
+            | Msg::Browser(BrowserMsg::OpenTurn(_))
     )));
 }
 

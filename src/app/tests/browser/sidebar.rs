@@ -173,7 +173,10 @@ fn it_is_not_drawn_when_the_empty_session_replaces_the_transcript() {
 #[test]
 fn the_sidebar_comes_when_the_first_turns_do_and_the_viewport_was_already_narrow() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     rig.app.update(session_msg(&rig.app, ModelUpdate::Loaded));
     assert!(rig.app.session_is_empty());
     assert_eq!(transcript_viewport(&rig.app), Size::new(89, 33));
@@ -387,7 +390,10 @@ fn opening_another_session_starts_with_an_empty_list() {
     rig.open_loaded();
     assert!(!entry_kinds(&rig.app).is_empty());
     rig.harness.script(NEWER_SESSION, Vec::new());
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     assert!(entry_kinds(&rig.app).is_empty());
 }
 

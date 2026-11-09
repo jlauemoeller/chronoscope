@@ -321,10 +321,10 @@ fn g_jumps_to_the_end_resets_the_count_and_resumes_following() {
     let last = last_section_of(&t, "t11");
     assert_eq!(
         msg,
-        Some(Msg::NewSections {
+        Some(Msg::Transcript(TranscriptMsg::NewSections {
             count: 0,
             selection: Some(last)
-        }),
+        })),
         "the key reports the reset, and the selection it moved"
     );
     assert!(t.following());
@@ -345,10 +345,10 @@ fn the_end_key_does_the_same() {
     let msg = press(&mut t, Key::End);
     assert_eq!(
         msg,
-        Some(Msg::NewSections {
+        Some(Msg::Transcript(TranscriptMsg::NewSections {
             count: 0,
             selection: Some(last_section_of(&t, "t9")),
-        })
+        }))
     );
     assert!(t.following());
 }
@@ -360,7 +360,12 @@ fn a_key_that_leaves_the_count_alone_reports_only_the_selection_it_moved() {
     t.apply_update(&appended_turns(&["t9"]));
     // `j` moves the selection: that is all it reports.
     let msg = ch(&mut t, 'j');
-    assert_eq!(msg, t.selected().cloned().map(Msg::SelectionChanged));
+    assert_eq!(
+        msg,
+        t.selected()
+            .cloned()
+            .map(|section| Msg::Transcript(TranscriptMsg::SelectionChanged(section)))
+    );
     assert!(msg.is_some());
     assert_eq!(t.new_sections(), 1);
 }

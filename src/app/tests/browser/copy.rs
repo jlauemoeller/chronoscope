@@ -95,7 +95,8 @@ impl Rig {
     }
 
     fn copy(&mut self, text: &str) {
-        self.app.update(Msg::CopyText(text.to_owned()));
+        self.app
+            .update(Msg::Output(OutputMsg::CopyText(text.to_owned())));
     }
 
     fn toast(&self) -> Option<String> {

@@ -267,10 +267,10 @@ fn n_and_capital_n_cycle_through_the_matches_with_wrap_around() {
     for _ in 0..5 {
         assert!(matches!(
             ch(&mut t, 'n'),
-            Some(Msg::SearchPosition {
+            Some(Msg::Transcript(TranscriptMsg::SearchPosition {
                 position: Some(_),
                 ..
-            })
+            }))
         ));
         seen.push(shown(&t).unwrap());
     }
@@ -294,7 +294,7 @@ fn a_key_reports_the_position_as_a_message() {
     // The one message carries the selection the jump moved.
     assert_eq!(
         msg,
-        Some(Msg::SearchPosition {
+        Some(Msg::Transcript(TranscriptMsg::SearchPosition {
             position: Some(SearchPosition {
                 current: 2,
                 total: 5
@@ -304,7 +304,7 @@ fn a_key_reports_the_position_as_a_message() {
                 new_sections: None,
                 selection: now,
             },
-        })
+        }))
     );
 }
 
@@ -332,7 +332,10 @@ fn each_match_selects_its_section() {
 #[test]
 fn the_slash_key_asks_the_app_for_the_prompt() {
     let mut t = searching();
-    assert_eq!(ch(&mut t, '/'), Some(Msg::OpenSearch));
+    assert_eq!(
+        ch(&mut t, '/'),
+        Some(Msg::Transcript(TranscriptMsg::OpenSearch))
+    );
 }
 
 #[test]
@@ -490,10 +493,10 @@ fn escape_clears_the_temporary_unfold() {
     search(&mut t, "usb");
     ch(&mut t, 'n');
     assert!(unfolded(&t, &tool()));
-    let Some(Msg::SearchPosition {
+    let Some(Msg::Transcript(TranscriptMsg::SearchPosition {
         position: None,
         view,
-    }) = press(&mut t, Key::Esc)
+    })) = press(&mut t, Key::Esc)
     else {
         panic!("Esc clears the search");
     };
@@ -716,7 +719,10 @@ fn escape_removes_the_highlights_and_the_position() {
     assert!(!highlighted(&mut t).is_empty());
     assert!(matches!(
         press(&mut t, Key::Esc),
-        Some(Msg::SearchPosition { position: None, .. })
+        Some(Msg::Transcript(TranscriptMsg::SearchPosition {
+            position: None,
+            ..
+        }))
     ));
     assert!(highlighted(&mut t).is_empty());
     assert_eq!(position(&t), None);
@@ -1726,7 +1732,8 @@ fn a_jump_to_the_end_reports_the_count_of_new_sections_it_reset() {
     assert!(!t.following());
     // Back from the first match wraps to the last one, at the end: following
     // resumes, and the one message says so with the selection it moved.
-    let Some(Msg::SearchPosition { position, view }) = ch(&mut t, 'N') else {
+    let Some(Msg::Transcript(TranscriptMsg::SearchPosition { position, view })) = ch(&mut t, 'N')
+    else {
         panic!("the key reports the position");
     };
     assert!(t.following());

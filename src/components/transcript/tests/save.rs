@@ -1,5 +1,5 @@
 //! `w`, `W`, `e` and `E` (task 026): the transcript answers
-//! [`Msg::SaveSection`] and [`Msg::Export`].
+//! [`OutputMsg::SaveSection`] and [`OutputMsg::Export`].
 
 use tuirealm::component::{AppComponent, Component};
 use tuirealm::event::{Key, KeyModifiers};
@@ -25,14 +25,14 @@ fn move_to(t: &mut Transcript, want: &SectionId) {
 
 fn saved(msg: Option<Msg>) -> (String, &'static str) {
     match msg {
-        Some(Msg::SaveSection { text, kind }) => (text, kind),
+        Some(Msg::Output(OutputMsg::SaveSection { text, kind })) => (text, kind),
         other => panic!("expected SaveSection, got {other:?}"),
     }
 }
 
 fn exported(msg: Option<Msg>) -> (bool, String) {
     match msg {
-        Some(Msg::Export { full, document }) => (full, document),
+        Some(Msg::Output(OutputMsg::Export { full, document })) => (full, document),
         other => panic!("expected Export, got {other:?}"),
     }
 }
@@ -178,7 +178,7 @@ fn saving_and_exporting_do_not_change_the_selection_or_the_view() {
 fn the_folded_export_has_the_same_summary_as_y_copies() {
     let mut t = session_transcript(80, 24);
     let copied = match ch(&mut t, 'y') {
-        Some(Msg::CopyText(text)) => text,
+        Some(Msg::Output(OutputMsg::CopyText(text))) => text,
         other => panic!("{other:?}"),
     };
     // The folded first prompt: two rows of the screen, ending in `…`.

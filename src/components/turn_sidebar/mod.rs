@@ -26,10 +26,10 @@
 //! `on` resolves a key with the shared [`Keymap`] for the `turns` context.
 //! `Up` / `Down` are `Cmd::Move`s that `perform` handles: they select the
 //! previous or next entry (the first one when nothing is selected, never
-//! wrapping) and answer [`Msg::TurnSelected`] with the turn's id; at either
+//! wrapping) and answer [`BrowserMsg::TurnSelected`] with the turn's id; at either
 //! end, or on an empty list, they answer nothing. `Open` answers
-//! [`Msg::OpenTurn`] for the selected turn, and the pane keys
-//! [`Msg::FocusTranscript`]. Which component has focus is the `App`'s to
+//! [`BrowserMsg::OpenTurn`] for the selected turn, and the pane keys
+//! [`BrowserMsg::FocusTranscript`]. Which component has focus is the `App`'s to
 //! decide; the pane only draws it (`Attribute::Focus`).
 //!
 //! # Mouse
@@ -38,8 +38,8 @@
 //! pane's own coordinates) and never the raw `Event::Mouse` that goes to the
 //! focused component in screen coordinates. The wheel selects the previous or
 //! next entry like `Up` / `Down` (no wrap-around) and answers
-//! [`Msg::TurnSelected`]; it does not ask for the focus. A left press on an
-//! entry's row answers [`Msg::ChooseTurn`] with its turn, and `enter` when
+//! [`BrowserMsg::TurnSelected`]; it does not ask for the focus. A left press on an
+//! entry's row answers [`BrowserMsg::ChooseTurn`] with its turn, and `enter` when
 //! the press completed a double-click: two presses on the same entry at most
 //! [`DOUBLE_CLICK`](crate::components::DOUBLE_CLICK) apart, measured with the
 //! clock set with [`TurnSidebar::with_click_clock`] or [`CLICK_CLOCK_ATTR`].
@@ -76,7 +76,7 @@ use super::turn_rows::{TURN_ROWS_ATTR, TurnRows};
 use super::{
     MODEL_UPDATE_ATTR, THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value,
 };
-use crate::app::{Msg, RoutedMouse, UserEvent};
+use crate::app::{BrowserMsg, Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
 use crate::model::{ModelUpdate, TurnId};
 use crate::theme::{Role, Theme};
@@ -478,15 +478,15 @@ impl Component for TurnSidebar {
 
 impl TurnSidebar {
     /// The selected turn as a [`Msg`] built by `msg`.
-    fn selected_msg(&self, msg: fn(TurnId) -> Msg) -> Option<Msg> {
-        self.selected.clone().map(msg)
+    fn selected_msg(&self, msg: fn(TurnId) -> BrowserMsg) -> Option<Msg> {
+        self.selected.clone().map(|id| Msg::Browser(msg(id)))
     }
 
-    /// `Up` / `Down` for [`Msg::TurnSelected`]: the message when the
+    /// `Up` / `Down` for [`BrowserMsg::TurnSelected`]: the message when the
     /// selection moved.
     fn moved(&mut self, direction: Direction) -> Option<Msg> {
         match self.perform(Cmd::Move(direction)) {
-            CmdResult::Changed(_) => self.selected_msg(Msg::TurnSelected),
+            CmdResult::Changed(_) => self.selected_msg(BrowserMsg::TurnSelected),
             _ => None,
         }
     }
@@ -505,7 +505,7 @@ impl TurnSidebar {
                     return None;
                 };
                 let enter = self.presses.press(id.clone());
-                Some(Msg::ChooseTurn { id, enter })
+                Some(Msg::Browser(BrowserMsg::ChooseTurn { id, enter }))
             }
             _ => None,
         }
@@ -514,9 +514,9 @@ impl TurnSidebar {
 
 impl AppComponent<Msg, UserEvent> for TurnSidebar {
     /// Resolves the key in the `turns` context. `Up` / `Down` answer
-    /// [`Msg::TurnSelected`] when the selection moved, `Open`
-    /// [`Msg::OpenTurn`] for the selected turn, and the pane keys and
-    /// `focus_transcript` [`Msg::FocusTranscript`]. A routed mouse event and
+    /// [`BrowserMsg::TurnSelected`] when the selection moved, `Open`
+    /// [`BrowserMsg::OpenTurn`] for the selected turn, and the pane keys and
+    /// `focus_transcript` [`BrowserMsg::FocusTranscript`]. A routed mouse event and
     /// the press-elsewhere notice are as described in the module's Mouse
     /// section. Anything else, the raw mouse events included, answers
     /// nothing.
@@ -537,11 +537,11 @@ impl AppComponent<Msg, UserEvent> for TurnSidebar {
             Action::Up => self.moved(Direction::Up),
             Action::Down => self.moved(Direction::Down),
             Action::Open => match self.perform(Cmd::Submit) {
-                CmdResult::Submit(_) => self.selected_msg(Msg::OpenTurn),
+                CmdResult::Submit(_) => self.selected_msg(BrowserMsg::OpenTurn),
                 _ => None,
             },
             Action::NextPane | Action::PrevPane | Action::FocusTranscript => {
-                Some(Msg::FocusTranscript)
+                Some(Msg::Browser(BrowserMsg::FocusTranscript))
             }
             _ => None,
         }

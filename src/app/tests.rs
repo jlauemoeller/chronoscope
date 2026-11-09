@@ -14,7 +14,7 @@ use tuirealm::terminal::{TerminalAdapter, TestTerminalAdapter};
 
 use super::redraw::RedrawRequest;
 use super::runtime::{Startup, run_loop, start_with};
-use super::{App, AppInit, Id, Msg, UserEvent};
+use super::{App, AppInit, Id, Msg, TranscriptMsg, UserEvent};
 use crate::config::{Config, ConfigWarning};
 use crate::keymap::Keymap;
 use crate::launch::{HarnessIndex, Preselect, Resolution, Target};
@@ -143,7 +143,7 @@ fn resized_message_marks_the_state_dirty_and_records_the_size() {
 fn a_transcript_change_asks_for_a_redraw() {
     let mut app = app();
     app.take_redraw();
-    app.update(Msg::TranscriptChanged);
+    app.update(Msg::Transcript(TranscriptMsg::Changed));
     assert_eq!(app.take_redraw(), RedrawRequest::Dirty);
     assert_eq!(app.take_redraw(), RedrawRequest::None);
 }

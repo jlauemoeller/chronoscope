@@ -182,7 +182,7 @@ fn t_in_the_browser_opens_the_selector_and_gives_it_the_focus() {
     assert_eq!(rig.focus(), Some(Id::Transcript));
     rig.press(Key::Char('t'));
     let seen = rig.pump_until(|app| app.application().mounted(&Id::ThemeSelector));
-    assert!(seen.contains(&Msg::OpenThemeSelector), "{seen:?}");
+    assert!(seen.contains(&Msg::Theme(ThemeMsg::Open)), "{seen:?}");
     assert_eq!(rig.focus(), Some(Id::ThemeSelector));
     assert_eq!(rig.app.screen(), Screen::Browser);
     for id in [Id::Transcript, Id::BrowserHeader, Id::BrowserHelpLine] {
@@ -212,7 +212,7 @@ fn enter_and_esc_do_not_reach_the_selector_behind_the_overlay() {
     assert!(
         !seen
             .iter()
-            .any(|m| matches!(m, Msg::OpenSession(..) | Msg::Quit)),
+            .any(|m| matches!(m, Msg::Browser(BrowserMsg::OpenSession(..)) | Msg::Quit)),
         "{seen:?}"
     );
     assert_eq!(rig.app.screen(), Screen::Selector);
@@ -258,7 +258,7 @@ fn a_second_open_request_changes_nothing() {
     let mut rig = rig();
     rig.open_themes();
     rig.move_to(Key::Char('j'), "terminal");
-    rig.app.update(Msg::OpenThemeSelector);
+    rig.app.update(Msg::Theme(ThemeMsg::Open));
     assert_eq!(rig.cursor().as_deref(), Some("terminal"));
     assert_eq!(rig.app.theme_id(), "terminal");
     rig.close_themes();
@@ -271,14 +271,14 @@ fn it_does_not_open_over_the_help_overlay_or_a_prompt() {
     let mut rig = rig();
     rig.press(Key::Char('?'));
     rig.pump_until(|app| app.application().mounted(&Id::HelpOverlay));
-    rig.app.update(Msg::OpenThemeSelector);
+    rig.app.update(Msg::Theme(ThemeMsg::Open));
     assert!(!rig.themes_open());
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
     rig.press(Key::Esc);
     rig.pump_until(|app| !app.application().mounted(&Id::HelpOverlay));
     rig.press(Key::Char('/'));
     rig.pump_until(|app| app.application().mounted(&Id::Prompt));
-    rig.app.update(Msg::OpenThemeSelector);
+    rig.app.update(Msg::Theme(ThemeMsg::Open));
     assert!(!rig.themes_open());
     assert_eq!(rig.focus(), Some(Id::Prompt));
 }
@@ -316,7 +316,10 @@ fn q_and_the_other_global_keys_do_nothing_while_it_is_open() {
     assert!(
         !seen.iter().any(|m| matches!(
             m,
-            Msg::Quit | Msg::OpenSelector | Msg::OpenSearch | Msg::OpenHelp(_)
+            Msg::Quit
+                | Msg::Browser(BrowserMsg::OpenSelector)
+                | Msg::Transcript(TranscriptMsg::OpenSearch)
+                | Msg::Overlay(OverlayMsg::OpenHelp(_))
         )),
         "{seen:?}"
     );
@@ -352,7 +355,7 @@ fn moving_the_cursor_applies_the_theme_to_every_mounted_component() {
     rig.press(Key::Char('j'));
     let seen = rig.pump_until(|app| app.theme_id() == "terminal");
     assert!(
-        seen.contains(&Msg::PreviewTheme("terminal".into())),
+        seen.contains(&Msg::Theme(ThemeMsg::Preview("terminal".into()))),
         "{seen:?}"
     );
     assert_eq!(rig.app.theme(), &theme("terminal"));
@@ -462,7 +465,9 @@ fn the_top_of_the_cursor_says_nothing() {
     rig.press(Key::Char('k'));
     let seen = rig.settle();
     assert!(
-        !seen.iter().any(|m| matches!(m, Msg::PreviewTheme(_))),
+        !seen
+            .iter()
+            .any(|m| matches!(m, Msg::Theme(ThemeMsg::Preview(_)))),
         "{seen:?}"
     );
     assert_eq!(rig.app.theme_id(), "default");
@@ -603,7 +608,7 @@ fn esc_restores_the_original_theme_exactly_and_returns_the_focus() {
     assert_ne!(rig.app.theme(), &custom);
     rig.press(Key::Esc);
     let seen = rig.pump_until(|app| !app.application().mounted(&Id::ThemeSelector));
-    assert!(seen.contains(&Msg::CancelTheme), "{seen:?}");
+    assert!(seen.contains(&Msg::Theme(ThemeMsg::Cancel)), "{seen:?}");
     assert_eq!(rig.app.theme(), &custom);
     assert_eq!(rig.app.theme_id(), "gruvbox");
     assert_all_have(&rig.app, &custom, 5);
@@ -639,7 +644,7 @@ fn enter_keeps_the_theme_closes_the_selector_and_returns_the_focus() {
     rig.press(Key::Enter);
     let seen = rig.pump_until(|app| !app.application().mounted(&Id::ThemeSelector));
     assert!(
-        seen.contains(&Msg::SelectTheme("catppuccin".into())),
+        seen.contains(&Msg::Theme(ThemeMsg::Select("catppuccin".into()))),
         "{seen:?}"
     );
     assert_eq!(rig.app.theme(), &theme("catppuccin"));
@@ -752,13 +757,13 @@ fn without_a_config_location_a_toast_says_it_was_not_saved() {
 #[test]
 fn the_messages_of_a_closed_selector_are_ignored() {
     let (mut rig, dir) = rig_saving(None);
-    rig.app.update(Msg::PreviewTheme("nord".into()));
+    rig.app.update(Msg::Theme(ThemeMsg::Preview("nord".into())));
     assert_eq!(rig.app.theme_id(), "default");
-    rig.app.update(Msg::SelectTheme("nord".into()));
+    rig.app.update(Msg::Theme(ThemeMsg::Select("nord".into())));
     assert_eq!(rig.app.theme_id(), "default");
     assert_eq!(rig.app.config().theme, "default");
     assert_eq!(config_text(&dir), None);
-    rig.app.update(Msg::CancelTheme);
+    rig.app.update(Msg::Theme(ThemeMsg::Cancel));
     assert_eq!(rig.app.theme_id(), "default");
     assert_eq!(rig.focus(), Some(Id::ProjectList));
 }
@@ -767,8 +772,8 @@ fn the_messages_of_a_closed_selector_are_ignored() {
 fn a_preview_that_arrives_after_esc_in_the_same_batch_does_not_stick() {
     let mut rig = rig();
     rig.open_themes();
-    rig.app.update(Msg::CancelTheme);
-    rig.app.update(Msg::PreviewTheme("nord".into()));
+    rig.app.update(Msg::Theme(ThemeMsg::Cancel));
+    rig.app.update(Msg::Theme(ThemeMsg::Preview("nord".into())));
     assert!(!rig.themes_open());
     assert_eq!(rig.app.theme_id(), "default");
     assert_eq!(rig.app.theme(), &theme("default"));
@@ -778,7 +783,8 @@ fn a_preview_that_arrives_after_esc_in_the_same_batch_does_not_stick() {
 fn a_theme_that_cannot_be_resolved_is_not_applied() {
     let mut rig = rig();
     rig.open_themes();
-    rig.app.update(Msg::PreviewTheme("no-such-theme".into()));
+    rig.app
+        .update(Msg::Theme(ThemeMsg::Preview("no-such-theme".into())));
     assert_eq!(rig.app.theme_id(), "default");
     assert_eq!(rig.app.theme(), &theme("default"));
 }
@@ -788,7 +794,10 @@ fn opening_another_session_drops_the_selector_and_gives_back_the_theme() {
     let mut rig = rig();
     rig.open_themes();
     rig.move_to(Key::Char('j'), "terminal");
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     assert!(!rig.themes_open());
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert_eq!(rig.app.theme_id(), "default");

@@ -2,16 +2,16 @@
 //! thread that matches, the port that brings its answers back, and the
 //! `App`'s part of the flow.
 //!
-//! 1. `/` in the transcript asks ([`Msg::OpenSearch`]) for the [`Prompt`] in
+//! 1. `/` in the transcript asks ([`TranscriptMsg::OpenSearch`]) for the [`Prompt`] in
 //!    the help line.
 //! 2. `Enter` in the prompt with a query: the App hands the query to the
 //!    transcript (an attribute) and, right after, queries the request it
 //!    builds from it (cycle 5 spec, §0 item 5):
 //!    the query, a snapshot of its turns and a generation, unique over the
-//!    run of the application ([`Msg::StartTranscriptSearch`]).
+//!    run of the application ([`TranscriptMsg::StartSearch`]).
 //! 3. The worker thread searches and a [`TranscriptSearchPort`] delivers
 //!    [`UserEvent::TranscriptSearch`]; `GlobalEvents` makes it a
-//!    [`Msg::TranscriptSearchResults`].
+//!    [`WorkerMsg::TranscriptSearchResults`](super::WorkerMsg::TranscriptSearchResults).
 //! 4. The App pushes the matches to the transcript, which highlights and
 //!    jumps, and shows the position (`3/17`) in the help line. Answers to a
 //!    request other than the one waited for are dropped, so are those that
@@ -28,10 +28,10 @@ use tuirealm::props::AttrValue;
 
 use super::layout::Screen;
 use super::redraw::RedrawRequest;
-use super::{App, Id, Msg, UserEvent, ViewChange};
+use super::{App, Id, Msg, PromptPurpose, TranscriptMsg, UserEvent, ViewChange};
 use crate::components::{
-    Prompt, PromptMode, SEARCH_POSITION_ATTR, SEARCH_QUERY_ATTR, SEARCH_REQUEST_ATTR,
-    SEARCH_RESULTS_ATTR, SearchStart, payload_from_value, search_results_value, search_start_value,
+    Prompt, SEARCH_POSITION_ATTR, SEARCH_QUERY_ATTR, SEARCH_REQUEST_ATTR, SEARCH_RESULTS_ATTR,
+    SearchStart, payload_from_value, search_results_value, search_start_value,
 };
 use crate::theme::Role;
 use crate::transcript_search::{SearchCorpus, SearchMatches, SearchPosition, SearchRequest};
@@ -187,18 +187,18 @@ impl App {
         {
             return;
         }
-        let prompt = Prompt::new(SEARCH_LABEL, "", PromptMode::Text, self.theme.clone())
-            .with_fill(Role::Background)
-            .inset(PROMPT_INSET);
+        let prompt = Prompt::new(
+            SEARCH_LABEL,
+            "",
+            PromptPurpose::TranscriptSearch,
+            self.theme.clone(),
+        )
+        .with_fill(Role::Background)
+        .inset(PROMPT_INSET);
         match self.open_overlay(Id::Prompt, Box::new(prompt)) {
             Ok(()) => self.browser.search.prompt_open = true,
             Err(err) => log::warn!("could not open the search prompt: {err}"),
         }
-    }
-
-    /// The prompt's text changed: it draws itself, the screen needs a redraw.
-    pub(super) fn transcript_prompt_changed(&mut self) {
-        self.request_redraw(RedrawRequest::Dirty);
     }
 
     /// `Esc` in the prompt: closes it. The search that is on stays.
@@ -206,15 +206,19 @@ impl App {
         self.close_transcript_prompt();
     }
 
-    fn close_transcript_prompt(&mut self) {
-        self.browser.search.prompt_open = false;
+    /// Closes the prompt, if it is the transcript's search prompt that is
+    /// open, and says whether it was.
+    fn close_transcript_prompt(&mut self) -> bool {
+        if !std::mem::take(&mut self.browser.search.prompt_open) {
+            return false;
+        }
         self.close_overlay(Id::Prompt);
+        true
     }
 
     /// `Enter` in the prompt: closes it and, for a query, starts the search.
     pub(super) fn transcript_prompt_submit(&mut self, query: String) {
-        self.close_transcript_prompt();
-        if query.is_empty() {
+        if !self.close_transcript_prompt() || query.is_empty() {
             return;
         }
         self.transcript_seq += 1;
@@ -228,11 +232,11 @@ impl App {
             search_start_value(start),
         );
         if let Some(request) = self.transcript_search_request() {
-            self.emit(Msg::StartTranscriptSearch {
+            self.emit(Msg::Transcript(TranscriptMsg::StartSearch {
                 query: request.query,
                 corpus: request.corpus,
                 generation: request.generation,
-            });
+            }));
         }
     }
 
@@ -321,7 +325,7 @@ impl App {
     /// that can have changed it: search results, a reload (`Reset`), or the
     /// swap of the transcript on top. The transcript computes it from the
     /// matches and turns it was pushed, so it is queried (cycle 5 spec, §0
-    /// item 5); a key reports it in [`Msg::SearchPosition`].
+    /// item 5); a key reports it in [`TranscriptMsg::SearchPosition`].
     pub(super) fn sync_search_position(&mut self) {
         let value = self
             .application
@@ -349,6 +353,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::WorkerMsg;
     use crate::components::transcript::fixtures::search_session;
     use crate::transcript_search::SearchCorpus;
 
@@ -433,7 +438,7 @@ mod tests {
         let event = Event::User(UserEvent::TranscriptSearch(answer.clone()));
         assert_eq!(
             component.on(&event),
-            Some(Msg::TranscriptSearchResults(answer))
+            Some(Msg::Worker(WorkerMsg::TranscriptSearchResults(answer)))
         );
     }
 }

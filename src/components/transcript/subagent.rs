@@ -1,7 +1,7 @@
 //! Opening a subagent's transcript from its section (product §4.4).
 
 use super::Transcript;
-use crate::app::Msg;
+use crate::app::{BrowserMsg, Msg};
 use crate::components::turn_block::SectionKey;
 use crate::model::{Item, ToolCall, ToolKind, Turn};
 
@@ -22,7 +22,7 @@ fn label_of(call: &ToolCall) -> String {
 }
 
 impl Transcript {
-    /// [`Msg::OpenSubagent`] for the selected section, when it is a subagent
+    /// [`BrowserMsg::OpenSubagent`] for the selected section, when it is a subagent
     /// tool call (or the `… N more lines` row below one). `None` for any
     /// other section, and with nothing selected.
     pub(super) fn open_subagent_msg(&self) -> Option<Msg> {
@@ -42,9 +42,9 @@ impl Transcript {
             }
             _ => None,
         })?;
-        Some(Msg::OpenSubagent {
+        Some(Msg::Browser(BrowserMsg::OpenSubagent {
             call_id: call.id.clone(),
             label: label_of(call),
-        })
+        }))
     }
 }

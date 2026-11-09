@@ -8,14 +8,14 @@
 //!    now waits for the answer to that request.
 //! 2. The App reads [`SEARCH_REQUEST_ATTR`] ([`SearchRequest`]): the query,
 //!    a snapshot of the turns and the generation. It starts the search with
-//!    them (`Msg::StartTranscriptSearch`).
+//!    them (`TranscriptMsg::StartSearch`).
 //! 3. The answer is set with [`SEARCH_RESULTS_ATTR`] ([`SearchMatches`]).
 //!    One for another generation than the one waited for is dropped. The
 //!    transcript highlights the query and jumps to the first match at or
 //!    after the selection (the first one if there is none).
 //! 4. The App reads [`SEARCH_POSITION_ATTR`] (an `Option<SearchPosition>`)
 //!    to show `3/17`. Keys that move among the matches report the position
-//!    themselves as `Msg::SearchPosition`.
+//!    themselves as `TranscriptMsg::SearchPosition`.
 //!
 //! # Temporary unfolding
 //!

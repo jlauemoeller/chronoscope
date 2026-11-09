@@ -22,7 +22,7 @@ use super::double_click::{CLICK_CLOCK_ATTR, ClickClock, LastPress};
 use super::list_cursor::{ListCursor, VISIBLE_ROWS_ATTR};
 use super::titled_block::titled_block;
 use super::{HelpLine, Hint, THEME_ATTR, theme_from_value, theme_value};
-use crate::app::{Msg, RoutedMouse, UserEvent};
+use crate::app::{Msg, RoutedMouse, ThemeMsg, UserEvent};
 use crate::keymap::{Action, Context, Keymap};
 use crate::theme::{Role, Theme, ThemeRegistry};
 
@@ -98,9 +98,9 @@ fn help_line(keymap: &Keymap, theme: &Theme) -> HelpLine {
 /// The theme selector. It takes the focus.
 ///
 /// Up and down move the cursor over the themes that can be selected (no
-/// wrap), each move saying `Msg::PreviewTheme`. `select` says
-/// `Msg::SelectTheme` for the theme under the cursor and `close` says
-/// `Msg::CancelTheme`; the keys come from the keymap's `overlay` context.
+/// wrap), each move saying `ThemeMsg::Preview`. `select` says
+/// `ThemeMsg::Select` for the theme under the cursor and `close` says
+/// `ThemeMsg::Cancel`; the keys come from the keymap's `overlay` context.
 ///
 /// `view` gets the overlay's rect (see `App`'s layout) as its area. The
 /// overlay is cleared and filled with `surface` (only cleared with a
@@ -109,7 +109,7 @@ fn help_line(keymap: &Keymap, theme: &Theme) -> HelpLine {
 /// number of rows is announced with [`VISIBLE_ROWS_ATTR`].
 ///
 /// A left press on a theme moves the cursor there and says
-/// `Msg::ChooseTheme`, with `keep` when it completed a double-click; the
+/// `ThemeMsg::Choose`, with `keep` when it completed a double-click; the
 /// clock that is measured with is set with
 /// [`with_click_clock`](Self::with_click_clock) or [`CLICK_CLOCK_ATTR`].
 #[derive(Debug, Clone)]
@@ -307,7 +307,7 @@ impl AppComponent<Msg, UserEvent> for ThemeSelector {
             // Only what the router sent here, in the overlay's coordinates.
             Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
             // A press outside gives the previous theme back, as `Esc` does.
-            Event::User(UserEvent::PointerOutside) => return Some(Msg::CancelTheme),
+            Event::User(UserEvent::PointerOutside) => return Some(Msg::Theme(ThemeMsg::Cancel)),
             Event::User(UserEvent::PointerElsewhere) => {
                 self.presses.forget();
                 return None;
@@ -315,8 +315,10 @@ impl AppComponent<Msg, UserEvent> for ThemeSelector {
             _ => return None,
         };
         match self.keymap.resolve(Context::Overlay, key)? {
-            Action::Close => Some(Msg::CancelTheme),
-            Action::Select => self.selected_id().map(|id| Msg::SelectTheme(id.to_owned())),
+            Action::Close => Some(Msg::Theme(ThemeMsg::Cancel)),
+            Action::Select => self
+                .selected_id()
+                .map(|id| Msg::Theme(ThemeMsg::Select(id.to_owned()))),
             Action::Up => self.moved(false),
             Action::Down => self.moved(true),
             _ => None,
@@ -327,7 +329,7 @@ impl AppComponent<Msg, UserEvent> for ThemeSelector {
 impl ThemeSelector {
     /// The wheel moves the cursor a theme like the arrow keys. A left press on
     /// a theme that can be selected moves the cursor there and says
-    /// [`Msg::ChooseTheme`] (the `App` previews it, or keeps it when the press
+    /// [`ThemeMsg::Choose`] (the `App` previews it, or keeps it when the press
     /// completed a double-click); anywhere else in the overlay it only ends a
     /// double-click under way.
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
@@ -342,7 +344,7 @@ impl ThemeSelector {
                 self.move_cursor(index);
                 let id = self.items[index].id.clone();
                 let keep = self.presses.press(id.clone());
-                Some(Msg::ChooseTheme { id, keep })
+                Some(Msg::Theme(ThemeMsg::Choose { id, keep }))
             }
             _ => None,
         }
@@ -371,7 +373,7 @@ impl ThemeSelector {
             return None;
         }
         self.selected_id()
-            .map(|id| Msg::PreviewTheme(id.to_owned()))
+            .map(|id| Msg::Theme(ThemeMsg::Preview(id.to_owned())))
     }
 }
 
@@ -552,11 +554,11 @@ mod tests {
         let mut s = selector_for(&ThemeRegistry::builtin(), "default");
         assert_eq!(
             press(&mut s, Key::Down),
-            Some(Msg::PreviewTheme("terminal".into()))
+            Some(Msg::Theme(ThemeMsg::Preview("terminal".into())))
         );
         assert_eq!(
             press(&mut s, Key::Char('j')),
-            Some(Msg::PreviewTheme("catppuccin".into()))
+            Some(Msg::Theme(ThemeMsg::Preview("catppuccin".into())))
         );
         assert_eq!(selected(&s).as_deref(), Some("catppuccin"));
     }
@@ -566,11 +568,11 @@ mod tests {
         let mut s = selector_for(&ThemeRegistry::builtin(), "nord");
         assert_eq!(
             press(&mut s, Key::Up),
-            Some(Msg::PreviewTheme("gruvbox".into()))
+            Some(Msg::Theme(ThemeMsg::Preview("gruvbox".into())))
         );
         assert_eq!(
             press(&mut s, Key::Char('k')),
-            Some(Msg::PreviewTheme("catppuccin".into()))
+            Some(Msg::Theme(ThemeMsg::Preview("catppuccin".into())))
         );
     }
 
@@ -591,13 +593,13 @@ mod tests {
         let mut s = selector_for(&registry, "solarized");
         assert_eq!(
             press(&mut s, Key::Down),
-            Some(Msg::PreviewTheme("b-ok".into()))
+            Some(Msg::Theme(ThemeMsg::Preview("b-ok".into())))
         );
         assert_eq!(press(&mut s, Key::Down), None, "c-bad is last and invalid");
         assert_eq!(selected(&s).as_deref(), Some("b-ok"));
         assert_eq!(
             press(&mut s, Key::Up),
-            Some(Msg::PreviewTheme("solarized".into()))
+            Some(Msg::Theme(ThemeMsg::Preview("solarized".into())))
         );
     }
 
@@ -606,12 +608,12 @@ mod tests {
         let mut s = selector_for(&ThemeRegistry::builtin(), "gruvbox");
         assert_eq!(
             press(&mut s, Key::Enter),
-            Some(Msg::SelectTheme("gruvbox".into()))
+            Some(Msg::Theme(ThemeMsg::Select("gruvbox".into())))
         );
         press(&mut s, Key::Down);
         assert_eq!(
             press(&mut s, Key::Enter),
-            Some(Msg::SelectTheme("nord".into()))
+            Some(Msg::Theme(ThemeMsg::Select("nord".into())))
         );
     }
 
@@ -646,10 +648,10 @@ mod tests {
     }
 
     fn chosen(id: &str, keep: bool) -> Option<Msg> {
-        Some(Msg::ChooseTheme {
+        Some(Msg::Theme(ThemeMsg::Choose {
             id: id.into(),
             keep,
-        })
+        }))
     }
 
     #[test]
@@ -740,8 +742,8 @@ mod tests {
         let mut s = selector_for(&ThemeRegistry::builtin(), "default");
         click_line(&mut s, 3);
         let outside = Event::User(UserEvent::PointerOutside);
-        assert_eq!(s.on(&outside), Some(Msg::CancelTheme));
-        assert_eq!(press(&mut s, Key::Esc), Some(Msg::CancelTheme));
+        assert_eq!(s.on(&outside), Some(Msg::Theme(ThemeMsg::Cancel)));
+        assert_eq!(press(&mut s, Key::Esc), Some(Msg::Theme(ThemeMsg::Cancel)));
         assert_eq!(selected(&s).as_deref(), Some("gruvbox"), "the cursor stays");
     }
 
@@ -835,7 +837,10 @@ mod tests {
         click_line(&mut s, 3);
         clock.set_ms(100);
         let down = mouse(&s, MouseEventKind::ScrollDown, 6, 5);
-        assert_eq!(s.on(&down), Some(Msg::PreviewTheme("nord".into())));
+        assert_eq!(
+            s.on(&down),
+            Some(Msg::Theme(ThemeMsg::Preview("nord".into())))
+        );
         clock.set_ms(200);
         assert_eq!(click_line(&mut s, 3), chosen("gruvbox", true));
     }
@@ -862,11 +867,23 @@ mod tests {
         let mut s = selector_for(&ThemeRegistry::builtin(), "default");
         let down = mouse(&s, MouseEventKind::ScrollDown, 0, 0);
         let up = mouse(&s, MouseEventKind::ScrollUp, 0, 0);
-        assert_eq!(s.on(&down), Some(Msg::PreviewTheme("terminal".into())));
-        assert_eq!(s.on(&down), Some(Msg::PreviewTheme("catppuccin".into())));
-        assert_eq!(s.on(&up), Some(Msg::PreviewTheme("terminal".into())));
+        assert_eq!(
+            s.on(&down),
+            Some(Msg::Theme(ThemeMsg::Preview("terminal".into())))
+        );
+        assert_eq!(
+            s.on(&down),
+            Some(Msg::Theme(ThemeMsg::Preview("catppuccin".into())))
+        );
+        assert_eq!(
+            s.on(&up),
+            Some(Msg::Theme(ThemeMsg::Preview("terminal".into())))
+        );
         assert_eq!(selected(&s).as_deref(), Some("terminal"));
-        assert_eq!(s.on(&up), Some(Msg::PreviewTheme("default".into())));
+        assert_eq!(
+            s.on(&up),
+            Some(Msg::Theme(ThemeMsg::Preview("default".into())))
+        );
         assert_eq!(s.on(&up), None, "the first theme");
         for _ in 0..10 {
             s.on(&down);
@@ -899,7 +916,7 @@ mod tests {
     #[test]
     fn esc_cancels() {
         let mut s = selector();
-        assert_eq!(press(&mut s, Key::Esc), Some(Msg::CancelTheme));
+        assert_eq!(press(&mut s, Key::Esc), Some(Msg::Theme(ThemeMsg::Cancel)));
     }
 
     #[test]
@@ -938,15 +955,18 @@ mod tests {
         );
         assert_eq!(
             press(&mut s, Key::Char('d')),
-            Some(Msg::PreviewTheme("terminal".into()))
+            Some(Msg::Theme(ThemeMsg::Preview("terminal".into())))
         );
         assert_eq!(press(&mut s, Key::Char('j')), None);
         assert_eq!(
             press(&mut s, Key::Char(' ')),
-            Some(Msg::SelectTheme("terminal".into()))
+            Some(Msg::Theme(ThemeMsg::Select("terminal".into())))
         );
         assert_eq!(press(&mut s, Key::Enter), None);
-        assert_eq!(press(&mut s, Key::Char('x')), Some(Msg::CancelTheme));
+        assert_eq!(
+            press(&mut s, Key::Char('x')),
+            Some(Msg::Theme(ThemeMsg::Cancel))
+        );
         assert_eq!(press(&mut s, Key::Esc), None);
     }
 

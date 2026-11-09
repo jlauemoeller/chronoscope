@@ -17,7 +17,7 @@ pub use content::{HelpContent, HelpContext, HelpGroup, HelpRow, MIN_WIDTH, SHIFT
 use super::overlay_frame::{FrameKey, OverlayFrame};
 pub use super::overlay_frame::{INTERIOR_ATTR, interior_value};
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
-use crate::app::{Msg, RoutedMouse, UserEvent};
+use crate::app::{Msg, OverlayMsg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, Keymap};
 use crate::theme::Theme;
 
@@ -103,7 +103,7 @@ impl HelpOverlay {
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         self.frame
             .on_mouse(mouse, self.content.row_count())
-            .then_some(Msg::HelpScrolled)
+            .then_some(Msg::Overlay(OverlayMsg::HelpScrolled))
     }
 }
 
@@ -114,16 +114,18 @@ impl AppComponent<Msg, UserEvent> for HelpOverlay {
             // Only what the router sent here, in the overlay's coordinates.
             Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
             // A press outside closes it, as `Esc` does.
-            Event::User(UserEvent::PointerOutside) => return Some(Msg::CloseHelp),
+            Event::User(UserEvent::PointerOutside) => {
+                return Some(Msg::Overlay(OverlayMsg::CloseHelp));
+            }
             _ => return None,
         };
         match self.frame.on_key(key, self.content.row_count()) {
-            FrameKey::Close => Some(Msg::CloseHelp),
-            FrameKey::Scrolled => Some(Msg::HelpScrolled),
+            FrameKey::Close => Some(Msg::Overlay(OverlayMsg::CloseHelp)),
+            FrameKey::Scrolled => Some(Msg::Overlay(OverlayMsg::HelpScrolled)),
             FrameKey::Unmoved => None,
             FrameKey::Unbound => (self.frame.keymap().resolve(Context::Global, key)
                 == Some(Action::Help))
-            .then_some(Msg::CloseHelp),
+            .then_some(Msg::Overlay(OverlayMsg::CloseHelp)),
         }
     }
 }
@@ -187,7 +189,10 @@ mod tests {
         let last = ROWS - 20;
         for code in [Key::Down, Key::Char('j')] {
             let before = offset(&overlay);
-            assert_eq!(press(&mut overlay, code), Some(Msg::HelpScrolled));
+            assert_eq!(
+                press(&mut overlay, code),
+                Some(Msg::Overlay(OverlayMsg::HelpScrolled))
+            );
             assert_eq!(offset(&overlay), before + 1);
         }
         for _ in 0..100 {
@@ -206,7 +211,10 @@ mod tests {
         }
         for code in [Key::Up, Key::Char('k')] {
             let before = offset(&overlay);
-            assert_eq!(press(&mut overlay, code), Some(Msg::HelpScrolled));
+            assert_eq!(
+                press(&mut overlay, code),
+                Some(Msg::Overlay(OverlayMsg::HelpScrolled))
+            );
             assert_eq!(offset(&overlay), before - 1);
         }
         assert_eq!(offset(&overlay), 3);
@@ -233,7 +241,7 @@ mod tests {
         let last = ROWS - 20;
         assert_eq!(
             wheel(&mut overlay, MouseEventKind::ScrollDown),
-            Some(Msg::HelpScrolled)
+            Some(Msg::Overlay(OverlayMsg::HelpScrolled))
         );
         assert_eq!(offset(&overlay), WHEEL_ROWS);
         assert_eq!(WHEEL_ROWS, 3);
@@ -241,7 +249,7 @@ mod tests {
         assert_eq!(offset(&overlay), 6);
         assert_eq!(
             wheel(&mut overlay, MouseEventKind::ScrollUp),
-            Some(Msg::HelpScrolled)
+            Some(Msg::Overlay(OverlayMsg::HelpScrolled))
         );
         assert_eq!(offset(&overlay), 3);
         for _ in 0..20 {
@@ -292,17 +300,29 @@ mod tests {
     fn a_press_outside_it_closes_it_as_esc_does() {
         let mut overlay = with_interior(20);
         let outside = Event::User(UserEvent::PointerOutside);
-        assert_eq!(overlay.on(&outside), Some(Msg::CloseHelp));
-        assert_eq!(press(&mut overlay, Key::Esc), Some(Msg::CloseHelp));
+        assert_eq!(
+            overlay.on(&outside),
+            Some(Msg::Overlay(OverlayMsg::CloseHelp))
+        );
+        assert_eq!(
+            press(&mut overlay, Key::Esc),
+            Some(Msg::Overlay(OverlayMsg::CloseHelp))
+        );
         // Scrolled or not.
         wheel(&mut overlay, MouseEventKind::ScrollDown);
-        assert_eq!(overlay.on(&outside), Some(Msg::CloseHelp));
+        assert_eq!(
+            overlay.on(&outside),
+            Some(Msg::Overlay(OverlayMsg::CloseHelp))
+        );
     }
 
     #[test]
     fn the_page_keys_scroll_by_the_rows_of_the_interior_and_clamp() {
         let mut overlay = with_interior(20);
-        assert_eq!(press(&mut overlay, Key::PageDown), Some(Msg::HelpScrolled));
+        assert_eq!(
+            press(&mut overlay, Key::PageDown),
+            Some(Msg::Overlay(OverlayMsg::HelpScrolled))
+        );
         assert_eq!(offset(&overlay), 20);
         press(&mut overlay, Key::PageDown);
         assert_eq!(offset(&overlay), 40);
@@ -327,7 +347,10 @@ mod tests {
         assert!(warnings.is_empty(), "{warnings:?}");
         let mut overlay = overlay_with(keymap, true);
         overlay.attr(INTERIOR_ATTR, interior_value(Size::new(60, 20)));
-        assert_eq!(press(&mut overlay, Key::Char('d')), Some(Msg::HelpScrolled));
+        assert_eq!(
+            press(&mut overlay, Key::Char('d')),
+            Some(Msg::Overlay(OverlayMsg::HelpScrolled))
+        );
         assert_eq!(press(&mut overlay, Key::Char('j')), None);
         assert_eq!(offset(&overlay), 1);
     }
@@ -362,10 +385,19 @@ mod tests {
     #[test]
     fn esc_and_the_help_key_close_it() {
         let mut overlay = overlay();
-        assert_eq!(press(&mut overlay, Key::Esc), Some(Msg::CloseHelp));
-        assert_eq!(press(&mut overlay, Key::Char('?')), Some(Msg::CloseHelp));
+        assert_eq!(
+            press(&mut overlay, Key::Esc),
+            Some(Msg::Overlay(OverlayMsg::CloseHelp))
+        );
+        assert_eq!(
+            press(&mut overlay, Key::Char('?')),
+            Some(Msg::Overlay(OverlayMsg::CloseHelp))
+        );
         let shifted = Event::Keyboard(KeyEvent::new(Key::Char('?'), KeyModifiers::SHIFT));
-        assert_eq!(overlay.on(&shifted), Some(Msg::CloseHelp));
+        assert_eq!(
+            overlay.on(&shifted),
+            Some(Msg::Overlay(OverlayMsg::CloseHelp))
+        );
     }
 
     #[test]
@@ -388,7 +420,10 @@ mod tests {
             .insert("help".to_owned(), vec!["f1".to_owned()]);
         let (keymap, _) = Keymap::from_config(&raw);
         let mut overlay = overlay_with(keymap, true);
-        assert_eq!(press(&mut overlay, Key::Function(1)), Some(Msg::CloseHelp));
+        assert_eq!(
+            press(&mut overlay, Key::Function(1)),
+            Some(Msg::Overlay(OverlayMsg::CloseHelp))
+        );
         assert_eq!(press(&mut overlay, Key::Char('?')), None);
     }
 

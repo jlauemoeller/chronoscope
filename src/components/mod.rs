@@ -63,7 +63,7 @@ pub use overlay_frame::{INTERIOR_ATTR, interior_of, interior_value};
 pub use project_list::{
     PROJECT_ROWS_ATTR, PROJECTS_FILTERED_ATTR, ProjectList, ProjectRow, ProjectRows,
 };
-pub use prompt::{Prompt, PromptMode};
+pub use prompt::Prompt;
 pub use selector_frame::{RESUME_OPEN_ATTR, SelectorFrame};
 pub use session_list::{
     ACTIVE_ATTR, ActiveSessions, SESSION_FILTERED_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR,

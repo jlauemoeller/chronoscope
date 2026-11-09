@@ -38,16 +38,16 @@
 //! arrive ([`NEW_SECTIONS_ATTR`]); `G` / `End`, or scrolling back to the end,
 //! resumes following. Until `Loaded` arrives (see [`Transcript::loading`])
 //! the view stays where it is. A key that changes the count answers
-//! [`Msg::NewSections`]; the App queries the count right after the updates
+//! [`TranscriptMsg::NewSections`]; the App queries the count right after the updates
 //! it pushes (cycle 5 spec, §0 item 5). See the `follow` module.
 //!
 //! # Keys and `Cmd`s
 //!
 //! `on` resolves a key with the shared [`Keymap`] for the `browser` context
 //! (a [`KeyResolver`] of its own holds a pending chord) and turns the action
-//! into a `Cmd` that `perform` handles; it answers [`Msg::SelectionChanged`]
+//! into a `Cmd` that `perform` handles; it answers [`TranscriptMsg::SelectionChanged`]
 //! when the key moved the selection (the turns sidebar follows it), else
-//! [`Msg::TranscriptChanged`] when it changed what is shown (the App then
+//! [`TranscriptMsg::Changed`] when it changed what is shown (the App then
 //! redraws), else nothing. A key that also does something else the App is
 //! told of carries the selection in that message instead
 //! ([`ViewChange`]).
@@ -67,7 +67,7 @@
 //! - `Custom(`[`TOGGLE_SYSTEM`]`)` shows or hides system sections;
 //! - `Custom(`[`SEARCH_NEXT`]`/`[`SEARCH_PREV`]`)` go to the next/previous
 //!   match, wrapping, and `Custom(`[`CLEAR_SEARCH`]`)` clears the search.
-//!   `/` is not a `Cmd`: the key answers [`Msg::OpenSearch`].
+//!   `/` is not a `Cmd`: the key answers [`TranscriptMsg::OpenSearch`].
 //!
 //! The mouse (see the `mouse` module) arrives as a [`RoutedMouse`](crate::app::RoutedMouse)
 //! the router made for the pointer's position in the transcript's area. A wheel
@@ -76,16 +76,16 @@
 //! the pointer, toggles its fold when it is on the section's first row, and
 //! expands the output on a `… N more lines` row; the borders, the padding and
 //! the blank rows are not sections. Wherever it lands, a left press answers
-//! [`Msg::TranscriptPressed`], which asks for the focus and carries the
+//! [`TranscriptMsg::Pressed`], which asks for the focus and carries the
 //! section it selected.
 //!
 //! The keys that focus the turns sidebar are not `Cmd`s either: they answer
-//! [`Msg::FocusTurns`]. The sidebar's selection reaches the transcript through
+//! [`BrowserMsg::FocusTurns`]. The sidebar's selection reaches the transcript through
 //! [`GO_TO_TURN_ATTR`], which goes to a block the way `]` / `[` do.
 //!
 //! The subagent keys are not `Cmd`s either: `a` on a subagent section
-//! answers [`Msg::OpenSubagent`] (nothing on any other), and the back key of
-//! a [`nested`](Transcript::nested) transcript [`Msg::CloseSubagent`].
+//! answers [`BrowserMsg::OpenSubagent`] (nothing on any other), and the back key of
+//! a [`nested`](Transcript::nested) transcript [`BrowserMsg::CloseSubagent`].
 
 mod cache;
 mod content;
@@ -136,7 +136,7 @@ use self::folding::FoldOp;
 use self::window::Window;
 use super::turn_rows::{TURN_ROWS_ATTR, TurnRows};
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent, ViewChange};
+use crate::app::{BrowserMsg, Msg, OutputMsg, TranscriptMsg, UserEvent, ViewChange};
 use crate::components::turn_block::SectionId;
 use crate::components::turn_block::export::ExportMeta;
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
@@ -286,7 +286,7 @@ impl Transcript {
     }
 
     /// Marks this as the transcript of a subagent, opened over another one:
-    /// the back key then answers [`Msg::CloseSubagent`].
+    /// the back key then answers [`BrowserMsg::CloseSubagent`].
     #[must_use]
     pub fn nested(mut self, nested: bool) -> Self {
         self.nested = nested;
@@ -650,20 +650,20 @@ impl Component for Transcript {
 }
 
 impl Transcript {
-    /// [`Msg::SaveSection`] for the selected section with `text`.
+    /// [`OutputMsg::SaveSection`] for the selected section with `text`.
     fn save_msg(&self, text: Option<String>) -> Option<Msg> {
-        Some(Msg::SaveSection {
+        Some(Msg::Output(OutputMsg::SaveSection {
             text: text?,
             kind: self.file_kind()?,
-        })
+        }))
     }
 
-    /// [`Msg::Export`] with the session as markdown.
+    /// [`OutputMsg::Export`] with the session as markdown.
     fn export_msg(&self, full: bool) -> Msg {
-        Msg::Export {
+        Msg::Output(OutputMsg::Export {
             full,
             document: self.export_document(full),
-        }
+        })
     }
 
     /// Runs a `Cmd` (`perform` then decides whether the view follows).
@@ -685,24 +685,24 @@ impl Transcript {
 
 impl AppComponent<Msg, UserEvent> for Transcript {
     /// Resolves the key in the `browser` context and performs the `Cmd` of
-    /// its action. Returns [`Msg::OpenSearch`] for the search key,
-    /// [`Msg::SearchPosition`] when a key moved among the matches or cleared
-    /// the search, [`Msg::NewSections`] when it changed the count of new
-    /// sections (`G` resuming following), [`Msg::SelectionChanged`] when it
-    /// moved the selection, else [`Msg::TranscriptChanged`] when that changed
-    /// what is shown, so that the App redraws. [`Msg::SearchPosition`] and
-    /// [`Msg::NewSections`] carry the selection too, when the key also moved
-    /// it (one message per key). The copy keys answer [`Msg::CopyText`] with
+    /// its action. Returns [`TranscriptMsg::OpenSearch`] for the search key,
+    /// [`TranscriptMsg::SearchPosition`] when a key moved among the matches or cleared
+    /// the search, [`TranscriptMsg::NewSections`] when it changed the count of new
+    /// sections (`G` resuming following), [`TranscriptMsg::SelectionChanged`] when it
+    /// moved the selection, else [`TranscriptMsg::Changed`] when that changed
+    /// what is shown, so that the App redraws. [`TranscriptMsg::SearchPosition`] and
+    /// [`TranscriptMsg::NewSections`] carry the selection too, when the key also moved
+    /// it (one message per key). The copy keys answer [`OutputMsg::CopyText`] with
     /// the text of the selected section (as displayed, or in full); with
     /// nothing selected they do nothing.
-    /// The save keys answer [`Msg::SaveSection`] the same way, the export
-    /// keys [`Msg::Export`] with the whole document. The open key answers
-    /// [`Msg::OpenSubagent`] on a subagent section (nothing on any other),
-    /// and the back key [`Msg::CloseSubagent`] when the transcript is
+    /// The save keys answer [`OutputMsg::SaveSection`] the same way, the export
+    /// keys [`OutputMsg::Export`] with the whole document. The open key answers
+    /// [`BrowserMsg::OpenSubagent`] on a subagent section (nothing on any other),
+    /// and the back key [`BrowserMsg::CloseSubagent`] when the transcript is
     /// [`nested`](Self::nested). The resume key answers
-    /// [`Msg::RequestResume`] for the open session. The details key answers
-    /// [`Msg::OpenDetails`] with the rows of the selected section (nothing
-    /// with nothing selected).
+    /// [`OutputMsg::RequestResume`] for the open session. The details key answers
+    /// [`OverlayMsg::OpenDetails`](crate::app::OverlayMsg::OpenDetails) with
+    /// the rows of the selected section (nothing with nothing selected).
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let key = match ev {
             Event::Keyboard(key) => key,
@@ -715,21 +715,33 @@ impl AppComponent<Msg, UserEvent> for Transcript {
             return None;
         };
         match action {
-            Action::Search => return Some(Msg::OpenSearch),
+            Action::Search => return Some(Msg::Transcript(TranscriptMsg::OpenSearch)),
             Action::OpenSubagent => return self.open_subagent_msg(),
-            Action::Back => return self.nested.then_some(Msg::CloseSubagent),
-            Action::Copy => return self.displayed_text().map(Msg::CopyText),
-            Action::CopyFull => return self.full_text().map(Msg::CopyText),
+            Action::Back => {
+                return self
+                    .nested
+                    .then_some(Msg::Browser(BrowserMsg::CloseSubagent));
+            }
+            Action::Copy => {
+                return self
+                    .displayed_text()
+                    .map(|text| Msg::Output(OutputMsg::CopyText(text)));
+            }
+            Action::CopyFull => {
+                return self
+                    .full_text()
+                    .map(|text| Msg::Output(OutputMsg::CopyText(text)));
+            }
             Action::Save => return self.save_msg(self.displayed_text()),
             Action::SaveFull => return self.save_msg(self.full_text()),
             Action::Export => return Some(self.export_msg(false)),
             Action::ExportFull => return Some(self.export_msg(true)),
-            Action::Resume => return Some(Msg::RequestResume(None)),
+            Action::Resume => return Some(Msg::Output(OutputMsg::RequestResume(None))),
             Action::Details => return self.details_msg(),
             // The keys that hand the focus to the turns sidebar; the App
             // decides whether there is one.
             Action::FocusTurns | Action::NextPane | Action::PrevPane => {
-                return Some(Msg::FocusTurns);
+                return Some(Msg::Browser(BrowserMsg::FocusTurns));
             }
             _ => {}
         }
@@ -743,10 +755,10 @@ impl AppComponent<Msg, UserEvent> for Transcript {
                 Action::SearchNext | Action::SearchPrev | Action::ClearSearch
             )
         {
-            return Some(Msg::SearchPosition {
+            return Some(Msg::Transcript(TranscriptMsg::SearchPosition {
                 position: self.search_position(),
                 view: change,
-            });
+            }));
         }
         // The count changed (`G` resumed following) or the selection moved:
         // the App shows the one and the turns sidebar follows the other.

@@ -11,7 +11,7 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 
 use super::{THEME_ATTR, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent};
+use crate::app::{BrowserMsg, Msg, UserEvent};
 use crate::theme::{Role, Theme};
 
 /// The attribute that says whether the resume confirmation is open
@@ -23,7 +23,7 @@ pub const RESUME_OPEN_ATTR: Attribute = Attribute::Custom("resume_open");
 /// nothing inside it or outside it. It never takes focus.
 ///
 /// A left press outside it (`UserEvent::PointerOutside`) closes the selector
-/// over a session with [`Msg::CloseSelector`], as `Esc` does. When the
+/// over a session with [`BrowserMsg::CloseSelector`], as `Esc` does. When the
 /// selector is the base screen there is nothing to return to, and while the
 /// resume confirmation is open ([`RESUME_OPEN_ATTR`]) it is modal: the press
 /// does nothing then.
@@ -117,7 +117,9 @@ impl AppComponent<Msg, UserEvent> for SelectorFrame {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let closes = !self.base && !self.resume_open;
         match ev {
-            Event::User(UserEvent::PointerOutside) if closes => Some(Msg::CloseSelector),
+            Event::User(UserEvent::PointerOutside) if closes => {
+                Some(Msg::Browser(BrowserMsg::CloseSelector))
+            }
             _ => None,
         }
     }
@@ -243,7 +245,10 @@ mod tests {
     #[test]
     fn a_press_outside_the_selector_over_a_session_closes_it() {
         let mut frame = SelectorFrame::new(default_theme()).over_session();
-        assert_eq!(outside(&mut frame), Some(Msg::CloseSelector));
+        assert_eq!(
+            outside(&mut frame),
+            Some(Msg::Browser(BrowserMsg::CloseSelector))
+        );
     }
 
     #[test]
@@ -265,7 +270,10 @@ mod tests {
         assert_eq!(outside(&mut frame), None);
         // Once it is answered, a press outside closes the selector again.
         frame.attr(RESUME_OPEN_ATTR, AttrValue::Flag(false));
-        assert_eq!(outside(&mut frame), Some(Msg::CloseSelector));
+        assert_eq!(
+            outside(&mut frame),
+            Some(Msg::Browser(BrowserMsg::CloseSelector))
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
 //! `a` and the back key (task 027): the transcript answers
-//! [`Msg::OpenSubagent`] on a subagent section and [`Msg::CloseSubagent`]
+//! [`BrowserMsg::OpenSubagent`] on a subagent section and [`BrowserMsg::CloseSubagent`]
 //! when it is nested.
 
 use serde_json::json;
@@ -74,10 +74,10 @@ fn a_on_a_subagent_section_asks_to_open_its_transcript() {
     move_to(&mut t, &item_section("a1", "s1"));
     assert_eq!(
         ch(&mut t, 'a'),
-        Some(Msg::OpenSubagent {
+        Some(Msg::Browser(BrowserMsg::OpenSubagent {
             call_id: ItemId::from("s1"),
             label: "Explore".to_owned(),
-        })
+        }))
     );
 }
 
@@ -87,10 +87,10 @@ fn the_label_is_the_description_without_an_agent_type() {
     move_to(&mut t, &item_section("a1", "s2"));
     assert_eq!(
         ch(&mut t, 'a'),
-        Some(Msg::OpenSubagent {
+        Some(Msg::Browser(BrowserMsg::OpenSubagent {
             call_id: ItemId::from("s2"),
             label: "Write the story".to_owned(),
-        })
+        }))
     );
 }
 
@@ -99,9 +99,15 @@ fn a_works_whether_the_section_is_folded_or_not() {
     let mut t = with_subagents();
     move_to(&mut t, &item_section("a1", "s1"));
     ch(&mut t, 'l');
-    assert!(matches!(ch(&mut t, 'a'), Some(Msg::OpenSubagent { .. })));
+    assert!(matches!(
+        ch(&mut t, 'a'),
+        Some(Msg::Browser(BrowserMsg::OpenSubagent { .. }))
+    ));
     ch(&mut t, 'h');
-    assert!(matches!(ch(&mut t, 'a'), Some(Msg::OpenSubagent { .. })));
+    assert!(matches!(
+        ch(&mut t, 'a'),
+        Some(Msg::Browser(BrowserMsg::OpenSubagent { .. }))
+    ));
 }
 
 #[test]
@@ -125,10 +131,10 @@ fn a_on_the_more_row_of_a_subagent_opens_it_too() {
     assert!(t.select(&section_id("a2", SectionKey::More(ItemId::from("s9")))));
     assert_eq!(
         ch(&mut t, 'a'),
-        Some(Msg::OpenSubagent {
+        Some(Msg::Browser(BrowserMsg::OpenSubagent {
             call_id: ItemId::from("s9"),
             label: "Plan".to_owned(),
-        })
+        }))
     );
 }
 
@@ -166,7 +172,10 @@ fn a_does_not_change_the_transcript() {
 #[test]
 fn backspace_closes_a_nested_transcript() {
     let mut t = with_subagents().nested(true);
-    assert_eq!(press(&mut t, Key::Backspace), Some(Msg::CloseSubagent));
+    assert_eq!(
+        press(&mut t, Key::Backspace),
+        Some(Msg::Browser(BrowserMsg::CloseSubagent))
+    );
 }
 
 #[test]

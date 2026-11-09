@@ -121,7 +121,10 @@ fn entries_held_after_a_trailing_compaction_show_the_turns_and_no_message() {
 #[test]
 fn the_message_waits_for_the_load_to_end() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     rig.app
         .update(session_msg(&rig.app, commands(&["/effort"])));
     assert!(!rig.app.session_is_empty(), "still loading");

@@ -22,7 +22,10 @@ use super::selector::{CLAUDE, init, session_rows, text, theme};
 use crate::app::fixtures::{self, at, now, project_in, session, snapshot_event};
 use crate::app::layout::Screen;
 use crate::app::session_port::{SESSION_MAX_PER_POLL, SessionPort};
-use crate::app::{App, AppInit, Id, Msg, SessionUpdate, UserEvent, session_channel};
+use crate::app::{
+    App, AppInit, BrowserMsg, Id, Msg, OutputMsg, OverlayMsg, PromptMsg, PromptPurpose,
+    SessionUpdate, ThemeMsg, TranscriptMsg, UserEvent, WorkerMsg, session_channel,
+};
 use crate::components::transcript::fixtures::session as fixture_turns;
 use crate::components::{
     PARSE_WARNINGS_ATTR, STATUS_ATTR, TURN_COUNT_ATTR, VIEWPORT_ATTR, payload_from_value,
@@ -416,7 +419,8 @@ impl Rig {
 
     /// Opens `session` and waits for its script to be loaded.
     fn open(&mut self, session: &str) {
-        self.app.update(Msg::OpenSession(CLAUDE, id(session)));
+        self.app
+            .update(Msg::Browser(BrowserMsg::OpenSession(CLAUDE, id(session))));
         self.pump_until(App::session_loaded);
     }
 
@@ -467,10 +471,10 @@ fn status(app: &App) -> Vec<String> {
 }
 
 fn session_msg(app: &App, update: ModelUpdate) -> Msg {
-    Msg::Session {
+    Msg::Browser(BrowserMsg::Session {
         generation: app.session_generation(),
         update: SessionUpdate::new(1, update),
-    }
+    })
 }
 
 /// The components of the selector overlay. The base screen's
@@ -504,7 +508,10 @@ fn opening_a_session_mounts_the_browser_unmounts_the_selector_and_starts_a_load(
     for id in BROWSER_IDS {
         assert!(!rig.app.application().mounted(&id), "{id:?}");
     }
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     for id in BROWSER_IDS {
         assert!(rig.app.application().mounted(&id), "{id:?}");
     }
@@ -525,7 +532,8 @@ fn opening_a_session_mounts_the_browser_unmounts_the_selector_and_starts_a_load(
 #[test]
 fn a_session_the_index_does_not_list_is_ignored() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id("nope")));
+    rig.app
+        .update(Msg::Browser(BrowserMsg::OpenSession(CLAUDE, id("nope"))));
     assert_eq!(rig.app.screen(), Screen::Selector);
     assert!(rig.harness.loads().is_empty());
     assert!(rig.app.application().mounted(&Id::SessionList));
@@ -536,7 +544,10 @@ fn a_session_the_index_does_not_list_is_ignored() {
 fn a_load_that_fails_leaves_the_selector_and_shows_a_toast() {
     let mut rig = rig();
     rig.harness.fail.store(true, Ordering::Relaxed);
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     assert_eq!(rig.app.screen(), Screen::Selector);
     assert!(rig.app.application().mounted(&Id::SessionList));
     assert!(
@@ -552,7 +563,10 @@ fn a_load_that_fails_leaves_the_selector_and_shows_a_toast() {
 #[test]
 fn the_transcript_viewport_follows_the_terminal_size() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     let viewport = |app: &App| -> Size {
         let value = app
             .application()
@@ -571,7 +585,10 @@ fn the_transcript_viewport_follows_the_terminal_size() {
 #[test]
 fn the_transcript_gets_the_configured_settings() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     let attr = |attr| {
         rig.app
             .application()
@@ -611,16 +628,19 @@ fn updates_travel_from_the_port_through_global_events_to_the_transcript() {
             ModelUpdate::Loaded,
         ],
     );
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     let seen = rig.pump_until(App::session_loaded);
     // Every update came as a Msg made by GlobalEvents from a user event.
     let updates: Vec<&ModelUpdate> = seen
         .iter()
         .filter_map(|m| match m {
-            Msg::Session {
+            Msg::Browser(BrowserMsg::Session {
                 generation: 1,
                 update,
-            } => Some(update.update()),
+            }) => Some(update.update()),
             _ => None,
         })
         .collect();
@@ -635,15 +655,18 @@ fn updates_travel_from_the_port_through_global_events_to_the_transcript() {
 #[test]
 fn the_app_keeps_no_copy_of_the_turns_it_forwards() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     let turn = turns()[0].clone();
     assert_eq!(Arc::strong_count(&turn), 1);
     let update = SessionUpdate::new(1, ModelUpdate::Appended(vec![Arc::clone(&turn)]));
     assert_eq!(Arc::strong_count(&turn), 2, "held by the update");
-    let msg = Msg::Session {
+    let msg = Msg::Browser(BrowserMsg::Session {
         generation: rig.app.session_generation(),
         update,
-    };
+    });
     rig.app.update(msg);
     // The message is gone. What holds the turn now is the transcript.
     assert_eq!(rig.turn_count(), 1);
@@ -685,8 +708,11 @@ fn updates_of_an_earlier_load_are_ignored_after_another_session_is_opened() {
         ],
     );
     rig.open(BRIO_SESSION);
-    rig.app.update(Msg::OpenSelector);
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     assert_eq!(rig.app.session_generation(), 2);
     // The first load's worker is still running: it sends late.
     rig.harness
@@ -704,16 +730,16 @@ fn updates_of_an_earlier_load_are_ignored_after_another_session_is_opened() {
         .into_attr();
     assert_eq!(header, AttrValue::Length(0));
     // The same holds for a message that reaches `update` directly.
-    rig.app.update(Msg::Session {
+    rig.app.update(Msg::Browser(BrowserMsg::Session {
         generation: 1,
         update: SessionUpdate::new(99, ModelUpdate::Reset),
-    });
+    }));
     assert_eq!(rig.turn_count(), 2);
     // A control: the current generation is applied.
-    rig.app.update(Msg::Session {
+    rig.app.update(Msg::Browser(BrowserMsg::Session {
         generation: 2,
         update: SessionUpdate::new(100, ModelUpdate::Reset),
-    });
+    }));
     assert_eq!(rig.turn_count(), 0);
 }
 
@@ -723,8 +749,11 @@ fn opening_another_session_stops_the_first_load_and_starts_a_fresh_transcript() 
     rig.open_loaded();
     assert_eq!(rig.turn_count(), 8);
     assert!(!rig.harness.stopped(0));
-    rig.app.update(Msg::OpenSelector);
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     assert!(rig.harness.stopped(0), "the first worker is told to stop");
     assert_eq!(
         *rig.harness.earlier_stopped.lock().unwrap(),
@@ -742,7 +771,10 @@ fn opening_another_session_stops_the_first_load_and_starts_a_fresh_transcript() 
 #[test]
 fn progress_shows_loading_in_the_help_line_and_loaded_removes_it() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     assert!(status(&rig.app).is_empty());
     rig.app
         .update(session_msg(&rig.app, ModelUpdate::Progress(0.34)));
@@ -761,7 +793,10 @@ fn progress_shows_loading_in_the_help_line_and_loaded_removes_it() {
 #[test]
 fn the_percentage_is_rounded() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     for (fraction, shown) in [
         (0.0, "0"),
         (0.004, "0"),
@@ -782,7 +817,10 @@ fn the_percentage_is_rounded() {
 #[test]
 fn parse_warnings_reach_the_header() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     rig.app
         .update(session_msg(&rig.app, ModelUpdate::ParseWarnings(3)));
     let value = rig
@@ -800,7 +838,10 @@ fn parse_warnings_reach_the_header() {
 #[test]
 fn a_session_without_turns_is_empty_once_loaded() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     assert!(!rig.app.session_is_empty(), "still loading");
     rig.app.update(session_msg(&rig.app, ModelUpdate::Loaded));
     assert!(rig.app.session_is_empty());
@@ -820,7 +861,10 @@ fn a_session_with_turns_is_not_empty() {
 #[test]
 fn turns_that_arrive_later_replace_the_empty_state() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     rig.app.update(session_msg(&rig.app, ModelUpdate::Loaded));
     assert!(rig.app.session_is_empty());
     rig.app.update(session_msg(
@@ -841,7 +885,10 @@ fn ctrl_o_opens_the_selector_over_the_browser_on_the_open_session() {
     rig.open_loaded();
     rig.ctrl_o();
     let seen = rig.pump_until(|app| app.screen() == Screen::BrowserSelector);
-    assert!(seen.contains(&Msg::OpenSelector), "{seen:?}");
+    assert!(
+        seen.contains(&Msg::Browser(BrowserMsg::OpenSelector)),
+        "{seen:?}"
+    );
     let app = &rig.app;
     assert_eq!(app.selected_harness(), Some(CLAUDE));
     assert_eq!(
@@ -875,7 +922,7 @@ fn the_selector_remembers_the_session_when_another_project_was_selected_before()
             agentmon().id,
         )));
     rig.open_loaded();
-    rig.app.update(Msg::OpenSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
     assert_eq!(
         rig.app.selected_project().map(ProjectId::as_str),
         Some("/home/user/projects/brio")
@@ -917,7 +964,10 @@ fn esc_closes_the_selector_and_returns_the_focus_to_the_transcript() {
     rig.pump_until(|app| app.screen() == Screen::BrowserSelector);
     rig.press(Key::Esc);
     let seen = rig.pump_until(|app| app.screen() == Screen::Browser);
-    assert!(seen.contains(&Msg::CloseSelector), "{seen:?}");
+    assert!(
+        seen.contains(&Msg::Browser(BrowserMsg::CloseSelector)),
+        "{seen:?}"
+    );
     assert_eq!(rig.focus(), Some(Id::Transcript));
     for id in OVERLAY_IDS.into_iter().chain([Id::Prompt]) {
         assert!(!rig.app.application().mounted(&id), "{id:?}");
@@ -1097,7 +1147,7 @@ fn index_updates_while_the_browser_is_shown_reach_the_selector_when_it_opens() {
         sessions,
     )));
     rig.app.update(Msg::Tick);
-    rig.app.update(Msg::OpenSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
     let rows = session_rows(&rig.app);
     let titles: Vec<&str> = rows.rows.iter().map(|r| r.title.as_str()).collect();
     assert_eq!(titles[0], "Brand new");
@@ -1285,7 +1335,10 @@ fn loading_browser_80x24_text() {
             ModelUpdate::Progress(0.34),
         ],
     );
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     rig.pump_until(|app| turn_count(app) == 3 && !status(app).is_empty());
     assert_eq!(status(&rig.app), ["Loading… 34%"]);
     let text = screen_text(&mut rig, 80, 24);

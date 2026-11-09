@@ -106,9 +106,10 @@ fn presentation(app: &App) -> Presentation {
 impl OpenCodeRig {
     /// Opens `session` and waits until it is loaded.
     pub(super) fn open(&mut self, session: &str) {
-        self.rig
-            .app
-            .update(Msg::OpenSession(HarnessId::OpenCode, id(session)));
+        self.rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+            HarnessId::OpenCode,
+            id(session),
+        )));
         self.rig.pump_until(App::session_loaded);
         self.rig.settle();
     }

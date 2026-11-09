@@ -17,7 +17,7 @@ use super::list_pane::{PaneKey, PaneState, Part, RowParts, pane_key, render_rows
 use super::text_fit::truncate_with_ellipsis;
 use super::titled_block::{border_role, title_width, titled_block};
 use super::{THEME_ATTR, payload_from_value, payload_value};
-use crate::app::{Msg, Pane, RoutedMouse, SelectorMsg, UserEvent};
+use crate::app::{BrowserMsg, Msg, OutputMsg, Pane, RoutedMouse, SelectorMsg, UserEvent};
 use crate::duration::format_duration;
 use crate::keymap::Keymap;
 use crate::model::{HarnessId, SessionId, SessionStats};
@@ -71,7 +71,7 @@ pub struct SessionRows {
     /// `Sessions matching "<query>"`, and no rows read `No matching
     /// sessions`.
     pub search: Option<String>,
-    /// The harness the sessions belong to, sent in [`Msg::OpenSession`].
+    /// The harness the sessions belong to, sent in [`BrowserMsg::OpenSession`].
     pub harness: Option<HarnessId>,
     pub rows: Arc<Vec<SessionRow>>,
     pub selected: Option<usize>,
@@ -109,8 +109,8 @@ pub fn format_stats(stats: &SessionStats) -> String {
 /// are updated one by one through [`SESSION_STATS_ATTR`] and
 /// [`ACTIVE_ATTR`]. Moving the selection reports
 /// [`SelectorMsg::SessionSelected`]; `Enter` on the selected session asks to
-/// open it ([`Msg::OpenSession`]) and `R` to resume it in its harness
-/// ([`Msg::RequestResume`]). When the app says the harness has nothing
+/// open it ([`BrowserMsg::OpenSession`]) and `R` to resume it in its harness
+/// ([`OutputMsg::RequestResume`]). When the app says the harness has nothing
 /// to list, the pane shows the [`EmptyState`] "No sessions for this harness".
 ///
 /// While the rows are filtered ([`SESSION_FILTERED_ATTR`]) `Esc` asks to
@@ -173,14 +173,14 @@ impl SessionList {
     fn open(&self) -> Option<Msg> {
         let harness = self.harness?;
         self.selected_id()
-            .map(|session| Msg::OpenSession(harness, session))
+            .map(|session| Msg::Browser(BrowserMsg::OpenSession(harness, session)))
     }
 
     /// The request to resume the selected session, if there is one.
     fn resume(&self) -> Option<Msg> {
         let harness = self.harness?;
         self.selected_id()
-            .map(|session| Msg::RequestResume(Some((harness, session))))
+            .map(|session| Msg::Output(OutputMsg::RequestResume(Some((harness, session)))))
     }
 
     fn selected_id(&self) -> Option<SessionId> {
@@ -895,7 +895,10 @@ mod tests {
             Some(Msg::Selector(SelectorMsg::LeaveFilter))
         );
         l.attr(SESSION_FILTERED_ATTR, AttrValue::Flag(false));
-        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::CloseSelector));
+        assert_eq!(
+            l.on(&key(Key::Esc)),
+            Some(Msg::Browser(BrowserMsg::CloseSelector))
+        );
     }
 
     // -- events
@@ -903,10 +906,10 @@ mod tests {
     #[test]
     fn r_asks_to_resume_the_selected_session() {
         let mut l = list(sample(false), Some(1), true);
-        let want = Some(Msg::RequestResume(Some((
+        let want = Some(Msg::Output(OutputMsg::RequestResume(Some((
             HarnessId::Claude,
             SessionId::from("b"),
-        ))));
+        )))));
         assert_eq!(l.on(&ch('R')), want);
         let shifted = Event::Keyboard(KeyEvent::new(Key::Char('R'), KeyModifiers::SHIFT));
         assert_eq!(l.on(&shifted), want);
@@ -994,13 +997,19 @@ mod tests {
         let mut l = list(sample(false), Some(1), true);
         assert_eq!(
             l.on(&key(Key::Enter)),
-            Some(Msg::OpenSession(HarnessId::Claude, SessionId::from("b")))
+            Some(Msg::Browser(BrowserMsg::OpenSession(
+                HarnessId::Claude,
+                SessionId::from("b")
+            )))
         );
         // The session in the message is the one the cursor is on.
         l.on(&ch('j'));
         assert_eq!(
             l.on(&key(Key::Enter)),
-            Some(Msg::OpenSession(HarnessId::Claude, SessionId::from("c")))
+            Some(Msg::Browser(BrowserMsg::OpenSession(
+                HarnessId::Claude,
+                SessionId::from("c")
+            )))
         );
     }
 
@@ -1029,7 +1038,10 @@ mod tests {
         let mut l = list(sample(false), Some(0), true);
         assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
         l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(true));
-        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::CloseSelector));
+        assert_eq!(
+            l.on(&key(Key::Esc)),
+            Some(Msg::Browser(BrowserMsg::CloseSelector))
+        );
         assert_eq!(
             l.query(SESSION_OPEN_ATTR).unwrap().into_attr(),
             AttrValue::Flag(true)

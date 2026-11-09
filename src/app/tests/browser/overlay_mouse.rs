@@ -359,7 +359,8 @@ fn a_click_outside_the_help_overlay_closes_it_and_returns_the_focus() {
     rig.open_loaded();
     let point = summary_point(&mut rig, 120, 40);
     let transcript = presentation(&rig);
-    rig.app.update(Msg::OpenHelp(HelpContext::Browser));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
     assert_outside(&rig, Id::HelpOverlay, point);
     rig.app.update_routed(at(PRESS, point.0, point.1));
@@ -376,7 +377,8 @@ fn a_click_outside_the_help_overlay_closes_it_and_returns_the_focus() {
 #[test]
 fn a_click_outside_the_help_overlay_over_the_startup_selector_closes_only_the_overlay() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenHelp(HelpContext::Selector));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector)));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
     let project = rig.app.selected_project().cloned();
     // Over a project row of the selector under it.
@@ -392,7 +394,8 @@ fn a_click_outside_the_help_overlay_over_the_startup_selector_closes_only_the_ov
 fn a_click_inside_the_help_overlay_does_nothing() {
     let mut rig = rig();
     rig.open_loaded();
-    rig.app.update(Msg::OpenHelp(HelpContext::Browser));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
     let area = rig.app.routing().area(Id::HelpOverlay).unwrap();
     for (dx, dy) in [(0, 0), (3, 3), (area.width - 1, area.height - 1)] {
         rig.app.update_routed(at(PRESS, area.x + dx, area.y + dy));
@@ -407,7 +410,8 @@ fn the_wheel_scrolls_the_help_overlay_and_outside_it_is_ignored() {
     let mut rig = rig_with(theme("default"), 80, 24);
     rig.open_loaded();
     let transcript = presentation(&rig);
-    rig.app.update(Msg::OpenHelp(HelpContext::Browser));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
     assert_eq!(help_offset(&rig), 0);
     on(&mut rig, Id::HelpOverlay, WHEEL_DOWN, 5, 5);
     assert_eq!(help_offset(&rig), 3);
@@ -421,11 +425,14 @@ fn the_wheel_scrolls_the_help_overlay_and_outside_it_is_ignored() {
 #[test]
 fn the_wheel_outside_an_overlay_over_the_browser_is_ignored() {
     // On the transcript, beside the overlay, and while it is following.
-    for open in [Msg::OpenHelp(HelpContext::Browser), Msg::OpenThemeSelector] {
+    for open in [
+        Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)),
+        Msg::Theme(ThemeMsg::Open),
+    ] {
         let mut rig = rig();
         rig.open_loaded();
         let point = summary_point(&mut rig, 120, 40);
-        let overlay = if open == Msg::OpenThemeSelector {
+        let overlay = if open == Msg::Theme(ThemeMsg::Open) {
             Id::ThemeSelector
         } else {
             Id::HelpOverlay
@@ -460,7 +467,8 @@ fn the_wheel_outside_an_overlay_does_not_stop_following() {
         let area = rig.app.routing().area(Id::Transcript).unwrap();
         (area.right() - 3, area.y + 4)
     };
-    rig.app.update(Msg::OpenHelp(HelpContext::Browser));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
     assert_outside(&rig, Id::HelpOverlay, point);
     rig.app.update_routed(at(WHEEL_UP, point.0, point.1));
     assert!(following(&rig));
@@ -627,12 +635,13 @@ fn with_mouse_off_the_overlays_take_no_mouse() {
     let mut rig = build_rig_from(init, 120, 40, false);
     rig.open_loaded();
     // Help: neither the wheel nor an outside click.
-    rig.app.update(Msg::OpenHelp(HelpContext::Browser));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
     on(&mut rig, Id::HelpOverlay, WHEEL_DOWN, 5, 5);
     assert_eq!(help_offset(&rig), 0);
     press_outside(&mut rig);
     assert!(mounted(&rig, Id::HelpOverlay));
-    rig.app.update(Msg::CloseHelp);
+    rig.app.update(Msg::Overlay(OverlayMsg::CloseHelp));
     // Themes: no click, wheel or outside click.
     rig.open_themes();
     click_theme(&mut rig, 3);
@@ -742,7 +751,7 @@ fn the_click_clock_reaches_both_panes_of_the_selector_mounted_over_the_browser()
             .app
             .take_queued()
             .iter()
-            .any(|msg| matches!(msg, Msg::OpenSession(..)));
+            .any(|msg| matches!(msg, Msg::Browser(BrowserMsg::OpenSession(..))));
         assert_eq!(opened, opens, "{ms} ms");
         // The Projects pane has the clock too: a double-click is `Enter`,
         // which focuses Sessions.

@@ -113,7 +113,10 @@ fn sidebar_msgs(seen: &[Msg]) -> Vec<&Msg> {
         .filter(|m| {
             matches!(
                 m,
-                Msg::TurnSelected(_) | Msg::OpenTurn(_) | Msg::FocusTranscript | Msg::FocusTurns
+                Msg::Browser(BrowserMsg::TurnSelected(_))
+                    | Msg::Browser(BrowserMsg::OpenTurn(_))
+                    | Msg::Browser(BrowserMsg::FocusTranscript)
+                    | Msg::Browser(BrowserMsg::FocusTurns)
             )
         })
         .collect()
@@ -702,7 +705,8 @@ fn move_the_transcripts_selection(rig: &mut Rig) {
     let component = rig.app.application_mut().get_component_mut(&top).unwrap();
     component.perform(Cmd::Move(Direction::Down));
     let moved = presentation(&rig.app).selected.expect("a selection");
-    rig.app.update(Msg::SelectionChanged(moved));
+    rig.app
+        .update(Msg::Transcript(TranscriptMsg::SelectionChanged(moved)));
 }
 
 #[test]
@@ -767,7 +771,7 @@ fn below_90_columns_the_focus_keys_do_nothing() {
         assert_eq!(presentation(&rig.app), before);
         assert_eq!(hint_line(&rig.app), BROWSER_HINTS);
         assert!(
-            seen.contains(&Msg::FocusTurns),
+            seen.contains(&Msg::Browser(BrowserMsg::FocusTurns)),
             "the key got there: {seen:?}"
         );
     }

@@ -1,6 +1,7 @@
 //! The theme selector in the app (product §7.4): opening it gives it the focus,
 //! moving its cursor previews a theme on everything that is mounted, `Enter`
 //! keeps the theme and saves it, `Esc` gives back the one that was active.
+//! It handles the theme concern, [`ThemeMsg`].
 
 use ratatui::layout::{Rect, Size};
 use tuirealm::component::AppComponent;
@@ -12,6 +13,26 @@ use crate::components::{THEME_ATTR, ThemeSelector, VISIBLE_ROWS_ATTR, theme_item
 use crate::config::{SaveThemeError, save_theme};
 use crate::theme::{Theme, resolve_by_id};
 use tuirealm::props::AttrValue;
+
+/// Something happened in the theme selector.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThemeMsg {
+    /// The theme key: open the theme selector.
+    Open,
+    /// The cursor of the theme selector moved to the theme with this id:
+    /// show it as a preview.
+    Preview(String),
+    /// `Enter` in the theme selector on the theme with this id: keep it,
+    /// save it to the config and close the selector.
+    Select(String),
+    /// A left press on the theme with this id in the theme selector (its
+    /// cursor is there now): show it as a preview, or, with `keep` (the
+    /// press completed a double-click), keep it as `Enter` does.
+    Choose { id: String, keep: bool },
+    /// `Esc` in the theme selector: restore the theme that was active when
+    /// it opened and close it.
+    Cancel,
+}
 
 /// What the app remembers while the theme selector is open.
 #[derive(Debug, Clone)]
@@ -51,6 +72,17 @@ pub(super) const THEMED: [Id; 21] = [
 ];
 
 impl App {
+    /// Hands a message of the theme selector to its handler.
+    pub(super) fn theme_msg(&mut self, msg: ThemeMsg) {
+        match msg {
+            ThemeMsg::Open => self.open_theme_selector(),
+            ThemeMsg::Preview(id) => self.preview_theme(&id),
+            ThemeMsg::Select(id) => self.select_theme(&id),
+            ThemeMsg::Choose { id, keep } => self.choose_theme(&id, keep),
+            ThemeMsg::Cancel => self.cancel_theme(),
+        }
+    }
+
     /// Mounts the theme selector with the cursor on the active theme and
     /// gives it the focus, remembering the active theme for `Esc`. Does
     /// nothing when it, the help overlay, the details overlay or a prompt is
