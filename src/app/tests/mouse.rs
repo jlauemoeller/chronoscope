@@ -213,6 +213,38 @@ fn an_empty_session_has_nothing_at_the_sidebar_and_the_message_everywhere() {
 }
 
 #[test]
+fn a_press_on_the_base_selector_screen_never_finds_its_background() {
+    // `SelectorFrame` is an overlay, so what is drawn before it is never a
+    // candidate here; `a_component_that_only_paints_is_never_found` in
+    // `app/mouse.rs` checks the exclusion itself, with no overlay.
+    let selector = [
+        Id::SelectorFrame,
+        Id::HarnessTabs,
+        Id::ProjectList,
+        Id::SessionList,
+        Id::SessionTime,
+        Id::SessionTokens,
+        Id::WorkingDir,
+        Id::HelpLine,
+    ];
+    for (width, height) in [(60, 20), (80, 24), (120, 40), (200, 50)] {
+        let l = at_size(width, height);
+        assert_eq!(
+            l.area(Id::ScreenBackground),
+            Some(Rect::new(0, 0, width, height))
+        );
+        for row in 0..height {
+            for column in 0..width {
+                if let Some(id) = hit(&l, column, row) {
+                    assert!(selector.contains(&id), "{id:?} at ({column}, {row})");
+                }
+            }
+        }
+        assert_eq!(hit(&l, 0, 0), None, "{width}x{height}: outside the overlay");
+    }
+}
+
+#[test]
 fn the_gap_between_the_panes_is_the_frame_at_every_size() {
     for (width, height) in [(60, 20), (80, 24), (120, 40), (200, 50), (201, 24)] {
         let l = at_size(width, height);

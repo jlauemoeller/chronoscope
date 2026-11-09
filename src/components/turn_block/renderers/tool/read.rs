@@ -140,18 +140,70 @@ fn gutter_rows(
     rows
 }
 
+/// The `Path:` block: the path (or the input as JSON when it has none) and
+/// the range note for `last`.
+fn path_block(call: &ToolCall, last: Option<usize>, ctx: &SectionCtx<'_>) -> Block {
+    let path = match path_of(&call.input) {
+        Some(path) => path.to_owned(),
+        None => compact_json(&call.input),
+    };
+    let path = format!(
+        "{path}{}",
+        range_note(&call.input, last).unwrap_or_default()
+    );
+    text_block("Path:", &path, ctx.theme.style(Token::Command), ctx)
+}
+
+/// The line the input's `offset` starts at: 1 when it is absent or 0.
+fn first_line(input: &Value) -> usize {
+    input
+        .get("offset")
+        .and_then(Value::as_u64)
+        .filter(|n| *n > 0)
+        .and_then(|n| usize::try_from(n).ok())
+        .unwrap_or(1)
+}
+
+/// The body of a read whose result is `text`, which is not blank: `Path:`
+/// with the range up to the last line shown, and the numbered `Content:`
+/// block cut at the limit.
+fn numbered_body(call: &ToolCall, text: &str, ctx: &SectionCtx<'_>) -> Body {
+    let all = numbered(text, first_line(&call.input));
+    let last = all.iter().rev().find_map(|(n, _)| *n);
+    let max = limit(ctx);
+    let cut = all.len().saturating_sub(max);
+    let rows = gutter_rows(
+        &all[..all.len().min(max)],
+        ctx,
+        ctx.muted(),
+        ctx.theme.style(Token::Output),
+    );
+    let content = Block {
+        label: "Content:",
+        lines: rows,
+    };
+    Body {
+        blocks: vec![path_block(call, last, ctx), content],
+        remaining: (cut > 0).then_some(cut),
+    }
+}
+
+/// The body of a read with no file content to number: `Path:` and the
+/// `Content:` block `content`, with `remaining` lines cut from it.
+fn plain_body(
+    call: &ToolCall,
+    content: Block,
+    remaining: Option<usize>,
+    ctx: &SectionCtx<'_>,
+) -> Body {
+    Body {
+        blocks: vec![path_block(call, None, ctx), content],
+        remaining,
+    }
+}
+
 impl ToolBodyRenderer for ReadBody {
     fn body(&self, call: &ToolCall, ctx: &SectionCtx<'_>) -> Body {
-        let command = ctx.theme.style(Token::Command);
-        let path = match path_of(&call.input) {
-            Some(path) => path.to_owned(),
-            None => compact_json(&call.input),
-        };
-        let path_block = |note: Option<String>| {
-            let path = format!("{path}{}", note.unwrap_or_default());
-            text_block("Path:", &path, command, ctx)
-        };
-
         // Only a finished, successful read has file content to number. A
         // pending or failed one reads like any other result.
         let readable = call
@@ -159,52 +211,20 @@ impl ToolBodyRenderer for ReadBody {
             .as_ref()
             .filter(|r| call.status == ToolStatus::Ok && !r.is_error);
         let Some(result) = readable else {
-            let (block, remaining) = result_block("Content:", call, ctx);
-            return Body {
-                blocks: vec![path_block(range_note(&call.input, None)), block],
-                remaining,
-            };
+            let (content, remaining) = result_block("Content:", call, ctx);
+            return plain_body(call, content, remaining, ctx);
         };
         // The output is read once; its error or emptiness is shown as such.
-        let text = match result.output.text() {
-            Ok(text) if !text.trim().is_empty() => text,
-            other => {
-                let (block, remaining) = match other {
-                    Ok(_) => (muted_block("Content:", "(no output)", ctx), None),
-                    Err(err) => (unavailable_block("Content:", call, &err, ctx), None),
-                };
-                return Body {
-                    blocks: vec![path_block(range_note(&call.input, None)), block],
-                    remaining,
-                };
+        match result.output.text() {
+            Ok(text) if !text.trim().is_empty() => numbered_body(call, &text, ctx),
+            Ok(_) => {
+                let empty = muted_block("Content:", "(no output)", ctx);
+                plain_body(call, empty, None, ctx)
             }
-        };
-        let offset = call
-            .input
-            .get("offset")
-            .and_then(Value::as_u64)
-            .filter(|n| *n > 0)
-            .and_then(|n| usize::try_from(n).ok())
-            .unwrap_or(1);
-        let all = numbered(&text, offset);
-        let last = all.iter().rev().find_map(|(n, _)| *n);
-        let max = limit(ctx);
-        let cut = all.len().saturating_sub(max);
-        let rows = gutter_rows(
-            &all[..all.len().min(max)],
-            ctx,
-            ctx.muted(),
-            ctx.theme.style(Token::Output),
-        );
-        Body {
-            blocks: vec![
-                path_block(range_note(&call.input, last)),
-                Block {
-                    label: "Content:",
-                    lines: rows,
-                },
-            ],
-            remaining: (cut > 0).then_some(cut),
+            Err(err) => {
+                let unavailable = unavailable_block("Content:", &err, ctx);
+                plain_body(call, unavailable, None, ctx)
+            }
         }
     }
 }
@@ -511,6 +531,38 @@ mod tests {
             line.spans[0].style.fg,
             Some(color(&theme, Role::Destructive))
         );
+    }
+
+    #[test]
+    fn numbered_body_numbers_from_the_offset_and_notes_the_last_line_shown() {
+        let theme = theme();
+        let call = call(
+            ToolKind::Read,
+            json!({"file_path": "/a", "offset": 9}),
+            None,
+        );
+        let ctx = SectionCtx::new(&theme, 52, false);
+        let body = numbered_body(&call, "x\ny", &ctx);
+        assert_eq!(body.remaining, None);
+        assert_eq!(body.blocks[0].label, "Path:");
+        assert_eq!(texts(&body.blocks[0].lines), ["/a (lines 9–10)"]);
+        assert_eq!(body.blocks[1].label, "Content:");
+        assert_eq!(texts(&body.blocks[1].lines), [" 9  x", "10  y"]);
+        let gutter = &body.blocks[1].lines[0].spans[0];
+        assert_eq!(gutter.style.fg, Some(color(&theme, Role::MutedForeground)));
+    }
+
+    #[test]
+    fn numbered_body_cuts_the_content_at_the_limit() {
+        let theme = theme();
+        let call = call(ToolKind::Read, json!({"file_path": "/a"}), None);
+        let mut ctx = SectionCtx::new(&theme, 52, false);
+        ctx.truncate = 2;
+        let body = numbered_body(&call, "a\nb\nc\nd", &ctx);
+        assert_eq!(texts(&body.blocks[1].lines), ["1  a", "2  b"]);
+        assert_eq!(body.remaining, Some(2));
+        // A plain read from line 1 has no range note.
+        assert_eq!(texts(&body.blocks[0].lines), ["/a"]);
     }
 
     #[test]

@@ -26,7 +26,8 @@ pub(super) struct ThemeSelection {
 
 /// The components that draw with the theme (every one but `GlobalEvents`).
 /// The transcripts of subagents are added for the depths that are open.
-pub(super) const THEMED: [Id; 20] = [
+pub(super) const THEMED: [Id; 21] = [
+    Id::ScreenBackground,
     Id::SelectorFrame,
     Id::EmptyState,
     Id::HarnessTabs,

@@ -22,7 +22,8 @@ fn every_id_is_themed_but_the_global_events() {
     for id in THEMED {
         let themed = match id {
             Id::GlobalEvents => false,
-            Id::SelectorFrame
+            Id::ScreenBackground
+            | Id::SelectorFrame
             | Id::EmptyState
             | Id::HarnessTabs
             | Id::ProjectList
@@ -560,6 +561,29 @@ fn the_previewed_screen_is_the_screen_of_an_app_started_with_that_theme() {
     assert_eq!(a[(0, 0)].fg, gruvbox.role(Role::Border));
     assert_ne!(gruvbox.role(Role::Border), default.role(Role::Border));
     assert_eq!(c[(0, 0)].fg, default.role(Role::Border));
+}
+
+#[test]
+fn the_previewed_selector_screen_is_the_screen_of_an_app_started_with_that_theme() {
+    // The base selector screen, with its full-screen background: every
+    // component mounted there must take the previewed theme.
+    let mut previewed = rig();
+    previewed.open_themes();
+    previewed.move_to(Key::Char('j'), "terminal");
+    previewed.move_to(Key::Char('j'), "catppuccin");
+    let mut started = rig_on("catppuccin");
+    started.open_themes();
+    let a = screen_buffer(&mut previewed, 120, 40);
+    let b = screen_buffer(&mut started, 120, 40);
+    assert_eq!(buffer_to_styled(&a), buffer_to_styled(&b));
+    // The screen outside the selector's overlay is catppuccin's background,
+    // which the default theme does not have.
+    let catppuccin = theme("catppuccin").role(Role::Background);
+    assert_ne!(catppuccin, theme("default").role(Role::Background));
+    for x in 0..120 {
+        assert_eq!(a[(x, 0)].bg, catppuccin, "({x}, 0)");
+        assert_eq!(a[(x, 39)].bg, catppuccin, "({x}, 39)");
+    }
 }
 
 // -- Esc and Enter

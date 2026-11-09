@@ -51,6 +51,19 @@ pub fn theme_items(registry: &ThemeRegistry) -> Vec<ThemeItem> {
         .collect()
 }
 
+/// The help row: the hints from the keymap, so remapped keys show up, on
+/// `surface`.
+fn help_line(keymap: &Keymap, theme: &Theme) -> HelpLine {
+    let hints = [(Action::Select, "to select"), (Action::Close, "to cancel")]
+        .into_iter()
+        .filter_map(|(action, text)| {
+            let key = keymap.label(Context::Overlay, action)?;
+            Some(Hint::new(key, text))
+        })
+        .collect();
+    HelpLine::new(hints, Vec::new(), theme.clone(), Role::Surface).inset(HELP_INSET)
+}
+
 /// The theme selector. It takes the focus.
 ///
 /// Up and down move the cursor over the themes that can be selected (no
@@ -71,6 +84,8 @@ pub struct ThemeSelector {
     rows: usize,
     theme: Theme,
     keymap: Keymap,
+    /// The help row, built when the theme changes.
+    help: HelpLine,
 }
 
 impl ThemeSelector {
@@ -83,12 +98,14 @@ impl ThemeSelector {
             .or_else(|| items.iter().position(|item| item.selectable));
         let mut cursor = ListCursor::default();
         cursor.set(items.len(), start);
+        let help = help_line(&keymap, &theme);
         Self {
             items,
             cursor,
             rows: 0,
             theme,
             keymap,
+            help,
         }
     }
 
@@ -164,15 +181,9 @@ impl ThemeSelector {
         block
     }
 
-    /// The hints of the help row, from the keymap so remapped keys show up.
-    fn hints(&self) -> Vec<Hint> {
-        [(Action::Select, "to select"), (Action::Close, "to cancel")]
-            .into_iter()
-            .filter_map(|(action, text)| {
-                let key = self.keymap.label(Context::Overlay, action)?;
-                Some(Hint::new(key, text))
-            })
-            .collect()
+    fn set_theme(&mut self, theme: Theme) {
+        self.help = help_line(&self.keymap, &theme);
+        self.theme = theme;
     }
 
     /// The list's area and the help row's, inside the border: a blank row,
@@ -208,10 +219,7 @@ impl Component for ThemeSelector {
         };
         frame.render_widget(rows, list);
         if !help.is_empty() {
-            let mut line =
-                HelpLine::new(self.hints(), Vec::new(), self.theme.clone(), Role::Surface)
-                    .inset(HELP_INSET);
-            line.view(frame, help);
+            self.help.view(frame, help);
         }
     }
 
@@ -227,7 +235,7 @@ impl Component for ThemeSelector {
         match (attr, value) {
             (THEME_ATTR, value) => {
                 if let Some(theme) = theme_from_value(&value) {
-                    self.theme = theme;
+                    self.set_theme(theme);
                 }
             }
             (VISIBLE_ROWS_ATTR, AttrValue::Length(rows)) => {
@@ -1048,6 +1056,28 @@ mod tests {
             "{}",
             rows[12]
         );
+    }
+
+    #[test]
+    fn a_new_theme_rebuilds_the_help_row_in_its_colours() {
+        let key = Color::Rgb(201, 2, 3);
+        let text = Color::Rgb(4, 202, 6);
+        let mut s = selector();
+        let other = builtin::default_theme()
+            .with_token(Token::HelpKey, TokenOverride::fg(key))
+            .with_token(Token::HelpText, TokenOverride::fg(text));
+        let help_cell = |buffer: &ratatui::buffer::Buffer, column: u16| {
+            let cell = &buffer[(10 + column, 12)];
+            (cell.symbol().to_owned(), cell.fg)
+        };
+        let before = draw(&mut s);
+        assert_eq!(help_cell(&before, 2).0, "E");
+        assert_ne!(help_cell(&before, 2).1, key);
+        s.attr(THEME_ATTR, theme_value(&other));
+        let after = draw(&mut s);
+        // `ENTER` in `help_key`, ` to select` in `help_text`.
+        assert_eq!(help_cell(&after, 2), ("E".to_owned(), key));
+        assert_eq!(help_cell(&after, 8), ("t".to_owned(), text));
     }
 
     #[test]

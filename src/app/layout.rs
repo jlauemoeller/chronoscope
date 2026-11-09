@@ -146,12 +146,13 @@ pub fn too_small(area: Rect) -> bool {
 /// Computes the layout for a screen of `area`.
 ///
 /// When the screen is too small (under 60 columns or 20 rows) only
-/// [`Id::EmptyState`] is visible, filling the screen. Otherwise the selector
-/// overlay is [`Id::SelectorFrame`]: as wide as the screen up to 160 columns
-/// and centred, with one empty row above and below. Inside it come the tabs,
-/// the two panes, the Working Directory box (see [`selector_areas`]) and
-/// [`Id::HelpLine`]: one row, two rows above the bottom border, from column 5
-/// to width - 6. An active prompt ([`LayoutInput::prompt`]) is [`Id::Prompt`]
+/// [`Id::EmptyState`] is visible, filling the screen. Otherwise, when the
+/// selector is the base screen, [`Id::ScreenBackground`] comes first and
+/// fills the screen. The selector overlay is [`Id::SelectorFrame`]: as wide
+/// as the screen up to 160 columns and centred, with one empty row above and
+/// below. Inside it come the tabs, the two panes, the Working Directory box
+/// (see [`selector_areas`]) and [`Id::HelpLine`]: one row, two rows above the
+/// bottom border, from column 5 to width - 6. An active prompt ([`LayoutInput::prompt`]) is [`Id::Prompt`]
 /// in the same place instead of the help line; over the browser alone it
 /// takes the browser's help line.
 ///
@@ -193,6 +194,9 @@ pub fn layout(input: &LayoutInput, area: Rect) -> ScreenLayout {
             areas.extend(browser.sidebar_gap.map(|gap| (Id::SidebarGap, gap)));
         }
         areas.extend([(body, body_area), (help, browser.help_line)]);
+    }
+    if input.screen == Screen::Selector {
+        areas.push((Id::ScreenBackground, area));
     }
     if input.screen.has_selector() {
         let overlay = selector_overlay(area);
@@ -600,6 +604,7 @@ mod tests {
         assert_eq!(
             ids,
             [
+                Id::ScreenBackground,
                 Id::SelectorFrame,
                 Id::HarnessTabs,
                 Id::ProjectList,
@@ -613,11 +618,28 @@ mod tests {
     }
 
     #[test]
+    fn the_screen_background_fills_the_base_selector_screen_only() {
+        let area = Rect::new(3, 2, 100, 30);
+        let on = |screen| {
+            let input = LayoutInput {
+                screen,
+                ..LayoutInput::default()
+            };
+            layout(&input, area).area(Id::ScreenBackground)
+        };
+        assert_eq!(on(Screen::Selector), Some(area));
+        assert_eq!(on(Screen::BrowserSelector), None);
+        assert_eq!(on(Screen::Browser), None);
+        assert_eq!(at(59, 24).area(Id::ScreenBackground), None, "too small");
+    }
+
+    #[test]
     fn without_the_panels_the_layout_lists_neither() {
         let ids: Vec<Id> = at(80, 32).areas().iter().map(|(id, _)| *id).collect();
         assert_eq!(
             ids,
             [
+                Id::ScreenBackground,
                 Id::SelectorFrame,
                 Id::HarnessTabs,
                 Id::ProjectList,
