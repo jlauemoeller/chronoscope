@@ -7,6 +7,7 @@ use tuirealm::state::State;
 
 use super::theme_selector::{assert_all_have, mounted_themes};
 use super::*;
+use crate::app::browser::NO_SUBAGENT_TRANSCRIPT;
 use crate::components::transcript::Presentation;
 use crate::components::transcript::fixtures::{arc, prompt, reply, with_id};
 use crate::components::turn_block::fixtures as blocks;
@@ -308,6 +309,217 @@ fn a_load_that_fails_shows_a_toast_and_mounts_nothing() {
     );
     assert_eq!(rig.app.subagent_depth(), 0);
     assert!(!mounted(&rig.app, Id::Subagent(1)));
+}
+
+#[test]
+fn the_lookup_runs_on_a_worker_and_nothing_changes_until_it_answers() {
+    let mut rig = subagent_rig(120, 40);
+    let before = presentation(&rig.app, Id::Transcript);
+    let screen = screen_text(&mut rig, 120, 40);
+    rig.harness.hold_subagents();
+    rig.press(Key::Char('a'));
+    rig.settle();
+    // The question is asked off the UI thread, which goes on while it waits.
+    assert_eq!(rig.harness.subagent_ask_count(), 1);
+    let threads = rig.harness.subagent_threads.lock().unwrap().clone();
+    assert_eq!(threads, [Some("subagent-lookup".to_owned())]);
+    assert_eq!(rig.app.subagent_depth(), 0);
+    assert!(!mounted(&rig.app, Id::Subagent(1)));
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION], "no load yet");
+    assert_eq!(presentation(&rig.app, Id::Transcript), before);
+    assert_eq!(screen_text(&mut rig, 120, 40), screen);
+    rig.harness.release_subagents();
+    rig.pump_until(|app| app.subagent_depth() == 1 && app.session_loaded());
+    assert_eq!(rig.focus(), Some(Id::Subagent(1)));
+    assert_eq!(breadcrumb(&rig.app), ["story-writer"]);
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION, SUB1]);
+}
+
+#[test]
+fn a_lookup_that_fails_leaves_the_parent_as_it_was() {
+    let mut rig = rig_with(theme("default"), 120, 40);
+    rig.open_with_subagent();
+    rig.harness.subagents.lock().unwrap().clear();
+    let before = presentation(&rig.app, Id::Transcript);
+    assert!(before.offset > 0 && before.selected.is_some(), "{before:?}");
+    let state = state_of(&rig.app, Id::Transcript);
+    let sidebar = state_of(&rig.app, Id::TurnSidebar);
+    let header: Vec<String> = screen_text(&mut rig, 120, 40)
+        .lines()
+        .take(5)
+        .map(str::to_owned)
+        .collect();
+    rig.harness.hold_subagents();
+    rig.press(Key::Char('a'));
+    rig.settle();
+    assert_eq!(rig.app.toast_text(), None, "no answer yet");
+    rig.harness.release_subagents();
+    rig.pump_until(|app| app.toast_text().is_some());
+    assert_eq!(rig.app.toast_text(), Some(NO_SUBAGENT_TRANSCRIPT));
+    assert_eq!(rig.app.subagent_depth(), 0);
+    assert!(!mounted(&rig.app, Id::Subagent(1)));
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(presentation(&rig.app, Id::Transcript), before);
+    assert_eq!(state_of(&rig.app, Id::Transcript), state);
+    assert_eq!(state_of(&rig.app, Id::TurnSidebar), sidebar);
+    assert_eq!(breadcrumb(&rig.app), Vec::<String>::new());
+    assert_eq!(header_session(&rig.app), BRIO_SESSION);
+    let after: Vec<String> = screen_text(&mut rig, 120, 40)
+        .lines()
+        .take(5)
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(after, header);
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION], "no load started");
+}
+
+#[test]
+fn a_pressed_twice_while_the_lookup_is_pending_opens_one_level() {
+    let mut rig = subagent_rig(120, 40);
+    rig.harness.hold_subagents();
+    rig.press(Key::Char('a'));
+    rig.press(Key::Char('a'));
+    let seen = rig.settle();
+    let presses = seen
+        .iter()
+        .filter(|msg| matches!(msg, Msg::OpenSubagent { .. }))
+        .count();
+    assert_eq!(presses, 2, "both reached the app: {seen:?}");
+    assert_eq!(rig.harness.subagent_ask_count(), 1, "one lookup started");
+    assert_eq!(rig.app.subagent_depth(), 0);
+    rig.harness.release_subagents();
+    rig.pump_until(|app| app.subagent_depth() == 1 && app.session_loaded());
+    rig.settle();
+    assert_eq!(rig.app.subagent_depth(), 1);
+    assert_eq!(breadcrumb(&rig.app), ["story-writer"]);
+    assert!(!mounted(&rig.app, Id::Subagent(2)));
+    assert_eq!(rig.harness.subagent_ask_count(), 1);
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION, SUB1]);
+    assert_eq!(rig.focus(), Some(Id::Subagent(1)));
+}
+
+/// The answers the app saw to a subagent lookup.
+fn lookup_answers(seen: &[Msg]) -> usize {
+    seen.iter()
+        .filter(|msg| matches!(msg, Msg::SubagentFound { .. }))
+        .count()
+}
+
+/// The rig with the story writer open at depth 1, its `Explore` call
+/// selected, and `a` pressed on it with the lookup held.
+fn nested_lookup_pending() -> Rig {
+    let mut rig = subagent_rig(120, 40);
+    rig.open_subagent(1);
+    rig.unfold_last();
+    rig.harness.hold_subagents();
+    rig.press(Key::Char('a'));
+    let asked = Instant::now() + Duration::from_secs(2);
+    while rig.harness.subagent_ask_count() < 2 && Instant::now() < asked {
+        rig.settle();
+    }
+    assert_eq!(rig.harness.subagent_ask_count(), 2);
+    assert_eq!(rig.app.subagent_depth(), 1);
+    rig
+}
+
+#[test]
+fn a_lookup_overtaken_by_going_back_is_dropped() {
+    let mut rig = nested_lookup_pending();
+    rig.back_to(0);
+    rig.harness.release_subagents();
+    let seen = rig.settle();
+    assert_eq!(lookup_answers(&seen), 1, "the answer came: {seen:?}");
+    assert_eq!(rig.app.subagent_depth(), 0);
+    assert!(!mounted(&rig.app, Id::Subagent(1)));
+    assert!(!mounted(&rig.app, Id::Subagent(2)));
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(breadcrumb(&rig.app), Vec::<String>::new());
+    assert_eq!(header_session(&rig.app), BRIO_SESSION);
+    assert_eq!(rig.app.toast_text(), None);
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION, SUB1], "no load started");
+}
+
+#[test]
+fn a_lookup_overtaken_by_opening_another_session_is_dropped() {
+    let mut rig = nested_lookup_pending();
+    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.harness.release_subagents();
+    let seen = rig.settle();
+    assert_eq!(lookup_answers(&seen), 1, "the answer came: {seen:?}");
+    assert_eq!(rig.app.subagent_depth(), 0);
+    assert!(!mounted(&rig.app, Id::Subagent(1)));
+    assert!(!mounted(&rig.app, Id::Subagent(2)));
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(header_session(&rig.app), NEWER_SESSION);
+    assert_eq!(rig.app.toast_text(), None);
+    assert_eq!(
+        rig.harness.loads(),
+        [BRIO_SESSION, SUB1, NEWER_SESSION],
+        "no load of the subagent started"
+    );
+}
+
+#[test]
+fn a_lookup_is_dropped_even_when_the_other_session_fails_to_open() {
+    let mut rig = nested_lookup_pending();
+    rig.harness.fail.store(true, Ordering::Relaxed);
+    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    assert!(
+        rig.app
+            .toast_text()
+            .is_some_and(|t| t.starts_with("Could not open the session")),
+        "{:?}",
+        rig.app.toast_text()
+    );
+    rig.harness.release_subagents();
+    let seen = rig.settle();
+    assert_eq!(lookup_answers(&seen), 1, "the answer came: {seen:?}");
+    // The browser that stays shows the story writer, with nothing over it.
+    assert_eq!(rig.app.subagent_depth(), 1);
+    assert!(!mounted(&rig.app, Id::Subagent(2)));
+    assert_eq!(breadcrumb(&rig.app), ["story-writer"]);
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION, SUB1]);
+}
+
+#[test]
+fn an_answer_that_comes_while_the_selector_is_open_is_dropped() {
+    let mut rig = subagent_rig(120, 40);
+    rig.harness.hold_subagents();
+    rig.press(Key::Char('a'));
+    rig.settle();
+    rig.app.update(Msg::OpenSelector);
+    let focus = rig.focus();
+    assert_ne!(focus, Some(Id::Transcript));
+    rig.harness.release_subagents();
+    let seen = rig.settle();
+    assert_eq!(lookup_answers(&seen), 1, "the answer came: {seen:?}");
+    assert_eq!(rig.focus(), focus, "the selector keeps the focus");
+    assert!(!mounted(&rig.app, Id::Subagent(1)));
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION]);
+    rig.app.update(Msg::CloseSelector);
+    assert_eq!(rig.app.subagent_depth(), 0);
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    // `a` works again.
+    rig.open_subagent(1);
+    assert_eq!(breadcrumb(&rig.app), ["story-writer"]);
+}
+
+#[test]
+fn an_answer_to_a_lookup_nobody_waits_for_is_dropped() {
+    let mut rig = subagent_rig(120, 40);
+    let screen = screen_text(&mut rig, 120, 40);
+    for found in [Some(id(SUB1)), None] {
+        rig.app.update(Msg::SubagentFound {
+            generation: rig.app.session_generation() + 1,
+            found,
+        });
+    }
+    assert_eq!(rig.app.subagent_depth(), 0);
+    assert!(!mounted(&rig.app, Id::Subagent(1)));
+    assert_eq!(rig.app.toast_text(), None);
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION]);
+    assert_eq!(screen_text(&mut rig, 120, 40), screen);
 }
 
 #[test]

@@ -14,7 +14,7 @@ use tuirealm::subscription::{EventClause, MouseEventClause, Sub, SubClause};
 
 use crate::app::index_port::index_event_kind;
 use crate::app::search_worker::search_event_kind;
-use crate::app::session_port::session_event_kind;
+use crate::app::session_port::{session_event_kind, subagent_event_kind};
 use crate::app::transcript_search::transcript_search_event_kind;
 use crate::app::{Id, Msg, UserEvent};
 use crate::components::{HELP_CONTEXT_ATTR, HelpContext, context_from_value};
@@ -103,6 +103,7 @@ impl GlobalEvents {
             search_event_kind(),
             transcript_search_event_kind(),
             session_event_kind(),
+            subagent_event_kind(),
         ] {
             subs.push(Sub::new(EventClause::Discriminant(kind), always_clause()));
         }
@@ -232,6 +233,10 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
             Event::User(UserEvent::Session { generation, update }) => Some(Msg::Session {
                 generation: *generation,
                 update: update.clone(),
+            }),
+            Event::User(UserEvent::Subagent { generation, found }) => Some(Msg::SubagentFound {
+                generation: *generation,
+                found: found.clone(),
             }),
             _ => None,
         }
@@ -383,9 +388,9 @@ mod tests {
                 KeyEvent::new(Key::Char('t'), KeyModifiers::SHIFT)
             ]
         );
-        // Resize, tick, and the index, session search, transcript search
-        // and session events.
-        assert_eq!(subs.len(), keys + open.len() + help.len() + theme.len() + 6);
+        // Resize, tick, and the index, session search, transcript search,
+        // session and subagent lookup events.
+        assert_eq!(subs.len(), keys + open.len() + help.len() + theme.len() + 7);
     }
 
     fn mouse(kind: MouseEventKind, modifiers: KeyModifiers) -> Event<UserEvent> {
@@ -545,6 +550,24 @@ mod tests {
             Some(Msg::Session {
                 generation: 9,
                 update
+            })
+        );
+    }
+
+    #[test]
+    fn a_subagent_user_event_becomes_a_subagent_found_message() {
+        use crate::model::SessionId;
+        let found = Some(SessionId::from("s1/subagents/agent-a1"));
+        let mut component = GlobalEvents::new(Keymap::default());
+        let msg = component.on(&Event::User(UserEvent::Subagent {
+            generation: 3,
+            found: found.clone(),
+        }));
+        assert_eq!(
+            msg,
+            Some(Msg::SubagentFound {
+                generation: 3,
+                found
             })
         );
     }

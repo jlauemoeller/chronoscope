@@ -21,7 +21,7 @@ use super::hints::browser_hints;
 use super::layout::Screen;
 use super::redraw::RedrawRequest;
 use super::selector::{SELECTOR_IDS, mount_selector};
-use super::session_port::{SessionUpdate, forward_to};
+use super::session_port::{SessionUpdate, forward_to, look_up_subagent};
 use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
@@ -135,6 +135,17 @@ pub(super) struct BrowserState {
     sidebar_section: SidebarSection,
     /// Whether the help line shows the hints of the turns sidebar.
     pub(super) sidebar_hints: bool,
+    /// The subagent lookup whose answer is waited for, if any.
+    pending_subagent: Option<PendingSubagent>,
+}
+
+/// A lookup that `a` on a subagent section started, waiting for its answer.
+#[derive(Debug)]
+struct PendingSubagent {
+    /// The number of the lookup, which the subagent's load gets.
+    generation: u64,
+    /// The agent in the breadcrumb.
+    label: String,
 }
 
 impl Deref for BrowserState {
@@ -331,6 +342,8 @@ impl App {
         // The worker of the session that was open stops before the new load
         // starts. If the load fails the old browser stays, no longer live.
         self.browser.stop_watching();
+        // Nor is a subagent of it opened: a lookup's answer is dropped.
+        self.browser.pending_subagent = None;
         let watch = match loader.load(id, forward_to(generation, sink)) {
             Ok(watch) => watch,
             Err(err) => {
@@ -511,13 +524,16 @@ impl App {
 
     // -- subagent transcripts (product §4.4)
 
-    /// `a` on a subagent section: asks the harness for the transcript of the
-    /// subagent that tool call `call` started and mounts a `Transcript` for
-    /// it over the one on top, which stays mounted but is not drawn. The new
-    /// one is loaded and watched like any session and gets the focus. With
-    /// no transcript to open a toast says so and nothing is mounted.
+    /// `a` on a subagent section: starts the lookup of the transcript of the
+    /// subagent that tool call `call` started, on a worker
+    /// ([`look_up_subagent`]). [`subagent_found`](Self::subagent_found)
+    /// opens it when the answer comes. Nothing changes until then, and `a`
+    /// is ignored while a lookup is pending.
     pub(super) fn open_subagent(&mut self, call: &ToolCallId, label: String) {
-        if self.screen != Screen::Browser || self.application.mounted(&Id::Prompt) {
+        if self.screen != Screen::Browser
+            || self.application.mounted(&Id::Prompt)
+            || self.browser.pending_subagent.is_some()
+        {
             return;
         }
         let Some(harness) = self.browser.open.as_ref().map(|open| open.harness) else {
@@ -534,14 +550,63 @@ impl App {
             self.toast_quiet("Could not open the subagent");
             return;
         };
-        let Some(id) = loader.subagent(&parent, call) else {
+        // The number is taken before the worker starts, so it is never given
+        // again, whatever happens next. The subagent's load gets it too.
+        let generation = self.browser.load_seq + 1;
+        self.browser.load_seq = generation;
+        if let Err(err) = look_up_subagent(loader, parent, call.clone(), generation, sink) {
+            log::error!("could not start the subagent lookup: {err}");
+            self.toast_quiet("Could not open the subagent");
+            return;
+        }
+        self.browser.pending_subagent = Some(PendingSubagent { generation, label });
+    }
+
+    /// The answer to the subagent lookup `generation`: the transcript of
+    /// subagent `found` is mounted over the one on top, which stays mounted
+    /// but is not drawn. The new one is loaded and watched like any session
+    /// and gets the focus. With no transcript to open a toast says so and
+    /// nothing is mounted. The answer to a lookup that is no longer waited
+    /// for (the user went back or opened another session) is dropped, and so
+    /// is one that comes while the browser is covered or a prompt is open.
+    pub(super) fn subagent_found(&mut self, generation: u64, found: Option<SessionId>) {
+        let current = self
+            .browser
+            .pending_subagent
+            .as_ref()
+            .is_some_and(|pending| pending.generation == generation);
+        if !current {
+            log::debug!("dropping the answer of subagent lookup {generation}");
+            return;
+        }
+        let Some(PendingSubagent { label, .. }) = self.browser.pending_subagent.take() else {
+            return;
+        };
+        let covered = [
+            Id::Prompt,
+            Id::HelpOverlay,
+            Id::DetailsOverlay,
+            Id::ThemeSelector,
+        ]
+        .iter()
+        .any(|id| self.application.mounted(id));
+        if self.screen != Screen::Browser || covered {
+            log::debug!("dropping the answer of subagent lookup {generation}: the browser is busy");
+            return;
+        }
+        let Some(id) = found else {
             self.toast_quiet(NO_SUBAGENT_TRANSCRIPT);
             return;
         };
-        // The number is taken before the worker starts, so it is never given
-        // again, whatever happens next.
-        let generation = self.browser.load_seq + 1;
-        self.browser.load_seq = generation;
+        let harness = self.browser.open.as_ref().map(|open| open.harness);
+        let (Some(loader), Some(sink)) = (
+            harness.and_then(|harness| self.harnesses.get(&harness).cloned()),
+            self.session_sink.clone(),
+        ) else {
+            log::error!("cannot open subagent {id}: no harness or session channel");
+            self.toast_quiet("Could not open the subagent");
+            return;
+        };
         let watch = match loader.load(&id, forward_to(generation, sink)) {
             Ok(watch) => watch,
             Err(err) => {
@@ -611,6 +676,9 @@ impl App {
         {
             return;
         }
+        // A lookup started here is no longer waited for: its answer is
+        // dropped.
+        self.browser.pending_subagent = None;
         let depth = self.browser.depth();
         // Dropping the level stops its worker; its late updates are dropped
         // because no load has its number.
