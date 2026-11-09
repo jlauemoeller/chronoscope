@@ -7,10 +7,11 @@
 //! conflict with typing.
 
 use ratatui::Frame;
+use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Paragraph};
+use ratatui::widgets::{Block, Paragraph, Widget};
 use tui_input::{Input, InputRequest};
 use tuirealm::command::{Cmd, CmdResult, Direction};
 use tuirealm::component::{AppComponent, Component};
@@ -262,6 +263,50 @@ impl Prompt {
     }
 }
 
+/// The visible part of a prompt's text in `foreground`, and the cell under
+/// the cursor with the `cursor` colour as its background: the character at
+/// column `cursor`, both columns of a wide one, or the blank cell after the
+/// end of the text. A cursor past the area's width draws no cursor cell.
+#[derive(Debug, Clone, Copy)]
+struct PromptText<'a> {
+    text: &'a str,
+    /// The column of the cursor in `text`.
+    cursor: usize,
+    theme: &'a Theme,
+}
+
+impl PromptText<'_> {
+    /// The width of the cell under the cursor: the character starting at
+    /// the cursor's column, or 1 for the blank cell after the text.
+    fn cursor_width(&self) -> usize {
+        self.text
+            .chars()
+            .scan(0, |col, c| {
+                let start = *col;
+                *col += c.width().unwrap_or(0);
+                Some((start, c.width().unwrap_or(0)))
+            })
+            .find(|&(start, _)| start == self.cursor)
+            .map_or(1, |(_, w)| w.max(1))
+    }
+}
+
+impl Widget for PromptText<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let foreground = self.theme.role(Role::Foreground);
+        let style = Style::new().fg(foreground);
+        Paragraph::new(Span::styled(self.text, style)).render(area, buf);
+        let cursor_style = style.bg(self.theme.role(Role::Cursor));
+        for offset in 0..self.cursor_width() {
+            let x = self.cursor + offset;
+            if x < usize::from(area.width) {
+                // `x` is below `area.width`, a `u16`.
+                buf[(area.x + x as u16, area.y)].set_style(cursor_style);
+            }
+        }
+    }
+}
+
 /// Whether a key with `modifiers` types its character: plain, shifted, or
 /// with `AltGr`, which Windows reports as `Ctrl` + `Alt` (the `@`, `{` or
 /// `\` of many layouts). `Ctrl` or `Alt` alone do not type.
@@ -299,29 +344,12 @@ impl Component for Prompt {
             return;
         }
         let (text, cursor) = self.visible_text(usize::from(rest.width));
-        let foreground = self.theme.role(Role::Foreground);
-        let style = Style::new().fg(foreground);
-        frame.render_widget(Paragraph::new(Span::styled(text.clone(), style)), rest);
-        // The cell under the cursor: the character there, or the blank cell
-        // after the text.
-        let under = text
-            .chars()
-            .scan(0, |col, c| {
-                let start = *col;
-                *col += c.width().unwrap_or(0);
-                Some((start, c.width().unwrap_or(0)))
-            })
-            .find(|&(start, _)| start == cursor)
-            .map_or(1, |(_, w)| w.max(1));
-        let cursor_bg = self.theme.role(Role::Cursor);
-        for offset in 0..under {
-            let x = cursor + offset;
-            if x < usize::from(rest.width) {
-                // `x` is below `rest.width`, a `u16`.
-                let cell = &mut frame.buffer_mut()[(rest.x + x as u16, rest.y)];
-                cell.set_style(Style::new().fg(foreground).bg(cursor_bg));
-            }
-        }
+        let text = PromptText {
+            text: &text,
+            cursor,
+            theme: &self.theme,
+        };
+        frame.render_widget(text, rest);
     }
 
     fn query<'a>(&'a self, attr: Attribute) -> Option<QueryResult<'a>> {
@@ -741,6 +769,68 @@ mod tests {
         let mut p = prompt(WIDE);
         p.on(&key(Key::Left));
         insta::assert_snapshot!(buffer_to_styled(&draw(&mut p, 30)));
+    }
+
+    // -- the text widget
+
+    /// `text` drawn by [`PromptText`] with the cursor at `cursor`, in a
+    /// `width` x 1 area at column 1 of a buffer one column wider. The widget
+    /// draws straight into the buffer: a terminal would not pass on the
+    /// cell a wide character covers.
+    fn draw_text(text: &str, cursor: usize, width: u16) -> Buffer {
+        let theme = builtin::default_theme();
+        let widget = PromptText {
+            text,
+            cursor,
+            theme: &theme,
+        };
+        let mut buffer = Buffer::empty(Rect::new(0, 0, width + 1, 1));
+        widget.render(Rect::new(1, 0, width, 1), &mut buffer);
+        buffer
+    }
+
+    #[test]
+    fn the_text_widget_draws_the_text_in_foreground_and_the_cursor_cell() {
+        let theme = builtin::default_theme();
+        let buffer = draw_text("abc", 1, 6);
+        assert_eq!(buffer_to_text(&buffer), " abc   \n");
+        let foreground = theme.role(Role::Foreground);
+        let cursor = theme.role(Role::Cursor);
+        for x in [1, 3] {
+            assert_eq!(buffer[(x, 0)].fg, foreground, "{x}");
+            assert_eq!(buffer[(x, 0)].bg, Color::Reset, "{x}");
+        }
+        assert_eq!(buffer[(2, 0)].symbol(), "b");
+        assert_eq!((buffer[(2, 0)].fg, buffer[(2, 0)].bg), (foreground, cursor));
+        assert_eq!(buffer[(0, 0)].bg, Color::Reset, "left of the area");
+    }
+
+    #[test]
+    fn the_text_widget_marks_both_columns_of_a_wide_character() {
+        let cursor = builtin::default_theme().role(Role::Cursor);
+        let buffer = draw_text("a日b", 1, 6);
+        let backgrounds: Vec<Color> = (1..6).map(|x| buffer[(x, 0)].bg).collect();
+        assert_eq!(
+            backgrounds,
+            [Color::Reset, cursor, cursor, Color::Reset, Color::Reset]
+        );
+    }
+
+    #[test]
+    fn the_text_widget_marks_the_blank_cell_after_the_text() {
+        let cursor = builtin::default_theme().role(Role::Cursor);
+        let buffer = draw_text("ab", 2, 4);
+        assert_eq!(buffer[(3, 0)].symbol(), " ");
+        assert_eq!(buffer[(3, 0)].bg, cursor);
+        assert_eq!(buffer[(4, 0)].bg, Color::Reset);
+    }
+
+    #[test]
+    fn the_text_widget_draws_no_cursor_cell_outside_its_area() {
+        let buffer = draw_text("abc", 3, 3);
+        for x in 0..4 {
+            assert_eq!(buffer[(x, 0)].bg, Color::Reset, "{x}");
+        }
     }
 
     // -- confirm
