@@ -101,7 +101,8 @@ pub(super) struct PointerState {
 }
 
 impl PointerState {
-    /// The clock the components measure double-clicks with.
+    /// The clock the components measure double-clicks with, for one that is
+    /// being mounted.
     pub(super) fn click_clock(&self) -> &ClickClock {
         &self.click_clock
     }
@@ -124,12 +125,6 @@ impl App {
                 self.set_attr(id, CLICK_CLOCK_ATTR, value.clone());
             }
         }
-    }
-
-    /// The clock double-clicks are measured with, for a component that is
-    /// being mounted.
-    pub(super) fn click_clock(&self) -> ClickClock {
-        self.mouse.click_clock.clone()
     }
 
     /// Recomputes the routing areas from the current state. `update` calls

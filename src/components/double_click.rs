@@ -110,52 +110,10 @@ impl<T: PartialEq> LastPress<T> {
     }
 }
 
-/// A clock for tests that shows a fixed start plus the time it is
-/// [`set`](Self::set) to, shared by its clones.
-#[cfg(test)]
-#[derive(Debug, Clone)]
-pub struct TestClock {
-    start: Instant,
-    elapsed: Arc<std::sync::Mutex<Duration>>,
-}
-
-#[cfg(test)]
-impl Default for TestClock {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(test)]
-impl TestClock {
-    /// A clock that shows its start until it is set.
-    pub fn new() -> Self {
-        Self {
-            start: Instant::now(),
-            elapsed: Arc::default(),
-        }
-    }
-
-    /// Moves the clock to `elapsed` after its start.
-    pub fn set(&self, elapsed: Duration) {
-        *self.elapsed.lock().unwrap() = elapsed;
-    }
-
-    /// The time it shows.
-    pub fn now(&self) -> Instant {
-        self.start + *self.elapsed.lock().unwrap()
-    }
-
-    /// A [`ClickClock`] that reads this clock.
-    pub fn click_clock(&self) -> ClickClock {
-        let clock = self.clone();
-        ClickClock::new(move || clock.now())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestClock;
 
     fn presses() -> (LastPress<&'static str>, TestClock) {
         let clock = TestClock::new();
@@ -195,6 +153,20 @@ mod tests {
         presses.forget();
         assert!(!presses.press("a"));
         assert!(presses.press("a"));
+    }
+
+    #[test]
+    fn the_default_clock_is_the_system_clock() {
+        let clock = ClickClock::default();
+        let before = clock.now();
+        let system = Instant::now();
+        assert!(clock.now() >= system && system >= before);
+        // Presses further apart than a double-click, by the system clock,
+        // are two clicks.
+        let mut presses = LastPress::default();
+        presses.press("a");
+        std::thread::sleep(DOUBLE_CLICK + Duration::from_millis(10));
+        assert!(!presses.press("a"));
     }
 
     #[test]

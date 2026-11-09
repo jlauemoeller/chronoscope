@@ -18,7 +18,8 @@ use super::*;
 use crate::components::transcript::Presentation;
 use crate::components::transcript::fixtures::{arc, with_id};
 use crate::components::turn_block::fixtures as blocks;
-use crate::components::{HelpContext, PRESENTATION_ATTR, TestClock};
+use crate::components::{HelpContext, PRESENTATION_ATTR};
+use crate::test_support::TestClock;
 
 const PRESS: MouseEventKind = MouseEventKind::Down(MouseButton::Left);
 const WHEEL_DOWN: MouseEventKind = MouseEventKind::ScrollDown;
@@ -108,8 +109,7 @@ impl Rig {
     /// Gives the app a click clock that shows the returned time.
     fn click_clock(&mut self) -> TestClock {
         let elapsed = TestClock::new();
-        let shared = elapsed.clone();
-        self.app.set_click_clock(move || shared.now());
+        self.app.set_click_clock(elapsed.reader());
         elapsed
     }
 }

@@ -1,7 +1,10 @@
 //! Helpers for rendering widgets into a Ratatui `TestBackend` and turning the
-//! resulting buffer into text that `insta` can snapshot.
+//! resulting buffer into text that `insta` can snapshot, and a clock tests
+//! can set.
 
 use std::fmt::Write;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use ratatui::Frame;
 use ratatui::Terminal;
@@ -9,6 +12,8 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier};
 use unicode_width::UnicodeWidthStr;
+
+use crate::components::ClickClock;
 
 /// Draws into a `width` x `height` `TestBackend` terminal and returns the
 /// resulting buffer.
@@ -95,6 +100,58 @@ fn modifiers(modifier: Modifier) -> String {
         "NONE".to_string()
     } else {
         format!("{modifier:?}")
+    }
+}
+
+/// A clock for tests that shows a fixed start plus the time it is
+/// [`set`](Self::set) to, shared by its clones: for the double-click clock
+/// of a component ([`click_clock`](Self::click_clock)) or of the `App`
+/// ([`reader`](Self::reader)).
+#[derive(Debug, Clone)]
+pub struct TestClock {
+    start: Instant,
+    elapsed: Arc<Mutex<Duration>>,
+}
+
+impl Default for TestClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TestClock {
+    /// A clock that shows its start until it is set.
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            elapsed: Arc::default(),
+        }
+    }
+
+    /// Moves the clock to `elapsed` after its start.
+    pub fn set(&self, elapsed: Duration) {
+        *self.elapsed.lock().unwrap() = elapsed;
+    }
+
+    /// Moves the clock to `ms` milliseconds after its start.
+    pub fn set_ms(&self, ms: u64) {
+        self.set(Duration::from_millis(ms));
+    }
+
+    /// The time it shows.
+    pub fn now(&self) -> Instant {
+        self.start + *self.elapsed.lock().unwrap()
+    }
+
+    /// A function that reads this clock, for `App::set_click_clock`.
+    pub fn reader(&self) -> impl Fn() -> Instant + Send + Sync + 'static {
+        let clock = self.clone();
+        move || clock.now()
+    }
+
+    /// A [`ClickClock`] that reads this clock.
+    pub fn click_clock(&self) -> ClickClock {
+        ClickClock::new(self.reader())
     }
 }
 

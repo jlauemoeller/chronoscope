@@ -71,7 +71,7 @@ impl App {
             self.theme.clone(),
             self.keymap.clone(),
         )
-        .with_click_clock(self.click_clock());
+        .with_click_clock(self.mouse.click_clock().clone());
         let size = selector.desired_size();
         let component: Box<dyn AppComponent<Msg, UserEvent>> = Box::new(selector);
         if let Err(err) = self.open_overlay(Id::ThemeSelector, component) {

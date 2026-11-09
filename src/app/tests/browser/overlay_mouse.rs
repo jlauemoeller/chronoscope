@@ -11,7 +11,8 @@ use super::*;
 use crate::app::layout::Screen;
 use crate::components::HelpContext;
 use crate::components::transcript::Presentation;
-use crate::components::{FOLLOWING_ATTR, PRESENTATION_ATTR, TestClock};
+use crate::components::{FOLLOWING_ATTR, PRESENTATION_ATTR};
+use crate::test_support::TestClock;
 
 const PRESS: MouseEventKind = MouseEventKind::Down(MouseButton::Left);
 const WHEEL_DOWN: MouseEventKind = MouseEventKind::ScrollDown;
@@ -123,8 +124,7 @@ fn assert_outside(rig: &Rig, id: Id, point: (u16, u16)) {
 
 fn click_clock(rig: &mut Rig) -> TestClock {
     let elapsed = TestClock::new();
-    let shared = elapsed.clone();
-    rig.app.set_click_clock(move || shared.now());
+    rig.app.set_click_clock(elapsed.reader());
     elapsed
 }
 
@@ -726,7 +726,7 @@ fn a_press_after_the_theme_selector_closed_is_routed_as_usual() {
 }
 
 #[test]
-fn the_click_clock_reaches_the_selector_mounted_over_the_browser() {
+fn the_click_clock_reaches_both_panes_of_the_selector_mounted_over_the_browser() {
     for (ms, opens) in [(400, true), (401, false)] {
         let mut rig = rig();
         let time = click_clock(&mut rig);
@@ -744,5 +744,17 @@ fn the_click_clock_reaches_the_selector_mounted_over_the_browser() {
             .iter()
             .any(|msg| matches!(msg, Msg::OpenSession(..)));
         assert_eq!(opened, opens, "{ms} ms");
+        // The Projects pane has the clock too: a double-click is `Enter`,
+        // which focuses Sessions.
+        on(&mut rig, Id::ProjectList, PRESS, 6, 2);
+        assert_eq!(rig.focus(), Some(Id::ProjectList));
+        time.set(Duration::from_millis(2 * ms));
+        on(&mut rig, Id::ProjectList, PRESS, 6, 2);
+        let focus = if opens {
+            Id::SessionList
+        } else {
+            Id::ProjectList
+        };
+        assert_eq!(rig.focus(), Some(focus), "{ms} ms: Projects");
     }
 }

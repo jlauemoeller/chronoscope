@@ -9,7 +9,8 @@ use super::*;
 use crate::app::layout::Screen;
 use crate::app::{Pane, SelectorMsg};
 use crate::components::transcript::Presentation;
-use crate::components::{FOLLOWING_ATTR, PRESENTATION_ATTR, TestClock};
+use crate::components::{FOLLOWING_ATTR, PRESENTATION_ATTR};
+use crate::test_support::TestClock;
 
 fn press(column: u16, row: u16) -> Msg {
     Msg::Pointer(MouseEvent {
@@ -34,8 +35,7 @@ fn selected_session(rig: &Rig) -> Option<String> {
 fn a_double_click_in_the_selector_opens_the_session() {
     let mut rig = rig();
     let elapsed = TestClock::new();
-    let shared = elapsed.clone();
-    rig.app.set_click_clock(move || shared.now());
+    rig.app.set_click_clock(elapsed.reader());
     // BRIO's sessions, newest first: NEWER_SESSION, BRIO_SESSION.
     rig.harness.script(
         BRIO_SESSION,

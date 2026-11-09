@@ -23,10 +23,10 @@ use crate::app::fixtures::{self, fixture_snapshot};
 use crate::app::layout::{LayoutInput, PointerTarget, Screen, component_at, hit_test, layout};
 use crate::app::runtime::run_loop;
 use crate::app::{App, Id, Msg, Pane, UserEvent};
-use crate::components::{DOUBLE_CLICK, HelpContext, PROJECTS_FILTERED_ATTR, TestClock};
+use crate::components::{DOUBLE_CLICK, HelpContext, PROJECTS_FILTERED_ATTR};
 use crate::index::SessionMap;
 use crate::model::SessionId;
-use crate::test_support::{buffer_to_text, render};
+use crate::test_support::{TestClock, buffer_to_text, render};
 
 // -- helpers
 
@@ -71,8 +71,7 @@ fn wheel(app: &mut App, id: Id, down: bool) {
 /// Gives the app a click clock that shows the returned time.
 fn click_clock(app: &mut App) -> TestClock {
     let elapsed = TestClock::new();
-    let shared = elapsed.clone();
-    app.set_click_clock(move || shared.now());
+    app.set_click_clock(elapsed.reader());
     elapsed
 }
 

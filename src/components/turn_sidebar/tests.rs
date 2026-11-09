@@ -996,7 +996,7 @@ mod mouse {
     use tuirealm::event::{MouseButton, MouseEventKind};
 
     use super::*;
-    use crate::components::TestClock;
+    use crate::test_support::TestClock;
 
     /// The size of the pane the events are routed in: 30 x 14 shows eleven
     /// list rows (rows 2..13 of the pane).
@@ -1024,8 +1024,7 @@ mod mouse {
         routed(kind, 10, 5, PANE)
     }
 
-    /// The wireframe's list rows: 0 Start, 1 |, 2 u1, 3 |, 4 a1, 5 |, 6 u2,
-    /// 7 |, 8 a2, 9 |, 10 c1, 11 |, 12 a3, 13 |, 14 End.
+    /// The answer to a press on the entry of `turn`.
     fn chosen(turn: &str, enter: bool) -> Option<Msg> {
         Some(Msg::ChooseTurn {
             id: id(turn),
@@ -1033,6 +1032,8 @@ mod mouse {
         })
     }
 
+    /// The wireframe's list rows: 0 Start, 1 |, 2 u1, 3 |, 4 a1, 5 |, 6 u2,
+    /// 7 |, 8 a2, 9 |, 10 c1, 11 |, 12 a3, 13 |, 14 End.
     fn clicked(turn: &str) -> Option<Msg> {
         chosen(turn, false)
     }
@@ -1228,6 +1229,7 @@ mod mouse {
         assert_eq!(sidebar.on(&wheel(true)), None);
         assert_eq!(sidebar.on(&wheel(false)), None);
     }
+
     // -- double-clicks
 
     /// The wireframe's sidebar, double-clicks measured with the returned
@@ -1238,10 +1240,6 @@ mod mouse {
         (sidebar, clock)
     }
 
-    fn at_ms(clock: &TestClock, ms: u64) {
-        clock.set(Duration::from_millis(ms));
-    }
-
     const ELSEWHERE: Event<UserEvent> = Event::User(UserEvent::PointerElsewhere);
 
     #[test]
@@ -1249,7 +1247,7 @@ mod mouse {
         for (ms, enter) in [(0, true), (400, true), (401, false)] {
             let (mut sidebar, clock) = timed();
             assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
-            at_ms(&clock, ms);
+            clock.set_ms(ms);
             assert_eq!(sidebar.on(&press(3, 4)), chosen("u1", enter), "{ms} ms");
         }
     }
@@ -1258,11 +1256,11 @@ mod mouse {
     fn a_third_press_starts_a_new_double_click() {
         let (mut sidebar, clock) = timed();
         sidebar.on(&press(10, 4));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", true));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
-        at_ms(&clock, 300);
+        clock.set_ms(300);
         assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", true));
     }
 
@@ -1270,9 +1268,9 @@ mod mouse {
     fn a_press_on_another_entry_ends_a_double_click() {
         let (mut sidebar, clock) = timed();
         sidebar.on(&press(10, 4));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(sidebar.on(&press(10, 6)), chosen("a1", false));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
     }
 
@@ -1282,9 +1280,9 @@ mod mouse {
         for (column, row) in [(10, 5), (10, 2), (10, 1), (0, 4)] {
             let (mut sidebar, clock) = timed();
             sidebar.on(&press(10, 4));
-            at_ms(&clock, 100);
+            clock.set_ms(100);
             assert_eq!(sidebar.on(&press(column, row)), None);
-            at_ms(&clock, 200);
+            clock.set_ms(200);
             assert_eq!(
                 sidebar.on(&press(10, 4)),
                 chosen("u1", false),
@@ -1297,10 +1295,10 @@ mod mouse {
     fn a_press_elsewhere_ends_a_double_click_and_answers_nothing() {
         let (mut sidebar, clock) = timed();
         sidebar.on(&press(10, 4));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(sidebar.on(&ELSEWHERE), None);
         assert_eq!(sidebar.selected_entry(), None);
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
     }
 
@@ -1308,12 +1306,12 @@ mod mouse {
     fn the_wheel_does_not_end_a_double_click() {
         let (mut sidebar, clock) = timed();
         sidebar.on(&press(10, 4));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(
             sidebar.on(&wheel(true)),
             Some(Msg::TurnSelected(turn_of(0)))
         );
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", true));
     }
 
@@ -1323,7 +1321,7 @@ mod mouse {
         let clock = TestClock::new();
         sidebar.attr(CLICK_CLOCK_ATTR, clock.click_clock().value());
         sidebar.on(&press(10, 4));
-        at_ms(&clock, 401);
+        clock.set_ms(401);
         assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
     }
 

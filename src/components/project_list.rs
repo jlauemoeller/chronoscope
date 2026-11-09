@@ -217,9 +217,9 @@ impl AppComponent<Msg, UserEvent> for ProjectList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::TestClock;
     use crate::components::list_cursor::{SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value};
     use crate::components::list_pane::SESSION_OPEN_ATTR;
+    use crate::test_support::TestClock;
     use crate::test_support::{buffer_to_styled, render};
     use crate::theme::builtin;
     use tuirealm::event::{Key, KeyEvent, KeyModifiers};
@@ -660,6 +660,7 @@ mod tests {
             Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Projects)))
         );
     }
+
     // -- double-clicks
 
     /// A focused list whose double-clicks are measured with the returned
@@ -670,10 +671,6 @@ mod tests {
         (l, clock)
     }
 
-    fn at_ms(clock: &TestClock, ms: u64) {
-        clock.set(std::time::Duration::from_millis(ms));
-    }
-
     const ELSEWHERE: Event<UserEvent> = Event::User(UserEvent::PointerElsewhere);
 
     #[test]
@@ -681,7 +678,7 @@ mod tests {
         for (ms, open) in [(0, true), (400, true), (401, false)] {
             let (mut l, clock) = timed();
             assert_eq!(l.on(&press(5, 3)), chosen("BRIO", false));
-            at_ms(&clock, ms);
+            clock.set_ms(ms);
             assert_eq!(l.on(&press(20, 3)), chosen("BRIO", open), "{ms} ms");
         }
     }
@@ -690,11 +687,11 @@ mod tests {
     fn a_third_press_starts_a_new_double_click() {
         let (mut l, clock) = timed();
         l.on(&press(5, 3));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(l.on(&press(5, 3)), chosen("BRIO", true));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(l.on(&press(5, 3)), chosen("BRIO", false));
-        at_ms(&clock, 300);
+        clock.set_ms(300);
         assert_eq!(l.on(&press(5, 3)), chosen("BRIO", true));
     }
 
@@ -702,9 +699,9 @@ mod tests {
     fn a_press_on_another_row_ends_a_double_click() {
         let (mut l, clock) = timed();
         l.on(&press(5, 3));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(l.on(&press(5, 2)), chosen("Agentmon", false));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(l.on(&press(5, 3)), chosen("BRIO", false));
     }
 
@@ -714,12 +711,12 @@ mod tests {
         for (column, row) in [(5, 6), (5, 1), (5, 0), (0, 3)] {
             let (mut l, clock) = timed();
             l.on(&press(5, 3));
-            at_ms(&clock, 100);
+            clock.set_ms(100);
             assert_eq!(
                 l.on(&press(column, row)),
                 Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Projects)))
             );
-            at_ms(&clock, 200);
+            clock.set_ms(200);
             assert_eq!(l.on(&press(5, 3)), chosen("BRIO", false), "{column}, {row}");
         }
     }
@@ -728,14 +725,14 @@ mod tests {
     fn a_press_elsewhere_ends_a_double_click_and_answers_nothing() {
         let (mut l, clock) = timed();
         l.on(&press(5, 3));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(l.on(&ELSEWHERE), None);
         assert_eq!(
             l.state(),
             State::Single(tuirealm::state::StateValue::Usize(0)),
             "the selection stays"
         );
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(l.on(&press(5, 3)), chosen("BRIO", false));
         // With no press under way it answers nothing either.
         assert_eq!(list(&NAMES, Some(0), true).on(&ELSEWHERE), None);
@@ -745,12 +742,12 @@ mod tests {
     fn the_wheel_does_not_end_a_double_click() {
         let (mut l, clock) = timed();
         l.on(&press(5, 3));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(
             l.on(&mouse(MouseEventKind::ScrollDown, 5, 3)),
             selected("BRIO")
         );
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(l.on(&press(5, 3)), chosen("BRIO", true));
     }
 
@@ -760,7 +757,7 @@ mod tests {
         let clock = TestClock::new();
         l.attr(CLICK_CLOCK_ATTR, clock.click_clock().value());
         l.on(&press(5, 3));
-        at_ms(&clock, 401);
+        clock.set_ms(401);
         assert_eq!(l.on(&press(5, 3)), chosen("BRIO", false));
     }
 

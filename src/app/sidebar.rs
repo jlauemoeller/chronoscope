@@ -1,7 +1,8 @@
 //! The turns sidebar's focus, keys and clicks in the app (product §5.1, §5.3,
 //! §5.4, §5.9): which keys hand the focus to it and back, what selecting or
-//! clicking an entry does to the transcript, what happens to the focus when the sidebar is hidden, and
-//! the hints the help line shows while it has the focus.
+//! clicking an entry does to the transcript, what happens to the focus when
+//! the sidebar is hidden, and the hints the help line shows while it has the
+//! focus.
 //!
 //! The sidebar's selection follows the transcript's while the transcript
 //! has the focus ([`App::sync_sidebar_selection`](super::App)); while the

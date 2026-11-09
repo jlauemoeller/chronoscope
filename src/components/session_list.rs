@@ -452,10 +452,10 @@ impl AppComponent<Msg, UserEvent> for SessionList {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::TestClock;
     use crate::components::list_cursor::{SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value};
     use crate::components::list_pane::SESSION_OPEN_ATTR;
     use crate::model::HarnessId;
+    use crate::test_support::TestClock;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
     use crate::theme::{Role, builtin};
     use std::time::Duration;
@@ -1333,6 +1333,7 @@ mod tests {
         assert_eq!(l.on(&raw), None);
         assert_eq!(l.state(), State::Single(StateValue::Usize(0)));
     }
+
     // -- double-clicks
 
     /// A list of three sessions, `b` selected, whose double-clicks are
@@ -1343,10 +1344,6 @@ mod tests {
         (l, clock)
     }
 
-    fn at_ms(clock: &TestClock, ms: u64) {
-        clock.set(Duration::from_millis(ms));
-    }
-
     const ELSEWHERE: Event<UserEvent> = Event::User(UserEvent::PointerElsewhere);
 
     #[test]
@@ -1354,7 +1351,7 @@ mod tests {
         for (ms, open) in [(0, true), (400, true), (401, false)] {
             let (mut l, clock) = timed();
             assert_eq!(l.on(&press(3, 5)), chosen("b", false));
-            at_ms(&clock, ms);
+            clock.set_ms(ms);
             assert_eq!(l.on(&press(3, 5)), chosen("b", open), "{ms} ms");
         }
     }
@@ -1363,11 +1360,11 @@ mod tests {
     fn a_third_press_starts_a_new_double_click() {
         let (mut l, clock) = timed();
         l.on(&press(3, 5));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(l.on(&press(3, 5)), chosen("b", true));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(l.on(&press(3, 5)), chosen("b", false));
-        at_ms(&clock, 300);
+        clock.set_ms(300);
         assert_eq!(l.on(&press(3, 5)), chosen("b", true));
     }
 
@@ -1375,9 +1372,9 @@ mod tests {
     fn a_press_on_another_row_ends_a_double_click() {
         let (mut l, clock) = timed();
         l.on(&press(3, 5));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(l.on(&press(4, 5)), chosen("c", false));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(l.on(&press(3, 5)), chosen("b", false));
     }
 
@@ -1387,12 +1384,12 @@ mod tests {
         for row in [0, 1, 5, 7] {
             let (mut l, clock) = timed();
             l.on(&press(3, 5));
-            at_ms(&clock, 100);
+            clock.set_ms(100);
             assert_eq!(
                 l.on(&press(row, 5)),
                 Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Sessions)))
             );
-            at_ms(&clock, 200);
+            clock.set_ms(200);
             assert_eq!(l.on(&press(3, 5)), chosen("b", false), "{row}");
         }
     }
@@ -1401,10 +1398,10 @@ mod tests {
     fn a_press_elsewhere_ends_a_double_click_and_answers_nothing() {
         let (mut l, clock) = timed();
         l.on(&press(3, 5));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(l.on(&ELSEWHERE), None);
         assert_eq!(l.state(), State::Single(StateValue::Usize(1)));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(l.on(&press(3, 5)), chosen("b", false));
         assert_eq!(list(sample(true), None, true).on(&ELSEWHERE), None);
     }
@@ -1413,12 +1410,12 @@ mod tests {
     fn the_wheel_does_not_end_a_double_click() {
         let (mut l, clock) = timed();
         l.on(&press(3, 5));
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(
             l.on(&mouse(MouseEventKind::ScrollDown, 10, 3, 5)),
             selected("c")
         );
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(l.on(&press(3, 5)), chosen("b", true));
     }
 
@@ -1428,7 +1425,7 @@ mod tests {
         let clock = TestClock::new();
         l.attr(CLICK_CLOCK_ATTR, clock.click_clock().value());
         l.on(&press(3, 5));
-        at_ms(&clock, 401);
+        clock.set_ms(401);
         assert_eq!(l.on(&press(3, 5)), chosen("b", false));
     }
 

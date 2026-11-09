@@ -360,7 +360,7 @@ impl ThemeSelector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::TestClock;
+    use crate::test_support::TestClock;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
     use crate::theme::{Token, TokenOverride, builtin};
     use ratatui::style::{Color, Modifier};
@@ -723,10 +723,6 @@ mod tests {
         (s, clock)
     }
 
-    fn at_ms(clock: &TestClock, ms: u64) {
-        clock.set(std::time::Duration::from_millis(ms));
-    }
-
     const ELSEWHERE: Event<UserEvent> = Event::User(UserEvent::PointerElsewhere);
 
     #[test]
@@ -734,7 +730,7 @@ mod tests {
         for (ms, keep) in [(0, true), (400, true), (401, false)] {
             let (mut s, clock) = timed();
             assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
-            at_ms(&clock, ms);
+            clock.set_ms(ms);
             assert_eq!(click_line(&mut s, 3), chosen("gruvbox", keep), "{ms} ms");
         }
     }
@@ -743,11 +739,11 @@ mod tests {
     fn a_third_press_starts_a_new_double_click() {
         let (mut s, clock) = timed();
         click_line(&mut s, 3);
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(click_line(&mut s, 3), chosen("gruvbox", true));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
-        at_ms(&clock, 300);
+        clock.set_ms(300);
         assert_eq!(click_line(&mut s, 3), chosen("gruvbox", true));
     }
 
@@ -755,9 +751,9 @@ mod tests {
     fn a_press_on_another_theme_ends_a_double_click() {
         let (mut s, clock) = timed();
         click_line(&mut s, 3);
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(click_line(&mut s, 4), chosen("nord", false));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
     }
 
@@ -768,9 +764,9 @@ mod tests {
         for (column, row) in [(6, 0), (6, 1), (6, size.height - 2), (0, 5)] {
             let (mut s, clock) = timed();
             click_line(&mut s, 3);
-            at_ms(&clock, 100);
+            clock.set_ms(100);
             assert_eq!(s.on(&mouse(&s, PRESS, column, row)), None);
-            at_ms(&clock, 200);
+            clock.set_ms(200);
             assert_eq!(
                 click_line(&mut s, 3),
                 chosen("gruvbox", false),
@@ -793,10 +789,10 @@ mod tests {
     fn a_press_elsewhere_ends_a_double_click_and_answers_nothing() {
         let (mut s, clock) = timed();
         click_line(&mut s, 3);
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         assert_eq!(s.on(&ELSEWHERE), None);
         assert_eq!(selected(&s).as_deref(), Some("gruvbox"), "the cursor stays");
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
     }
 
@@ -804,10 +800,10 @@ mod tests {
     fn the_wheel_does_not_end_a_double_click() {
         let (mut s, clock) = timed();
         click_line(&mut s, 3);
-        at_ms(&clock, 100);
+        clock.set_ms(100);
         let down = mouse(&s, MouseEventKind::ScrollDown, 6, 5);
         assert_eq!(s.on(&down), Some(Msg::PreviewTheme("nord".into())));
-        at_ms(&clock, 200);
+        clock.set_ms(200);
         assert_eq!(click_line(&mut s, 3), chosen("gruvbox", true));
     }
 
@@ -817,7 +813,7 @@ mod tests {
         let clock = TestClock::new();
         s.attr(CLICK_CLOCK_ATTR, clock.click_clock().value());
         click_line(&mut s, 3);
-        at_ms(&clock, 401);
+        clock.set_ms(401);
         assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
     }
 
