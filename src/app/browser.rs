@@ -1,7 +1,9 @@
 //! The session browser's part of the application
 //! (architecture.md#application-structure,
 //! architecture.md#events-focus-and-keys, product §3.1, §4.2): opening a
-//! session, the updates of its load, and the selector over the browser.
+//! session, the updates of its load, and the selector over the browser. It
+//! handles the browser's concern, [`BrowserMsg`]: those, the subagents, and
+//! the turns sidebar, whose handlers are in `sidebar.rs`.
 //!
 //! Opening a session loads it on a worker through its harness. The worker's
 //! [`ModelUpdate`](crate::model::ModelUpdate)s come back as
@@ -35,7 +37,9 @@ use crate::components::{
 };
 use crate::harness::{Harness, WatchHandle};
 use crate::keymap::{Action, Context};
-use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary, ToolCallId, is_active_at};
+use crate::model::{
+    HarnessId, ModelUpdate, SessionId, SessionSummary, ToolCallId, TurnId, is_active_at,
+};
 use crate::theme::Role;
 
 /// The browser's components, in drawing order.
@@ -53,6 +57,58 @@ pub const NO_SUBAGENT_TRANSCRIPT: &str = "No transcript for this subagent";
 
 /// The columns the browser's help line text is inset from each side.
 const HELP_LINE_INSET: u16 = 1;
+
+/// Something happened to the open session, its subagents or the turns
+/// sidebar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowserMsg {
+    /// The user asked to open this session of this harness.
+    OpenSession(HarnessId, SessionId),
+    /// The user asked for the session selector over the open session.
+    OpenSelector,
+    /// `Esc` in the selector with a session open behind it: close the
+    /// selector.
+    CloseSelector,
+    /// The load of the open session reported something. `generation` is the
+    /// number of the load; updates of a load that has been replaced are
+    /// dropped.
+    Session {
+        generation: u64,
+        update: SessionUpdate,
+    },
+    /// `a` on a subagent section: open the transcript of the subagent that
+    /// tool call `call_id` started. `label` (the agent type) is the
+    /// breadcrumb's segment.
+    OpenSubagent { call_id: ToolCallId, label: String },
+    /// The lookup that `a` on a subagent section started answered:
+    /// `generation` numbers the lookup and the load of the subagent, and
+    /// `found` is its session, `None` when it has no transcript. The answer
+    /// to a lookup that is no longer waited for is dropped.
+    SubagentLookedUp {
+        generation: u64,
+        found: Option<SessionId>,
+    },
+    /// The back key in a subagent's transcript: return to the one it was
+    /// opened from.
+    CloseSubagent,
+    /// `1`, `Tab` or `Shift-Tab` in the transcript: focus the turns sidebar.
+    /// Nothing happens while the sidebar is hidden.
+    FocusTurns,
+    /// `Tab`, `Shift-Tab`, `→` or `l` in the turns sidebar: focus the
+    /// transcript on top, leaving it as it is.
+    FocusTranscript,
+    /// A key in the turns sidebar selected the entry of this turn: scroll the
+    /// transcript to its block.
+    TurnSelected(TurnId),
+    /// A left press on the entry of this turn in the turns sidebar: focus
+    /// the sidebar, select the entry and scroll the transcript to its block;
+    /// with `enter` (the press completed a double-click), then do what
+    /// `Enter` does: focus the transcript.
+    ChooseTurn { id: TurnId, enter: bool },
+    /// `Enter` in the turns sidebar on the entry of this turn: scroll the
+    /// transcript to its block and focus it.
+    OpenTurn(TurnId),
+}
 
 /// The session that is open.
 #[derive(Debug, Clone)]
@@ -239,6 +295,27 @@ pub(super) fn transcript_id(depth: usize) -> Id {
 }
 
 impl App {
+    /// Hands a message of the browser to its handler, here or in the turns
+    /// sidebar's module.
+    pub(super) fn browser_msg(&mut self, msg: BrowserMsg) {
+        match msg {
+            BrowserMsg::OpenSession(harness, session) => self.open_session(harness, &session),
+            BrowserMsg::OpenSelector => self.open_selector(),
+            BrowserMsg::CloseSelector => self.close_selector(),
+            BrowserMsg::Session { generation, update } => self.session_update(generation, &update),
+            BrowserMsg::OpenSubagent { call_id, label } => self.open_subagent(&call_id, label),
+            BrowserMsg::SubagentLookedUp { generation, found } => {
+                self.subagent_looked_up(generation, found);
+            }
+            BrowserMsg::CloseSubagent => self.close_subagent(),
+            BrowserMsg::FocusTurns => self.focus_turns(),
+            BrowserMsg::FocusTranscript => self.focus_transcript_from_sidebar(),
+            BrowserMsg::TurnSelected(id) => self.go_to_turn(&id, false),
+            BrowserMsg::ChooseTurn { id, enter } => self.choose_turn(id, enter),
+            BrowserMsg::OpenTurn(id) => self.go_to_turn(&id, true),
+        }
+    }
+
     // -- read access, for tests
 
     /// The id of the active theme.

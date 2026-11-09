@@ -62,21 +62,21 @@ fn on(id: &SectionId) -> Transcript {
 
 fn copied(msg: Option<Msg>) -> String {
     match msg {
-        Some(Msg::CopyText(text)) => text,
+        Some(Msg::Output(OutputMsg::CopyText(text))) => text,
         other => panic!("expected CopyText, got {other:?}"),
     }
 }
 
 fn saved(msg: Option<Msg>) -> (String, &'static str) {
     match msg {
-        Some(Msg::SaveSection { text, kind }) => (text, kind),
+        Some(Msg::Output(OutputMsg::SaveSection { text, kind })) => (text, kind),
         other => panic!("expected SaveSection, got {other:?}"),
     }
 }
 
 fn exported(msg: Option<Msg>) -> String {
     match msg {
-        Some(Msg::Export { document, .. }) => document,
+        Some(Msg::Output(OutputMsg::Export { document, .. })) => document,
         other => panic!("expected Export, got {other:?}"),
     }
 }

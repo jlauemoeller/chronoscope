@@ -18,7 +18,7 @@ use crate::app::fixtures::{
     fixture_snapshot, full_stats_event, search_snapshot, worked_example_stats,
 };
 use crate::app::redraw::RedrawRequest;
-use crate::app::{App, Id, Msg, Pane, SelectorMsg};
+use crate::app::{App, Id, Msg, Pane, PromptMsg, PromptPurpose, SelectorMsg, WorkerMsg};
 use crate::components::{SESSION_TIME_ATTR, SESSION_TOKENS_ATTR, SessionTimes, payload_from_value};
 use crate::model::{HarnessId, ProjectId, SessionId, SessionStats, TokenUsage};
 use crate::test_support::{buffer_to_text, render};
@@ -567,7 +567,10 @@ fn moving_through_results_one_update_per_move_shows_the_move_in_the_same_frame()
     let mut app = searching("brio");
     for _ in 0..3 {
         let before = shown(&mut app);
-        app.update(Msg::PromptNav(Direction::Down));
+        app.update(Msg::Prompt(PromptMsg::Nav(
+            PromptPurpose::SelectorSearch,
+            Direction::Down,
+        )));
         let id = app.selected_result().unwrap();
         // Drawn once, right after the one message.
         let now = shown(&mut app);
@@ -660,7 +663,9 @@ fn answer(app: &mut App, results: &std::sync::mpsc::Receiver<crate::app::SearchR
     let result = results
         .recv_timeout(Duration::from_secs(5))
         .expect("the worker answers");
-    app.update(Msg::SearchResults(crate::app::SearchUpdate::new(result)));
+    app.update(Msg::Worker(WorkerMsg::SearchResults(
+        crate::app::SearchUpdate::new(result),
+    )));
 }
 
 #[test]

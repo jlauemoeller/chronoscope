@@ -37,9 +37,9 @@ fn they_show_them_again_after_the_selector_was_closed_and_reopened() {
     )));
     rig.open_loaded();
     for _ in 0..3 {
-        rig.app.update(Msg::OpenSelector);
+        rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
         assert_eq!(shown(&mut rig.app), expected(3));
-        rig.app.update(Msg::CloseSelector);
+        rig.app.update(Msg::Browser(BrowserMsg::CloseSelector));
         assert!(!rig.app.application().mounted(&Id::SessionTokens));
     }
 }
@@ -48,15 +48,15 @@ fn they_show_them_again_after_the_selector_was_closed_and_reopened() {
 fn stats_that_arrive_behind_the_browser_are_shown_when_the_selector_opens() {
     let mut rig = rig();
     rig.open_loaded();
-    rig.app.update(Msg::OpenSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
     assert_eq!(shown(&mut rig.app), Vec::new(), "no stats yet");
-    rig.app.update(Msg::CloseSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::CloseSelector));
     rig.app.update(fixtures::message(full_stats_event(
         CLAUDE,
         BRIO_SESSION,
         numbered(5),
     )));
-    rig.app.update(Msg::OpenSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
     assert_eq!(shown(&mut rig.app), expected(5));
     // Stats that arrive while the selector is open show at once.
     rig.app.update(fixtures::message(full_stats_event(
@@ -79,11 +79,14 @@ fn another_session_s_values_do_not_stay_after_opening_it_and_the_selector_again(
     }
     rig.harness.script(NEWER_SESSION, vec![ModelUpdate::Loaded]);
     rig.open_loaded();
-    rig.app.update(Msg::OpenSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
     assert_eq!(shown(&mut rig.app), expected(3));
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     rig.pump_until(App::session_loaded);
-    rig.app.update(Msg::OpenSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
     assert_eq!(
         rig.app.selected_session().map(SessionId::as_str),
         Some(NEWER_SESSION)

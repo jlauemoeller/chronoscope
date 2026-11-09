@@ -9,6 +9,11 @@
 //! result row is reported by the list and moves it too. `Enter` asks to open
 //! the selected result and `Esc` clears the query and puts the selector back
 //! as the search found it.
+//!
+//! It handles the messages of the prompt mounted for
+//! [`PromptPurpose::SelectorSearch`] (prompt concern) and the search worker's
+//! answers, [`WorkerMsg::SearchResults`](super::WorkerMsg::SearchResults)
+//! (worker concern).
 
 use std::sync::Arc;
 
@@ -19,8 +24,8 @@ use tuirealm::props::{AttrValue, Attribute};
 
 use super::search_worker::{SearchRequest, SearchResult, SearchUpdate, SearchWorker};
 use super::selector::SelectorState;
-use super::{App, Id, Msg, Pane};
-use crate::components::{Prompt, PromptMode, SessionRow, SessionRows};
+use super::{App, BrowserMsg, Id, Msg, Pane, PromptPurpose};
+use crate::components::{Prompt, SessionRow, SessionRows};
 use crate::index::SessionMap;
 use crate::model::{Project, SessionId, SessionSummary, is_active};
 
@@ -193,7 +198,12 @@ impl App {
         if self.selector.search.is_some() {
             return;
         }
-        let prompt = Prompt::new(SEARCH_LABEL, "", PromptMode::Text, self.theme.clone());
+        let prompt = Prompt::new(
+            SEARCH_LABEL,
+            "",
+            PromptPurpose::SelectorSearch,
+            self.theme.clone(),
+        );
         if let Err(err) = self.open_overlay(Id::Prompt, Box::new(prompt)) {
             log::warn!("could not open the search prompt: {err}");
             return;
@@ -260,7 +270,7 @@ impl App {
             return;
         }
         if let Some(session) = self.selected_result() {
-            self.emit(Msg::OpenSession(harness, session));
+            self.emit(Msg::Browser(BrowserMsg::OpenSession(harness, session)));
         }
     }
 

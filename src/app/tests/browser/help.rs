@@ -68,7 +68,7 @@ fn the_help_key_in_the_browser_opens_the_overlay_and_gives_it_the_focus() {
     rig.press(Key::Char('?'));
     let seen = rig.pump_until(|app| app.application().mounted(&Id::HelpOverlay));
     assert!(
-        seen.contains(&Msg::OpenHelp(HelpContext::Browser)),
+        seen.contains(&Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser))),
         "{seen:?}"
     );
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
@@ -97,9 +97,14 @@ fn the_help_key_closes_the_overlay_too() {
     rig.open_help();
     rig.press(Key::Char('?'));
     let seen = rig.pump_until(|app| !app.application().mounted(&Id::HelpOverlay));
-    assert!(seen.contains(&Msg::CloseHelp), "{seen:?}");
     assert!(
-        !seen.iter().any(|m| matches!(m, Msg::OpenHelp(_))),
+        seen.contains(&Msg::Overlay(OverlayMsg::CloseHelp)),
+        "{seen:?}"
+    );
+    assert!(
+        !seen
+            .iter()
+            .any(|m| matches!(m, Msg::Overlay(OverlayMsg::OpenHelp(_)))),
         "the same key must not reopen it: {seen:?}"
     );
     assert_eq!(rig.focus(), Some(Id::Transcript));
@@ -122,9 +127,12 @@ fn quit_and_theme_keys_do_nothing_while_it_is_open() {
     let seen = rig.settle();
     assert!(!rig.app.should_quit(), "{seen:?}");
     assert!(
-        !seen
-            .iter()
-            .any(|m| matches!(m, Msg::Quit | Msg::OpenSelector | Msg::OpenSearch)),
+        !seen.iter().any(|m| matches!(
+            m,
+            Msg::Quit
+                | Msg::Browser(BrowserMsg::OpenSelector)
+                | Msg::Transcript(TranscriptMsg::OpenSearch)
+        )),
         "{seen:?}"
     );
     assert!(rig.help_open());
@@ -151,14 +159,16 @@ fn a_second_open_request_changes_nothing() {
     let mut rig = rig();
     rig.open_loaded();
     rig.open_help();
-    rig.app.update(Msg::OpenHelp(HelpContext::Browser));
-    rig.app.update(Msg::OpenHelp(HelpContext::Selector));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)));
+    rig.app
+        .update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector)));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
-    rig.app.update(Msg::CloseHelp);
+    rig.app.update(Msg::Overlay(OverlayMsg::CloseHelp));
     assert!(!rig.help_open());
     assert_eq!(rig.focus(), Some(Id::Transcript));
     // A close without an overlay is harmless.
-    rig.app.update(Msg::CloseHelp);
+    rig.app.update(Msg::Overlay(OverlayMsg::CloseHelp));
     assert_eq!(rig.focus(), Some(Id::Transcript));
 }
 
@@ -169,7 +179,7 @@ fn the_help_key_in_the_startup_selector_opens_the_selectors_help() {
     rig.press(Key::Char('?'));
     let seen = rig.pump_until(|app| app.application().mounted(&Id::HelpOverlay));
     assert!(
-        seen.contains(&Msg::OpenHelp(HelpContext::Selector)),
+        seen.contains(&Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector))),
         "{seen:?}"
     );
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
@@ -202,7 +212,7 @@ fn the_selector_over_the_browser_opens_the_selectors_help_and_gives_back_both_fo
     rig.press(Key::Char('?'));
     let seen = rig.pump_until(|app| app.application().mounted(&Id::HelpOverlay));
     assert!(
-        seen.contains(&Msg::OpenHelp(HelpContext::Selector)),
+        seen.contains(&Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector))),
         "{seen:?}"
     );
     rig.press(Key::Esc);
@@ -217,7 +227,7 @@ fn the_selector_over_the_browser_opens_the_selectors_help_and_gives_back_both_fo
     rig.press(Key::Char('?'));
     let seen = rig.pump_until(|app| app.application().mounted(&Id::HelpOverlay));
     assert!(
-        seen.contains(&Msg::OpenHelp(HelpContext::Browser)),
+        seen.contains(&Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser))),
         "{seen:?}"
     );
 }
@@ -237,7 +247,10 @@ fn the_question_mark_is_text_in_a_prompt() {
 fn opening_another_session_drops_the_overlay() {
     let mut rig = rig();
     rig.open_help();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     assert!(!rig.help_open());
     assert_eq!(rig.focus(), Some(Id::Transcript));
 }

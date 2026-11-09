@@ -155,13 +155,13 @@ fn enter_opens_the_selected_match_and_the_arrows_move_the_selection() {
     let mut app = filtered();
     assert_eq!(
         super::super::selector::key_msg(&mut app, Key::Enter),
-        Some(Msg::OpenSession(CLAUDE, id(FIRST)))
+        Some(Msg::Browser(BrowserMsg::OpenSession(CLAUDE, id(FIRST))))
     );
     press(&mut app, Key::Down);
     press(&mut app, Key::Down);
     assert_eq!(
         super::super::selector::key_msg(&mut app, Key::Enter),
-        Some(Msg::OpenSession(CLAUDE, id(THIRD)))
+        Some(Msg::Browser(BrowserMsg::OpenSession(CLAUDE, id(THIRD))))
     );
     press(&mut app, Key::Up);
     assert_eq!(session_rows(&app).selected, Some(1));
@@ -796,7 +796,8 @@ fn choosing_a_theme_saves_it_to_the_config_file_given_with_config() {
     let init = AppInit::load(Some(&paths), &env);
     let mut rig = build_rig_from(init, 120, 40, false);
     rig.open_themes();
-    rig.app.update(Msg::SelectTheme("nord".to_owned()));
+    rig.app
+        .update(Msg::Theme(ThemeMsg::Select("nord".to_owned())));
     let saved = std::fs::read_to_string(&other).unwrap();
     assert!(saved.contains("theme = \"nord\""), "{saved}");
     assert!(saved.contains("utc = true"), "the rest is kept: {saved}");
@@ -834,7 +835,8 @@ fn a_theme_given_for_the_run_is_applied_without_writing() {
     );
     // Choosing a theme is still saved, to the file in use.
     rig.open_themes();
-    rig.app.update(Msg::SelectTheme("solarized".to_owned()));
+    rig.app
+        .update(Msg::Theme(ThemeMsg::Select("solarized".to_owned())));
     let saved = std::fs::read_to_string(&config).unwrap();
     assert!(saved.contains("theme = \"solarized\""), "{saved}");
 }

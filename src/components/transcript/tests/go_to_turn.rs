@@ -153,9 +153,15 @@ fn one_tab_and_shift_tab_ask_for_the_sidebar_and_move_nothing() {
     let mut t = session_transcript(80, 24);
     ch(&mut t, 'j');
     let before = t.presentation();
-    assert_eq!(ch(&mut t, '1'), Some(Msg::FocusTurns));
-    assert_eq!(press(&mut t, Key::Tab), Some(Msg::FocusTurns));
-    assert_eq!(t.on(&shift_tab()), Some(Msg::FocusTurns));
+    assert_eq!(ch(&mut t, '1'), Some(Msg::Browser(BrowserMsg::FocusTurns)));
+    assert_eq!(
+        press(&mut t, Key::Tab),
+        Some(Msg::Browser(BrowserMsg::FocusTurns))
+    );
+    assert_eq!(
+        t.on(&shift_tab()),
+        Some(Msg::Browser(BrowserMsg::FocusTurns))
+    );
     assert_eq!(t.presentation(), before);
 }
 
@@ -168,10 +174,10 @@ fn the_focus_keys_follow_the_keymap() {
     let (keymap, warnings) = crate::keymap::Keymap::from_config(&raw);
     assert!(warnings.is_empty(), "{warnings:?}");
     let mut t = session_transcript(80, 24).keymap(keymap);
-    assert_eq!(ch(&mut t, 'f'), Some(Msg::FocusTurns));
+    assert_eq!(ch(&mut t, 'f'), Some(Msg::Browser(BrowserMsg::FocusTurns)));
     assert_eq!(
         t.on(&super::keys::key(Key::Char('n'), KeyModifiers::CONTROL)),
-        Some(Msg::FocusTurns)
+        Some(Msg::Browser(BrowserMsg::FocusTurns))
     );
     assert_eq!(ch(&mut t, '1'), None, "the default is replaced");
     assert_eq!(press(&mut t, Key::Tab), None);

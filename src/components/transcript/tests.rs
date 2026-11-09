@@ -43,7 +43,9 @@ pub(super) fn item_section(turn: &str, item: &str) -> SectionId {
 /// The answer to a key, a wheel step or a click that moved the selection:
 /// the section selected now.
 pub(super) fn moved_to(t: &Transcript) -> Option<Msg> {
-    Some(Msg::SelectionChanged(t.selected().cloned().unwrap()))
+    Some(Msg::Transcript(TranscriptMsg::SelectionChanged(
+        t.selected().cloned().unwrap(),
+    )))
 }
 
 /// Markdown that renders to 40 rows: one list item per row.

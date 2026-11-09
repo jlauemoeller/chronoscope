@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, TimeZone, Utc};
 
-use super::{IndexUpdate, Msg};
+use super::{IndexUpdate, Msg, WorkerMsg};
 use crate::index::{IndexEvent, SessionMap};
 use crate::model::{
     HarnessId, Project, ProjectId, SessionId, SessionStats, SessionSummary, TokenUsage,
@@ -166,7 +166,10 @@ pub fn snapshot_event(
 /// sequence number.
 pub fn message(event: IndexEvent) -> Msg {
     static SEQ: AtomicU64 = AtomicU64::new(1);
-    Msg::Index(IndexUpdate::new(SEQ.fetch_add(1, Ordering::Relaxed), event))
+    Msg::Worker(WorkerMsg::Index(IndexUpdate::new(
+        SEQ.fetch_add(1, Ordering::Relaxed),
+        event,
+    )))
 }
 
 pub fn stats_event(harness: HarnessId, session: &str, turns: usize, secs: u64) -> IndexEvent {

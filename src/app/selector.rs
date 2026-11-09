@@ -10,6 +10,10 @@
 //! the same index) and pushes rows and selection into the components. It
 //! keeps what it gave the Sessions pane ([`ListedSessions`]), so it never
 //! reads a list back.
+//!
+//! It handles the selector concern, [`SelectorMsg`], and the snapshots and
+//! stats of the session index,
+//! [`WorkerMsg::Index`](super::WorkerMsg::Index) (worker concern).
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -24,7 +28,7 @@ use super::index_port::IndexUpdate;
 use super::layout::{browser_areas, selector_areas};
 use super::redraw::RedrawRequest;
 use super::search::SearchState;
-use super::{App, Id, Msg, UserEvent};
+use super::{App, BrowserMsg, Id, Msg, UserEvent};
 use crate::components::{
     ACTIVE_ATTR, ActiveSessions, BackgroundFill, CWD_ATTR, ClickClock, HINTS_ATTR, HarnessTabs,
     HelpLine, ListCursor, PROJECT_ROWS_ATTR, PROJECTS_FILTERED_ATTR, ProjectList, ProjectRow,
@@ -955,7 +959,7 @@ impl App {
         self.session_selected(id.clone());
         self.focus_pane(Pane::Sessions);
         if open && let Some(harness) = self.selector.current {
-            self.emit(Msg::OpenSession(harness, id));
+            self.emit(Msg::Browser(BrowserMsg::OpenSession(harness, id)));
         }
     }
 

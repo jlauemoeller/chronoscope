@@ -13,7 +13,7 @@ use tuirealm::listener::EventListenerCfg;
 
 use crate::app::fixtures::{self, fixture_snapshot, message, now};
 use crate::app::redraw::RedrawRequest;
-use crate::app::{App, AppInit, Id, IndexPort, Msg, Pane, SelectorMsg, UserEvent};
+use crate::app::{App, AppInit, Id, IndexPort, Msg, Pane, SelectorMsg, UserEvent, WorkerMsg};
 use crate::components::{
     CWD_ATTR, PROJECT_ROWS_ATTR, ProjectRows, SESSION_ROWS_ATTR, SessionRows, TABS_ATTR, Tab, Tabs,
     VISIBLE_ROWS_ATTR, payload_from_value,
@@ -330,11 +330,17 @@ fn a_snapshot_travels_from_the_port_through_global_events_to_update() {
     let mut msgs = Vec::new();
     for _ in 0..100 {
         msgs.extend(app.tick().unwrap());
-        if msgs.iter().any(|m| matches!(m, Msg::Index(_))) {
+        if msgs
+            .iter()
+            .any(|m| matches!(m, Msg::Worker(WorkerMsg::Index(_))))
+        {
             break;
         }
     }
-    let indexes = msgs.iter().filter(|m| matches!(m, Msg::Index(_))).count();
+    let indexes = msgs
+        .iter()
+        .filter(|m| matches!(m, Msg::Worker(WorkerMsg::Index(_))))
+        .count();
     assert_eq!(indexes, 1, "{msgs:?}");
     assert_eq!(app.selected_harness(), None, "nothing applied yet");
     for msg in msgs {

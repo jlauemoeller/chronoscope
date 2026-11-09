@@ -1,6 +1,7 @@
 //! Searching the transcript (product §5.2) through the app: the prompt, the
 //! worker and its port, the results, the help line and the screens.
 
+use tuirealm::command::Direction;
 use tuirealm::state::{State, StateValue};
 
 use super::*;
@@ -163,7 +164,10 @@ fn typing_in_the_prompt_asks_for_a_redraw() {
     let mut rig = searching_rig();
     rig.open_prompt();
     rig.app.take_redraw();
-    rig.app.update(Msg::PromptChanged("u".to_owned()));
+    rig.app.update(Msg::Prompt(PromptMsg::Changed(
+        PromptPurpose::TranscriptSearch,
+        "u".to_owned(),
+    )));
     assert_ne!(
         rig.app.take_redraw(),
         crate::app::redraw::RedrawRequest::None
@@ -203,15 +207,31 @@ fn enter_on_an_empty_query_closes_the_prompt_without_searching() {
 
 #[test]
 fn the_selectors_prompt_messages_do_not_reach_the_browser_prompt() {
-    // `PromptSubmit` while the browser prompt is open must not open a session.
     let mut rig = searching_rig();
     rig.open_prompt();
-    rig.app.update(Msg::PromptSubmit("anything".to_owned()));
+    rig.type_text("usb");
+    rig.pump_until(|app| prompt_text(app) == "usb");
+    for msg in [
+        PromptMsg::Changed(PromptPurpose::SelectorSearch, "zebra".to_owned()),
+        PromptMsg::Nav(PromptPurpose::SelectorSearch, Direction::Down),
+        PromptMsg::Submit(PromptPurpose::SelectorSearch, "zebra".to_owned()),
+        PromptMsg::Cancel(PromptPurpose::SelectorSearch),
+    ] {
+        rig.app.update(Msg::Prompt(msg.clone()));
+        assert!(rig.app.transcript_prompt_open(), "{msg:?}");
+        assert_eq!(prompt_text(&rig.app), "usb", "{msg:?}");
+        assert!(rig.app.take_queued().is_empty(), "{msg:?}");
+    }
+    // The transcript prompt's own submit searches and opens no session.
+    rig.app.update(Msg::Prompt(PromptMsg::Submit(
+        PromptPurpose::TranscriptSearch,
+        "anything".to_owned(),
+    )));
     let queued = rig.app.take_queued();
     assert!(
         queued
             .iter()
-            .all(|m| matches!(m, Msg::StartTranscriptSearch { .. })),
+            .all(|m| matches!(m, Msg::Transcript(TranscriptMsg::StartSearch { .. }))),
         "{queued:?}"
     );
     assert_eq!(rig.app.screen(), Screen::Browser);
@@ -404,10 +424,10 @@ fn the_search_runs_on_the_worker_and_its_answer_comes_back_through_the_port() {
     let seen = rig.pump_until(|app| app.transcript_search_position().is_some());
     let start = seen
         .iter()
-        .position(|m| matches!(m, Msg::StartTranscriptSearch { query, .. } if query == "usb"));
+        .position(|m| matches!(m, Msg::Transcript(TranscriptMsg::StartSearch { query, .. }) if query == "usb"));
     let answer = seen
         .iter()
-        .position(|m| matches!(m, Msg::TranscriptSearchResults(r) if r.matches().len() == 5));
+        .position(|m| matches!(m, Msg::Worker(WorkerMsg::TranscriptSearchResults(r)) if r.matches().len() == 5));
     // The answer is a message that a tick produced from a user event, after
     // the request was made.
     assert!(start.is_some(), "{seen:?}");
@@ -421,8 +441,11 @@ fn the_search_runs_on_the_worker_and_its_answer_comes_back_through_the_port() {
 #[test]
 fn the_answer_is_not_there_before_the_worker_has_delivered_it() {
     let mut rig = worker_rig(120, 40);
-    rig.app.update(Msg::OpenSearch);
-    rig.app.update(Msg::PromptSubmit("usb".to_owned()));
+    rig.app.update(Msg::Transcript(TranscriptMsg::OpenSearch));
+    rig.app.update(Msg::Prompt(PromptMsg::Submit(
+        PromptPurpose::TranscriptSearch,
+        "usb".to_owned(),
+    )));
     rig.drain();
     // The request was handed to the worker; nothing was searched here.
     assert_eq!(position(&rig.app), None);
@@ -433,15 +456,17 @@ fn the_answer_is_not_there_before_the_worker_has_delivered_it() {
 #[test]
 fn an_answer_with_an_old_generation_is_ignored() {
     let mut rig = worker_rig(120, 40);
-    rig.app.update(Msg::OpenSearch);
-    rig.app.update(Msg::PromptSubmit("usb".to_owned()));
+    rig.app.update(Msg::Transcript(TranscriptMsg::OpenSearch));
+    rig.app.update(Msg::Prompt(PromptMsg::Submit(
+        PromptPurpose::TranscriptSearch,
+        "usb".to_owned(),
+    )));
     rig.drain();
     // Answers to searches that are not the one asked for.
     for generation in [0, 1000] {
         rig.app
-            .update(Msg::TranscriptSearchResults(SearchMatches::new(
-                generation,
-                Vec::new(),
+            .update(Msg::Worker(WorkerMsg::TranscriptSearchResults(
+                SearchMatches::new(generation, Vec::new()),
             )));
     }
     assert_eq!(position(&rig.app), None, "neither was the answer");
@@ -449,9 +474,8 @@ fn an_answer_with_an_old_generation_is_ignored() {
     assert_eq!(position(&rig.app), Some("1/5".to_owned()));
     // Nor does one that arrives after the answer replace it.
     rig.app
-        .update(Msg::TranscriptSearchResults(SearchMatches::new(
-            1,
-            Vec::new(),
+        .update(Msg::Worker(WorkerMsg::TranscriptSearchResults(
+            SearchMatches::new(1, Vec::new()),
         )));
     assert_eq!(position(&rig.app), Some("1/5".to_owned()));
 }
@@ -459,11 +483,17 @@ fn an_answer_with_an_old_generation_is_ignored() {
 #[test]
 fn only_the_newest_search_is_shown() {
     let mut rig = worker_rig(120, 40);
-    rig.app.update(Msg::OpenSearch);
-    rig.app.update(Msg::PromptSubmit("usb".to_owned()));
+    rig.app.update(Msg::Transcript(TranscriptMsg::OpenSearch));
+    rig.app.update(Msg::Prompt(PromptMsg::Submit(
+        PromptPurpose::TranscriptSearch,
+        "usb".to_owned(),
+    )));
     rig.drain();
-    rig.app.update(Msg::OpenSearch);
-    rig.app.update(Msg::PromptSubmit("zebra".to_owned()));
+    rig.app.update(Msg::Transcript(TranscriptMsg::OpenSearch));
+    rig.app.update(Msg::Prompt(PromptMsg::Submit(
+        PromptPurpose::TranscriptSearch,
+        "zebra".to_owned(),
+    )));
     rig.drain();
     rig.pump_until(|app| app.transcript_search_position().is_some());
     rig.settle();
@@ -474,13 +504,17 @@ fn only_the_newest_search_is_shown() {
 #[test]
 fn clearing_the_search_drops_an_answer_still_on_its_way() {
     let mut rig = worker_rig(120, 40);
-    rig.app.update(Msg::OpenSearch);
-    rig.app.update(Msg::PromptSubmit("usb".to_owned()));
+    rig.app.update(Msg::Transcript(TranscriptMsg::OpenSearch));
+    rig.app.update(Msg::Prompt(PromptMsg::Submit(
+        PromptPurpose::TranscriptSearch,
+        "usb".to_owned(),
+    )));
     rig.drain();
-    rig.app.update(Msg::SearchPosition {
-        position: None,
-        view: ViewChange::default(),
-    });
+    rig.app
+        .update(Msg::Transcript(TranscriptMsg::SearchPosition {
+            position: None,
+            view: ViewChange::default(),
+        }));
     rig.settle();
     assert_eq!(position(&rig.app), None);
     assert!(status(&rig.app).is_empty());
@@ -497,8 +531,11 @@ fn an_answer_to_a_search_of_another_session_is_ignored() {
         NEWER_SESSION,
         vec![ModelUpdate::Appended(search_turns()), ModelUpdate::Loaded],
     );
-    rig.app.update(Msg::OpenSelector);
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     rig.pump_until(App::session_loaded);
     assert_eq!(position(&rig.app), None, "a fresh browser");
     let late = SearchMatches::new(
@@ -512,12 +549,16 @@ fn an_answer_to_a_search_of_another_session_is_ignored() {
             range: 0..3,
         }],
     );
-    rig.app.update(Msg::TranscriptSearchResults(late.clone()));
+    rig.app
+        .update(Msg::Worker(WorkerMsg::TranscriptSearchResults(
+            late.clone(),
+        )));
     assert_eq!(position(&rig.app), None);
     // A search of this session has a generation of its own.
     rig.search("usb");
     assert_eq!(position(&rig.app), Some("1/5".to_owned()));
-    rig.app.update(Msg::TranscriptSearchResults(late));
+    rig.app
+        .update(Msg::Worker(WorkerMsg::TranscriptSearchResults(late)));
     assert_eq!(position(&rig.app), Some("1/5".to_owned()));
 }
 

@@ -22,7 +22,7 @@ pub use content::{DetailsContent, DetailsGroup, DetailsRow};
 
 use super::overlay_frame::{FrameKey, INTERIOR_ATTR, OverlayFrame, interior_value};
 use super::{THEME_ATTR, payload_from_value, theme_from_value, theme_value};
-use crate::app::{Msg, RoutedMouse, UserEvent};
+use crate::app::{Msg, OverlayMsg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
 use crate::theme::Theme;
 
@@ -110,7 +110,7 @@ impl DetailsOverlay {
         let total = self.total();
         self.frame
             .on_mouse(mouse, total)
-            .then_some(Msg::DetailsScrolled)
+            .then_some(Msg::Overlay(OverlayMsg::DetailsScrolled))
     }
 }
 
@@ -128,7 +128,9 @@ impl AppComponent<Msg, UserEvent> for DetailsOverlay {
             // Only what the router sent here, in the overlay's coordinates.
             Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
             // A press outside closes it, as `Esc` does.
-            Event::User(UserEvent::PointerOutside) => return Some(Msg::CloseDetails),
+            Event::User(UserEvent::PointerOutside) => {
+                return Some(Msg::Overlay(OverlayMsg::CloseDetails));
+            }
             _ => return None,
         };
         // The `details` key has a resolver of its own, because it can be a
@@ -138,16 +140,15 @@ impl AppComponent<Msg, UserEvent> for DetailsOverlay {
         let completes_chord = self.resolver.completes(keymap, key, Action::Details);
         let resolved = self.resolver.feed(keymap, key);
         if completes_chord {
-            return Some(Msg::CloseDetails);
+            return Some(Msg::Overlay(OverlayMsg::CloseDetails));
         }
         let total = self.total();
         match self.frame.on_key(key, total) {
-            FrameKey::Close => Some(Msg::CloseDetails),
-            FrameKey::Scrolled => Some(Msg::DetailsScrolled),
+            FrameKey::Close => Some(Msg::Overlay(OverlayMsg::CloseDetails)),
+            FrameKey::Scrolled => Some(Msg::Overlay(OverlayMsg::DetailsScrolled)),
             FrameKey::Unmoved => None,
-            FrameKey::Unbound => {
-                (resolved == Resolved::Action(Action::Details)).then_some(Msg::CloseDetails)
-            }
+            FrameKey::Unbound => (resolved == Resolved::Action(Action::Details))
+                .then_some(Msg::Overlay(OverlayMsg::CloseDetails)),
         }
     }
 }
@@ -205,8 +206,14 @@ mod tests {
     #[test]
     fn esc_and_the_details_key_close_it() {
         let mut overlay = overlay(10);
-        assert_eq!(press(&mut overlay, Key::Esc), Some(Msg::CloseDetails));
-        assert_eq!(press(&mut overlay, Key::Char('i')), Some(Msg::CloseDetails));
+        assert_eq!(
+            press(&mut overlay, Key::Esc),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
+        assert_eq!(
+            press(&mut overlay, Key::Char('i')),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
     }
 
     #[test]
@@ -217,7 +224,10 @@ mod tests {
             .insert("details".to_owned(), vec!["x".to_owned()]);
         let (keymap, _) = Keymap::from_config(&raw);
         let mut overlay = overlay_with(keymap, 10);
-        assert_eq!(press(&mut overlay, Key::Char('x')), Some(Msg::CloseDetails));
+        assert_eq!(
+            press(&mut overlay, Key::Char('x')),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
         assert_eq!(press(&mut overlay, Key::Char('i')), None);
     }
 
@@ -235,7 +245,10 @@ mod tests {
     fn a_details_key_bound_to_a_chord_closes_it() {
         let mut overlay = chord_overlay();
         assert_eq!(press(&mut overlay, Key::Char('x')), None);
-        assert_eq!(press(&mut overlay, Key::Char('i')), Some(Msg::CloseDetails));
+        assert_eq!(
+            press(&mut overlay, Key::Char('i')),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
     }
 
     #[test]
@@ -252,10 +265,16 @@ mod tests {
     fn an_overlay_key_drops_a_pending_prefix() {
         let mut overlay = chord_overlay();
         assert_eq!(press(&mut overlay, Key::Char('x')), None);
-        assert_eq!(press(&mut overlay, Key::Down), Some(Msg::DetailsScrolled));
+        assert_eq!(
+            press(&mut overlay, Key::Down),
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
+        );
         assert_eq!(press(&mut overlay, Key::Char('i')), None);
         assert_eq!(press(&mut overlay, Key::Char('x')), None);
-        assert_eq!(press(&mut overlay, Key::Esc), Some(Msg::CloseDetails));
+        assert_eq!(
+            press(&mut overlay, Key::Esc),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
         assert_eq!(press(&mut overlay, Key::Char('i')), None);
     }
 
@@ -274,7 +293,10 @@ mod tests {
     fn a_chord_that_ends_in_an_overlay_key_closes_it() {
         let mut overlay = overlay_bound(&[("details", "x j")]);
         assert_eq!(press(&mut overlay, Key::Char('x')), None);
-        assert_eq!(press(&mut overlay, Key::Char('j')), Some(Msg::CloseDetails));
+        assert_eq!(
+            press(&mut overlay, Key::Char('j')),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
         assert_eq!(offset(&overlay), 0);
     }
 
@@ -283,7 +305,7 @@ mod tests {
         let mut overlay = overlay_bound(&[("details", "x j")]);
         assert_eq!(
             press(&mut overlay, Key::Char('j')),
-            Some(Msg::DetailsScrolled)
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
         );
         assert_eq!(offset(&overlay), 1);
     }
@@ -294,10 +316,13 @@ mod tests {
         assert_eq!(press(&mut overlay, Key::Char('i')), None);
         assert_eq!(
             press(&mut overlay, Key::Char('j')),
-            Some(Msg::DetailsScrolled)
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
         );
         assert_eq!(offset(&overlay), 1);
-        assert_eq!(press(&mut overlay, Key::Char('i')), Some(Msg::CloseDetails));
+        assert_eq!(
+            press(&mut overlay, Key::Char('i')),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
     }
 
     #[test]
@@ -306,7 +331,7 @@ mod tests {
         assert_eq!(press(&mut overlay, Key::Char('g')), None);
         assert_eq!(
             press(&mut overlay, Key::Char('j')),
-            Some(Msg::DetailsScrolled)
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
         );
         assert_eq!(offset(&overlay), 1);
     }
@@ -322,7 +347,7 @@ mod tests {
         let mut overlay = overlay_with(keymap, 10);
         assert_eq!(
             press(&mut overlay, Key::Char('j')),
-            Some(Msg::DetailsScrolled)
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
         );
         assert_eq!(offset(&overlay), 1);
     }
@@ -355,12 +380,15 @@ mod tests {
         let mut overlay = overlay(10);
         for code in [Key::Down, Key::Char('j')] {
             let before = offset(&overlay);
-            assert_eq!(press(&mut overlay, code), Some(Msg::DetailsScrolled));
+            assert_eq!(
+                press(&mut overlay, code),
+                Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
+            );
             assert_eq!(offset(&overlay), before + 1);
         }
         assert_eq!(
             press(&mut overlay, Key::PageDown),
-            Some(Msg::DetailsScrolled)
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
         );
         assert_eq!(offset(&overlay), 12);
         for _ in 0..5 {
@@ -368,7 +396,10 @@ mod tests {
         }
         assert_eq!(offset(&overlay), ROWS - 10, "clamped to the last page");
         assert_eq!(press(&mut overlay, Key::Down), None, "nothing moved");
-        assert_eq!(press(&mut overlay, Key::PageUp), Some(Msg::DetailsScrolled));
+        assert_eq!(
+            press(&mut overlay, Key::PageUp),
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
+        );
         assert_eq!(offset(&overlay), ROWS - 20);
         for _ in 0..5 {
             press(&mut overlay, Key::Up);
@@ -385,7 +416,7 @@ mod tests {
         let mut overlay = overlay(10);
         assert_eq!(
             wheel(&mut overlay, MouseEventKind::ScrollDown),
-            Some(Msg::DetailsScrolled)
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
         );
         assert_eq!(offset(&overlay), 3);
         for _ in 0..20 {
@@ -395,7 +426,7 @@ mod tests {
         assert_eq!(wheel(&mut overlay, MouseEventKind::ScrollDown), None);
         assert_eq!(
             wheel(&mut overlay, MouseEventKind::ScrollUp),
-            Some(Msg::DetailsScrolled)
+            Some(Msg::Overlay(OverlayMsg::DetailsScrolled))
         );
         assert_eq!(offset(&overlay), ROWS - 13);
     }
@@ -424,9 +455,15 @@ mod tests {
     fn a_press_outside_it_closes_it_as_esc_does() {
         let mut overlay = overlay(10);
         let outside = Event::User(UserEvent::PointerOutside);
-        assert_eq!(overlay.on(&outside), Some(Msg::CloseDetails));
+        assert_eq!(
+            overlay.on(&outside),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
         wheel(&mut overlay, MouseEventKind::ScrollDown);
-        assert_eq!(overlay.on(&outside), Some(Msg::CloseDetails));
+        assert_eq!(
+            overlay.on(&outside),
+            Some(Msg::Overlay(OverlayMsg::CloseDetails))
+        );
     }
 
     #[test]

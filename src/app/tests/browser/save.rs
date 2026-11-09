@@ -9,6 +9,8 @@
 
 use tuirealm::state::{State, StateValue};
 
+use tuirealm::command::Direction;
+
 use super::*;
 
 const SAVE_DEFAULT: &str = "./brio-85a86657-shell.txt";
@@ -80,7 +82,10 @@ impl Rig {
 
     /// Answers the path prompt with `path`, as `Enter` would.
     fn submit(&mut self, path: &str) {
-        self.app.update(Msg::PromptSubmit(path.to_owned()));
+        self.app.update(Msg::Prompt(PromptMsg::Submit(
+            PromptPurpose::SavePath,
+            path.to_owned(),
+        )));
     }
 }
 
@@ -217,14 +222,14 @@ fn ctrl_c_in_the_prompt_still_quits() {
 #[test]
 fn the_save_keys_do_nothing_before_a_session_is_open() {
     let mut rig = rig();
-    rig.app.update(Msg::SaveSection {
+    rig.app.update(Msg::Output(OutputMsg::SaveSection {
         text: "x".to_owned(),
         kind: "user",
-    });
-    rig.app.update(Msg::Export {
+    }));
+    rig.app.update(Msg::Output(OutputMsg::Export {
         full: false,
         document: "x".to_owned(),
-    });
+    }));
     assert!(!rig.prompt_mounted());
     assert!(!rig.app.write_prompt_open());
 }
@@ -470,6 +475,129 @@ fn any_other_key_than_y_is_a_no() {
     rig.press(Key::Enter);
     rig.pump_until(|app| !app.write_prompt_open());
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+}
+
+/// Sends `msg` as the prompt's message.
+fn prompt_says(rig: &mut Rig, msg: PromptMsg) {
+    rig.app.handle(Msg::Prompt(msg));
+}
+
+#[test]
+fn only_the_answer_of_the_overwrite_prompt_answers_the_question() {
+    let (mut rig, dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    let path = existing(&mut rig, &dir);
+    let other = path_str(&dir, "other.txt");
+    for msg in [
+        PromptMsg::Changed(PromptPurpose::SavePath, other.clone()),
+        PromptMsg::Nav(PromptPurpose::SavePath, Direction::Down),
+        PromptMsg::Submit(PromptPurpose::Overwrite, "y".to_owned()),
+        PromptMsg::Nav(PromptPurpose::Overwrite, Direction::Down),
+        PromptMsg::Cancel(PromptPurpose::Overwrite),
+        PromptMsg::Confirm(PromptPurpose::Resume, true),
+        PromptMsg::Confirm(PromptPurpose::SavePath, true),
+        PromptMsg::Cancel(PromptPurpose::TranscriptSearch),
+        PromptMsg::Submit(PromptPurpose::TranscriptSearch, "usb".to_owned()),
+        PromptMsg::Cancel(PromptPurpose::SelectorSearch),
+    ] {
+        prompt_says(&mut rig, msg.clone());
+        assert!(rig.app.write_prompt_open(), "{msg:?}");
+        assert!(rig.prompt_mounted(), "{msg:?}");
+        assert_eq!(rig.focus(), Some(Id::Prompt), "{msg:?}");
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+    assert!(!std::path::Path::new(&other).exists());
+    assert!(rig.app.take_queued().is_empty());
+    prompt_says(&mut rig, PromptMsg::Confirm(PromptPurpose::Overwrite, true));
+    assert!(!rig.app.write_prompt_open());
+    assert_ne!(std::fs::read_to_string(&path).unwrap(), "old contents");
+}
+
+#[test]
+fn a_path_submitted_while_the_overwrite_question_is_open_answers_it_no() {
+    // An `Enter` already on its way when the question replaced the path
+    // prompt: nothing is written and the question closes.
+    let (mut rig, dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    let path = existing(&mut rig, &dir);
+    prompt_says(
+        &mut rig,
+        PromptMsg::Submit(PromptPurpose::SavePath, SAVE_DEFAULT.to_owned()),
+    );
+    assert!(!rig.app.write_prompt_open());
+    assert!(!rig.prompt_mounted());
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+    assert_eq!(rig.shown_toast(), None);
+}
+
+#[test]
+fn two_enters_on_an_existing_path_write_nothing_and_close_the_question() {
+    let (mut rig, dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    let path = dir.path().join("brio-85a86657-shell.txt");
+    std::fs::write(&path, "old contents").unwrap();
+    rig.ask(Key::Char('w'), KeyModifiers::NONE);
+    // Both keys are waiting before the next tick.
+    rig.press(Key::Enter);
+    rig.press(Key::Enter);
+    rig.settle();
+    assert!(!rig.app.write_prompt_open());
+    assert!(!rig.prompt_mounted());
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+    assert_eq!(rig.shown_toast(), None);
+}
+
+#[test]
+fn typing_in_the_path_prompt_asks_for_a_redraw() {
+    let (mut rig, _dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    rig.ask(Key::Char('w'), KeyModifiers::NONE);
+    rig.app.take_redraw();
+    prompt_says(
+        &mut rig,
+        PromptMsg::Changed(PromptPurpose::SavePath, "./x".to_owned()),
+    );
+    assert_ne!(
+        rig.app.take_redraw(),
+        crate::app::redraw::RedrawRequest::None
+    );
+}
+
+#[test]
+fn an_answer_to_the_overwrite_question_while_the_path_is_asked_is_ignored() {
+    let (mut rig, dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    let path = dir.path().join("brio-85a86657-shell.txt");
+    std::fs::write(&path, "old contents").unwrap();
+    rig.ask(Key::Char('w'), KeyModifiers::NONE);
+    for yes in [true, false] {
+        prompt_says(&mut rig, PromptMsg::Confirm(PromptPurpose::Overwrite, yes));
+        assert!(rig.app.write_prompt_open(), "{yes}");
+        assert_eq!(prompt_text(&rig.app), SAVE_DEFAULT, "still the path prompt");
+    }
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+    // The path prompt still takes its path.
+    rig.submit(SAVE_DEFAULT);
+    assert!(rig.app.write_prompt_open(), "the overwrite question");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+}
+
+#[test]
+fn a_no_from_the_overwrite_prompt_writes_nothing() {
+    let (mut rig, dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    let path = existing(&mut rig, &dir);
+    prompt_says(
+        &mut rig,
+        PromptMsg::Confirm(PromptPurpose::Overwrite, false),
+    );
+    assert!(!rig.app.write_prompt_open());
+    assert!(!rig.prompt_mounted());
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+    assert_eq!(rig.shown_toast(), None);
 }
 
 #[test]

@@ -1,4 +1,4 @@
-//! `y` and `Y` (task 025): the transcript answers [`Msg::CopyText`] with the
+//! `y` and `Y` (task 025): the transcript answers [`OutputMsg::CopyText`] with the
 //! text of the selected section.
 
 use tuirealm::component::{AppComponent, Component};
@@ -14,7 +14,7 @@ use crate::model::ItemId;
 
 fn copied(msg: Option<Msg>) -> String {
     match msg {
-        Some(Msg::CopyText(text)) => text,
+        Some(Msg::Output(OutputMsg::CopyText(text))) => text,
         other => panic!("expected CopyText, got {other:?}"),
     }
 }
@@ -168,16 +168,25 @@ fn y_on_a_folded_prompt_copies_the_rows_shown_at_the_transcripts_width() {
 #[test]
 fn r_asks_to_resume_the_open_session_whatever_is_selected() {
     let mut t = session_transcript(80, 24);
-    assert_eq!(ch(&mut t, 'R'), Some(Msg::RequestResume(None)));
+    assert_eq!(
+        ch(&mut t, 'R'),
+        Some(Msg::Output(OutputMsg::RequestResume(None)))
+    );
     assert_eq!(
         t.on(&key(Key::Char('R'), KeyModifiers::SHIFT)),
-        Some(Msg::RequestResume(None))
+        Some(Msg::Output(OutputMsg::RequestResume(None)))
     );
     move_to(&mut t, &item_section("t2", "c1"));
-    assert_eq!(ch(&mut t, 'R'), Some(Msg::RequestResume(None)));
+    assert_eq!(
+        ch(&mut t, 'R'),
+        Some(Msg::Output(OutputMsg::RequestResume(None)))
+    );
     // Without a selection too: the target is the session, not a section.
     let mut empty = Transcript::new(blocks::theme(), blocks::formatter());
-    assert_eq!(ch(&mut empty, 'R'), Some(Msg::RequestResume(None)));
+    assert_eq!(
+        ch(&mut empty, 'R'),
+        Some(Msg::Output(OutputMsg::RequestResume(None)))
+    );
     // A lower-case `r` is not the resume key.
     assert_eq!(ch(&mut t, 'r'), None);
 }

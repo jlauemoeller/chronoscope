@@ -10,7 +10,7 @@ use super::selector::{
     tabs, text, theme,
 };
 use crate::app::fixtures::{self, at, project_in, snapshot_of, twelve_projects};
-use crate::app::{App, Id, Msg, Pane, SelectorMsg};
+use crate::app::{App, BrowserMsg, Id, Msg, Pane, SelectorMsg};
 use crate::components::{PROJECT_ROWS_ATTR, ProjectRows};
 use crate::index::SessionMap;
 use crate::model::{HarnessId, ProjectId, SessionId};
@@ -376,7 +376,13 @@ fn enter_in_sessions_asks_to_open_the_selected_session_and_changes_nothing_else(
     press(&mut app, Key::Down);
     press(&mut app, Key::Down);
     let msg = key_msg(&mut app, Key::Enter);
-    assert_eq!(msg, Some(Msg::OpenSession(CLAUDE, SessionId::from("s3"))));
+    assert_eq!(
+        msg,
+        Some(Msg::Browser(BrowserMsg::OpenSession(
+            CLAUDE,
+            SessionId::from("s3")
+        )))
+    );
     // Until the browser exists the app ignores the request.
     app.update(msg.unwrap());
     assert_eq!(app.selected_session().map(SessionId::as_str), Some("s3"));
@@ -393,7 +399,10 @@ fn enter_asks_for_the_session_of_the_harness_shown() {
     press(&mut app, Key::Enter);
     assert_eq!(
         key_msg(&mut app, Key::Enter),
-        Some(Msg::OpenSession(OPENCODE, SessionId::from("s1")))
+        Some(Msg::Browser(BrowserMsg::OpenSession(
+            OPENCODE,
+            SessionId::from("s1")
+        )))
     );
 }
 
@@ -424,7 +433,7 @@ fn esc_closes_the_selector_when_a_session_is_open_behind_it() {
             press(&mut app, *key);
         }
         let msg = key_msg(&mut app, Key::Esc);
-        assert_eq!(msg, Some(Msg::CloseSelector));
+        assert_eq!(msg, Some(Msg::Browser(BrowserMsg::CloseSelector)));
         app.update(msg.unwrap());
         assert!(!app.should_quit());
     }

@@ -1,4 +1,4 @@
-//! The details key (product §4.1): the transcript answers [`Msg::OpenDetails`]
+//! The details key (product §4.1): the transcript answers [`OverlayMsg::OpenDetails`]
 //! with the rows of the selected section, a `… N more lines` row as its tool
 //! call, and nothing with no selection.
 
@@ -9,13 +9,14 @@ use super::super::fixtures::*;
 use super::super::*;
 use super::keys::{ch, key};
 use super::{down, item_section, section_id};
+use crate::app::OverlayMsg;
 use crate::components::DetailsContent;
 use crate::components::turn_block::SectionKey;
 use crate::model::ItemId;
 
 fn opened(msg: Option<Msg>) -> DetailsContent {
     match msg {
-        Some(Msg::OpenDetails(request)) => request.content,
+        Some(Msg::Overlay(OverlayMsg::OpenDetails(request))) => request.content,
         other => panic!("expected OpenDetails, got {other:?}"),
     }
 }
@@ -128,7 +129,10 @@ fn a_remapped_key_answers_and_the_old_one_does_not() {
     assert!(warnings.is_empty(), "{warnings:?}");
     let mut t = session_transcript(80, 24).keymap(keymap);
     assert_eq!(ch(&mut t, 'i'), None);
-    assert!(matches!(ch(&mut t, 'x'), Some(Msg::OpenDetails(_))));
+    assert!(matches!(
+        ch(&mut t, 'x'),
+        Some(Msg::Overlay(OverlayMsg::OpenDetails(_)))
+    ));
     // Other keys with modifiers are not the details key.
     assert_eq!(t.on(&key(Key::Char('x'), KeyModifiers::CONTROL)), None);
 }

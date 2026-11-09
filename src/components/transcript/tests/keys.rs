@@ -923,7 +923,11 @@ fn a_key_that_changes_the_view_answers_transcript_changed() {
     // A fold and the system sections: the selection stays where it is.
     for c in ['l', 's'] {
         let before = t.selected().cloned();
-        assert_eq!(ch(&mut t, c), Some(Msg::TranscriptChanged), "{c}");
+        assert_eq!(
+            ch(&mut t, c),
+            Some(Msg::Transcript(TranscriptMsg::Changed)),
+            "{c}"
+        );
         assert_eq!(t.selected().cloned(), before, "{c}");
     }
 }

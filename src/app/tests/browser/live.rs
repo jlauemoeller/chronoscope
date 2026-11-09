@@ -156,16 +156,16 @@ fn the_end_key_resumes_following_too() {
 fn the_new_sections_message_shows_and_removes_the_indicator() {
     let mut rig = rig();
     rig.open_loaded();
-    rig.app.update(Msg::NewSections {
+    rig.app.update(Msg::Transcript(TranscriptMsg::NewSections {
         count: 3,
         selection: None,
-    });
+    }));
     assert_eq!(status(&rig.app), ["↓ 3 new"]);
     assert_eq!(rig.app.new_sections(), 3);
-    rig.app.update(Msg::NewSections {
+    rig.app.update(Msg::Transcript(TranscriptMsg::NewSections {
         count: 0,
         selection: None,
-    });
+    }));
     assert!(status(&rig.app).is_empty());
     assert_eq!(rig.app.new_sections(), 0);
 }
@@ -174,23 +174,24 @@ fn the_new_sections_message_shows_and_removes_the_indicator() {
 fn a_search_key_that_reaches_the_end_removes_the_indicator_with_its_report() {
     let mut rig = rig();
     rig.open_loaded();
-    rig.app.update(Msg::NewSections {
+    rig.app.update(Msg::Transcript(TranscriptMsg::NewSections {
         count: 3,
         selection: None,
-    });
+    }));
     assert_eq!(status(&rig.app), ["↓ 3 new"]);
     // `n` wrapped to the last match, at the end: following resumes.
-    rig.app.update(Msg::SearchPosition {
-        position: Some(crate::transcript_search::SearchPosition {
-            current: 5,
-            total: 5,
-        }),
-        view: crate::app::ViewChange {
-            changed: true,
-            new_sections: Some(0),
-            selection: None,
-        },
-    });
+    rig.app
+        .update(Msg::Transcript(TranscriptMsg::SearchPosition {
+            position: Some(crate::transcript_search::SearchPosition {
+                current: 5,
+                total: 5,
+            }),
+            view: crate::app::ViewChange {
+                changed: true,
+                new_sections: Some(0),
+                selection: None,
+            },
+        }));
     assert_eq!(status(&rig.app), ["5/5"]);
     assert_eq!(rig.app.new_sections(), 0);
 }
@@ -198,13 +199,16 @@ fn a_search_key_that_reaches_the_end_removes_the_indicator_with_its_report() {
 #[test]
 fn the_indicator_and_the_load_progress_show_together() {
     let mut rig = rig();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     rig.app
         .update(session_msg(&rig.app, ModelUpdate::Progress(0.5)));
-    rig.app.update(Msg::NewSections {
+    rig.app.update(Msg::Transcript(TranscriptMsg::NewSections {
         count: 2,
         selection: None,
-    });
+    }));
     assert_eq!(status(&rig.app), ["Loading… 50%", "↓ 2 new"]);
 }
 
@@ -232,8 +236,11 @@ fn a_new_session_starts_without_an_indicator_or_the_marker() {
     rig.live_update(ModelUpdate::Appended(replies(&["t9"])));
     assert_eq!(rig.app.new_sections(), 1);
     assert!(rig.app.session_is_live());
-    rig.app.update(Msg::OpenSelector);
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     assert_eq!(rig.app.new_sections(), 0);
     assert!(!rig.app.session_is_live());
     assert!(status(&rig.app).is_empty());
@@ -255,7 +262,10 @@ fn while_the_load_streams_the_view_stays_at_the_top() {
             ModelUpdate::Progress(0.9),
         ],
     );
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     rig.pump_until(|app| turn_count(app) == all.len());
     assert_eq!(offset(&rig.app), 0);
     assert!(!following(&rig.app));

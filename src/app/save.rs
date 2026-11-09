@@ -1,15 +1,28 @@
 //! Saving a section and exporting the session to files (product §5.4, §8.5).
 //!
-//! 1. `w` / `W` in the transcript answer [`Msg::SaveSection`] with the text,
-//!    `e` / `E` answer [`Msg::Export`] with the markdown document.
+//! 1. `w` / `W` in the transcript answer [`OutputMsg::SaveSection`] with
+//!    the text, `e` / `E` answer [`OutputMsg::Export`] with the markdown
+//!    document.
 //! 2. The `App` opens the [`Prompt`] in the help line, labelled `Save to: `
 //!    or `Export to: `, with the default path filled in and the cursor at its
 //!    end. The text waits in the browser's [`PendingWrite`].
-//! 3. `Enter` ([`Msg::PromptSubmit`]) names the path. A path inside the data
-//!    of a harness is refused. A path that exists is asked about with the
-//!    `Overwrite <path>? (y/n)` prompt; `y` writes and any other key cancels.
-//!    A path that does not exist is written at once.
-//! 4. `Esc` ([`Msg::PromptCancel`]) cancels. A toast reports the result.
+//! 3. `Enter` ([`PromptMsg::Submit`] with [`PromptPurpose::SavePath`]) names
+//!    the path. A path inside the data of a harness is refused. A path that
+//!    exists is asked about with the `Overwrite <path>? (y/n)` prompt
+//!    ([`PromptPurpose::Overwrite`]), whose [`PromptMsg::Confirm`] writes on
+//!    `y`, and cancels on any other key. A path that does not exist is
+//!    written at once.
+//! 4. `Esc` ([`PromptMsg::Cancel`]) cancels. A toast reports the result.
+//!
+//! It handles the save and export requests of the output concern
+//! ([`OutputMsg`]) and the answers of these two prompts.
+//!
+//! [`OutputMsg`]: super::OutputMsg
+//! [`OutputMsg::SaveSection`]: super::OutputMsg::SaveSection
+//! [`OutputMsg::Export`]: super::OutputMsg::Export
+//! [`PromptMsg::Submit`]: super::PromptMsg::Submit
+//! [`PromptMsg::Confirm`]: super::PromptMsg::Confirm
+//! [`PromptMsg::Cancel`]: super::PromptMsg::Cancel
 //!
 //! Paths are relative to the directory the application was started in, and
 //! `~` is the home directory. No directory is created.
@@ -17,11 +30,11 @@
 use std::path::{Component, Path, PathBuf};
 
 use super::layout::Screen;
-use super::{App, Id};
+use super::{App, Id, PromptPurpose};
 use unicode_width::UnicodeWidthStr;
 
 use crate::components::text_fit::truncate_start;
-use crate::components::{MAX_TOAST_WIDTH, Prompt, PromptMode, TOAST_CHROME};
+use crate::components::{MAX_TOAST_WIDTH, Prompt, TOAST_CHROME};
 use crate::paths::expand_tilde;
 use crate::theme::Role;
 
@@ -158,9 +171,14 @@ impl App {
         {
             return;
         }
-        let prompt = Prompt::new(kind.label(), default, PromptMode::Text, self.theme.clone())
-            .with_fill(Role::Background)
-            .inset(PROMPT_INSET);
+        let prompt = Prompt::new(
+            kind.label(),
+            default,
+            PromptPurpose::SavePath,
+            self.theme.clone(),
+        )
+        .with_fill(Role::Background)
+        .inset(PROMPT_INSET);
         match self.open_overlay(Id::Prompt, Box::new(prompt)) {
             Ok(()) => {
                 self.browser.write = Some(PendingWrite {
@@ -173,30 +191,39 @@ impl App {
         }
     }
 
-    /// `Enter` in the path prompt (`answer` is the path), or `y` in the
-    /// overwrite prompt.
-    pub(super) fn write_prompt_submit(&mut self, answer: &str) {
+    /// `Enter` in the path prompt: `typed` is the path. An `Enter` that was
+    /// already on its way when the overwrite question replaced the path
+    /// prompt (two in one tick) answers that question no: nothing is
+    /// written and the prompt closes.
+    pub(super) fn path_submitted(&mut self, typed: &str) {
         let Some(pending) = self.browser.write.take() else {
             return;
         };
         self.close_overlay(Id::Prompt);
-        match pending.overwrite {
-            Some(overwrite) => {
-                if answer == "y" {
-                    self.write_file(
-                        pending.kind,
-                        &pending.text,
-                        &overwrite.path,
-                        &overwrite.shown,
-                    );
-                }
-            }
-            None => self.path_chosen(pending.kind, pending.text, answer),
+        if pending.overwrite.is_none() {
+            self.path_chosen(pending.kind, pending.text, typed);
         }
     }
 
-    /// `Esc` in the path prompt, or a no in the overwrite prompt: nothing is
-    /// written.
+    /// The answer to the overwrite question: yes writes the file, no writes
+    /// nothing. Ignored while the path is asked: only the question answers.
+    pub(super) fn overwrite_answered(&mut self, yes: bool) {
+        let Some(pending) = self.browser.write.take_if(|w| w.overwrite.is_some()) else {
+            return;
+        };
+        self.close_overlay(Id::Prompt);
+        if yes && let Some(overwrite) = pending.overwrite {
+            self.write_file(
+                pending.kind,
+                &pending.text,
+                &overwrite.path,
+                &overwrite.shown,
+            );
+        }
+    }
+
+    /// `Esc` in the path prompt, or one that was on its way when the
+    /// overwrite question replaced it: nothing is written.
     pub(super) fn write_prompt_cancel(&mut self) {
         if self.browser.write.take().is_some() {
             self.close_overlay(Id::Prompt);
@@ -224,9 +251,15 @@ impl App {
             self.write_file(kind, &text, &path, &shown);
             return;
         }
-        let prompt = Prompt::confirm("Overwrite ", &shown, "? (y/n)", self.theme.clone())
-            .with_fill(Role::Background)
-            .inset(PROMPT_INSET);
+        let prompt = Prompt::confirm(
+            PromptPurpose::Overwrite,
+            "Overwrite ",
+            &shown,
+            "? (y/n)",
+            self.theme.clone(),
+        )
+        .with_fill(Role::Background)
+        .inset(PROMPT_INSET);
         match self.open_overlay(Id::Prompt, Box::new(prompt)) {
             Ok(()) => {
                 self.browser.write = Some(PendingWrite {

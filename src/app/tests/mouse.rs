@@ -22,7 +22,7 @@ use super::selector::{
 use crate::app::fixtures::{self, fixture_snapshot};
 use crate::app::layout::{LayoutInput, PointerTarget, Screen, component_at, hit_test, layout};
 use crate::app::runtime::run_loop;
-use crate::app::{App, Id, Msg, Pane, UserEvent};
+use crate::app::{App, BrowserMsg, Id, Msg, OverlayMsg, Pane, ThemeMsg, UserEvent};
 use crate::components::{DOUBLE_CLICK, HelpContext, PROJECTS_FILTERED_ATTR};
 use crate::index::SessionMap;
 use crate::model::SessionId;
@@ -395,13 +395,13 @@ fn the_routing_areas_are_not_computed_by_view() {
 fn the_routing_areas_follow_the_screen_and_the_overlays() {
     let mut app = loaded();
     assert!(app.routing().area(Id::HelpOverlay).is_none());
-    app.update(Msg::OpenHelp(HelpContext::Selector));
+    app.update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector)));
     assert!(app.routing().area(Id::HelpOverlay).is_some());
-    app.update(Msg::CloseHelp);
+    app.update(Msg::Overlay(OverlayMsg::CloseHelp));
     assert!(app.routing().area(Id::HelpOverlay).is_none());
-    app.update(Msg::OpenThemeSelector);
+    app.update(Msg::Theme(ThemeMsg::Open));
     assert!(app.routing().area(Id::ThemeSelector).is_some());
-    app.update(Msg::CancelTheme);
+    app.update(Msg::Theme(ThemeMsg::Cancel));
     assert!(app.routing().area(Id::ThemeSelector).is_none());
     // A toast is routed: it is on top.
     app.show_toast("Hello").unwrap();
@@ -622,7 +622,10 @@ fn a_double_click_in_a_list_scrolled_by_the_wheel_opens_the_row_under_the_pointe
     assert_eq!(session(&app), Some("s3"));
     assert_eq!(
         app.take_queued(),
-        [Msg::OpenSession(CLAUDE, SessionId::from("s3"))]
+        [Msg::Browser(BrowserMsg::OpenSession(
+            CLAUDE,
+            SessionId::from("s3")
+        ))]
     );
 }
 
@@ -787,7 +790,7 @@ fn update_queues_the_answer_to_a_pointer_message_and_does_not_handle_it() {
 #[test]
 fn handle_gives_each_pointer_answer_before_the_next_message() {
     let mut app = loaded();
-    app.update(Msg::OpenHelp(HelpContext::Selector));
+    app.update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector)));
     let help = app.routing().area(Id::HelpOverlay).unwrap();
     // Row 1 (BRIO) of the Projects pane, which the help overlay does not
     // cover.
@@ -910,7 +913,10 @@ fn a_double_click_on_a_session_row_within_400_ms_opens_it() {
     click_row(&mut app, Id::SessionList, 1);
     assert_eq!(
         app.take_queued(),
-        [Msg::OpenSession(CLAUDE, SessionId::from("s2"))]
+        [Msg::Browser(BrowserMsg::OpenSession(
+            CLAUDE,
+            SessionId::from("s2")
+        ))]
     );
     assert_eq!(session(&app), Some("s2"));
 }
@@ -1056,9 +1062,12 @@ fn a_click_between_the_tabs_or_on_the_underline_does_nothing() {
 
 #[test]
 fn nothing_under_the_help_overlay_or_the_theme_selector_gets_the_mouse() {
-    for open in [Msg::OpenHelp(HelpContext::Selector), Msg::OpenThemeSelector] {
+    for open in [
+        Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector)),
+        Msg::Theme(ThemeMsg::Open),
+    ] {
         let mut app = loaded();
-        let overlay = if open == Msg::OpenThemeSelector {
+        let overlay = if open == Msg::Theme(ThemeMsg::Open) {
             Id::ThemeSelector
         } else {
             Id::HelpOverlay
@@ -1146,7 +1155,10 @@ fn a_double_click_on_a_search_result_opens_it() {
     click_row(&mut app, Id::SessionList, 1);
     time.set(Duration::from_millis(250));
     click_row(&mut app, Id::SessionList, 1);
-    assert_eq!(app.take_queued(), [Msg::OpenSession(CLAUDE, id)]);
+    assert_eq!(
+        app.take_queued(),
+        [Msg::Browser(BrowserMsg::OpenSession(CLAUDE, id))]
+    );
 }
 
 #[test]
@@ -1190,7 +1202,10 @@ fn a_click_in_the_filtered_selector_selects_the_clicked_match() {
     let id = app.filtered_sessions()[2].clone();
     time.set(Duration::from_millis(100));
     click_row(&mut app, Id::SessionList, 2);
-    assert_eq!(app.take_queued(), [Msg::OpenSession(CLAUDE, id)]);
+    assert_eq!(
+        app.take_queued(),
+        [Msg::Browser(BrowserMsg::OpenSession(CLAUDE, id))]
+    );
 }
 
 #[test]
@@ -1281,7 +1296,7 @@ fn the_run_loop_handles_a_press_outside_an_overlay_before_the_next_press() {
     // Where the presses land, with help open as the loop will open it.
     let (mut probe, _tx) = app_with_events(true);
     let (column, row) = pos(&probe, Id::ProjectList, 6, 3);
-    probe.update(Msg::OpenHelp(HelpContext::Selector));
+    probe.update(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector)));
     let help = probe.routing().area(Id::HelpOverlay).unwrap();
     assert!(!help.contains((column, row).into()));
     assert!(!help.contains((0, 0).into()));
@@ -1412,11 +1427,15 @@ fn second_press_opens(between: impl FnOnce(&mut App)) -> bool {
     assert!(
         !app.take_queued()
             .iter()
-            .any(|msg| matches!(msg, Msg::OpenSession(..)))
+            .any(|msg| matches!(msg, Msg::Browser(BrowserMsg::OpenSession(..))))
     );
     time.set(Duration::from_millis(100));
     click_row(&mut app, Id::SessionList, 1);
-    let opened = app.take_queued() == [Msg::OpenSession(CLAUDE, SessionId::from("s2"))];
+    let opened = app.take_queued()
+        == [Msg::Browser(BrowserMsg::OpenSession(
+            CLAUDE,
+            SessionId::from("s2"),
+        ))];
     assert_eq!(session(&app), Some("s2"));
     opened
 }
@@ -1477,6 +1496,9 @@ fn the_notice_goes_only_to_the_pane_pressed_before_and_the_wheel_sends_none() {
     click_row(&mut app, Id::SessionList, 1);
     assert_eq!(
         app.take_queued(),
-        [Msg::OpenSession(CLAUDE, SessionId::from("s2"))]
+        [Msg::Browser(BrowserMsg::OpenSession(
+            CLAUDE,
+            SessionId::from("s2")
+        ))]
     );
 }

@@ -12,6 +12,8 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::rc::Rc;
 
+use tuirealm::command::Direction;
+
 use super::*;
 use crate::app::resume::{ResumePlan, Steps, hand_off};
 use crate::app::{Pane, SelectorMsg};
@@ -121,8 +123,10 @@ fn r_with_no_session_selected_does_nothing() {
     assert_eq!(rig.resume_toast(), None);
     assert_eq!(rig.focus(), Some(Id::ProjectList));
     // The request itself, for a session the selector does not list.
-    rig.app
-        .update(Msg::RequestResume(Some((CLAUDE, id("nope")))));
+    rig.app.update(Msg::Output(OutputMsg::RequestResume(Some((
+        CLAUDE,
+        id("nope"),
+    )))));
     assert!(!rig.prompt_is_mounted());
     assert_eq!(rig.resume_toast(), None);
 }
@@ -210,7 +214,10 @@ fn a_question_whose_prompt_is_unmounted_by_opening_a_session_is_forgotten() {
     let mut rig = selector_rig(120, 40);
     rig.press_resume();
     assert!(rig.app.resume_prompt_open());
-    rig.app.update(Msg::OpenSession(CLAUDE, id(BRIO_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(BRIO_SESSION),
+    )));
     assert!(!rig.prompt_is_mounted());
     assert!(!rig.app.resume_prompt_open());
     // A later prompt is not taken for the question: `y` in a search prompt
@@ -233,7 +240,7 @@ fn r_does_nothing_while_another_prompt_is_open() {
     let mut rig = browser_rig(80, 24);
     rig.press(Key::Char('/'));
     rig.pump_until(|app| app.application().mounted(&Id::Prompt));
-    rig.app.update(Msg::RequestResume(None));
+    rig.app.update(Msg::Output(OutputMsg::RequestResume(None)));
     assert!(!rig.app.resume_prompt_open());
     assert_eq!(rig.resume_toast(), None);
     // Typed in the search prompt, `R` is text.
@@ -253,6 +260,55 @@ fn y_confirms_the_plan_and_quits() {
     assert!(!rig.app.resume_prompt_open());
     assert_eq!(rig.app.take_resume_plan(), Some(claude_plan(BRIO_SESSION)));
     // It is given out once.
+    assert_eq!(rig.app.take_resume_plan(), None);
+}
+
+/// The messages a prompt for another purpose than the resume question
+/// sends, and those a `y/n` prompt never sends.
+fn not_the_resume_answer() -> Vec<PromptMsg> {
+    vec![
+        PromptMsg::Submit(PromptPurpose::Resume, "y".to_owned()),
+        PromptMsg::Changed(PromptPurpose::Resume, "y".to_owned()),
+        PromptMsg::Nav(PromptPurpose::Resume, Direction::Down),
+        PromptMsg::Cancel(PromptPurpose::Resume),
+        PromptMsg::Confirm(PromptPurpose::Overwrite, true),
+        PromptMsg::Submit(PromptPurpose::SelectorSearch, "y".to_owned()),
+        PromptMsg::Submit(PromptPurpose::TranscriptSearch, "y".to_owned()),
+        PromptMsg::Cancel(PromptPurpose::TranscriptSearch),
+        PromptMsg::Submit(PromptPurpose::SavePath, "y".to_owned()),
+        PromptMsg::Cancel(PromptPurpose::SavePath),
+    ]
+}
+
+#[test]
+fn only_the_answer_of_the_resume_prompt_answers_the_question() {
+    let mut rig = browser_rig(80, 24);
+    rig.press_resume();
+    for msg in not_the_resume_answer() {
+        rig.app.handle(Msg::Prompt(msg.clone()));
+        assert!(rig.app.resume_prompt_open(), "{msg:?}");
+        assert!(rig.prompt_is_mounted(), "{msg:?}");
+        assert!(!rig.app.should_quit(), "{msg:?}");
+    }
+    rig.app
+        .handle(Msg::Prompt(PromptMsg::Confirm(PromptPurpose::Resume, true)));
+    assert!(rig.app.should_quit());
+    assert!(!rig.prompt_is_mounted());
+    assert_eq!(rig.app.take_resume_plan(), Some(claude_plan(BRIO_SESSION)));
+}
+
+#[test]
+fn a_no_from_the_resume_prompt_declines() {
+    let mut rig = browser_rig(80, 24);
+    rig.press_resume();
+    rig.app.handle(Msg::Prompt(PromptMsg::Confirm(
+        PromptPurpose::Resume,
+        false,
+    )));
+    assert!(!rig.app.resume_prompt_open());
+    assert!(!rig.prompt_is_mounted());
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert!(!rig.app.should_quit());
     assert_eq!(rig.app.take_resume_plan(), None);
 }
 

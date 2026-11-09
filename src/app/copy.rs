@@ -1,5 +1,6 @@
 //! Copying to the clipboard (product §5.4, §8.4): what the `App` does with
-//! [`Msg::CopyText`].
+//! [`OutputMsg::CopyText`](super::OutputMsg::CopyText), a request of the
+//! output concern, which `output.rs` dispatches.
 
 use std::io::Write;
 

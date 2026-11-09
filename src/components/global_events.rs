@@ -16,7 +16,7 @@ use crate::app::index_port::index_event_kind;
 use crate::app::search_worker::search_event_kind;
 use crate::app::session_port::{session_event_kind, subagent_event_kind};
 use crate::app::transcript_search::transcript_search_event_kind;
-use crate::app::{Id, Msg, UserEvent};
+use crate::app::{BrowserMsg, Id, Msg, OverlayMsg, ThemeMsg, UserEvent, WorkerMsg};
 use crate::components::{HELP_CONTEXT_ATTR, HelpContext, context_from_value};
 use crate::keymap::{Action, Context, KeySpec, Keymap};
 
@@ -33,8 +33,8 @@ const CTRL_C: KeyEvent = KeyEvent {
 /// The quit, help, theme and `open_selector` keys come from the keymap's
 /// `global` context; `Ctrl-c` always quits.
 ///
-/// The help key gives `Msg::OpenHelp` for the screen the app says is shown
-/// (see [`HELP_CONTEXT_ATTR`]).
+/// The help key gives `OverlayMsg::OpenHelp` for the screen the app says is
+/// shown (see [`HELP_CONTEXT_ATTR`]).
 #[derive(Debug, Clone)]
 pub struct GlobalEvents {
     keymap: Keymap,
@@ -225,19 +225,27 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
             Event::WindowResize(width, height) => Some(Msg::Resized(*width, *height)),
             Event::Tick => Some(Msg::Tick),
             Event::Mouse(mouse) if is_acted_on(mouse) => Some(Msg::Pointer(*mouse)),
-            Event::User(UserEvent::Index(update)) => Some(Msg::Index(update.clone())),
-            Event::User(UserEvent::Search(update)) => Some(Msg::SearchResults(update.clone())),
-            Event::User(UserEvent::TranscriptSearch(matches)) => {
-                Some(Msg::TranscriptSearchResults(matches.clone()))
+            Event::User(UserEvent::Index(update)) => {
+                Some(Msg::Worker(WorkerMsg::Index(update.clone())))
             }
-            Event::User(UserEvent::Session { generation, update }) => Some(Msg::Session {
-                generation: *generation,
-                update: update.clone(),
-            }),
-            Event::User(UserEvent::Subagent { generation, found }) => Some(Msg::SubagentLookedUp {
-                generation: *generation,
-                found: found.clone(),
-            }),
+            Event::User(UserEvent::Search(update)) => {
+                Some(Msg::Worker(WorkerMsg::SearchResults(update.clone())))
+            }
+            Event::User(UserEvent::TranscriptSearch(matches)) => Some(Msg::Worker(
+                WorkerMsg::TranscriptSearchResults(matches.clone()),
+            )),
+            Event::User(UserEvent::Session { generation, update }) => {
+                Some(Msg::Browser(BrowserMsg::Session {
+                    generation: *generation,
+                    update: update.clone(),
+                }))
+            }
+            Event::User(UserEvent::Subagent { generation, found }) => {
+                Some(Msg::Browser(BrowserMsg::SubagentLookedUp {
+                    generation: *generation,
+                    found: found.clone(),
+                }))
+            }
             _ => None,
         }
     }
@@ -250,9 +258,9 @@ impl GlobalEvents {
         }
         match self.keymap.resolve(Context::Global, key)? {
             Action::Quit => Some(Msg::Quit),
-            Action::OpenSelector => Some(Msg::OpenSelector),
-            Action::Help => Some(Msg::OpenHelp(self.help_context)),
-            Action::Theme => Some(Msg::OpenThemeSelector),
+            Action::OpenSelector => Some(Msg::Browser(BrowserMsg::OpenSelector)),
+            Action::Help => Some(Msg::Overlay(OverlayMsg::OpenHelp(self.help_context))),
+            Action::Theme => Some(Msg::Theme(ThemeMsg::Open)),
             _ => None,
         }
     }
@@ -449,10 +457,16 @@ mod tests {
     #[test]
     fn the_theme_key_opens_the_theme_selector() {
         let mut component = GlobalEvents::new(Keymap::default());
-        assert_eq!(component.on(&char_key('t')), Some(Msg::OpenThemeSelector));
+        assert_eq!(
+            component.on(&char_key('t')),
+            Some(Msg::Theme(ThemeMsg::Open))
+        );
         // On both screens: the help context does not matter.
         component.attr(HELP_CONTEXT_ATTR, context_value(HelpContext::Browser));
-        assert_eq!(component.on(&char_key('t')), Some(Msg::OpenThemeSelector));
+        assert_eq!(
+            component.on(&char_key('t')),
+            Some(Msg::Theme(ThemeMsg::Open))
+        );
     }
 
     #[test]
@@ -466,7 +480,7 @@ mod tests {
         let mut component = GlobalEvents::new(keymap);
         assert_eq!(
             component.on(&key(Key::Function(2), KeyModifiers::NONE)),
-            Some(Msg::OpenThemeSelector)
+            Some(Msg::Theme(ThemeMsg::Open))
         );
         assert_eq!(component.on(&char_key('t')), None);
     }
@@ -477,21 +491,21 @@ mod tests {
         let shifted = key(Key::Char('?'), KeyModifiers::SHIFT);
         assert_eq!(
             component.on(&char_key('?')),
-            Some(Msg::OpenHelp(HelpContext::Selector))
+            Some(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector)))
         );
         component.attr(HELP_CONTEXT_ATTR, context_value(HelpContext::Browser));
         assert_eq!(
             component.on(&char_key('?')),
-            Some(Msg::OpenHelp(HelpContext::Browser))
+            Some(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)))
         );
         assert_eq!(
             component.on(&shifted),
-            Some(Msg::OpenHelp(HelpContext::Browser))
+            Some(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Browser)))
         );
         component.attr(HELP_CONTEXT_ATTR, context_value(HelpContext::Selector));
         assert_eq!(
             component.on(&char_key('?')),
-            Some(Msg::OpenHelp(HelpContext::Selector))
+            Some(Msg::Overlay(OverlayMsg::OpenHelp(HelpContext::Selector)))
         );
     }
 
@@ -506,7 +520,7 @@ mod tests {
         let mut component = GlobalEvents::new(keymap);
         assert!(matches!(
             component.on(&key(Key::Function(1), KeyModifiers::NONE)),
-            Some(Msg::OpenHelp(_))
+            Some(Msg::Overlay(OverlayMsg::OpenHelp(_)))
         ));
         assert_eq!(component.on(&char_key('?')), None);
     }
@@ -514,7 +528,10 @@ mod tests {
     #[test]
     fn ctrl_o_opens_the_selector() {
         let mut component = GlobalEvents::new(Keymap::default());
-        assert_eq!(component.on(&ctrl('o')), Some(Msg::OpenSelector));
+        assert_eq!(
+            component.on(&ctrl('o')),
+            Some(Msg::Browser(BrowserMsg::OpenSelector))
+        );
         assert_eq!(component.on(&char_key('o')), None);
     }
 
@@ -527,7 +544,10 @@ mod tests {
         let (keymap, warnings) = Keymap::from_config(&raw);
         assert!(warnings.is_empty(), "{warnings:?}");
         let mut component = GlobalEvents::new(keymap.clone());
-        assert_eq!(component.on(&ctrl('p')), Some(Msg::OpenSelector));
+        assert_eq!(
+            component.on(&ctrl('p')),
+            Some(Msg::Browser(BrowserMsg::OpenSelector))
+        );
         assert_eq!(component.on(&ctrl('o')), None);
         assert_eq!(
             action_key_events(&keymap, Action::OpenSelector),
@@ -547,10 +567,10 @@ mod tests {
         }));
         assert_eq!(
             msg,
-            Some(Msg::Session {
+            Some(Msg::Browser(BrowserMsg::Session {
                 generation: 9,
                 update
-            })
+            }))
         );
     }
 
@@ -565,10 +585,10 @@ mod tests {
         }));
         assert_eq!(
             msg,
-            Some(Msg::SubagentLookedUp {
+            Some(Msg::Browser(BrowserMsg::SubagentLookedUp {
                 generation: 3,
                 found
-            })
+            }))
         );
     }
 
@@ -592,7 +612,7 @@ mod tests {
         );
         let mut component = GlobalEvents::new(Keymap::default());
         let msg = component.on(&Event::User(UserEvent::Index(update.clone())));
-        assert_eq!(msg, Some(Msg::Index(update)));
+        assert_eq!(msg, Some(Msg::Worker(WorkerMsg::Index(update))));
     }
 
     #[test]

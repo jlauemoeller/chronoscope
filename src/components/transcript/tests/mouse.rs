@@ -37,11 +37,11 @@ fn wheel(t: &mut Transcript, down: bool) -> Option<Msg> {
 }
 
 /// A left press at (`column`, `row`). It always asks for the focus
-/// ([`Msg::TranscriptPressed`]); this returns what it says about the view as
+/// ([`TranscriptMsg::Pressed`]); this returns what it says about the view as
 /// the message a key would answer.
 fn click_at(t: &mut Transcript, column: u16, row: u16) -> Option<Msg> {
     let answer = t.on(&routed(t, LEFT, column, row));
-    let Some(Msg::TranscriptPressed(change)) = answer else {
+    let Some(Msg::Transcript(TranscriptMsg::Pressed(change))) = answer else {
         panic!("a left press asks for the focus, got {answer:?}");
     };
     change.key_answer()
@@ -98,7 +98,10 @@ fn thinking(t: &Transcript) -> SectionId {
 #[test]
 fn a_wheel_step_scrolls_three_rows() {
     let mut t = session_transcript(80, 10);
-    assert_eq!(wheel(&mut t, true), Some(Msg::TranscriptChanged));
+    assert_eq!(
+        wheel(&mut t, true),
+        Some(Msg::Transcript(TranscriptMsg::Changed))
+    );
     assert_eq!(t.offset(), 3);
     wheel(&mut t, true);
     assert_eq!(t.offset(), 6);
@@ -131,7 +134,10 @@ fn the_wheel_stops_at_the_ends_and_says_nothing_there() {
     assert_eq!(t.offset(), end);
     // Fewer than three rows to go: scrolls to the end and no further.
     t.perform(Cmd::Scroll(Direction::Up));
-    assert_eq!(wheel(&mut t, true), Some(Msg::TranscriptChanged));
+    assert_eq!(
+        wheel(&mut t, true),
+        Some(Msg::Transcript(TranscriptMsg::Changed))
+    );
     assert_eq!(t.offset(), end);
 }
 
@@ -169,7 +175,10 @@ fn a_selection_that_stays_in_the_viewport_stays() {
     assert!(t.select(&text));
     // The view scrolled and the selection did not move: no selection is
     // reported.
-    assert_eq!(wheel(&mut t, true), Some(Msg::TranscriptChanged));
+    assert_eq!(
+        wheel(&mut t, true),
+        Some(Msg::Transcript(TranscriptMsg::Changed))
+    );
     assert_eq!(t.offset(), 3);
     assert_eq!(t.selected(), Some(&text));
 }
@@ -213,7 +222,10 @@ fn new_sections_are_counted_after_a_wheel_up_and_reset_at_the_end() {
     );
     assert_eq!(t.new_sections(), 1);
     // The new turn pushed the end away: a step down is still short of it.
-    assert_eq!(wheel(&mut t, true), Some(Msg::TranscriptChanged));
+    assert_eq!(
+        wheel(&mut t, true),
+        Some(Msg::Transcript(TranscriptMsg::Changed))
+    );
     assert!(!t.following());
     assert_eq!(t.new_sections(), 1);
     // Scrolls down to the end: following resumes and the count resets.
@@ -224,7 +236,10 @@ fn new_sections_are_counted_after_a_wheel_up_and_reset_at_the_end() {
     for _ in 0..5 {
         selected_before = t.selected().cloned();
         let step = wheel(&mut t, true);
-        if matches!(step, Some(Msg::NewSections { .. })) {
+        if matches!(
+            step,
+            Some(Msg::Transcript(TranscriptMsg::NewSections { .. }))
+        ) {
             answer = step;
             break;
         }
@@ -234,10 +249,10 @@ fn new_sections_are_counted_after_a_wheel_up_and_reset_at_the_end() {
     assert_eq!(t.selected().cloned(), selected_before);
     assert_eq!(
         answer,
-        Some(Msg::NewSections {
+        Some(Msg::Transcript(TranscriptMsg::NewSections {
             count: 0,
             selection: None,
-        })
+        }))
     );
 }
 
@@ -251,12 +266,15 @@ fn a_click_on_the_summary_line_toggles_the_fold_and_selects_the_section() {
     assert_ne!(t.selected(), Some(&id));
     assert_eq!(
         click(&mut t, &id, 0, 12),
-        Some(Msg::SelectionChanged(id.clone()))
+        Some(Msg::Transcript(TranscriptMsg::SelectionChanged(id.clone())))
     );
     assert_eq!(t.selected(), Some(&id));
     assert!(!is_folded(&t, &id), "unfolded");
     // Already selected: the toggle is all that changes.
-    assert_eq!(click(&mut t, &id, 0, 12), Some(Msg::TranscriptChanged));
+    assert_eq!(
+        click(&mut t, &id, 0, 12),
+        Some(Msg::Transcript(TranscriptMsg::Changed))
+    );
     assert!(is_folded(&t, &id), "folded again");
     assert_eq!(t.selected(), Some(&id));
 }
@@ -290,7 +308,7 @@ fn a_click_on_the_body_selects_the_section_without_toggling() {
     assert!(rows_of(&mut t, &id).len() > 1, "the body has rows");
     assert_eq!(
         click(&mut t, &id, 1, 10),
-        Some(Msg::SelectionChanged(id.clone()))
+        Some(Msg::Transcript(TranscriptMsg::SelectionChanged(id.clone())))
     );
     assert_eq!(t.selected(), Some(&id));
     assert!(!is_folded(&t, &id), "still unfolded");
@@ -301,7 +319,9 @@ fn a_click_on_the_body_selects_the_section_without_toggling() {
     assert_ne!(t.selected(), Some(&prompt));
     assert_eq!(
         click(&mut t, &prompt, 1, 10),
-        Some(Msg::SelectionChanged(prompt.clone()))
+        Some(Msg::Transcript(TranscriptMsg::SelectionChanged(
+            prompt.clone()
+        )))
     );
     assert_eq!(t.selected(), Some(&prompt));
     assert!(
@@ -317,7 +337,9 @@ fn a_click_on_a_section_that_cannot_fold_only_selects_it() {
     assert_eq!(t.is_folded(&text), None, "assistant text does not fold");
     assert_eq!(
         click(&mut t, &text, 0, 10),
-        Some(Msg::SelectionChanged(text.clone()))
+        Some(Msg::Transcript(TranscriptMsg::SelectionChanged(
+            text.clone()
+        )))
     );
     assert_eq!(t.selected(), Some(&text));
     // Already selected: nothing changed, and no selection is reported.
@@ -408,7 +430,9 @@ fn a_click_before_the_viewport_is_announced_changes_nothing_but_asks_for_the_foc
     // It still asks for the focus, as a press anywhere on the transcript.
     assert_eq!(
         t.on(&event),
-        Some(Msg::TranscriptPressed(ViewChange::default()))
+        Some(Msg::Transcript(TranscriptMsg::Pressed(
+            ViewChange::default()
+        )))
     );
     assert_eq!(wheel_event(&mut t), None);
 }
@@ -421,26 +445,33 @@ fn a_left_press_asks_for_the_focus_on_a_section_or_not_and_the_wheel_does_not() 
     let row = screen_row(&mut t, &id, 1);
     assert_eq!(
         t.on(&routed(&t, LEFT, 10, row)),
-        Some(Msg::TranscriptPressed(ViewChange {
+        Some(Msg::Transcript(TranscriptMsg::Pressed(ViewChange {
             changed: true,
             new_sections: None,
             selection: Some(id.clone()),
-        })),
+        }))),
         "on a section, which it selects"
     );
     assert_eq!(
         t.on(&routed(&t, LEFT, 10, row)),
-        Some(Msg::TranscriptPressed(ViewChange::default())),
+        Some(Msg::Transcript(TranscriptMsg::Pressed(
+            ViewChange::default()
+        ))),
         "on the section that is selected already"
     );
     assert_eq!(
         t.on(&routed(&t, LEFT, 0, row)),
-        Some(Msg::TranscriptPressed(ViewChange::default())),
+        Some(Msg::Transcript(TranscriptMsg::Pressed(
+            ViewChange::default()
+        ))),
         "on the border"
     );
     for down in [true, false] {
         assert!(
-            !matches!(wheel(&mut t, down), Some(Msg::TranscriptPressed(_))),
+            !matches!(
+                wheel(&mut t, down),
+                Some(Msg::Transcript(TranscriptMsg::Pressed(_)))
+            ),
             "the wheel"
         );
     }
@@ -523,7 +554,7 @@ fn a_click_on_the_more_row_expands_the_output_and_selects_the_tool_call() {
     assert_eq!(t.selected(), Some(&tool_id()));
     assert_eq!(
         click(&mut t, &more_id(), 0, 12),
-        Some(Msg::TranscriptChanged)
+        Some(Msg::Transcript(TranscriptMsg::Changed))
     );
     assert_eq!(lines_shown(&t), 1434);
     assert_eq!(t.selected(), Some(&tool_id()));
@@ -629,7 +660,7 @@ fn a_click_on_the_rule_or_the_hint_of_a_folded_subagent_row_selects_and_unfolds_
         assert!(is_folded(&t, &id));
         assert_eq!(
             click(&mut t, &id, 0, column),
-            Some(Msg::SelectionChanged(id.clone())),
+            Some(Msg::Transcript(TranscriptMsg::SelectionChanged(id.clone()))),
             "column {column}"
         );
         assert_eq!(t.selected(), Some(&id), "column {column}");
@@ -688,7 +719,10 @@ fn a_description_that_fills_the_text_area_has_no_padding_to_click_on() {
     assert_eq!(t.presentation(), before);
     assert!(is_folded(&t, &id));
     // The text itself still toggles the fold.
-    assert_eq!(click(&mut t, &id, 0, 35), Some(Msg::TranscriptChanged));
+    assert_eq!(
+        click(&mut t, &id, 0, 35),
+        Some(Msg::Transcript(TranscriptMsg::Changed))
+    );
     assert!(!is_folded(&t, &id));
 }
 
@@ -704,7 +738,7 @@ fn a_click_on_the_hints_own_row_selects_the_section_and_leaves_it_unfolded() {
         assert!(t.select(&other));
         assert_eq!(
             click(&mut t, &id, 1, column),
-            Some(Msg::SelectionChanged(id.clone())),
+            Some(Msg::Transcript(TranscriptMsg::SelectionChanged(id.clone()))),
             "{column}"
         );
         assert_eq!(t.selected(), Some(&id), "column {column}");

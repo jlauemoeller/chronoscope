@@ -19,7 +19,7 @@ use super::list_cursor::{
     ListCursor, SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_from_value, selected_value,
 };
 use super::{THEME_ATTR, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent};
+use crate::app::{BrowserMsg, Msg, UserEvent};
 use crate::keymap::{Action, Context, Keymap};
 use crate::model::HarnessId;
 use crate::theme::emphasis::Selection;
@@ -75,7 +75,7 @@ impl PaneState {
     /// selector if a session is open behind it, else quit.
     pub fn cancel(&self) -> Msg {
         if self.session_open {
-            Msg::CloseSelector
+            Msg::Browser(BrowserMsg::CloseSelector)
         } else {
             Msg::Quit
         }

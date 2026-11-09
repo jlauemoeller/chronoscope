@@ -217,6 +217,7 @@ impl AppComponent<Msg, UserEvent> for ProjectList {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::BrowserMsg;
     use crate::components::list_cursor::{SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value};
     use crate::components::list_pane::SESSION_OPEN_ATTR;
     use crate::test_support::TestClock;
@@ -363,7 +364,10 @@ mod tests {
         let mut l = list(&NAMES, Some(0), true);
         assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
         l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(true));
-        assert_eq!(l.on(&key(Key::Esc)), Some(Msg::CloseSelector));
+        assert_eq!(
+            l.on(&key(Key::Esc)),
+            Some(Msg::Browser(BrowserMsg::CloseSelector))
+        );
         l.attr(SESSION_OPEN_ATTR, AttrValue::Flag(false));
         assert_eq!(l.on(&key(Key::Esc)), Some(Msg::Quit));
     }

@@ -36,8 +36,8 @@ pub use subagents::{
     generate_subagent_fixture,
 };
 
-use crate::app::Msg;
 use crate::app::layout::browser_areas;
+use crate::app::{BrowserMsg, Msg};
 use crate::components::TurnSidebar;
 use crate::components::transcript::{GO_TO_TURN_ATTR, Transcript, WHEEL_DOWN};
 use crate::components::turn_block::{SectionId, SectionKey};
@@ -407,7 +407,7 @@ impl SidebarKeyScenario {
         let code = if down { Key::Char('j') } else { Key::Char('k') };
         let key = Event::Keyboard(KeyEvent::new(code, KeyModifiers::NONE));
         let start = Instant::now();
-        let Some(Msg::TurnSelected(id)) = self.sidebar.on(&key) else {
+        let Some(Msg::Browser(BrowserMsg::TurnSelected(id))) = self.sidebar.on(&key) else {
             return None;
         };
         self.transcript

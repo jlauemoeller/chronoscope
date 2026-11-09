@@ -22,30 +22,27 @@ use unicode_width::UnicodeWidthChar;
 
 use super::text_fit::truncate_start;
 use super::{THEME_ATTR, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent};
+use crate::app::{Msg, PromptMsg, PromptPurpose, UserEvent};
 use crate::keymap::KeySpec;
 use crate::theme::{Role, Theme, Token};
 
-/// What a prompt asks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PromptMode {
-    /// A line of text (a search, a file path).
-    Text,
-    /// A `y/n` question: `y` or `Y` answers yes, every other key no.
-    YesNo,
-}
-
 /// A one-row prompt drawn in place of the help line.
 ///
-/// In [`PromptMode::Text`] printable characters are inserted at the cursor
-/// (`tui-input` does the editing). Every change of the text is reported as
-/// [`Msg::PromptChanged`], a move of the cursor alone as [`Msg::PromptMoved`]
-/// (the screen needs a redraw), `Enter` as [`Msg::PromptSubmit`], `Esc` as
-/// [`Msg::PromptCancel`], and `↑` / `↓` as [`Msg::PromptNav`] for the owner
-/// of the prompt to use. `Ctrl-c` always quits.
+/// It is mounted with its [`PromptPurpose`], which every message but
+/// [`PromptMsg::Moved`] carries, so that the `App` hands it to the owner of
+/// the prompt.
 ///
-/// In [`PromptMode::YesNo`] `y` / `Y` is [`Msg::PromptSubmit`] with `"y"` and
-/// every other key but `Ctrl-c` is [`Msg::PromptCancel`].
+/// A prompt for a line of text (a search, a file path) inserts printable
+/// characters at the cursor (`tui-input` does the editing). Every change of
+/// the text is reported as [`PromptMsg::Changed`], a move of the cursor alone
+/// as [`PromptMsg::Moved`] (the screen needs a redraw), `Enter` as
+/// [`PromptMsg::Submit`], `Esc` as [`PromptMsg::Cancel`], and `↑` / `↓` as
+/// [`PromptMsg::Nav`] for the owner of the prompt to use. `Ctrl-c` always
+/// quits.
+///
+/// A prompt for a `y/n` question ([`PromptPurpose::asks_yes_no`]) answers
+/// `y` / `Y` with [`PromptMsg::Confirm`] `true`, and every other key but
+/// `Ctrl-c` with [`PromptMsg::Confirm`] `false`.
 ///
 /// A `y/n` prompt made with [`Prompt::confirm`] draws its question in
 /// `help_text` with the subject (a path) in `foreground`.
@@ -59,7 +56,7 @@ pub enum PromptMode {
 pub struct Prompt {
     label: String,
     input: Input,
-    mode: PromptMode,
+    purpose: PromptPurpose,
     theme: Theme,
     fill: Role,
     inset: u16,
@@ -82,17 +79,24 @@ struct Question {
 }
 
 impl Prompt {
-    /// A prompt with `label`, starting with `text` (the cursor after it).
+    /// A prompt for `purpose` with `label`, starting with `text` (the cursor
+    /// after it). A purpose that asks `y/n` takes no text: see
+    /// [`Prompt::confirm`].
     pub fn new(
         label: impl Into<String>,
         text: impl Into<String>,
-        mode: PromptMode,
+        purpose: PromptPurpose,
         theme: Theme,
     ) -> Self {
+        let text = text.into();
+        debug_assert!(
+            !purpose.asks_yes_no() || text.is_empty(),
+            "a y/n prompt takes no text"
+        );
         Self {
             label: label.into(),
-            input: Input::new(text.into()),
-            mode,
+            input: Input::new(text),
+            purpose,
             theme,
             fill: Role::Surface,
             inset: 0,
@@ -101,12 +105,21 @@ impl Prompt {
         }
     }
 
-    /// A `y/n` prompt that asks `before` + `subject` + `after` (`Overwrite `,
-    /// the path, `? (y/n)`). The question is drawn in `help_text` and the
-    /// subject in `foreground`; a subject too long for the row is cut at its
-    /// start with `…` so that the end of the question stays visible.
-    pub fn confirm(before: &str, subject: &str, after: &str, theme: Theme) -> Self {
-        let mut prompt = Self::new(before, "", PromptMode::YesNo, theme);
+    /// A `y/n` prompt for `purpose`, one that
+    /// [asks `y/n`](PromptPurpose::asks_yes_no), that asks `before` +
+    /// `subject` + `after` (`Overwrite `, the path, `? (y/n)`). The question
+    /// is drawn in `help_text` and the subject in `foreground`; a subject too
+    /// long for the row is cut at its start with `…` so that the end of the
+    /// question stays visible.
+    pub fn confirm(
+        purpose: PromptPurpose,
+        before: &str,
+        subject: &str,
+        after: &str,
+        theme: Theme,
+    ) -> Self {
+        debug_assert!(purpose.asks_yes_no(), "{purpose:?} asks no question");
+        let mut prompt = Self::new(before, "", purpose, theme);
         prompt.question = Some(Question {
             before: before.to_owned(),
             subject: subject.to_owned(),
@@ -122,6 +135,7 @@ impl Prompt {
     /// harness, `? (y/n)`). Only the first subject is cut when the row is too
     /// narrow.
     pub fn confirm_two(
+        purpose: PromptPurpose,
         before: &str,
         subject: &str,
         between: &str,
@@ -129,7 +143,7 @@ impl Prompt {
         after: &str,
         theme: Theme,
     ) -> Self {
-        let mut prompt = Self::confirm(before, subject, after, theme);
+        let mut prompt = Self::confirm(purpose, before, subject, after, theme);
         if let Some(question) = &mut prompt.question {
             question.between = between.to_owned();
             question.second = second.to_owned();
@@ -164,23 +178,24 @@ impl Prompt {
     }
 
     /// Applies `request` and returns the message the change calls for.
-    fn edit(&mut self, request: InputRequest) -> Option<Msg> {
+    fn edit(&mut self, request: InputRequest) -> Option<PromptMsg> {
         let changed = self.input.handle(request)?;
         if changed.value {
-            Some(Msg::PromptChanged(self.text().to_owned()))
+            Some(PromptMsg::Changed(self.purpose, self.text().to_owned()))
         } else if changed.cursor {
-            Some(Msg::PromptMoved)
+            Some(PromptMsg::Moved)
         } else {
             None
         }
     }
 
-    fn on_text_key(&mut self, key: &KeyEvent) -> Option<Msg> {
+    fn on_text_key(&mut self, key: &KeyEvent) -> Option<PromptMsg> {
+        let purpose = self.purpose;
         match key.code {
-            Key::Enter => Some(Msg::PromptSubmit(self.text().to_owned())),
-            Key::Esc => Some(Msg::PromptCancel),
-            Key::Up => Some(Msg::PromptNav(Direction::Up)),
-            Key::Down => Some(Msg::PromptNav(Direction::Down)),
+            Key::Enter => Some(PromptMsg::Submit(purpose, self.text().to_owned())),
+            Key::Esc => Some(PromptMsg::Cancel(purpose)),
+            Key::Up => Some(PromptMsg::Nav(purpose, Direction::Up)),
+            Key::Down => Some(PromptMsg::Nav(purpose, Direction::Down)),
             Key::Left => self.edit(InputRequest::GoToPrevChar),
             Key::Right => self.edit(InputRequest::GoToNextChar),
             Key::Backspace => self.edit(InputRequest::DeletePrevChar),
@@ -189,11 +204,11 @@ impl Prompt {
         }
     }
 
-    fn on_yes_no_key(key: &KeyEvent) -> Msg {
-        match key.code {
-            Key::Char('y' | 'Y') if is_typed(key.modifiers) => Msg::PromptSubmit("y".to_owned()),
-            _ => Msg::PromptCancel,
-        }
+    /// The answer of a `y/n` prompt to `key`: yes for `y` / `Y`, no for any
+    /// other key.
+    fn on_yes_no_key(&self, key: &KeyEvent) -> PromptMsg {
+        let yes = matches!(key.code, Key::Char('y' | 'Y')) && is_typed(key.modifiers);
+        PromptMsg::Confirm(self.purpose, yes)
     }
 
     fn paint_fill(&self, frame: &mut Frame, area: Rect) {
@@ -343,7 +358,7 @@ impl Component for Prompt {
             row.width - label_width,
             row.height,
         );
-        if rest.is_empty() || self.mode == PromptMode::YesNo {
+        if rest.is_empty() || self.purpose.asks_yes_no() {
             return;
         }
         let (text, cursor) = self.visible_text(usize::from(rest.width));
@@ -392,10 +407,10 @@ impl AppComponent<Msg, UserEvent> for Prompt {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         match ev {
             Event::Keyboard(key) if KeySpec::from_event(key).is_ctrl_c() => Some(Msg::Quit),
-            Event::Keyboard(key) => match self.mode {
-                PromptMode::Text => self.on_text_key(key),
-                PromptMode::YesNo => Some(Self::on_yes_no_key(key)),
-            },
+            Event::Keyboard(key) if self.purpose.asks_yes_no() => {
+                Some(Msg::Prompt(self.on_yes_no_key(key)))
+            }
+            Event::Keyboard(key) => self.on_text_key(key).map(Msg::Prompt),
             _ => None,
         }
     }
@@ -408,8 +423,11 @@ mod tests {
     use crate::theme::builtin;
     use ratatui::style::Color;
 
+    /// The purpose of the text prompts of these tests.
+    const PURPOSE: PromptPurpose = PromptPurpose::SelectorSearch;
+
     fn prompt(text: &str) -> Prompt {
-        Prompt::new("/", text, PromptMode::Text, builtin::default_theme())
+        Prompt::new("/", text, PURPOSE, builtin::default_theme())
     }
 
     fn key(code: Key) -> Event<UserEvent> {
@@ -421,7 +439,7 @@ mod tests {
     }
 
     fn changed(text: &str) -> Option<Msg> {
-        Some(Msg::PromptChanged(text.to_owned()))
+        Some(Msg::Prompt(PromptMsg::Changed(PURPOSE, text.to_owned())))
     }
 
     fn draw(prompt: &mut Prompt, width: u16) -> ratatui::buffer::Buffer {
@@ -455,11 +473,11 @@ mod tests {
     #[test]
     fn left_moves_the_cursor_and_typing_inserts_there() {
         let mut p = prompt("abc");
-        assert_eq!(p.on(&key(Key::Left)), Some(Msg::PromptMoved));
+        assert_eq!(p.on(&key(Key::Left)), Some(Msg::Prompt(PromptMsg::Moved)));
         assert_eq!((p.text(), p.cursor()), ("abc", 2));
         assert_eq!(p.on(&ch('X')), changed("abXc"));
         assert_eq!(p.cursor(), 3);
-        assert_eq!(p.on(&key(Key::Right)), Some(Msg::PromptMoved));
+        assert_eq!(p.on(&key(Key::Right)), Some(Msg::Prompt(PromptMsg::Moved)));
         assert_eq!(p.cursor(), 4);
         assert_eq!(p.on(&key(Key::Right)), None, "already at the end");
     }
@@ -487,7 +505,13 @@ mod tests {
     fn q_t_digits_and_h_are_text() {
         let mut p = prompt("");
         for c in ['q', 't', '1', 'h', 'l', 'j', '?', '/'] {
-            assert!(matches!(p.on(&ch(c)), Some(Msg::PromptChanged(_))), "{c}");
+            assert!(
+                matches!(
+                    p.on(&ch(c)),
+                    Some(Msg::Prompt(PromptMsg::Changed(PURPOSE, _)))
+                ),
+                "{c}"
+            );
         }
         assert_eq!(p.text(), "qt1hlj?/");
     }
@@ -509,7 +533,7 @@ mod tests {
         let mut p = prompt("");
         p.on(&ch('日'));
         p.on(&ch('本'));
-        assert_eq!(p.on(&key(Key::Left)), Some(Msg::PromptMoved));
+        assert_eq!(p.on(&key(Key::Left)), Some(Msg::Prompt(PromptMsg::Moved)));
         assert_eq!(p.cursor(), 1);
         assert_eq!(p.on(&key(Key::Backspace)), changed("本"));
     }
@@ -532,14 +556,17 @@ mod tests {
         let mut p = prompt("abc");
         assert_eq!(
             p.on(&key(Key::Enter)),
-            Some(Msg::PromptSubmit("abc".to_owned()))
+            Some(Msg::Prompt(PromptMsg::Submit(PURPOSE, "abc".to_owned())))
         );
         assert_eq!(p.text(), "abc", "the owner decides what happens next");
     }
 
     #[test]
     fn esc_cancels() {
-        assert_eq!(prompt("abc").on(&key(Key::Esc)), Some(Msg::PromptCancel));
+        assert_eq!(
+            prompt("abc").on(&key(Key::Esc)),
+            Some(Msg::Prompt(PromptMsg::Cancel(PURPOSE)))
+        );
     }
 
     #[test]
@@ -547,22 +574,66 @@ mod tests {
         let mut p = prompt("abc");
         assert_eq!(
             p.on(&key(Key::Up)),
-            Some(Msg::PromptNav(Direction::Up)),
+            Some(Msg::Prompt(PromptMsg::Nav(PURPOSE, Direction::Up))),
             "up"
         );
         assert_eq!(
             p.on(&key(Key::Down)),
-            Some(Msg::PromptNav(Direction::Down)),
+            Some(Msg::Prompt(PromptMsg::Nav(PURPOSE, Direction::Down))),
             "down"
         );
         assert_eq!(p.text(), "abc");
     }
 
     #[test]
+    fn every_message_of_a_text_prompt_carries_its_purpose() {
+        for purpose in [
+            PromptPurpose::SelectorSearch,
+            PromptPurpose::TranscriptSearch,
+            PromptPurpose::SavePath,
+        ] {
+            let mut p = Prompt::new("/", "", purpose, builtin::default_theme());
+            let typed = PromptMsg::Changed(purpose, "a".to_owned());
+            assert_eq!(p.on(&ch('a')), Some(Msg::Prompt(typed)), "{purpose:?}");
+            let up = PromptMsg::Nav(purpose, Direction::Up);
+            assert_eq!(p.on(&key(Key::Up)), Some(Msg::Prompt(up)), "{purpose:?}");
+            let submit = PromptMsg::Submit(purpose, "a".to_owned());
+            assert_eq!(
+                p.on(&key(Key::Enter)),
+                Some(Msg::Prompt(submit)),
+                "{purpose:?}"
+            );
+            let cancel = PromptMsg::Cancel(purpose);
+            assert_eq!(
+                p.on(&key(Key::Esc)),
+                Some(Msg::Prompt(cancel)),
+                "{purpose:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_resume_prompt_answers_with_its_purpose() {
+        let mut p = Prompt::new(
+            "Sure? ",
+            "",
+            PromptPurpose::Resume,
+            builtin::default_theme(),
+        );
+        assert_eq!(p.on(&ch('Y')), answer(PromptPurpose::Resume, true));
+        assert_eq!(p.on(&key(Key::Esc)), answer(PromptPurpose::Resume, false));
+    }
+
+    #[test]
     fn ctrl_c_quits_in_both_modes() {
         let ctrl_c = Event::Keyboard(KeyEvent::new(Key::Char('c'), KeyModifiers::CONTROL));
         assert_eq!(prompt("abc").on(&ctrl_c), Some(Msg::Quit));
-        let mut yes_no = Prompt::new("Sure? ", "", PromptMode::YesNo, builtin::default_theme());
+        let mut yes_no = Prompt::new(
+            "Sure? ",
+            "",
+            PromptPurpose::Resume,
+            builtin::default_theme(),
+        );
         assert_eq!(yes_no.on(&ctrl_c), Some(Msg::Quit));
     }
 
@@ -590,27 +661,36 @@ mod tests {
         Prompt::new(
             "Overwrite? (y/n)",
             "",
-            PromptMode::YesNo,
+            PromptPurpose::Overwrite,
             builtin::default_theme(),
         )
     }
 
-    #[test]
-    fn y_submits_and_n_cancels() {
-        let mut p = yes_no();
-        assert_eq!(p.on(&ch('y')), Some(Msg::PromptSubmit("y".to_owned())));
-        assert_eq!(p.on(&ch('Y')), Some(Msg::PromptSubmit("y".to_owned())));
-        assert_eq!(p.on(&ch('n')), Some(Msg::PromptCancel));
+    /// The answer of a `y/n` prompt for `purpose`.
+    fn answer(purpose: PromptPurpose, yes: bool) -> Option<Msg> {
+        Some(Msg::Prompt(PromptMsg::Confirm(purpose, yes)))
     }
 
     #[test]
-    fn every_other_key_cancels_a_yes_no_prompt() {
+    fn y_answers_yes_and_n_no() {
+        let mut p = yes_no();
+        assert_eq!(p.on(&ch('y')), answer(PromptPurpose::Overwrite, true));
+        assert_eq!(p.on(&ch('Y')), answer(PromptPurpose::Overwrite, true));
+        assert_eq!(p.on(&ch('n')), answer(PromptPurpose::Overwrite, false));
+    }
+
+    #[test]
+    fn every_other_key_answers_no_in_a_yes_no_prompt() {
         let mut p = yes_no();
         for code in [Key::Esc, Key::Enter, Key::Char('x'), Key::Tab, Key::Up] {
-            assert_eq!(p.on(&key(code)), Some(Msg::PromptCancel), "{code:?}");
+            assert_eq!(
+                p.on(&key(code)),
+                answer(PromptPurpose::Overwrite, false),
+                "{code:?}"
+            );
         }
         let ctrl_y = Event::Keyboard(KeyEvent::new(Key::Char('y'), KeyModifiers::CONTROL));
-        assert_eq!(p.on(&ctrl_y), Some(Msg::PromptCancel));
+        assert_eq!(p.on(&ctrl_y), answer(PromptPurpose::Overwrite, false));
         assert_eq!(p.text(), "", "nothing is typed");
         assert_eq!(p.on(&Event::Tick), None);
     }
@@ -849,7 +929,13 @@ mod tests {
     // -- confirm
 
     fn confirm(subject: &str) -> Prompt {
-        Prompt::confirm("Overwrite ", subject, "? (y/n)", builtin::default_theme())
+        Prompt::confirm(
+            PromptPurpose::Overwrite,
+            "Overwrite ",
+            subject,
+            "? (y/n)",
+            builtin::default_theme(),
+        )
     }
 
     #[test]
@@ -875,6 +961,7 @@ mod tests {
     fn a_two_subject_confirm_prompt_has_both_subjects_in_foreground() {
         let theme = builtin::default_theme();
         let mut p = Prompt::confirm_two(
+            PromptPurpose::Resume,
             "Resume ",
             "85a86657",
             " in ",
@@ -895,18 +982,24 @@ mod tests {
         assert!((15..19).all(|x| fg(x) == help_text), " in ");
         assert!((19..25).all(|x| fg(x) == foreground), "the harness");
         assert!((25..32).all(|x| fg(x) == help_text), "? (y/n)");
-        // It answers like any y/n prompt.
-        assert_eq!(p.on(&ch('y')), Some(Msg::PromptSubmit("y".to_owned())));
-        assert_eq!(p.on(&ch('n')), Some(Msg::PromptCancel));
+        // It answers like any y/n prompt, with its purpose.
+        assert_eq!(p.on(&ch('y')), answer(PromptPurpose::Resume, true));
+        assert_eq!(p.on(&ch('n')), answer(PromptPurpose::Resume, false));
     }
 
     #[test]
     fn a_confirm_prompt_answers_like_a_yes_no_prompt() {
         let mut p = confirm("./notes.txt");
-        assert_eq!(p.on(&ch('y')), Some(Msg::PromptSubmit("y".to_owned())));
-        assert_eq!(p.on(&ch('n')), Some(Msg::PromptCancel));
-        assert_eq!(p.on(&key(Key::Esc)), Some(Msg::PromptCancel));
-        assert_eq!(p.on(&key(Key::Enter)), Some(Msg::PromptCancel));
+        assert_eq!(p.on(&ch('y')), answer(PromptPurpose::Overwrite, true));
+        assert_eq!(p.on(&ch('n')), answer(PromptPurpose::Overwrite, false));
+        assert_eq!(
+            p.on(&key(Key::Esc)),
+            answer(PromptPurpose::Overwrite, false)
+        );
+        assert_eq!(
+            p.on(&key(Key::Enter)),
+            answer(PromptPurpose::Overwrite, false)
+        );
     }
 
     #[test]

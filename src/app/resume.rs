@@ -1,19 +1,25 @@
 //! Resuming a session in its harness (product §5.7).
 //!
 //! 1. `R` in the browser, or on a selected session in the selector, answers
-//!    [`Msg::RequestResume`](super::Msg::RequestResume). The browser's target
-//!    is the open session, also while a subagent's transcript is shown.
+//!    [`OutputMsg::RequestResume`](super::OutputMsg::RequestResume). The
+//!    browser's target is the open session, also while a subagent's
+//!    transcript is shown.
 //! 2. The `App` decides whether it can be done: the harness must have a
 //!    resume command (else a toast says so), and the session's working
 //!    directory must exist (else a toast says so). Then it opens the `y/n`
 //!    [`Prompt`] in the help line: `Resume 85a86657 in Claude? (y/n)`.
-//! 3. `y` stores a [`ResumePlan`] and quits. Any other key cancels.
+//! 3. The prompt answers [`PromptMsg::Confirm`](super::PromptMsg::Confirm) with
+//!    [`PromptPurpose::Resume`]: yes (`y`) stores a [`ResumePlan`] and quits,
+//!    no (any other key) cancels.
 //! 4. After the main loop, [`hand_off`] runs the plan: it restores the
 //!    terminal, changes to the working directory and replaces the process by
 //!    the harness's command (`exec` on Unix; spawn and wait elsewhere). The
 //!    decision is pure; only [`SystemSteps`] touches the process.
 //!
 //! The command is never run through a shell.
+//!
+//! It handles the resume request of the output concern
+//! ([`OutputMsg`](super::OutputMsg)) and the answer of the resume prompt.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -22,7 +28,7 @@ use std::process::Command;
 use tuirealm::props::AttrValue;
 use unicode_width::UnicodeWidthStr;
 
-use super::{App, Id};
+use super::{App, Id, PromptPurpose};
 use crate::components::text_fit::truncate_start;
 use crate::components::{MAX_TOAST_WIDTH, Prompt, RESUME_OPEN_ATTR, TOAST_CHROME};
 use crate::model::{HarnessId, SessionId, SessionSummary};
@@ -182,6 +188,7 @@ impl App {
             return;
         }
         let mut prompt = Prompt::confirm_two(
+            PromptPurpose::Resume,
             "Resume ",
             &short_id(&summary.id),
             " in ",
@@ -210,15 +217,16 @@ impl App {
         self.set_attr(Id::SelectorFrame, RESUME_OPEN_ATTR, AttrValue::Flag(open));
     }
 
-    /// `y` or another key in the question: `y` confirms the plan and quits;
-    /// anything else cancels.
-    pub(super) fn resume_answered(&mut self, answer: &str) {
+    /// The answer to the question: yes confirms the plan and quits; no
+    /// (`n`, `Esc` or any other key but `y`) resumes nothing, and the focus
+    /// returns to where it was.
+    pub(super) fn resume_answered(&mut self, yes: bool) {
         let Some(plan) = self.resume.pending.take() else {
             return;
         };
         self.push_resume_open();
         self.close_overlay(Id::Prompt);
-        if answer == "y" {
+        if yes {
             self.resume.confirmed = Some(plan);
             self.quit = true;
         }
@@ -229,15 +237,6 @@ impl App {
     pub(super) fn clear_resume_question(&mut self) {
         if self.resume.pending.take().is_some() {
             self.push_resume_open();
-        }
-    }
-
-    /// `n`, `Esc` or any other key but `y`: nothing is resumed and the focus
-    /// returns to where it was.
-    pub(super) fn resume_declined(&mut self) {
-        if self.resume.pending.take().is_some() {
-            self.push_resume_open();
-            self.close_overlay(Id::Prompt);
         }
     }
 }

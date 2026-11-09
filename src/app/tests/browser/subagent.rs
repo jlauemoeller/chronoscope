@@ -411,13 +411,13 @@ fn a_pressed_twice_while_the_lookup_is_pending_opens_one_level() {
     rig.press(Key::Char('a'));
     let seen = rig.wait_for(|seen| {
         seen.iter()
-            .filter(|msg| matches!(msg, Msg::OpenSubagent { .. }))
+            .filter(|msg| matches!(msg, Msg::Browser(BrowserMsg::OpenSubagent { .. })))
             .count()
             >= 2
     });
     let presses = seen
         .iter()
-        .filter(|msg| matches!(msg, Msg::OpenSubagent { .. }))
+        .filter(|msg| matches!(msg, Msg::Browser(BrowserMsg::OpenSubagent { .. })))
         .count();
     assert_eq!(presses, 2, "both reached the app: {seen:?}");
     assert_eq!(rig.harness.subagent_ask_count(), 1, "one lookup started");
@@ -436,7 +436,7 @@ fn a_pressed_twice_while_the_lookup_is_pending_opens_one_level() {
 /// The answers the app saw to a subagent lookup.
 fn lookup_answers(seen: &[Msg]) -> usize {
     seen.iter()
-        .filter(|msg| matches!(msg, Msg::SubagentLookedUp { .. }))
+        .filter(|msg| matches!(msg, Msg::Browser(BrowserMsg::SubagentLookedUp { .. })))
         .count()
 }
 
@@ -474,7 +474,10 @@ fn a_lookup_overtaken_by_going_back_is_dropped() {
 #[test]
 fn a_lookup_overtaken_by_opening_another_session_is_dropped() {
     let mut rig = nested_lookup_pending();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     rig.harness.release_subagents();
     let seen = rig.wait_for_answers(1);
     assert_eq!(lookup_answers(&seen), 1, "the answer came: {seen:?}");
@@ -495,7 +498,10 @@ fn a_lookup_overtaken_by_opening_another_session_is_dropped() {
 fn a_lookup_is_dropped_even_when_the_other_session_fails_to_open() {
     let mut rig = nested_lookup_pending();
     rig.harness.fail.store(true, Ordering::Relaxed);
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     assert!(
         rig.app
             .toast_text()
@@ -526,10 +532,10 @@ fn an_old_answer_does_not_take_the_place_of_the_lookup_waited_for() {
     // Lookup B, of the story writer again, is the one waited for now.
     rig.press(Key::Char('a'));
     rig.wait_for_asks(3);
-    rig.app.update(Msg::SubagentLookedUp {
+    rig.app.update(Msg::Browser(BrowserMsg::SubagentLookedUp {
         generation: old,
         found: Some(id(SUB2)),
-    });
+    }));
     assert_eq!(rig.app.subagent_depth(), 0);
     assert!(!mounted(&rig.app, Id::Subagent(1)));
     assert_eq!(rig.app.toast_text(), None);
@@ -565,7 +571,7 @@ fn an_answer_that_comes_while_the_selector_is_open_is_dropped() {
     rig.harness.hold_subagents();
     rig.press(Key::Char('a'));
     rig.wait_for_asks(1);
-    rig.app.update(Msg::OpenSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
     let focus = rig.focus();
     assert_ne!(focus, Some(Id::Transcript));
     rig.harness.release_subagents();
@@ -574,7 +580,7 @@ fn an_answer_that_comes_while_the_selector_is_open_is_dropped() {
     assert_eq!(rig.focus(), focus, "the selector keeps the focus");
     assert!(!mounted(&rig.app, Id::Subagent(1)));
     assert_eq!(rig.harness.loads(), [BRIO_SESSION]);
-    rig.app.update(Msg::CloseSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::CloseSelector));
     assert_eq!(rig.app.subagent_depth(), 0);
     assert_eq!(rig.focus(), Some(Id::Transcript));
     // `a` works again.
@@ -588,7 +594,7 @@ fn an_answer_that_comes_while_the_turns_sidebar_has_the_focus_is_dropped() {
     rig.harness.hold_subagents();
     rig.press(Key::Char('a'));
     rig.wait_for_asks(1);
-    rig.app.update(Msg::FocusTurns);
+    rig.app.update(Msg::Browser(BrowserMsg::FocusTurns));
     assert_eq!(rig.focus(), Some(Id::TurnSidebar));
     rig.harness.release_subagents();
     let seen = rig.wait_for_answers(1);
@@ -596,7 +602,7 @@ fn an_answer_that_comes_while_the_turns_sidebar_has_the_focus_is_dropped() {
     assert_eq!(rig.focus(), Some(Id::TurnSidebar));
     assert!(!mounted(&rig.app, Id::Subagent(1)));
     assert_eq!(rig.harness.loads(), [BRIO_SESSION]);
-    rig.app.update(Msg::FocusTranscript);
+    rig.app.update(Msg::Browser(BrowserMsg::FocusTranscript));
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert_eq!(rig.app.subagent_depth(), 0);
 }
@@ -606,10 +612,10 @@ fn an_answer_to_a_lookup_nobody_waits_for_is_dropped() {
     let mut rig = subagent_rig(120, 40);
     let screen = screen_text(&mut rig, 120, 40);
     for found in [Some(id(SUB1)), None] {
-        rig.app.update(Msg::SubagentLookedUp {
+        rig.app.update(Msg::Browser(BrowserMsg::SubagentLookedUp {
             generation: rig.app.session_generation() + 1,
             found,
-        });
+        }));
     }
     assert_eq!(rig.app.subagent_depth(), 0);
     assert!(!mounted(&rig.app, Id::Subagent(1)));
@@ -637,11 +643,11 @@ fn a_on_any_other_section_does_nothing() {
 #[test]
 fn a_is_ignored_while_the_selector_is_over_the_browser() {
     let mut rig = subagent_rig(120, 40);
-    rig.app.update(Msg::OpenSelector);
-    rig.app.update(Msg::OpenSubagent {
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSubagent {
         call_id: ItemId::from("call-a"),
         label: "story-writer".to_owned(),
-    });
+    }));
     assert_eq!(rig.app.subagent_depth(), 0);
     assert_eq!(rig.harness.loads(), [BRIO_SESSION]);
 }
@@ -701,9 +707,12 @@ fn backspace_at_depth_0_does_nothing() {
     let screen = screen_text(&mut rig, 120, 40);
     rig.press(Key::Backspace);
     let seen = rig.settle();
-    assert!(!seen.contains(&Msg::CloseSubagent), "{seen:?}");
+    assert!(
+        !seen.contains(&Msg::Browser(BrowserMsg::CloseSubagent)),
+        "{seen:?}"
+    );
     // And the message itself is harmless there.
-    rig.app.update(Msg::CloseSubagent);
+    rig.app.update(Msg::Browser(BrowserMsg::CloseSubagent));
     assert_eq!(rig.app.subagent_depth(), 0);
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert_eq!(presentation(&rig.app, Id::Transcript), before);
@@ -775,10 +784,10 @@ fn late_updates_of_a_popped_subagent_are_ignored() {
     rig.harness
         .send(1, ModelUpdate::Appended(vec![arc(reply("late", "Late."))]));
     rig.settle();
-    rig.app.update(Msg::Session {
+    rig.app.update(Msg::Browser(BrowserMsg::Session {
         generation: old,
         update: SessionUpdate::new(7, ModelUpdate::Appended(vec![arc(reply("late2", "Late."))])),
-    });
+    }));
     assert_eq!(turns_in(&rig.app, Id::Transcript), parent_turns);
     assert!(!screen_text(&mut rig, 120, 40).contains("Late."));
 }
@@ -796,10 +805,10 @@ fn a_popped_load_number_is_never_given_to_another_subagent() {
     let second = rig.app.session_generation();
     assert!(second > first, "{second} > {first}");
     let before = turns_in(&rig.app, Id::Subagent(1));
-    rig.app.update(Msg::Session {
+    rig.app.update(Msg::Browser(BrowserMsg::Session {
         generation: first,
         update: SessionUpdate::new(9, ModelUpdate::Appended(vec![arc(reply("late", "Late."))])),
-    });
+    }));
     assert_eq!(turns_in(&rig.app, Id::Subagent(1)), before);
 }
 
@@ -808,7 +817,10 @@ fn a_session_opened_later_never_reuses_the_number_of_a_subagent() {
     let mut rig = subagent_rig(120, 40);
     rig.open_subagent(1);
     let subagent = rig.app.session_generation();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     assert!(rig.app.session_generation() > subagent);
 }
 
@@ -843,10 +855,10 @@ fn a_scrolled_up_parent_keeps_its_presentation_when_its_turns_change_while_cover
     rig.settle();
     let before = presentation(&rig.app, Id::Transcript);
     assert_eq!(before.offset, 0);
-    rig.app.update(Msg::OpenSubagent {
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSubagent {
         call_id: ItemId::from("call-a"),
         label: "story-writer".to_owned(),
-    });
+    }));
     rig.pump_until(|app| app.subagent_depth() == 1 && app.session_loaded());
     // The call gets a changed result, and a turn arrives.
     let changed = assistant_of(
@@ -931,7 +943,10 @@ fn opening_another_session_clears_the_whole_stack() {
     rig.unfold_last();
     rig.open_subagent(2);
     let old = rig.app.session_generation();
-    rig.app.update(Msg::OpenSession(CLAUDE, id(NEWER_SESSION)));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id(NEWER_SESSION),
+    )));
     assert_eq!(rig.app.subagent_depth(), 0);
     for depth in 1..=2 {
         assert!(!mounted(&rig.app, Id::Subagent(depth)), "{depth}");
@@ -942,13 +957,13 @@ fn opening_another_session_clears_the_whole_stack() {
     assert_eq!(breadcrumb(&rig.app), Vec::<String>::new());
     assert_eq!(header_session(&rig.app), NEWER_SESSION);
     // Backspace does nothing in the new session.
-    rig.app.update(Msg::CloseSubagent);
+    rig.app.update(Msg::Browser(BrowserMsg::CloseSubagent));
     assert_eq!(header_session(&rig.app), NEWER_SESSION);
     // Late updates of the old subagent are dropped.
-    rig.app.update(Msg::Session {
+    rig.app.update(Msg::Browser(BrowserMsg::Session {
         generation: old,
         update: SessionUpdate::new(5, ModelUpdate::Appended(vec![arc(reply("late", "Late."))])),
-    });
+    }));
     assert_eq!(turns_in(&rig.app, Id::Transcript), 0);
 }
 
@@ -956,9 +971,9 @@ fn opening_another_session_clears_the_whole_stack() {
 fn the_selector_opened_over_a_subagent_returns_to_it() {
     let mut rig = subagent_rig(120, 40);
     rig.open_subagent(1);
-    rig.app.update(Msg::OpenSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSelector));
     assert_eq!(rig.app.screen(), Screen::BrowserSelector);
-    rig.app.update(Msg::CloseSelector);
+    rig.app.update(Msg::Browser(BrowserMsg::CloseSelector));
     assert_eq!(rig.app.screen(), Screen::Browser);
     assert_eq!(rig.focus(), Some(Id::Subagent(1)));
     assert_eq!(rig.top(), Id::Subagent(1));
@@ -998,7 +1013,7 @@ fn copying_in_a_subagent_copies_its_text() {
     rig.press(Key::Char('y'));
     let seen = rig.settle();
     let copied = seen.iter().find_map(|msg| match msg {
-        Msg::CopyText(text) => Some(text.clone()),
+        Msg::Output(OutputMsg::CopyText(text)) => Some(text.clone()),
         _ => None,
     });
     assert_eq!(copied.as_deref(), Some("Write a short story"));
@@ -1190,7 +1205,10 @@ impl Rig {
 #[test]
 fn with_the_claude_harness_the_subagent_opens_with_its_prompt_as_the_first_user_turn() {
     let (mut rig, _tmp) = claude_rig(120, 40);
-    rig.app.update(Msg::OpenSession(CLAUDE, id("pppp0001")));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id("pppp0001"),
+    )));
     rig.pump_until(App::session_loaded);
     rig.settle();
     // `toolu_res02` is linked through the result entry (the story-writer).
@@ -1236,7 +1254,10 @@ fn with_the_claude_harness_the_subagent_opens_with_its_prompt_as_the_first_user_
 #[test]
 fn with_the_claude_harness_the_subagent_120x40_text() {
     let (mut rig, _tmp) = claude_rig(120, 40);
-    rig.app.update(Msg::OpenSession(CLAUDE, id("pppp0001")));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id("pppp0001"),
+    )));
     rig.pump_until(App::session_loaded);
     rig.settle();
     rig.select_call("toolu_res02");
@@ -1247,7 +1268,10 @@ fn with_the_claude_harness_the_subagent_120x40_text() {
 #[test]
 fn with_the_claude_harness_a_call_without_a_transcript_shows_the_toast() {
     let (mut rig, _tmp) = claude_rig(120, 40);
-    rig.app.update(Msg::OpenSession(CLAUDE, id("pppp0001")));
+    rig.app.update(Msg::Browser(BrowserMsg::OpenSession(
+        CLAUDE,
+        id("pppp0001"),
+    )));
     rig.pump_until(App::session_loaded);
     rig.settle();
     // `toolu_gone03` names an agent that has no transcript.

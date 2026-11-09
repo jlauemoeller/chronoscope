@@ -1,6 +1,7 @@
 //! The help overlay in the app (architecture.md#events-focus-and-keys,
 //! product §3.3): opening it gives it the focus, closing it returns the focus
-//! to who had it.
+//! to who had it. It handles the help overlay's part of the overlay concern
+//! ([`OverlayMsg`](super::OverlayMsg)), which `overlay.rs` dispatches.
 
 use ratatui::layout::Rect;
 use tuirealm::component::AppComponent;
