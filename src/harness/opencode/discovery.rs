@@ -18,7 +18,7 @@ use super::load::{self, WatchMode};
 use super::location::default_db_path;
 use super::subagent;
 use crate::config::Config;
-use crate::harness::shared::{SubagentInfo, UNTITLED, truncate_title};
+use crate::harness::shared::{SubagentInfo, title_from_prompt};
 use crate::harness::{Harness, Result, WatchHandle, resume};
 use crate::model::{
     HarnessId, ModelUpdate, Project, ProjectId, SectionSource, SessionId, SessionStats,
@@ -554,15 +554,13 @@ fn summarize(row: SessionRow, db_path: &Path) -> SessionSummary {
     }
 }
 
-/// `session_v2.title`, else the first prompt's first line truncated, else
-/// [`UNTITLED`].
+/// `session_v2.title`, else the title of the first prompt
+/// ([`title_from_prompt`]).
 fn session_title(title: Option<&str>, first_prompt: Option<&str>) -> String {
     if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
         return title.to_owned();
     }
-    first_prompt
-        .and_then(|p| p.lines().map(str::trim).find(|l| !l.is_empty()))
-        .map_or_else(|| UNTITLED.to_owned(), truncate_title)
+    title_from_prompt(first_prompt)
 }
 
 /// The alias configured for the project's worktree, else the project's
@@ -586,6 +584,7 @@ fn display_name(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::shared::UNTITLED;
 
     #[test]
     fn migrations_are_compared_by_their_timestamp_prefix() {

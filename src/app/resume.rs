@@ -25,6 +25,7 @@ use super::{App, Id};
 use crate::components::text_fit::truncate_start;
 use crate::components::{MAX_TOAST_WIDTH, Prompt, TOAST_CHROME};
 use crate::model::{HarnessId, SessionId, SessionSummary};
+use crate::platform::exec_or_run;
 use crate::theme::Role;
 
 /// The columns the prompt is inset from each side in the browser, like its
@@ -285,20 +286,14 @@ impl<R: FnMut()> Steps for SystemSteps<R> {
         std::env::set_current_dir(dir)
     }
 
-    #[cfg(unix)]
+    /// `exec` on Unix, a child process waited for elsewhere
+    /// ([`exec_or_run`]).
     fn run(&mut self, plan: &ResumePlan) -> std::io::Result<i32> {
-        use std::os::unix::process::CommandExt;
         // Nothing buffered is lost when the process image is replaced.
         log::logger().flush();
         let _ = std::io::Write::flush(&mut std::io::stdout());
-        // `exec` only returns when it failed.
-        Err(Command::new(&plan.program).args(&plan.args).exec())
-    }
-
-    #[cfg(not(unix))]
-    fn run(&mut self, plan: &ResumePlan) -> std::io::Result<i32> {
-        log::logger().flush();
-        let status = Command::new(&plan.program).args(&plan.args).status()?;
-        Ok(status.code().unwrap_or(1))
+        let mut command = Command::new(&plan.program);
+        command.args(&plan.args);
+        exec_or_run(command)
     }
 }

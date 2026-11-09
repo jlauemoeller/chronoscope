@@ -11,6 +11,7 @@
 //! them.
 
 use std::ops::{Deref, DerefMut};
+use std::path::Path;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
@@ -379,13 +380,7 @@ impl App {
             .selector
             .find_project(open.harness, &open.summary.project);
         Some(project.map_or_else(
-            || {
-                let id = open.summary.project.as_str();
-                id.rsplit('/')
-                    .find(|part| !part.is_empty())
-                    .unwrap_or(id)
-                    .to_owned()
-            },
+            || last_path_segment(open.summary.project.as_str()),
             |project| project.name.clone(),
         ))
     }
@@ -1088,4 +1083,41 @@ impl App {
 /// The percentage `fraction` (0.0 to 1.0) stands for, rounded.
 fn percent(fraction: f32) -> u32 {
     (fraction.clamp(0.0, 1.0) * 100.0).round() as u32
+}
+
+/// The last segment of the path `id`, a trailing separator skipped; `id`
+/// itself when it has none (`/`, an empty id).
+fn last_path_segment(id: &str) -> String {
+    Path::new(id)
+        .file_name()
+        .map_or_else(|| id.to_owned(), |name| name.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{MAIN_SEPARATOR, PathBuf};
+
+    use super::*;
+
+    #[test]
+    fn the_last_segment_of_a_cwd_joined_with_the_platform_separator() {
+        let cwd: PathBuf = ["home", "user", "projects", "brio"].iter().collect();
+        let id = format!("{MAIN_SEPARATOR}{}", cwd.display());
+        assert_eq!(last_path_segment(&id), "brio");
+    }
+
+    #[test]
+    fn a_trailing_separator_is_skipped() {
+        let id = format!("{MAIN_SEPARATOR}home{MAIN_SEPARATOR}brio{MAIN_SEPARATOR}");
+        assert_eq!(last_path_segment(&id), "brio");
+        assert_eq!(last_path_segment("/home/brio/"), "brio");
+    }
+
+    #[test]
+    fn an_id_without_a_separator_is_its_own_last_segment() {
+        assert_eq!(last_path_segment("-home-user-brio"), "-home-user-brio");
+        assert_eq!(last_path_segment(""), "");
+        let root = MAIN_SEPARATOR.to_string();
+        assert_eq!(last_path_segment(&root), root);
+    }
 }

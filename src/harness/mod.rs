@@ -5,6 +5,7 @@ mod describe;
 pub mod opencode;
 pub(crate) mod resume;
 pub mod shared;
+mod watch_event;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

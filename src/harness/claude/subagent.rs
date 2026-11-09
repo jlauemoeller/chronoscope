@@ -31,8 +31,9 @@ struct Meta {
 enum IdKind<'a> {
     /// A main session: `<uuid>`.
     Main,
-    /// A subagent: `<uuid>/subagents/agent-<agentId>`.
-    Subagent { root: &'a str },
+    /// A subagent: `<uuid>/subagents/agent-<agentId>`, whose transcript is
+    /// `<root>/subagents/<agent>.jsonl` below its project directory.
+    Subagent { root: &'a str, agent: &'a str },
 }
 
 /// Classifies `id` and rejects anything that is not a plain session or
@@ -49,7 +50,7 @@ fn classify(id: &str) -> Option<IdKind<'_>> {
     match parts[..] {
         [_] => Some(IdKind::Main),
         [root, "subagents", agent] if agent.starts_with("agent-") => {
-            Some(IdKind::Subagent { root })
+            Some(IdKind::Subagent { root, agent })
         }
         _ => None,
     }
@@ -85,10 +86,9 @@ fn resolve_opened(opened: &Opened, id: &SessionId) -> Option<PathBuf> {
     if let Some(path) = opened.get(id.as_str()) {
         return path.exists().then_some(path);
     }
-    let Some(IdKind::Subagent { root }) = classify(id.as_str()) else {
+    let Some(IdKind::Subagent { root, agent }) = classify(id.as_str()) else {
         return None;
     };
-    let agent = id.as_str().rsplit('/').next()?;
     let parent = opened.get(root)?;
     let candidate = parent
         .with_extension("")
@@ -105,17 +105,28 @@ pub(super) fn resolve(data_dir: &Path, opened: &Opened, id: &SessionId) -> Optio
     if let Some(path) = resolve_opened(opened, id) {
         return Some(path);
     }
-    classify(id.as_str())?;
+    let file = file_below_project(id, classify(id.as_str())?);
     let mut dirs: Vec<PathBuf> = fs::read_dir(data_dir)
         .ok()?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .collect();
     dirs.sort();
-    let file = format!("{id}.jsonl");
     dirs.into_iter()
         .map(|dir| dir.join(&file))
         .find(|candidate| candidate.exists())
+}
+
+/// The transcript of session `id`, of shape `kind`, relative to its project
+/// directory, joined one component at a time: `<id>.jsonl` for a main
+/// session, `<root>/subagents/<agent>.jsonl` for a subagent.
+fn file_below_project(id: &SessionId, kind: IdKind<'_>) -> PathBuf {
+    match kind {
+        IdKind::Main => PathBuf::from(format!("{id}.jsonl")),
+        IdKind::Subagent { root, agent } => Path::new(root)
+            .join("subagents")
+            .join(format!("{agent}.jsonl")),
+    }
 }
 
 /// The directory that holds the subagent transcripts of `session`, whose
@@ -238,7 +249,7 @@ pub(super) fn find(
     let dir = subagents_dir(&path, parent)?;
     let root = match classify(parent.as_str())? {
         IdKind::Main => parent.as_str(),
-        IdKind::Subagent { root } => root,
+        IdKind::Subagent { root, .. } => root,
     };
     let agent = find_by_meta(&dir, call).or_else(|| find_by_result(&path, &dir, call))?;
     Some(SessionId::from(format!("{root}/subagents/agent-{agent}")))
@@ -383,6 +394,98 @@ mod tests {
         ] {
             assert!(classify(bad).is_none(), "{bad:?}");
         }
+    }
+
+    /// A data directory with one project directory, `proj`.
+    fn data_dir() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let project = data.join("proj");
+        fs::create_dir_all(&project).unwrap();
+        (tmp, data, project)
+    }
+
+    fn plant(path: &Path) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, "{}\n").unwrap();
+    }
+
+    #[test]
+    fn a_subagent_is_found_below_its_project_directory_part_by_part() {
+        let (_tmp, data, project) = data_dir();
+        let main = project.join("ses.jsonl");
+        let sub = project.join("ses").join("subagents").join("agent-a1.jsonl");
+        plant(&main);
+        plant(&sub);
+        let opened = Opened::default();
+        assert_eq!(resolve(&data, &opened, &SessionId::from("ses")), Some(main));
+        let found = resolve(&data, &opened, &SessionId::from("ses/subagents/agent-a1"));
+        assert_eq!(found.as_deref(), Some(sub.as_path()));
+        assert!(found.unwrap().starts_with(&project));
+        assert_eq!(
+            resolve(&data, &opened, &SessionId::from("ses/subagents/agent-gone")),
+            None
+        );
+    }
+
+    #[test]
+    fn an_id_that_would_leave_its_project_directory_resolves_to_nothing() {
+        let (tmp, data, project) = data_dir();
+        let outside = tmp.path().join("outside");
+        // Every file such an id could name, were it joined as it is.
+        let bad = [
+            ("a/../agent-x", project.join("agent-x.jsonl")),
+            (
+                "../subagents/agent-x",
+                data.join("subagents").join("agent-x.jsonl"),
+            ),
+            (
+                "a/subagents/agent-x/y",
+                project.join("a/subagents/agent-x").join("y.jsonl"),
+            ),
+            (
+                "a\\subagents\\agent-x",
+                project.join("a\\subagents\\agent-x.jsonl"),
+            ),
+            (
+                "C:x/subagents/agent-y",
+                project.join("C:x/subagents/agent-y.jsonl"),
+            ),
+        ];
+        for (_, file) in &bad {
+            plant(file);
+        }
+        let absolute = format!("{}/subagents/agent-x", outside.display());
+        plant(&outside.join("subagents").join("agent-x.jsonl"));
+        let opened = Opened::default();
+        for id in bad
+            .iter()
+            .map(|(id, _)| (*id).to_owned())
+            .chain([absolute, "/etc/subagents/agent-x".to_owned()])
+        {
+            assert_eq!(
+                resolve(&data, &opened, &SessionId::from(id.as_str())),
+                None,
+                "{id:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_subagent_of_an_opened_file_is_found_next_to_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("elsewhere").join("ses.jsonl");
+        let sub = tmp.path().join("elsewhere/ses/subagents/agent-a1.jsonl");
+        plant(&file);
+        plant(&sub);
+        let opened = Opened::default();
+        opened.insert("ses".to_owned(), file.clone());
+        let data = tmp.path().join("data");
+        assert_eq!(resolve(&data, &opened, &SessionId::from("ses")), Some(file));
+        assert_eq!(
+            resolve(&data, &opened, &SessionId::from("ses/subagents/agent-a1")),
+            Some(sub)
+        );
     }
 
     #[test]
