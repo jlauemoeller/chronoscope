@@ -1,5 +1,5 @@
 //! The details overlay in the app (architecture.md#events-focus-and-keys,
-//! product §4): opening, focus, the keys that work while it is open,
+//! product §3.3): opening, focus, the keys that work while it is open,
 //! scrolling, the mouse and the screens. Keys travel through the app's ports
 //! and `GlobalEvents`, as they do in the running application.
 

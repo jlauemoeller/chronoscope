@@ -1,5 +1,5 @@
 //! The duration of a finished tool call after its description (cycle 2
-//! product §2): the rows, the text copied, saved and exported, and the
+//! SPEC §3): the rows, the text copied, saved and exported, and the
 //! snapshots.
 
 use std::sync::Arc;

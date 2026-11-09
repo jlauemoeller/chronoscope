@@ -1,4 +1,4 @@
-//! The details of a section as far as the model knows them (product §4.3),
+//! The details of a section as far as the model knows them (product §3.3),
 //! and the references the harness reads the rest from (SPEC cycle 2 §5.2).
 //!
 //! The `Transcript` makes both when the details key is pressed, and sends
