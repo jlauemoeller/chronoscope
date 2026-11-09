@@ -10,6 +10,10 @@
 //! the same index) and pushes rows and selection into the components. It
 //! keeps what it gave the Sessions pane ([`ListedSessions`]), so it never
 //! reads a list back.
+//!
+//! It handles the selector concern, [`SelectorMsg`], and the snapshots and
+//! stats of the session index,
+//! [`WorkerMsg::Index`](super::WorkerMsg::Index) (worker concern).
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;

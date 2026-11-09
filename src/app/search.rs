@@ -9,6 +9,11 @@
 //! result row is reported by the list and moves it too. `Enter` asks to open
 //! the selected result and `Esc` clears the query and puts the selector back
 //! as the search found it.
+//!
+//! It handles the messages of the prompt mounted for
+//! [`PromptPurpose::SelectorSearch`] (prompt concern) and the search worker's
+//! answers, [`WorkerMsg::SearchResults`](super::WorkerMsg::SearchResults)
+//! (worker concern).
 
 use std::sync::Arc;
 

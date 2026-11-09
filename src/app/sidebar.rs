@@ -2,7 +2,8 @@
 //! §5.4, §5.9): which keys hand the focus to it and back, what selecting or
 //! clicking an entry does to the transcript, what happens to the focus when
 //! the sidebar is hidden, and the hints the help line shows while it has the
-//! focus.
+//! focus. It handles the turns sidebar's messages of the browser concern
+//! ([`BrowserMsg`](super::BrowserMsg)), which `browser.rs` dispatches.
 //!
 //! The sidebar's selection follows the transcript's while the transcript
 //! has the focus ([`App::sync_sidebar_selection`](super::App)), as the

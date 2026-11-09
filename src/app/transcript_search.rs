@@ -17,6 +17,11 @@
 //!    request other than the one waited for are dropped, so are those that
 //!    arrive after the search was cleared, the session reloaded or another
 //!    session opened.
+//!
+//! It handles the search requests of the transcript concern
+//! ([`TranscriptMsg`]), the messages of the prompt mounted for
+//! [`PromptPurpose::TranscriptSearch`] (prompt concern), and the worker's
+//! answers (worker concern).
 
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::thread::JoinHandle;
