@@ -166,6 +166,25 @@ Also:
   globally.
 - Never read or write `factory/state/board.json` or `backlog.md`.
 
+## Commands run in the foreground
+
+The orchestrator knows you are working only while your turn is running. If
+you end your turn to wait for your own background command, you look finished:
+the orchestrator is left with no running agent, and its run ends early.
+
+- Run every command in the foreground and wait for it in the same call. Never
+  start a build, a test run, the gate or a render in the background to wait
+  for it later: no `run_in_background`, and no `&`, `nohup`, `setsid` or
+  `disown`. A tmux session that you then drive with foreground commands (as
+  **Rendering** in `stack.md` describes) is fine.
+- Give a long command (a release build, the gate, the budgets) the Bash
+  tool's longest timeout, 600000 ms. Split a step that could take longer into
+  steps that each fit, for example a build and then the tests.
+- To wait for something to settle, such as a tmux pane, use one foreground
+  command that loops with a time limit, for example
+  `timeout 60 sh -c 'until <check>; do sleep 1; done'`.
+- Never end your turn before your result file is written.
+
 ## When you finish
 
 Delete your scratch directory, then end with one line: the first line of

@@ -1256,6 +1256,24 @@ factory/state/board.json
   path it didn't create in this run; and delete its directory when it
   finishes. Shell state doesn't persist between commands, so the agent uses
   the directory's full path each time.
+- Role agents run their commands in the foreground. An orchestrator knows an
+  agent is working only while the agent's turn is running: an agent that ends
+  its turn to wait for its own background command looks finished, so its
+  orchestrator is left with no running agent and its run ends early (cycle 5,
+  task 044: a UI reviewer waiting on its own background builds). So the
+  definition of every role agent (Planner, Builder, reviewers, Approver)
+  tells it to:
+  - run every command in the foreground and wait for it in the same call:
+    never `run_in_background`, `&`, `nohup`, `setsid` or `disown` for a
+    build, a test run, the gate or a render. A tmux session that it then
+    drives with foreground commands, as **Rendering** in `stack.md`
+    describes, is fine;
+  - give a long command (a release build, the gate, the budgets) the shell
+    tool's longest timeout, and split a step that could take longer into
+    steps that each fit, such as a build and then the tests;
+  - wait for something to settle, such as a tmux pane, with one foreground
+    command that loops with a time limit;
+  - never end its turn before its result file is written.
 - A command that finds, lists or counts things exits 0 when it succeeds,
   including when it finds nothing, so a non-zero exit always means an error.
   The exception is a plain git check whose exit status is its answer, such
@@ -1470,7 +1488,8 @@ Each definition uses the format under "Example files", and the model and
 effort given in its role description. It says what the agent reads, what it
 does, and which files it may write, and it repeats the safety rules for its
 role (see "Safety rules"). For agents that can work outside the repo, it
-also gives the scratch-directory rule (see "Rules").
+also gives the scratch-directory rule (see "Rules"). Every definition gives
+the foreground-command rule (see "Rules").
 
 The content comes from the role's description under "The Floor Plan", plus
 the sections that role depends on:
