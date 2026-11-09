@@ -359,7 +359,7 @@ fn a_click_below_the_last_block_selects_nothing() {
 }
 
 #[test]
-fn a_click_before_the_viewport_is_announced_does_nothing() {
+fn a_click_before_the_viewport_is_announced_changes_nothing_but_asks_for_the_focus() {
     let mut t =
         Transcript::new(super::blocks::theme(), super::blocks::formatter()).with_turns(session());
     let event = Event::User(UserEvent::Pointer(RoutedMouse {

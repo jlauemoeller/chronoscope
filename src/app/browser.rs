@@ -905,11 +905,8 @@ impl App {
     /// A left press on the transcript on top: it gets the focus, if
     /// something else has it, and the view is redrawn as `change` says.
     pub(super) fn transcript_pressed(&mut self, change: ViewChange) {
-        let top = self.top_transcript();
-        if self.application.focus() != Some(&top)
-            && let Err(err) = self.application.active(&top)
-        {
-            log::warn!("could not focus the transcript: {err}");
+        if self.application.focus() != Some(&self.top_transcript()) {
+            self.give_top_transcript_focus();
         }
         match change {
             ViewChange::Unchanged => {}

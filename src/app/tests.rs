@@ -1,5 +1,6 @@
 //! Update tests (no terminal), loop tests (a scripted event source and a
-//! `TestBackend`) and screen snapshots of `App::view`.
+//! `TestBackend`) and screen snapshots of `App::view`, and the helper the
+//! pointer tests send their events through (`App::update_routed`).
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -28,6 +29,23 @@ mod selector;
 mod selector_totals;
 mod session_panels;
 mod session_panels_values;
+
+impl App {
+    /// [`update`](Self::update)s `msg`, a pointer message, and then the
+    /// answer the router queued for it, if any, as the run loop's
+    /// [`handle`](Self::handle) would. Unlike `handle`, it leaves what that
+    /// answer queued in turn (an `OpenSession` on a double-click) for the
+    /// test to find in [`take_queued`](Self::take_queued).
+    fn update_routed(&mut self, msg: Msg) {
+        let before = self.queued.len();
+        self.update(msg);
+        if self.queued.len() > before
+            && let Some(answer) = self.queued.pop_back()
+        {
+            self.update(answer);
+        }
+    }
+}
 
 fn env() -> TerminalEnv {
     TerminalEnv {

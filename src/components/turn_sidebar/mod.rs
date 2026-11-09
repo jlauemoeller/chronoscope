@@ -33,7 +33,7 @@
 //!
 //! # Mouse
 //!
-//! `on` takes the `App`'s [`RoutedMouse`] (a `UserEvent::Pointer`, in the
+//! `on` takes the router's [`RoutedMouse`] (a `UserEvent::Pointer`, in the
 //! pane's own coordinates) and never the raw `Event::Mouse` that goes to the
 //! focused component in screen coordinates. The wheel selects the previous or
 //! next entry like `Up` / `Down` (no wrap-around) and answers

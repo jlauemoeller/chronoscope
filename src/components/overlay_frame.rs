@@ -161,8 +161,7 @@ impl OverlayFrame {
 
     /// The wheel scrolls [`WHEEL_ROWS`] rows; nothing else does anything
     /// (a press outside the overlay closes it, as its component decides).
-    /// Returns
-    /// whether the view moved.
+    /// Returns whether the view moved.
     pub fn on_mouse(&mut self, mouse: &RoutedMouse, total: usize) -> bool {
         match mouse.kind {
             MouseEventKind::ScrollUp => self.scroll_by(WHEEL_ROWS, false, total),

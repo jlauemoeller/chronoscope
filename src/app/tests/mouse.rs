@@ -5,6 +5,7 @@
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
@@ -21,8 +22,9 @@ use super::selector::{
     theme, two_harnesses,
 };
 use crate::app::fixtures::{self, fixture_snapshot};
-use crate::app::layout::{LayoutInput, Screen, component_at, layout};
+use crate::app::layout::{LayoutInput, PointerTarget, Screen, component_at, hit_test, layout};
 use crate::app::mouse::DOUBLE_CLICK;
+use crate::app::runtime::run_loop;
 use crate::app::{App, Id, Msg, Pane, UserEvent};
 use crate::components::{HelpContext, PROJECTS_FILTERED_ATTR};
 use crate::index::SessionMap;
@@ -711,22 +713,49 @@ fn a_double_click_with_a_wheel_step_between_its_presses_still_opens() {
 }
 
 #[test]
-fn a_press_not_on_a_row_ends_a_double_click_whether_or_not_it_reached_a_component() {
-    // The reset runs at the next press: the press on the tab gap answers no
-    // click handler, nor does the one on nothing.
-    for (column, row) in [(0, 0), (119, 39)] {
+fn a_press_not_on_a_row_ends_a_double_click_wherever_the_router_sends_it() {
+    // The reset runs at the next press, whatever the press between reached:
+    // a component that answers nothing (the tabs' underline row), nothing
+    // (the frame's border inside it), or the base selector as an outside
+    // press, which it ignores.
+    let probe = loaded();
+    let underline = pos(&probe, Id::HarnessTabs, 0, 1);
+    let border = pos(&probe, Id::SelectorFrame, 0, 5);
+    let cases = [
+        (underline, "a component"),
+        (border, "nothing"),
+        ((0, 0), "outside the base selector"),
+    ];
+    for ((column, row), what) in cases {
+        let target = hit_test(
+            probe.routing(),
+            &LayoutInput::default(),
+            mouse(PRESS, column, row),
+        );
+        let kind = match target {
+            PointerTarget::Component(id, _) => {
+                assert_eq!(id, Id::HarnessTabs);
+                "a component"
+            }
+            PointerTarget::Nothing => "nothing",
+            PointerTarget::Outside(id, _) => {
+                assert_eq!(id, Id::SelectorFrame);
+                "outside the base selector"
+            }
+        };
+        assert_eq!(kind, what);
         let mut app = loaded();
         let time = click_clock(&mut app);
         click_row(&mut app, Id::SessionList, 1);
         app.update(Msg::Pointer(mouse(PRESS, column, row)));
-        assert!(app.take_queued().is_empty(), "nothing answered");
+        assert!(app.take_queued().is_empty(), "{what}: nothing answered");
         time.set(Duration::from_millis(100));
         click_row(&mut app, Id::SessionList, 1);
-        assert!(app.take_queued().is_empty(), "({column}, {row})");
+        assert!(app.take_queued().is_empty(), "{what}");
         // Two more presses on the row are a double-click again.
         time.set(Duration::from_millis(200));
         click_row(&mut app, Id::SessionList, 1);
-        assert_eq!(app.take_queued().len(), 1, "({column}, {row})");
+        assert_eq!(app.take_queued().len(), 1, "{what}");
     }
 }
 
@@ -1247,6 +1276,39 @@ fn event(kind: MouseEventKind, modifiers: KeyModifiers, column: u16, row: u16) -
         column,
         row,
     })
+}
+
+#[test]
+fn the_run_loop_handles_a_press_outside_an_overlay_before_the_next_press() {
+    // Where the presses land, with help open as the loop will open it.
+    let (mut probe, _tx) = app_with_events(true);
+    let (column, row) = pos(&probe, Id::ProjectList, 6, 3);
+    probe.update(Msg::OpenHelp(HelpContext::Selector));
+    let help = probe.routing().area(Id::HelpOverlay).unwrap();
+    assert!(!help.contains((column, row).into()));
+    assert!(!help.contains((0, 0).into()));
+    let (mut app, tx) = app_with_events(true);
+    // All of them are waiting before the loop starts, so the two presses
+    // can come out of one poll: the loop must handle the first one's answer
+    // (closing help) before it routes the second.
+    for event in [
+        Event::Keyboard(KeyEvent::new(Key::Char('?'), KeyModifiers::NONE)),
+        event(PRESS, KeyModifiers::NONE, 0, 0),
+        event(PRESS, KeyModifiers::NONE, column, row),
+        // `Ctrl-c` quits whatever has the focus.
+        Event::Keyboard(KeyEvent::new(Key::Char('c'), KeyModifiers::CONTROL)),
+    ] {
+        tx.send(event).unwrap();
+    }
+    let mut terminal = super::test_terminal(120, 40);
+    run_loop(&mut app, &mut terminal, &AtomicBool::new(false)).unwrap();
+    assert!(app.should_quit());
+    assert!(!app.application().mounted(&Id::HelpOverlay), "help closed");
+    assert!(
+        project(&app).ends_with("/BRIO"),
+        "the second press selected"
+    );
+    assert_eq!(app.focused_pane(), Pane::Projects);
 }
 
 #[test]

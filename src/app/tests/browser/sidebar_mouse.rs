@@ -5,8 +5,8 @@
 //!
 //! The events go through `App::update_routed(Msg::Pointer(..))`, which
 //! handles the router's answer as the running application does; what they
-//! must do is what the keys
-//! do (`j` / `k` / `Enter`), which the tests compare with.
+//! must do is what the keys do (`j` / `k` / `Enter`), which the tests compare
+//! with.
 
 use std::cell::Cell;
 use std::rc::Rc;

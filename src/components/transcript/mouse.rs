@@ -4,18 +4,19 @@
 //!
 //! The router sends the event here with the position relative to the
 //! transcript's area (see [`RoutedMouse`]). A left press asks for the focus
-//! ([`Msg::TranscriptPressed`]), whether or not it hits a section. The row is mapped to a block and a
-//! row of that block through the prepared window (the layout cache's blocks,
-//! laid out for the viewport), and from there to a section or selection stop.
+//! ([`Msg::TranscriptPressed`]), whether or not it hits a section. The row is
+//! mapped to a block and a row of that block through the prepared window (the
+//! layout cache's blocks, laid out for the viewport), and from there to a
+//! section or selection stop.
 
 use tuirealm::command::{Cmd, CmdResult};
 use tuirealm::component::Component;
 use tuirealm::event::MouseEventKind;
 
-use super::Transcript;
 use super::folding::FoldOp;
 use super::keys::{WHEEL_DOWN, WHEEL_UP};
-use crate::app::{Msg, RoutedMouse, ViewChange};
+use super::{Transcript, changes_view};
+use crate::app::{Msg, RoutedMouse};
 use crate::components::turn_block::SectionId;
 
 /// What a click landed on.
@@ -40,13 +41,7 @@ impl Transcript {
             _ if press => self.clicked(mouse),
             _ => return None,
         };
-        let change = if self.new_sections != new_before {
-            ViewChange::NewSections(self.new_sections)
-        } else if matches!(result, CmdResult::NoChange | CmdResult::Invalid(_)) {
-            ViewChange::Unchanged
-        } else {
-            ViewChange::Changed
-        };
+        let change = self.view_change(new_before, changes_view(&result));
         if press {
             Some(Msg::TranscriptPressed(change))
         } else {

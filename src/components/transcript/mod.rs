@@ -131,7 +131,7 @@ use self::folding::FoldOp;
 use self::window::Window;
 use super::turn_rows::{TURN_ROWS_ATTR, TurnRows};
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent};
+use crate::app::{Msg, UserEvent, ViewChange};
 use crate::components::turn_block::SectionId;
 use crate::components::turn_block::export::ExportMeta;
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
@@ -723,8 +723,7 @@ impl AppComponent<Msg, UserEvent> for Transcript {
         }
         let cmd = keys::cmd_for(action)?;
         let new_before = self.new_sections;
-        let result = self.perform(cmd);
-        let changed = !matches!(result, CmdResult::NoChange | CmdResult::Invalid(_));
+        let changed = changes_view(&self.perform(cmd));
         if changed
             && matches!(
                 action,
@@ -734,9 +733,25 @@ impl AppComponent<Msg, UserEvent> for Transcript {
             return Some(Msg::SearchPosition(self.search_position()));
         }
         // The count changed (`G` resumed following): the App shows it.
+        self.view_change(new_before, changed).key_answer()
+    }
+}
+
+/// Whether a `Cmd` that answered `result` changed what the transcript shows.
+fn changes_view(result: &CmdResult) -> bool {
+    !matches!(result, CmdResult::NoChange | CmdResult::Invalid(_))
+}
+
+impl Transcript {
+    /// What an event did to the view: the count of new sections, if it
+    /// changed from `new_before`, else whether anything `changed`.
+    fn view_change(&self, new_before: usize, changed: bool) -> ViewChange {
         if self.new_sections != new_before {
-            return Some(Msg::NewSections(self.new_sections));
+            ViewChange::NewSections(self.new_sections)
+        } else if changed {
+            ViewChange::Changed
+        } else {
+            ViewChange::Unchanged
         }
-        changed.then_some(Msg::TranscriptChanged)
     }
 }
