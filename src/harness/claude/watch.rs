@@ -352,11 +352,11 @@ impl<'a> Watch<'a> {
 /// Passes what concerns the session to the worker; the callback runs on
 /// `notify`'s thread and holds no reference to the update channel.
 fn forward(targets: &Targets, tx: &Sender<Wake>, event: notify::Result<notify::Event>) {
-    let notice = notice(event);
-    if notice.wake {
+    let seen = notice(event);
+    if seen.wake {
         let _ = tx.send(Wake::Session);
     }
-    for path in &notice.paths {
+    for path in &seen.paths {
         if let Some(wake) = targets.classify(path) {
             // The worker may be gone already.
             let _ = tx.send(wake);

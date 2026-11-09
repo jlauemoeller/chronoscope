@@ -96,9 +96,9 @@ fn start_notify(db: &Path) -> notify::Result<(RecommendedWatcher, Receiver<()>)>
 /// Passes what concerns the database to the worker; the callback runs on
 /// `notify`'s thread and holds no reference to the update channel.
 fn forward(names: &[OsString], tx: &Sender<()>, event: notify::Result<notify::Event>) {
-    let notice = notice(event);
-    let concerns_us = notice.wake
-        || notice.paths.iter().any(|path| {
+    let seen = notice(event);
+    let concerns_us = seen.wake
+        || seen.paths.iter().any(|path| {
             path.file_name()
                 .is_some_and(|name| names.iter().any(|n| n == name))
         });

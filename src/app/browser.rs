@@ -12,6 +12,8 @@
 
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::mpsc::Sender;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
@@ -21,7 +23,7 @@ use super::hints::browser_hints;
 use super::layout::Screen;
 use super::redraw::RedrawRequest;
 use super::selector::{SELECTOR_IDS, mount_selector};
-use super::session_port::{SessionUpdate, forward_to, look_up_subagent};
+use super::session_port::{SessionEvent, SessionUpdate, forward_to, look_up_subagent};
 use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
@@ -31,7 +33,7 @@ use crate::components::{
     SectionId, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, TURN_ROWS_ATTR, Transcript,
     TurnSidebar, empty_session_message, payload_from_value, payload_value, status_value,
 };
-use crate::harness::WatchHandle;
+use crate::harness::{Harness, WatchHandle};
 use crate::keymap::{Action, Context};
 use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary, ToolCallId, is_active_at};
 use crate::theme::Role;
@@ -325,15 +327,24 @@ impl App {
         self.open_summary(harness, summary);
     }
 
+    /// The harness `harness` and the channel its loads report to; `None`
+    /// when either is missing.
+    fn loader_and_sink(
+        &self,
+        harness: HarnessId,
+    ) -> Option<(Arc<dyn Harness>, Sender<SessionEvent>)> {
+        Some((
+            self.harnesses.get(&harness).cloned()?,
+            self.session_sink.clone()?,
+        ))
+    }
+
     /// Opens `summary`, a session of `harness` the index may not list yet (a
     /// session given on the command line): the same as [`open_session`]
     /// from there on.
     pub fn open_summary(&mut self, harness: HarnessId, summary: SessionSummary) {
         let id = &summary.id;
-        let (Some(loader), Some(sink)) = (
-            self.harnesses.get(&harness).cloned(),
-            self.session_sink.clone(),
-        ) else {
+        let Some((loader, sink)) = self.loader_and_sink(harness) else {
             log::error!("cannot open {id}: no {harness} harness or session channel");
             self.toast_quiet("Cannot open the session");
             return;
@@ -526,7 +537,7 @@ impl App {
 
     /// `a` on a subagent section: starts the lookup of the transcript of the
     /// subagent that tool call `call` started, on a worker
-    /// ([`look_up_subagent`]). [`subagent_found`](Self::subagent_found)
+    /// ([`look_up_subagent`]). [`subagent_looked_up`](Self::subagent_looked_up)
     /// opens it when the answer comes. Nothing changes until then, and `a`
     /// is ignored while a lookup is pending.
     pub(super) fn open_subagent(&mut self, call: &ToolCallId, label: String) {
@@ -542,10 +553,7 @@ impl App {
         let Some(parent) = self.browser.current_session().cloned() else {
             return;
         };
-        let (Some(loader), Some(sink)) = (
-            self.harnesses.get(&harness).cloned(),
-            self.session_sink.clone(),
-        ) else {
+        let Some((loader, sink)) = self.loader_and_sink(harness) else {
             log::error!("cannot open a subagent: no {harness} harness or session channel");
             self.toast_quiet("Could not open the subagent");
             return;
@@ -571,7 +579,7 @@ impl App {
     /// is one that comes when the transcript that asked no longer has the
     /// focus (the selector, an overlay or a prompt is open, or the turns
     /// sidebar is focused).
-    pub(super) fn subagent_found(&mut self, generation: u64, found: Option<SessionId>) {
+    pub(super) fn subagent_looked_up(&mut self, generation: u64, found: Option<SessionId>) {
         let Some(PendingSubagent { label, .. }) = self
             .browser
             .pending_subagent
@@ -591,11 +599,9 @@ impl App {
             self.toast_quiet(NO_SUBAGENT_TRANSCRIPT);
             return;
         };
-        let harness = self.browser.open.as_ref().map(|open| open.harness);
-        let (Some(loader), Some(sink)) = (
-            harness.and_then(|harness| self.harnesses.get(&harness).cloned()),
-            self.session_sink.clone(),
-        ) else {
+        let loaded_by = self.browser.open.as_ref().map(|open| open.harness);
+        let Some((loader, sink)) = loaded_by.and_then(|harness| self.loader_and_sink(harness))
+        else {
             log::error!("cannot open subagent {id}: no harness or session channel");
             self.toast_quiet("Could not open the subagent");
             return;
@@ -1147,7 +1153,9 @@ fn percent(fraction: f32) -> u32 {
 }
 
 /// The last segment of the path `id`, a trailing separator skipped; `id`
-/// itself when it has none (`/`, an empty id).
+/// itself when it has none (`/`, an empty id). A cwd is normalised, so it
+/// never ends in `.` or `..`; for an id that does, [`Path::file_name`] skips
+/// a final `.` and gives nothing (so `id` itself) for a final `..`.
 fn last_path_segment(id: &str) -> String {
     Path::new(id)
         .file_name()

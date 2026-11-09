@@ -435,7 +435,9 @@ mod tests {
     fn an_id_that_would_leave_its_project_directory_resolves_to_nothing() {
         let (tmp, data, project) = data_dir();
         let outside = tmp.path().join("outside");
-        // Every file such an id could name, were it joined as it is.
+        // Every file such an id could name, were it joined as it is. The ids
+        // are session ids, whose parts `/` separates; the files are joined
+        // part by part.
         let bad = [
             ("a/../agent-x", project.join("agent-x.jsonl")),
             (
@@ -444,7 +446,11 @@ mod tests {
             ),
             (
                 "a/subagents/agent-x/y",
-                project.join("a/subagents/agent-x").join("y.jsonl"),
+                project
+                    .join("a")
+                    .join("subagents")
+                    .join("agent-x")
+                    .join("y.jsonl"),
             ),
             (
                 "a\\subagents\\agent-x",
@@ -452,7 +458,7 @@ mod tests {
             ),
             (
                 "C:x/subagents/agent-y",
-                project.join("C:x/subagents/agent-y.jsonl"),
+                project.join("C:x").join("subagents").join("agent-y.jsonl"),
             ),
         ];
         for (_, file) in &bad {
@@ -478,7 +484,12 @@ mod tests {
     fn the_subagent_of_an_opened_file_is_found_next_to_it() {
         let tmp = tempfile::tempdir().unwrap();
         let file = tmp.path().join("elsewhere").join("ses.jsonl");
-        let sub = tmp.path().join("elsewhere/ses/subagents/agent-a1.jsonl");
+        let sub = tmp
+            .path()
+            .join("elsewhere")
+            .join("ses")
+            .join("subagents")
+            .join("agent-a1.jsonl");
         plant(&file);
         plant(&sub);
         let opened = Opened::default();

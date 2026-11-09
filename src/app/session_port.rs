@@ -12,6 +12,7 @@
 //! comes back on the same channel, numbered with the generation the load of
 //! the subagent will have.
 
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::time::Duration;
@@ -146,7 +147,8 @@ pub fn forward_to(generation: u64, sink: Sender<SessionEvent>) -> Sender<ModelUp
 /// tool call `call` of `parent` started, and sends the answer to `sink` as
 /// [`SessionEvent::Subagent`] with `generation`. The lookup may list
 /// directories, read files or query the database, so it never runs on the
-/// UI thread. Fails only when the thread cannot be started.
+/// UI thread. A lookup that panics answers `None`. Fails only when the
+/// thread cannot be started.
 pub fn look_up_subagent(
     harness: Arc<dyn Harness>,
     parent: SessionId,
@@ -157,7 +159,13 @@ pub fn look_up_subagent(
     std::thread::Builder::new()
         .name("subagent-lookup".to_owned())
         .spawn(move || {
-            let found = harness.subagent(&parent, &call);
+            // A lookup that panics answers too, so `a` is not ignored for
+            // good while its answer is waited for.
+            let found = panic::catch_unwind(AssertUnwindSafe(|| harness.subagent(&parent, &call)))
+                .unwrap_or_else(|_| {
+                    log::error!("the lookup of the subagent of {call} in {parent} panicked");
+                    None
+                });
             // The application may be gone already.
             let _ = sink.send(SessionEvent::Subagent { generation, found });
         })

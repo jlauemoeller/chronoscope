@@ -234,7 +234,7 @@ impl AppComponent<Msg, UserEvent> for GlobalEvents {
                 generation: *generation,
                 update: update.clone(),
             }),
-            Event::User(UserEvent::Subagent { generation, found }) => Some(Msg::SubagentFound {
+            Event::User(UserEvent::Subagent { generation, found }) => Some(Msg::SubagentLookedUp {
                 generation: *generation,
                 found: found.clone(),
             }),
@@ -555,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn a_subagent_user_event_becomes_a_subagent_found_message() {
+    fn a_subagent_user_event_becomes_a_subagent_looked_up_message() {
         use crate::model::SessionId;
         let found = Some(SessionId::from("s1/subagents/agent-a1"));
         let mut component = GlobalEvents::new(Keymap::default());
@@ -565,7 +565,7 @@ mod tests {
         }));
         assert_eq!(
             msg,
-            Some(Msg::SubagentFound {
+            Some(Msg::SubagentLookedUp {
                 generation: 3,
                 found
             })

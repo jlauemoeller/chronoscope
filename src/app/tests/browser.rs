@@ -65,6 +65,8 @@ struct FakeHarness {
     /// While set, `subagent` waits before it answers; the condition variable
     /// tells it the hold is lifted.
     subagent_hold: (Mutex<bool>, Condvar),
+    /// Whether `subagent` panics instead of answering.
+    subagent_panics: AtomicBool,
     /// The resume command template; none: the harness has no command.
     resume: Mutex<Option<String>>,
 }
@@ -83,6 +85,7 @@ impl FakeHarness {
             subagent_asks: Mutex::default(),
             subagent_threads: Mutex::default(),
             subagent_hold: (Mutex::new(false), Condvar::new()),
+            subagent_panics: AtomicBool::new(false),
             resume: Mutex::default(),
         })
     }
@@ -206,6 +209,10 @@ impl Harness for FakeHarness {
             held = lifted.wait(held).unwrap();
         }
         drop(held);
+        assert!(
+            !self.subagent_panics.load(Ordering::Relaxed),
+            "the lookup broke"
+        );
         self.subagents.lock().unwrap().get(&key).cloned()
     }
 

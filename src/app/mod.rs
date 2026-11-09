@@ -202,7 +202,7 @@ pub enum Msg {
     /// `generation` numbers the lookup and the load of the subagent, and
     /// `found` is its session, `None` when it has no transcript. The answer
     /// to a lookup that is no longer waited for is dropped.
-    SubagentFound {
+    SubagentLookedUp {
         generation: u64,
         found: Option<SessionId>,
     },
@@ -768,7 +768,9 @@ impl App {
             Msg::OpenSelector => self.open_selector(),
             Msg::CloseSelector => self.close_selector(),
             Msg::Session { generation, update } => self.session_update(generation, &update),
-            Msg::SubagentFound { generation, found } => self.subagent_found(generation, found),
+            Msg::SubagentLookedUp { generation, found } => {
+                self.subagent_looked_up(generation, found)
+            }
             Msg::FocusTurns => self.focus_turns(),
             Msg::FocusTranscript => self.focus_transcript_from_sidebar(),
             Msg::TurnSelected(id) => self.go_to_turn(&id, false),
