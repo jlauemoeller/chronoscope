@@ -221,10 +221,10 @@ pub struct ViewChange {
 
 impl ViewChange {
     /// The message a key or a wheel step that made this change answers:
-    /// [`TranscriptMsg::NewSections`] when the count changed (with the selection, if
-    /// it moved too), else [`TranscriptMsg::SelectionChanged`] when the selection
-    /// moved, else [`TranscriptMsg::Changed`] when anything else changed,
-    /// else none.
+    /// [`TranscriptMsg::NewSections`] when the count changed (with the
+    /// selection, if it moved too), else
+    /// [`TranscriptMsg::SelectionChanged`] when the selection moved, else
+    /// [`TranscriptMsg::Changed`] when anything else changed, else none.
     pub fn key_answer(self) -> Option<Msg> {
         if let Some(count) = self.new_sections {
             return Some(Msg::Transcript(TranscriptMsg::NewSections {

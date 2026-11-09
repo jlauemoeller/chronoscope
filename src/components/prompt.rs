@@ -88,9 +88,14 @@ impl Prompt {
         purpose: PromptPurpose,
         theme: Theme,
     ) -> Self {
+        let text = text.into();
+        debug_assert!(
+            !purpose.asks_yes_no() || text.is_empty(),
+            "a y/n prompt takes no text"
+        );
         Self {
             label: label.into(),
-            input: Input::new(text.into()),
+            input: Input::new(text),
             purpose,
             theme,
             fill: Role::Surface,
@@ -113,6 +118,7 @@ impl Prompt {
         after: &str,
         theme: Theme,
     ) -> Self {
+        debug_assert!(purpose.asks_yes_no(), "{purpose:?} asks no question");
         let mut prompt = Self::new(before, "", purpose, theme);
         prompt.question = Some(Question {
             before: before.to_owned(),

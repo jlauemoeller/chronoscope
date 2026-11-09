@@ -28,9 +28,9 @@ pub enum TranscriptMsg {
         count: usize,
         selection: Option<SectionId>,
     },
-    /// A left press on the transcript on top, on a section or not: it asks for the
-    /// focus, and says what the press did to its view (the section it
-    /// selected, among others).
+    /// A left press on the transcript on top, on a section or not: it asks
+    /// for the focus, and says what the press did to its view (the section
+    /// it selected, among others).
     Pressed(ViewChange),
     /// `/` in the transcript: open the search prompt in the help line.
     OpenSearch,

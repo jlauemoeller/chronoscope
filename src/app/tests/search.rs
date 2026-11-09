@@ -53,6 +53,32 @@ pub(super) fn searching(query: &str) -> App {
     app
 }
 
+/// What the selector's search prompt sends when its text becomes `query`.
+fn query_changed(query: impl Into<String>) -> Msg {
+    Msg::Prompt(PromptMsg::Changed(
+        PromptPurpose::SelectorSearch,
+        query.into(),
+    ))
+}
+
+/// What the selector's search prompt sends on `Enter` with `query`.
+fn query_submitted(query: impl Into<String>) -> Msg {
+    Msg::Prompt(PromptMsg::Submit(
+        PromptPurpose::SelectorSearch,
+        query.into(),
+    ))
+}
+
+/// What the selector's search prompt sends on `Esc`.
+fn query_cancelled() -> Msg {
+    Msg::Prompt(PromptMsg::Cancel(PromptPurpose::SelectorSearch))
+}
+
+/// What the selector's search prompt sends on `↑` or `↓`.
+fn prompt_nav(direction: Direction) -> Msg {
+    Msg::Prompt(PromptMsg::Nav(PromptPurpose::SelectorSearch, direction))
+}
+
 fn focus_of(app: &App) -> Option<Id> {
     app.application().focus().copied()
 }
@@ -243,13 +269,7 @@ fn q_typed_in_the_prompt_does_not_quit_but_is_typed() {
     open_search(&mut app);
     tx.send(char_event('q')).unwrap();
     let msgs = collect(&mut app);
-    assert_eq!(
-        msgs,
-        [Msg::Prompt(PromptMsg::Changed(
-            PromptPurpose::SelectorSearch,
-            "q".to_owned()
-        ))]
-    );
+    assert_eq!(msgs, [query_changed("q")]);
     for msg in msgs {
         app.update(msg);
     }
@@ -468,16 +488,10 @@ fn prompt_nav_reaches_the_list_as_a_message_and_asks_for_a_redraw() {
     let mut app = searching("brio");
     assert_eq!(
         key_msg(&mut app, Key::Down),
-        Some(Msg::Prompt(PromptMsg::Nav(
-            PromptPurpose::SelectorSearch,
-            Direction::Down
-        )))
+        Some(prompt_nav(Direction::Down))
     );
     app.take_redraw();
-    app.update(Msg::Prompt(PromptMsg::Nav(
-        PromptPurpose::SelectorSearch,
-        Direction::Down,
-    )));
+    app.update(prompt_nav(Direction::Down));
     assert_eq!(app.take_redraw(), RedrawRequest::Dirty);
 }
 
@@ -550,13 +564,7 @@ fn enter_opens_the_selected_result() {
     let mut app = searching("brio");
     press(&mut app, Key::Down);
     let wanted = selected(&app).unwrap();
-    assert_eq!(
-        key_msg(&mut app, Key::Enter),
-        Some(Msg::Prompt(PromptMsg::Submit(
-            PromptPurpose::SelectorSearch,
-            "brio".to_owned()
-        )))
-    );
+    assert_eq!(key_msg(&mut app, Key::Enter), Some(query_submitted("brio")));
     press(&mut app, Key::Enter);
     assert_eq!(
         app.take_queued(),
@@ -824,10 +832,7 @@ fn answers(app: &mut App) -> Vec<Msg> {
 fn with_a_worker_the_results_arrive_as_an_event() {
     let mut app = app_with_worker();
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
+    app.update(query_changed("brio"));
     // Nothing is listed until the worker answers.
     assert!(app.search_results().is_empty());
     assert_eq!(session_rows(&app).search, None);
@@ -848,10 +853,7 @@ fn answers_to_older_queries_are_ignored() {
     open_search(&mut app);
     let mut all = Vec::new();
     for query in ["b", "br", "bri", "brio"] {
-        app.update(Msg::Prompt(PromptMsg::Changed(
-            PromptPurpose::SelectorSearch,
-            query.to_owned(),
-        )));
+        app.update(query_changed(query));
         all.extend(answers_to_latest_or_none(&mut app));
     }
     let latest = app.search_seq;
@@ -915,15 +917,9 @@ fn messages_of_other_prompts_leave_the_selector_search_alone() {
 fn a_stale_answer_after_a_newer_one_is_ignored() {
     let mut app = app_with_worker();
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "calira".to_owned(),
-    )));
+    app.update(query_changed("calira"));
     let first = answers(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
+    app.update(query_changed("brio"));
     for msg in answers(&mut app) {
         app.update(msg);
     }
@@ -939,14 +935,8 @@ fn a_stale_answer_after_a_newer_one_is_ignored() {
 fn enter_before_the_answer_opens_the_first_result_when_it_arrives() {
     let mut app = app_with_worker();
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
-    app.update(Msg::Prompt(PromptMsg::Submit(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
+    app.update(query_changed("brio"));
+    app.update(query_submitted("brio"));
     assert_eq!(app.take_queued(), [], "nothing to open yet");
     for msg in answers(&mut app) {
         app.update(msg);
@@ -964,13 +954,8 @@ fn esc_before_the_answer_leaves_the_selector_as_it_was() {
     let mut app = app_with_worker();
     let before = session_rows(&app);
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
-    app.update(Msg::Prompt(PromptMsg::Cancel(
-        PromptPurpose::SelectorSearch,
-    )));
+    app.update(query_changed("brio"));
+    app.update(query_cancelled());
     for msg in answers_after_cancel(&mut app) {
         app.update(msg);
     }
@@ -993,28 +978,16 @@ fn answers_after_cancel(app: &mut App) -> Vec<Msg> {
 fn a_snapshot_while_a_keystroke_is_pending_still_selects_the_first_result() {
     let mut app = app_with_worker();
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
+    app.update(query_changed("brio"));
     for msg in answers(&mut app) {
         app.update(msg);
     }
-    app.update(Msg::Prompt(PromptMsg::Nav(
-        PromptPurpose::SelectorSearch,
-        Direction::Down,
-    )));
-    app.update(Msg::Prompt(PromptMsg::Nav(
-        PromptPurpose::SelectorSearch,
-        Direction::Down,
-    )));
+    app.update(prompt_nav(Direction::Down));
+    app.update(prompt_nav(Direction::Down));
     assert_eq!(session_rows(&app).selected, Some(2));
     // A longer query whose results still contain the selected session, and
     // a live snapshot before the worker answers it.
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio ".to_owned(),
-    )));
+    app.update(query_changed("brio "));
     app.update(message(append_session()));
     for msg in answers(&mut app) {
         app.update(msg);
@@ -1028,17 +1001,11 @@ fn a_snapshot_while_a_keystroke_is_pending_still_selects_the_first_result() {
 fn a_snapshot_with_the_same_query_keeps_the_selection_with_a_worker() {
     let mut app = app_with_worker();
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
+    app.update(query_changed("brio"));
     for msg in answers(&mut app) {
         app.update(msg);
     }
-    app.update(Msg::Prompt(PromptMsg::Nav(
-        PromptPurpose::SelectorSearch,
-        Direction::Down,
-    )));
+    app.update(prompt_nav(Direction::Down));
     let keep = selected(&app).unwrap();
     app.update(message(append_session()));
     for msg in answers(&mut app) {
@@ -1073,18 +1040,9 @@ fn append_session() -> crate::index::IndexEvent {
 fn an_enter_waiting_for_an_answer_is_dropped_when_the_query_changes() {
     let mut app = app_with_worker();
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
-    app.update(Msg::Prompt(PromptMsg::Submit(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "calira".to_owned(),
-    )));
+    app.update(query_changed("brio"));
+    app.update(query_submitted("brio"));
+    app.update(query_changed("calira"));
     for msg in answers(&mut app) {
         app.update(msg);
     }
@@ -1096,14 +1054,8 @@ fn an_enter_waiting_for_an_answer_is_dropped_when_the_query_changes() {
 fn deleting_the_query_while_a_search_runs_drops_its_answer() {
     let mut app = app_with_worker();
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        String::new(),
-    )));
+    app.update(query_changed("brio"));
+    app.update(query_changed(String::new()));
     for msg in answers_after_cancel(&mut app) {
         app.update(msg);
     }
@@ -1119,10 +1071,7 @@ fn a_stopped_worker_falls_back_to_searching_in_place() {
         worker.shutdown();
     }
     open_search(&mut app);
-    app.update(Msg::Prompt(PromptMsg::Changed(
-        PromptPurpose::SelectorSearch,
-        "brio".to_owned(),
-    )));
+    app.update(query_changed("brio"));
     assert_eq!(session_rows(&app).search.as_deref(), Some("brio"));
     assert_eq!(app.search_results().len(), 5);
 }
@@ -1235,10 +1184,7 @@ fn five_thousand_sessions_one_keystroke_timing() {
         let mut total = Duration::ZERO;
         for _ in 0..runs {
             let start = Instant::now();
-            app.update(Msg::Prompt(PromptMsg::Changed(
-                PromptPurpose::SelectorSearch,
-                query.to_owned(),
-            )));
+            app.update(query_changed(query));
             let took = start.elapsed();
             worst = worst.max(took);
             total += took;
@@ -1257,10 +1203,7 @@ fn five_thousand_sessions_one_keystroke_timing() {
         let mut total = Duration::ZERO;
         for _ in 0..runs {
             let start = Instant::now();
-            app.update(Msg::Prompt(PromptMsg::Changed(
-                PromptPurpose::SelectorSearch,
-                query.to_owned(),
-            )));
+            app.update(query_changed(query));
             let sent = start.elapsed();
             let answer = results.recv().unwrap();
             let start = Instant::now();

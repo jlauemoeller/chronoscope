@@ -315,9 +315,7 @@ impl App {
             BrowserMsg::OpenTurn(id) => self.go_to_turn(&id, true),
         }
     }
-}
 
-impl App {
     // -- read access, for tests
 
     /// The id of the active theme.

@@ -1,8 +1,9 @@
 //! Resuming a session in its harness (product §5.7).
 //!
 //! 1. `R` in the browser, or on a selected session in the selector, answers
-//!    [`OutputMsg::RequestResume`](super::OutputMsg::RequestResume). The browser's target
-//!    is the open session, also while a subagent's transcript is shown.
+//!    [`OutputMsg::RequestResume`](super::OutputMsg::RequestResume). The
+//!    browser's target is the open session, also while a subagent's
+//!    transcript is shown.
 //! 2. The `App` decides whether it can be done: the harness must have a
 //!    resume command (else a toast says so), and the session's working
 //!    directory must exist (else a toast says so). Then it opens the `y/n`

@@ -33,8 +33,8 @@ const CTRL_C: KeyEvent = KeyEvent {
 /// The quit, help, theme and `open_selector` keys come from the keymap's
 /// `global` context; `Ctrl-c` always quits.
 ///
-/// The help key gives `OverlayMsg::OpenHelp` for the screen the app says is shown
-/// (see [`HELP_CONTEXT_ATTR`]).
+/// The help key gives `OverlayMsg::OpenHelp` for the screen the app says is
+/// shown (see [`HELP_CONTEXT_ATTR`]).
 #[derive(Debug, Clone)]
 pub struct GlobalEvents {
     keymap: Keymap,

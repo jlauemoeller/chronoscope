@@ -1,6 +1,7 @@
 //! Searching the transcript (product §5.2) through the app: the prompt, the
 //! worker and its port, the results, the help line and the screens.
 
+use tuirealm::command::Direction;
 use tuirealm::state::{State, StateValue};
 
 use super::*;
@@ -206,9 +207,22 @@ fn enter_on_an_empty_query_closes_the_prompt_without_searching() {
 
 #[test]
 fn the_selectors_prompt_messages_do_not_reach_the_browser_prompt() {
-    // A submit of the transcript's prompt must not open a session.
     let mut rig = searching_rig();
     rig.open_prompt();
+    rig.type_text("usb");
+    rig.pump_until(|app| prompt_text(app) == "usb");
+    for msg in [
+        PromptMsg::Changed(PromptPurpose::SelectorSearch, "zebra".to_owned()),
+        PromptMsg::Nav(PromptPurpose::SelectorSearch, Direction::Down),
+        PromptMsg::Submit(PromptPurpose::SelectorSearch, "zebra".to_owned()),
+        PromptMsg::Cancel(PromptPurpose::SelectorSearch),
+    ] {
+        rig.app.update(Msg::Prompt(msg.clone()));
+        assert!(rig.app.transcript_prompt_open(), "{msg:?}");
+        assert_eq!(prompt_text(&rig.app), "usb", "{msg:?}");
+        assert!(rig.app.take_queued().is_empty(), "{msg:?}");
+    }
+    // The transcript prompt's own submit searches and opens no session.
     rig.app.update(Msg::Prompt(PromptMsg::Submit(
         PromptPurpose::TranscriptSearch,
         "anything".to_owned(),

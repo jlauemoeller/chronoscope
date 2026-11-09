@@ -2,8 +2,8 @@
 //! thread that matches, the port that brings its answers back, and the
 //! `App`'s part of the flow.
 //!
-//! 1. `/` in the transcript asks ([`TranscriptMsg::OpenSearch`]) for the [`Prompt`] in
-//!    the help line.
+//! 1. `/` in the transcript asks ([`TranscriptMsg::OpenSearch`]) for the
+//!    [`Prompt`] in the help line.
 //! 2. `Enter` in the prompt with a query: the App hands the query to the
 //!    transcript (an attribute) and, right after, queries the request it
 //!    builds from it (cycle 5 spec, §0 item 5):

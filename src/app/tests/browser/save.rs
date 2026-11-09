@@ -489,7 +489,8 @@ fn only_the_answer_of_the_overwrite_prompt_answers_the_question() {
     let path = existing(&mut rig, &dir);
     let other = path_str(&dir, "other.txt");
     for msg in [
-        PromptMsg::Submit(PromptPurpose::SavePath, other.clone()),
+        PromptMsg::Changed(PromptPurpose::SavePath, other.clone()),
+        PromptMsg::Nav(PromptPurpose::SavePath, Direction::Down),
         PromptMsg::Submit(PromptPurpose::Overwrite, "y".to_owned()),
         PromptMsg::Nav(PromptPurpose::Overwrite, Direction::Down),
         PromptMsg::Cancel(PromptPurpose::Overwrite),
@@ -510,6 +511,58 @@ fn only_the_answer_of_the_overwrite_prompt_answers_the_question() {
     prompt_says(&mut rig, PromptMsg::Confirm(PromptPurpose::Overwrite, true));
     assert!(!rig.app.write_prompt_open());
     assert_ne!(std::fs::read_to_string(&path).unwrap(), "old contents");
+}
+
+#[test]
+fn a_path_submitted_while_the_overwrite_question_is_open_answers_it_no() {
+    // An `Enter` already on its way when the question replaced the path
+    // prompt: nothing is written and the question closes.
+    let (mut rig, dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    let path = existing(&mut rig, &dir);
+    prompt_says(
+        &mut rig,
+        PromptMsg::Submit(PromptPurpose::SavePath, SAVE_DEFAULT.to_owned()),
+    );
+    assert!(!rig.app.write_prompt_open());
+    assert!(!rig.prompt_mounted());
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+    assert_eq!(rig.shown_toast(), None);
+}
+
+#[test]
+fn two_enters_on_an_existing_path_write_nothing_and_close_the_question() {
+    let (mut rig, dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    let path = dir.path().join("brio-85a86657-shell.txt");
+    std::fs::write(&path, "old contents").unwrap();
+    rig.ask(Key::Char('w'), KeyModifiers::NONE);
+    // Both keys are waiting before the next tick.
+    rig.press(Key::Enter);
+    rig.press(Key::Enter);
+    rig.settle();
+    assert!(!rig.app.write_prompt_open());
+    assert!(!rig.prompt_mounted());
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "old contents");
+    assert_eq!(rig.shown_toast(), None);
+}
+
+#[test]
+fn typing_in_the_path_prompt_asks_for_a_redraw() {
+    let (mut rig, _dir) = save_rig(120, 40);
+    rig.select_shell_call();
+    rig.ask(Key::Char('w'), KeyModifiers::NONE);
+    rig.app.take_redraw();
+    prompt_says(
+        &mut rig,
+        PromptMsg::Changed(PromptPurpose::SavePath, "./x".to_owned()),
+    );
+    assert_ne!(
+        rig.app.take_redraw(),
+        crate::app::redraw::RedrawRequest::None
+    );
 }
 
 #[test]

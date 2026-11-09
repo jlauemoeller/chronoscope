@@ -191,34 +191,39 @@ impl App {
         }
     }
 
-    /// `Enter` in the path prompt: `typed` is the path. Ignored unless the
-    /// path is what the pending write waits for.
+    /// `Enter` in the path prompt: `typed` is the path. An `Enter` that was
+    /// already on its way when the overwrite question replaced the path
+    /// prompt (two in one tick) answers that question no: nothing is
+    /// written and the prompt closes.
     pub(super) fn path_submitted(&mut self, typed: &str) {
-        let Some(pending) = self.browser.write.take_if(|w| w.overwrite.is_none()) else {
+        let Some(pending) = self.browser.write.take() else {
             return;
         };
         self.close_overlay(Id::Prompt);
-        self.path_chosen(pending.kind, pending.text, typed);
-    }
-
-    /// The answer to the overwrite question: yes writes the file, no writes
-    /// nothing. Ignored unless the pending write waits for that answer.
-    pub(super) fn overwrite_answered(&mut self, yes: bool) {
-        let Some(PendingWrite {
-            kind,
-            text,
-            overwrite: Some(overwrite),
-        }) = self.browser.write.take_if(|w| w.overwrite.is_some())
-        else {
-            return;
-        };
-        self.close_overlay(Id::Prompt);
-        if yes {
-            self.write_file(kind, &text, &overwrite.path, &overwrite.shown);
+        if pending.overwrite.is_none() {
+            self.path_chosen(pending.kind, pending.text, typed);
         }
     }
 
-    /// `Esc` in the path prompt: nothing is written.
+    /// The answer to the overwrite question: yes writes the file, no writes
+    /// nothing. Ignored while the path is asked: only the question answers.
+    pub(super) fn overwrite_answered(&mut self, yes: bool) {
+        let Some(pending) = self.browser.write.take_if(|w| w.overwrite.is_some()) else {
+            return;
+        };
+        self.close_overlay(Id::Prompt);
+        if yes && let Some(overwrite) = pending.overwrite {
+            self.write_file(
+                pending.kind,
+                &pending.text,
+                &overwrite.path,
+                &overwrite.shown,
+            );
+        }
+    }
+
+    /// `Esc` in the path prompt, or one that was on its way when the
+    /// overwrite question replaced it: nothing is written.
     pub(super) fn write_prompt_cancel(&mut self) {
         if self.browser.write.take().is_some() {
             self.close_overlay(Id::Prompt);
