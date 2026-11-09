@@ -15,11 +15,11 @@ use crate::app::{Msg, UserEvent};
 use crate::theme::{Role, Theme};
 
 /// Draws the border, sizing and background of the selector overlay and
-/// nothing inside it. It never takes focus.
+/// nothing inside it or outside it. It never takes focus.
 ///
-/// `view` gets the overlay rect as its area; `frame.area()` is the whole
-/// screen. When the selector is the base screen (no session open behind it)
-/// the whole screen is first painted with `background`.
+/// `view` gets the overlay rect as its area. When the selector is the base
+/// screen, the rest of the screen is painted by a
+/// [`BackgroundFill`](super::BackgroundFill) of its own, drawn first.
 ///
 /// The border is rounded in `ring` and the interior is filled with `surface`.
 /// With a transparent theme nothing is painted with `surface` or `background`
@@ -27,28 +27,12 @@ use crate::theme::{Role, Theme};
 #[derive(Debug, Clone)]
 pub struct SelectorFrame {
     theme: Theme,
-    base: bool,
 }
 
 impl SelectorFrame {
-    /// A frame over the base screen.
+    /// A frame in `theme`.
     pub fn new(theme: Theme) -> Self {
-        Self { theme, base: true }
-    }
-
-    /// Whether the selector is the base screen. When it is not, it is drawn
-    /// over a session and the screen is left as it is outside the overlay.
-    #[must_use]
-    pub fn base(mut self, base: bool) -> Self {
-        self.base = base;
-        self
-    }
-
-    fn paint_background(&self, frame: &mut Frame) {
-        if self.base && !self.theme.transparent_background() {
-            let style = Style::new().bg(self.theme.role(Role::Background));
-            frame.render_widget(Block::new().style(style), frame.area());
-        }
+        Self { theme }
     }
 
     fn border(&self) -> Block<'static> {
@@ -67,7 +51,6 @@ impl SelectorFrame {
 impl Component for SelectorFrame {
     fn view(&mut self, frame: &mut Frame, area: Rect) {
         let area = area.intersection(frame.area());
-        self.paint_background(frame);
         frame.render_widget(Clear, area);
         frame.render_widget(self.border(), area);
     }
@@ -102,6 +85,7 @@ impl AppComponent<Msg, UserEvent> for SelectorFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::BackgroundFill;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
     use crate::theme::builtin;
 
@@ -109,10 +93,27 @@ mod tests {
         builtin::default_theme()
     }
 
+    /// The frame drawn at `overlay` as the app draws it: on the base screen
+    /// (`base`) over the screen's own `BackgroundFill`, drawn first.
+    fn draw_buffer(
+        theme: Theme,
+        base: bool,
+        width: u16,
+        height: u16,
+        overlay: Rect,
+    ) -> ratatui::buffer::Buffer {
+        let mut fill = BackgroundFill::new(theme.clone());
+        let mut frame_component = SelectorFrame::new(theme);
+        render(width, height, |frame| {
+            if base {
+                fill.view(frame, frame.area());
+            }
+            frame_component.view(frame, overlay);
+        })
+    }
+
     fn draw(theme: Theme, base: bool, width: u16, height: u16, overlay: Rect) -> String {
-        let mut frame_component = SelectorFrame::new(theme).base(base);
-        let buffer = render(width, height, |frame| frame_component.view(frame, overlay));
-        buffer_to_styled(&buffer)
+        buffer_to_styled(&draw_buffer(theme, base, width, height, overlay))
     }
 
     #[test]
@@ -123,8 +124,7 @@ mod tests {
     #[test]
     fn frame_over_a_session_leaves_the_outside_alone() {
         let theme = default_theme();
-        let mut component = SelectorFrame::new(theme.clone()).base(false);
-        let buffer = render(30, 8, |frame| component.view(frame, Rect::new(2, 1, 26, 6)));
+        let buffer = draw_buffer(theme.clone(), false, 30, 8, Rect::new(2, 1, 26, 6));
         assert_eq!(buffer[(0, 0)].bg, ratatui::style::Color::Reset);
         assert_eq!(buffer[(2, 1)].bg, theme.role(Role::Surface));
         insta::assert_snapshot!(buffer_to_styled(&buffer));
@@ -139,12 +139,26 @@ mod tests {
     #[test]
     fn border_is_ring_and_interior_is_surface() {
         let theme = default_theme();
-        let mut component = SelectorFrame::new(theme.clone());
-        let buffer = render(20, 6, |frame| component.view(frame, Rect::new(1, 1, 18, 4)));
+        let buffer = draw_buffer(theme.clone(), true, 20, 6, Rect::new(1, 1, 18, 4));
         assert_eq!(buffer[(1, 1)].symbol(), "╭");
         assert_eq!(buffer[(1, 1)].fg, theme.role(Role::Ring));
         assert_eq!(buffer[(2, 2)].bg, theme.role(Role::Surface));
         assert_eq!(buffer[(0, 0)].bg, theme.role(Role::Background));
+    }
+
+    #[test]
+    fn the_frame_alone_paints_nothing_outside_its_area() {
+        let theme = default_theme();
+        let mut component = SelectorFrame::new(theme.clone());
+        let overlay = Rect::new(2, 1, 26, 6);
+        let buffer = render(30, 8, |frame| component.view(frame, overlay));
+        for y in 0..8 {
+            for x in 0..30 {
+                let inside = overlay.contains((x, y).into());
+                let painted = buffer[(x, y)].bg != ratatui::style::Color::Reset;
+                assert_eq!(painted, inside, "({x}, {y})");
+            }
+        }
     }
 
     #[test]

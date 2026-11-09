@@ -149,6 +149,7 @@ fn startup_mounts_the_components_and_focuses_the_projects_pane() {
     let app = app();
     for id in [
         Id::GlobalEvents,
+        Id::ScreenBackground,
         Id::SelectorFrame,
         Id::HarnessTabs,
         Id::ProjectList,

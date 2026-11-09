@@ -22,7 +22,8 @@ fn every_id_is_themed_but_the_global_events() {
     for id in THEMED {
         let themed = match id {
             Id::GlobalEvents => false,
-            Id::SelectorFrame
+            Id::ScreenBackground
+            | Id::SelectorFrame
             | Id::EmptyState
             | Id::HarnessTabs
             | Id::ProjectList

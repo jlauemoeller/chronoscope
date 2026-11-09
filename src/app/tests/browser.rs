@@ -466,7 +466,10 @@ fn opening_a_session_mounts_the_browser_unmounts_the_selector_and_starts_a_load(
     for id in BROWSER_IDS {
         assert!(rig.app.application().mounted(&id), "{id:?}");
     }
-    for id in SELECTOR_IDS.into_iter().chain([Id::Prompt]) {
+    for id in SELECTOR_IDS
+        .into_iter()
+        .chain([Id::Prompt, Id::ScreenBackground])
+    {
         assert!(!rig.app.application().mounted(&id), "{id:?}");
     }
     assert_eq!(rig.focus(), Some(Id::Transcript));
@@ -812,6 +815,8 @@ fn ctrl_o_opens_the_selector_over_the_browser_on_the_open_session() {
     for id in SELECTOR_IDS.into_iter().chain(BROWSER_IDS) {
         assert!(app.application().mounted(&id), "{id:?}");
     }
+    // Over a session the selector paints no background of the screen.
+    assert!(!app.application().mounted(&Id::ScreenBackground));
     let rows = session_rows(app);
     assert_eq!(rows.selected, Some(1));
     assert_eq!(rows.rows[1].id.as_str(), BRIO_SESSION);

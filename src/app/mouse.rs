@@ -66,6 +66,9 @@ const OVERLAYS: [Id; 4] = [
     Id::ThemeSelector,
 ];
 
+/// The components that only paint: the mouse router never finds them.
+const PAINT_ONLY: [Id; 2] = [Id::SidebarGap, Id::ScreenBackground];
+
 /// The topmost overlay and its area, or `None` if none is open.
 pub fn topmost_overlay(layout: &ScreenLayout) -> Option<(Id, Rect)> {
     layout
@@ -79,11 +82,16 @@ pub fn topmost_overlay(layout: &ScreenLayout) -> Option<(Id, Rect)> {
 /// if no component is there.
 ///
 /// Components are drawn in `layout`'s order, so the last one that contains
-/// the point is on top. [`Id::SidebarGap`] only paints, so it is never found.
+/// the point is on top. [`Id::SidebarGap`] and [`Id::ScreenBackground`] only
+/// paint, so they are never found.
 /// Components under the topmost overlay are not candidates, even where the
 /// overlay does not cover them.
 pub fn hit_test(layout: &ScreenLayout, column: u16, row: u16) -> Option<(Id, Rect)> {
-    let areas = layout.areas();
+    topmost_at(layout.areas(), column, row)
+}
+
+/// [`hit_test`] over `areas`, in drawing order.
+fn topmost_at(areas: &[(Id, Rect)], column: u16, row: u16) -> Option<(Id, Rect)> {
     let first = areas
         .iter()
         .rposition(|(id, _)| OVERLAYS.contains(id))
@@ -91,7 +99,7 @@ pub fn hit_test(layout: &ScreenLayout, column: u16, row: u16) -> Option<(Id, Rec
     areas[first..]
         .iter()
         .rev()
-        .find(|(id, area)| *id != Id::SidebarGap && area.contains((column, row).into()))
+        .find(|(id, area)| !PAINT_ONLY.contains(id) && area.contains((column, row).into()))
         .copied()
 }
 
@@ -335,5 +343,33 @@ impl App {
         if double && let Some(harness) = self.selector.current {
             self.emit(Msg::OpenSession(harness, id));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_component_that_only_paints_is_never_found() {
+        let screen = Rect::new(0, 0, 20, 10);
+        let gap = Rect::new(5, 0, 1, 10);
+        for paint_only in PAINT_ONLY {
+            let areas = [(paint_only, screen)];
+            assert_eq!(topmost_at(&areas, 3, 3), None, "{paint_only:?}");
+            // Nor does it hide what is drawn under it.
+            let areas = [(Id::Transcript, screen), (paint_only, gap)];
+            assert_eq!(
+                topmost_at(&areas, 5, 3),
+                Some((Id::Transcript, screen)),
+                "{paint_only:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_screen_background_and_the_sidebar_gap_only_paint() {
+        assert!(PAINT_ONLY.contains(&Id::ScreenBackground));
+        assert!(PAINT_ONLY.contains(&Id::SidebarGap));
     }
 }

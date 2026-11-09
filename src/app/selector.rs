@@ -23,12 +23,12 @@ use super::redraw::RedrawRequest;
 use super::search::SearchState;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
-    ACTIVE_ATTR, ActiveSessions, CWD_ATTR, HINTS_ATTR, HarnessTabs, HelpLine, PROJECT_ROWS_ATTR,
-    ProjectList, ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR,
-    SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame, SessionList, SessionRow, SessionRows,
-    SessionStatsUpdate, SessionTime, SessionTokens, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR,
-    VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value, selected_value, viewport_value,
-    visible_rows,
+    ACTIVE_ATTR, ActiveSessions, BackgroundFill, CWD_ATTR, HINTS_ATTR, HarnessTabs, HelpLine,
+    PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_FILTERED_ATTR,
+    SESSION_OPEN_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame, SessionList,
+    SessionRow, SessionRows, SessionStatsUpdate, SessionTime, SessionTokens, TABS_ATTR, Tab, Tabs,
+    VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value, selected_value,
+    viewport_value, visible_rows,
 };
 use crate::keymap::Keymap;
 use crate::launch::{HarnessIndex, Preselect, deepest_ancestor};
@@ -39,8 +39,10 @@ use crate::model::{
     HarnessId, Project, ProjectId, SessionId, SessionStats, SessionSummary, is_active,
 };
 
-/// The components of the selector overlay, in drawing order.
-pub(super) const SELECTOR_IDS: [Id; 8] = [
+/// The components of the selector, in drawing order: the screen's
+/// background (mounted on the base screen only) and the overlay's.
+pub(super) const SELECTOR_IDS: [Id; 9] = [
+    Id::ScreenBackground,
     Id::SelectorFrame,
     Id::HarnessTabs,
     Id::ProjectList,
@@ -52,17 +54,25 @@ pub(super) const SELECTOR_IDS: [Id; 8] = [
 ];
 
 /// Mounts the components of the session selector. `base` says whether the
-/// selector is the base screen (it paints the whole screen) or an overlay
-/// over the browser. Focus is the caller's business.
+/// selector is the base screen, where [`Id::ScreenBackground`] paints the
+/// whole screen under it, or an overlay over the browser. Focus is the
+/// caller's business.
 pub(super) fn mount_selector(
     application: &mut Application<Id, Msg, UserEvent>,
     keymap: &Keymap,
     theme: &Theme,
     base: bool,
 ) -> Result<(), ApplicationError> {
+    if base {
+        application.mount(
+            Id::ScreenBackground,
+            Box::new(BackgroundFill::new(theme.clone())),
+            Vec::new(),
+        )?;
+    }
     application.mount(
         Id::SelectorFrame,
-        Box::new(SelectorFrame::new(theme.clone()).base(base)),
+        Box::new(SelectorFrame::new(theme.clone())),
         Vec::new(),
     )?;
     application.mount(

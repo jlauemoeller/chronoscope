@@ -85,6 +85,9 @@ use unicode_width::UnicodeWidthStr;
 pub enum Id {
     /// Turns global keys, resizes and ticks into messages.
     GlobalEvents,
+    /// The whole screen under the selector when the selector is the base
+    /// screen: paints its background, takes no mouse.
+    ScreenBackground,
     /// The selector overlay's border, sizing and background.
     SelectorFrame,
     /// "Terminal too small" (and, later, other empty states).

@@ -1,6 +1,7 @@
-//! A strip of the screen that belongs to no pane but must not be left
-//! unpainted, such as the column between the turns sidebar and the
-//! transcript (product §5.1).
+//! A part of the screen that belongs to no pane but must not be left
+//! unpainted: the column between the turns sidebar and the transcript
+//! (product §5.1), or the whole screen under the selector when it is the
+//! base screen.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
