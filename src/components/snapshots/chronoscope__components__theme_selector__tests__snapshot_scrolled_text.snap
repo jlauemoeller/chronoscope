@@ -1,5 +1,5 @@
 ---
-source: src/components/theme_selector/mod.rs
+source: src/components/theme_selector.rs
 expression: buffer_to_text(&buffer)
 ---
 ╭─ Themes ──────────────────────────────╮

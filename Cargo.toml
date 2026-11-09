@@ -74,6 +74,9 @@ harness = false
 name = "session_stats"
 harness = false
 
+[lints.clippy]
+mod_module_files = "deny"
+
 [profile.release]
 strip = true
 

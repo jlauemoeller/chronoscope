@@ -1,5 +1,5 @@
 ---
-source: src/components/help_overlay/mod.rs
+source: src/components/help_overlay.rs
 expression: buffer_to_styled(&buffer)
 ---
 ╭─ Keybindings ─────────────────────────────────────────────── ↑ more ─╮
