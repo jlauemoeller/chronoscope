@@ -458,10 +458,6 @@ impl Transcript {
         match &self.window {
             Some(window) if window.size == size => Cow::Borrowed(window),
             _ => {
-                log::debug!(
-                    "transcript drawn into {size:?} without an announced viewport; \
-                     send VIEWPORT_ATTR when the area changes"
-                );
                 let mut cache = self.cache.clone();
                 cache.set_width(size.width);
                 let mut measurer = Measurer::new(&self.content, size.width);

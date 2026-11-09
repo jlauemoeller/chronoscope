@@ -440,15 +440,14 @@ pub(super) fn result_block(
     (block, (cut > 0).then_some(cut))
 }
 
-/// The block for an output that could not be materialised. Logged on every
-/// layout of the section; the section is laid out only while unfolded.
+/// The block for an output that could not be materialised. It is drawn,
+/// not logged: layout is part of rendering, which has no side effects.
 pub(super) fn unavailable_block(
     label: &'static str,
     call: &ToolCall,
     err: &crate::model::ToolOutputError,
     ctx: &SectionCtx<'_>,
 ) -> Block {
-    log::warn!("tool output of {} unavailable: {err}", call.id);
     let message = format!("(output unavailable: {err})");
     text_block(label, &message, ctx.theme.style(Token::ErrorOutput), ctx)
 }

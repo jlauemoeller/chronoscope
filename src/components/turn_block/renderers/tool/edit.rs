@@ -77,6 +77,34 @@ fn diff_rows(edits: &[(&str, &str)]) -> Vec<(Kind, String)> {
     rows
 }
 
+/// The style a row of `kind` is drawn in.
+fn row_style(kind: Kind, ctx: &SectionCtx<'_>) -> Style {
+    match kind {
+        Kind::Header => ctx.muted(),
+        Kind::Added => ctx.theme.style(Token::DiffAdded),
+        Kind::Removed => ctx.theme.style(Token::DiffRemoved),
+        Kind::Context => ctx.theme.style(Token::Output),
+    }
+}
+
+/// The diff `rows` in their styles, each wrapped to the body width (or kept
+/// whole when the text is verbatim). An empty row is one empty line.
+fn diff_lines(rows: &[(Kind, String)], ctx: &SectionCtx<'_>) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for (kind, text) in rows {
+        let mut wrapped = if ctx.verbatim {
+            super::super::verbatim_lines(text, row_style(*kind, ctx))
+        } else {
+            char_wrap(text, ctx.body_width(), row_style(*kind, ctx))
+        };
+        if wrapped.is_empty() {
+            wrapped.push(Line::default());
+        }
+        lines.extend(wrapped);
+    }
+    lines
+}
+
 impl ToolBodyRenderer for EditBody {
     fn body(&self, call: &ToolCall, ctx: &SectionCtx<'_>) -> Body {
         let path = match path_of(&call.input) {
@@ -96,26 +124,7 @@ impl ToolBodyRenderer for EditBody {
         let content_cut = rows.len() > ctx.truncate;
         let max = limit(ctx);
         let cut = rows.len().saturating_sub(max);
-        let style = |kind| -> Style {
-            match kind {
-                Kind::Header => ctx.muted(),
-                Kind::Added => ctx.theme.style(Token::DiffAdded),
-                Kind::Removed => ctx.theme.style(Token::DiffRemoved),
-                Kind::Context => ctx.theme.style(Token::Output),
-            }
-        };
-        let mut lines: Vec<Line<'static>> = Vec::new();
-        for (kind, text) in rows.iter().take(max) {
-            let mut wrapped = if ctx.verbatim {
-                super::super::verbatim_lines(text, style(*kind))
-            } else {
-                char_wrap(text, ctx.body_width(), style(*kind))
-            };
-            if wrapped.is_empty() {
-                wrapped.push(Line::default());
-            }
-            lines.extend(wrapped);
-        }
+        let lines = diff_lines(&rows[..rows.len().min(max)], ctx);
         let body = Body {
             blocks: vec![
                 path_block,
