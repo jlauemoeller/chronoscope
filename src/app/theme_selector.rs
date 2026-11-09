@@ -65,14 +65,15 @@ impl App {
         if busy.iter().any(|id| self.application.mounted(id)) {
             return;
         }
+        let items = theme_items(&self.registry);
+        let size = items.desired_size();
         let selector = ThemeSelector::new(
-            theme_items(&self.registry),
+            items,
             &self.theme_id,
             self.theme.clone(),
             self.keymap.clone(),
         )
         .with_click_clock(self.mouse.click_clock().clone());
-        let size = selector.desired_size();
         let component: Box<dyn AppComponent<Msg, UserEvent>> = Box::new(selector);
         if let Err(err) = self.open_overlay(Id::ThemeSelector, component) {
             log::error!("could not mount the theme selector: {err}");

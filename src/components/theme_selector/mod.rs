@@ -38,18 +38,48 @@ const CHROME_ROWS: u16 = 5;
 const HELP_INSET: u16 = 1;
 
 /// The items for `registry`'s themes, in the registry's order.
-pub fn theme_items(registry: &ThemeRegistry) -> Vec<ThemeItem> {
-    registry
-        .entries()
-        .iter()
-        .map(|entry| {
-            if entry.is_selectable() {
-                ThemeItem::valid(entry.id(), entry.label())
-            } else {
-                ThemeItem::invalid(entry.id())
-            }
-        })
-        .collect()
+pub fn theme_items(registry: &ThemeRegistry) -> ThemeItems {
+    ThemeItems::new(
+        registry
+            .entries()
+            .iter()
+            .map(|entry| {
+                if entry.is_selectable() {
+                    ThemeItem::valid(entry.id(), entry.label())
+                } else {
+                    ThemeItem::invalid(entry.id())
+                }
+            })
+            .collect(),
+    )
+}
+
+/// The themes the selector lists, in the order it lists them: its content,
+/// which says how big the overlay wants to be before it is mounted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ThemeItems {
+    items: Vec<ThemeItem>,
+}
+
+impl ThemeItems {
+    /// The list of `items`.
+    pub fn new(items: Vec<ThemeItem>) -> Self {
+        Self { items }
+    }
+
+    /// The size the overlay wants, borders included: as wide as its longest
+    /// label plus ten columns (at least 41), and a row per theme plus five.
+    pub fn desired_size(&self) -> Size {
+        let longest = self
+            .items
+            .iter()
+            .map(|i| i.label.width())
+            .max()
+            .unwrap_or(0);
+        let width = u16::try_from(longest + WIDTH_CHROME).unwrap_or(u16::MAX);
+        let rows = u16::try_from(self.items.len()).unwrap_or(u16::MAX);
+        Size::new(width.max(MIN_WIDTH), rows.saturating_add(CHROME_ROWS))
+    }
 }
 
 /// The help row: the hints from the keymap, so remapped keys show up, on
@@ -98,8 +128,10 @@ pub struct ThemeSelector {
 
 impl ThemeSelector {
     /// A selector that lists `items`, with the cursor on the one whose id is
-    /// `active` (or the first that can be selected, if none is).
-    pub fn new(items: Vec<ThemeItem>, active: &str, theme: Theme, keymap: Keymap) -> Self {
+    /// `active` (or the first that can be selected, if none is). Its size is
+    /// [`ThemeItems::desired_size`].
+    pub fn new(items: ThemeItems, active: &str, theme: Theme, keymap: Keymap) -> Self {
+        let ThemeItems { items } = items;
         let start = items
             .iter()
             .position(|item| item.selectable && item.id == active)
@@ -123,20 +155,6 @@ impl ThemeSelector {
     pub fn with_click_clock(mut self, clock: ClickClock) -> Self {
         self.presses.set_clock(clock);
         self
-    }
-
-    /// The size the overlay wants, borders included: as wide as its longest
-    /// label plus ten columns (at least 41), and a row per theme plus five.
-    pub fn desired_size(&self) -> Size {
-        let longest = self
-            .items
-            .iter()
-            .map(|i| i.label.width())
-            .max()
-            .unwrap_or(0);
-        let width = u16::try_from(longest + WIDTH_CHROME).unwrap_or(u16::MAX);
-        let rows = u16::try_from(self.items.len()).unwrap_or(u16::MAX);
-        Size::new(width.max(MIN_WIDTH), rows.saturating_add(CHROME_ROWS))
     }
 
     /// How many theme rows an overlay of `overlay_height` rows shows.
@@ -399,6 +417,11 @@ mod tests {
         )
     }
 
+    /// The size the app gives `selector`: that of the items it lists.
+    fn size_of(selector: &ThemeSelector) -> Size {
+        ThemeItems::new(selector.items.clone()).desired_size()
+    }
+
     fn selector() -> ThemeSelector {
         selector_for(&ThemeRegistry::builtin(), "terminal")
     }
@@ -409,7 +432,12 @@ mod tests {
         let items = (0..n)
             .map(|i| ThemeItem::valid(format!("t{i}"), format!("Theme {i}")))
             .collect();
-        ThemeSelector::new(items, "t0", builtin::default_theme(), Keymap::default())
+        ThemeSelector::new(
+            ThemeItems::new(items),
+            "t0",
+            builtin::default_theme(),
+            Keymap::default(),
+        )
     }
 
     fn press(selector: &mut ThemeSelector, code: Key) -> Option<Msg> {
@@ -430,7 +458,7 @@ mod tests {
 
     /// The selector drawn the way the app places it on a 80x30 screen.
     fn draw(selector: &mut ThemeSelector) -> ratatui::buffer::Buffer {
-        let size = selector.desired_size();
+        let size = size_of(selector);
         let area = Rect::new(10, 2, size.width, size.height);
         selector.attr(
             VISIBLE_ROWS_ATTR,
@@ -509,7 +537,7 @@ mod tests {
             Some("default")
         );
         let none = ThemeSelector::new(
-            vec![ThemeItem::invalid("a")],
+            ThemeItems::new(vec![ThemeItem::invalid("a")]),
             "a",
             builtin::default_theme(),
             Keymap::default(),
@@ -590,7 +618,7 @@ mod tests {
     #[test]
     fn enter_with_nothing_selectable_says_nothing() {
         let mut s = ThemeSelector::new(
-            vec![ThemeItem::invalid("a")],
+            ThemeItems::new(vec![ThemeItem::invalid("a")]),
             "a",
             builtin::default_theme(),
             Keymap::default(),
@@ -606,7 +634,7 @@ mod tests {
             kind,
             column,
             row,
-            area: s.desired_size(),
+            area: size_of(s),
         }))
     }
 
@@ -644,7 +672,7 @@ mod tests {
     #[test]
     fn a_click_anywhere_but_on_a_theme_row_does_nothing() {
         let mut s = selector_for(&ThemeRegistry::builtin(), "nord");
-        let size = s.desired_size();
+        let size = size_of(&s);
         let last = size.height - 1;
         // The top border, the blank row, the blank row under the list, the
         // help row and the bottom border; the border columns of a theme row.
@@ -661,7 +689,12 @@ mod tests {
     fn a_click_below_the_last_theme_does_nothing() {
         // Two themes in an overlay with room for five.
         let items = vec![ThemeItem::valid("a", "A"), ThemeItem::valid("b", "B")];
-        let mut s = ThemeSelector::new(items, "a", builtin::default_theme(), Keymap::default());
+        let mut s = ThemeSelector::new(
+            ThemeItems::new(items),
+            "a",
+            builtin::default_theme(),
+            Keymap::default(),
+        );
         let event = Event::User(UserEvent::Pointer(RoutedMouse {
             kind: PRESS,
             column: 6,
@@ -759,7 +792,7 @@ mod tests {
 
     #[test]
     fn a_press_not_on_a_theme_ends_a_double_click() {
-        let size = timed().0.desired_size();
+        let size = size_of(&timed().0);
         // The top border, the blank row, the help row, a border column.
         for (column, row) in [(6, 0), (6, 1), (6, size.height - 2), (0, 5)] {
             let (mut s, clock) = timed();
@@ -921,14 +954,14 @@ mod tests {
 
     #[test]
     fn the_overlay_is_41_wide_and_five_rows_taller_than_the_list() {
-        let size = selector().desired_size();
+        let size = theme_items(&ThemeRegistry::builtin()).desired_size();
         assert_eq!(size, Size::new(41, 7 + 5));
     }
 
     #[test]
     fn a_long_label_widens_the_overlay_by_ten_columns() {
         let registry = registry_with(&[("a-very-long-theme-name-indeed-yes", false)]);
-        let size = selector_for(&registry, "default").desired_size();
+        let size = theme_items(&registry).desired_size();
         let label = "a-very-long-theme-name-indeed-yes (invalid)";
         assert_eq!(
             usize::from(size.width),
@@ -988,7 +1021,7 @@ mod tests {
     #[test]
     fn twelve_themes_fit_when_the_overlay_has_the_rows_for_them() {
         let mut s = numbered(12);
-        let size = s.desired_size();
+        let size = size_of(&s);
         assert_eq!(size.height, 17);
         let buffer = draw(&mut s);
         let rows = rows_of(&buffer);
@@ -1120,7 +1153,12 @@ mod tests {
         let items: Vec<ThemeItem> = std::iter::once(ThemeItem::valid("ok", "Ok"))
             .chain((0..20).map(|i| ThemeItem::invalid(format!("bad-{i}"))))
             .collect();
-        let mut s = ThemeSelector::new(items, "ok", builtin::default_theme(), Keymap::default());
+        let mut s = ThemeSelector::new(
+            ThemeItems::new(items),
+            "ok",
+            builtin::default_theme(),
+            Keymap::default(),
+        );
         let rows = rows_of(&draw_at_60x20(&mut s));
         assert!(rows.iter().any(|r| r.contains("> Ok")), "{rows:?}");
     }
@@ -1133,7 +1171,12 @@ mod tests {
             ThemeItem::valid("b", long),
             ThemeItem::invalid("an-extremely-long-invalid-theme-id-that-goes-on-and-on"),
         ];
-        let mut s = ThemeSelector::new(items, "b", builtin::default_theme(), Keymap::default());
+        let mut s = ThemeSelector::new(
+            ThemeItems::new(items),
+            "b",
+            builtin::default_theme(),
+            Keymap::default(),
+        );
         // 41 columns: 39 inside, the label gets 34.
         let area = Rect::new(0, 0, 41, 8);
         s.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(3));
@@ -1149,7 +1192,12 @@ mod tests {
             ThemeItem::valid("a", "Alpha"),
             ThemeItem::invalid("some-long-invalid-id"),
         ];
-        let mut s = ThemeSelector::new(items, "a", builtin::default_theme(), Keymap::default());
+        let mut s = ThemeSelector::new(
+            ThemeItems::new(items),
+            "a",
+            builtin::default_theme(),
+            Keymap::default(),
+        );
         // 25 wide: 23 inside, 18 for the label: 8 for the id and the suffix.
         s.attr(VISIBLE_ROWS_ATTR, AttrValue::Length(2));
         let rows = rows_of(&render(25, 8, |f| s.view(f, Rect::new(0, 0, 25, 8))));

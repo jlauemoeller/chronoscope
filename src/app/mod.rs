@@ -68,11 +68,11 @@ use crate::theme::{TerminalEnv, Theme, ThemeRegistry};
 use crate::timestamp::{DisplayTz, TimestampFormatter};
 use crate::transcript_search::{SearchCorpus, SearchMatches, SearchPosition};
 use browser::BrowserState;
-use hints::startup_toast_text;
 pub use index_port::{IndexPort, IndexUpdate};
 use layout::{LayoutInput, Screen, layout};
 pub use mouse::RoutedMouse;
 use redraw::RedrawRequest;
+pub use runtime::Startup;
 pub use search::{Hit, search_sessions};
 pub use search_worker::{SearchPort, SearchResult, SearchUpdate, SearchWorker};
 use selector::SelectorState;
@@ -144,6 +144,12 @@ pub enum Id {
 /// What happened, in application terms. Never raw keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Msg {
+    /// `run_app` starts the application with what the command line resolved
+    /// to: the startup warnings' toast, then the preselection, the lists the
+    /// command line was resolved against, and the session to open or the
+    /// sessions to list. Sent once, before the loop runs; boxed, as it is
+    /// much larger than any other message.
+    Start(Box<Startup>),
     /// Leave the application.
     Quit,
     /// The help key: open the keybindings overlay for this screen.
@@ -494,9 +500,9 @@ pub struct App {
     osc52_out: Option<Box<dyn std::io::Write>>,
     /// The size the help overlay wants (borders included) while it is open.
     help_size: Option<ratatui::layout::Size>,
-    /// The size the details overlay wants (borders included) while it is
-    /// open.
-    details_size: Option<ratatui::layout::Size>,
+    /// The details overlay's content and the size it wants (borders
+    /// included), while it is open.
+    details: Option<details::DetailsSizing>,
     /// The theme selector: what it wants and what to restore on `Esc`, while
     /// it is open.
     theme_selector: Option<theme_selector::ThemeSelection>,
@@ -557,7 +563,6 @@ impl App {
         )?;
         // The selector starts on the Projects pane.
         application.active(&Id::ProjectList)?;
-        let toast_text = startup_toast_text(&warnings);
         let timestamps =
             TimestampFormatter::new(&config.timestamp_format, config.utc, DisplayTz::Local);
         let mut app = Self {
@@ -589,7 +594,7 @@ impl App {
             clipboard: Box::new(NoClipboard),
             osc52_out: None,
             help_size: None,
-            details_size: None,
+            details: None,
             theme_selector: None,
             mouse,
             theme_id,
@@ -600,10 +605,6 @@ impl App {
             resume: resume::ResumeState::default(),
         };
         app.push_tabs();
-        // The startup warnings are shown once, here, and never again.
-        if let Some(text) = toast_text {
-            app.show_toast(text)?;
-        }
         Ok(app)
     }
 
@@ -636,12 +637,12 @@ impl App {
 
     /// Shows `text` as a toast for [`TOAST_DURATION`], replacing the toast on
     /// screen, if any.
-    pub fn show_toast(&mut self, text: impl Into<String>) -> Result<(), ApplicationError> {
+    fn show_toast(&mut self, text: impl Into<String>) -> Result<(), ApplicationError> {
         self.show_toast_for(text, TOAST_DURATION)
     }
 
     /// Shows `text` as a toast that expires after `duration`.
-    pub fn show_toast_for(
+    fn show_toast_for(
         &mut self,
         text: impl Into<String>,
         duration: Duration,
@@ -797,6 +798,7 @@ impl App {
     /// It dispatches to one small handler per message.
     pub fn update(&mut self, msg: Msg) {
         match msg {
+            Msg::Start(startup) => self.start(*startup),
             Msg::Quit => self.quit(),
             Msg::OpenHelp(context) => self.open_help(context),
             Msg::CloseHelp => self.close_help(),
@@ -933,7 +935,7 @@ impl App {
             selector_search: self.selector.search.is_some(),
             session_empty: self.browser.session_empty(),
             help: self.help_size,
-            details: self.details_size,
+            details: self.details.as_ref().map(|d| d.size),
             theme_selector: self.theme_selector.as_ref().map(|s| s.size),
         }
     }

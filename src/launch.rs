@@ -36,7 +36,7 @@ impl Request {
 }
 
 /// The projects and sessions one harness lists.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HarnessIndex {
     pub harness: HarnessId,
     /// Whether the harness's data store exists.

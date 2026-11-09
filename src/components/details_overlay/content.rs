@@ -578,6 +578,20 @@ mod tests {
     }
 
     #[test]
+    fn without_a_limit_the_desired_size_is_the_wanted_one_and_a_limit_caps_its_width() {
+        // Thirty rows `row n  value n`: 6 + 2 + 8 is 16 columns, so the
+        // overlay is the least wide, and 1 + 2 + 30 + 1 rows high.
+        let rows = (1..=30)
+            .map(|n| DetailsRow::new(format!("row {n}"), format!("value {n}")))
+            .collect();
+        let content = DetailsContent::new(vec![DetailsGroup::new("Turn", rows)]);
+        assert_eq!(content.desired_size(u16::MAX), Size::new(MIN_WIDTH, 34 + 2));
+        // At 30 columns the values (8 columns) still fit beside the labels,
+        // so only the width changes.
+        assert_eq!(content.desired_size(30), Size::new(30, 34 + 2));
+    }
+
+    #[test]
     fn the_desired_size_wraps_at_the_most_width() {
         let content = DetailsContent::new(vec![DetailsGroup::new(
             "G",

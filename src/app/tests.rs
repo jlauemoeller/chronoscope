@@ -13,10 +13,11 @@ use tuirealm::listener::{EventListenerCfg, Poll, PortResult};
 use tuirealm::terminal::{TerminalAdapter, TestTerminalAdapter};
 
 use super::redraw::RedrawRequest;
-use super::runtime::run_loop;
+use super::runtime::{Startup, run_loop, start_with};
 use super::{App, AppInit, Id, Msg, UserEvent};
 use crate::config::{Config, ConfigWarning};
 use crate::keymap::Keymap;
+use crate::launch::{HarnessIndex, Preselect, Resolution, Target};
 use crate::model::HarnessId;
 use crate::test_support::{buffer_to_styled, buffer_to_text, render};
 use crate::theme::{TerminalEnv, Theme, ThemeRegistry, resolve_by_id};
@@ -79,11 +80,28 @@ fn warning(message: &str) -> ConfigWarning {
     }
 }
 
-/// An app with startup warnings and no event ports.
+/// The start of a command line that names no session: the selector, with
+/// `preselect` and the lists `index` (product §5.8).
+fn selector_start(preselect: Preselect, index: Vec<HarnessIndex>) -> Startup {
+    Startup {
+        resolution: Resolution {
+            target: Target::Selector,
+            preselect,
+            warnings: Vec::new(),
+        },
+        index,
+        open: None,
+    }
+}
+
+/// An app with startup warnings and no event ports, started as `run_app`
+/// starts it without arguments.
 fn app_with_warnings(messages: &[&str]) -> App {
     let mut init = init_with(theme("default"));
     init.warnings = messages.iter().map(|m| warning(m)).collect();
-    App::new(init, EventListenerCfg::default(), PathBuf::from("/nowhere")).unwrap()
+    let mut app = App::new(init, EventListenerCfg::default(), PathBuf::from("/nowhere")).unwrap();
+    start_with(&mut app, selector_start(Preselect::default(), Vec::new()));
+    app
 }
 
 /// An app without event ports: nothing reads the terminal.
@@ -187,7 +205,7 @@ fn startup_mounts_the_components_and_focuses_the_projects_pane() {
 
 #[test]
 fn no_warnings_mount_no_toast() {
-    let app = app();
+    let app = app_with_warnings(&[]);
     assert!(!app.application().mounted(&Id::Toast));
     assert_eq!(app.toast_text(), None);
 }

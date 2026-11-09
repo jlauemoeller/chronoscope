@@ -350,7 +350,7 @@ impl App {
     /// Opens `summary`, a session of `harness` the index may not list yet (a
     /// session given on the command line): the same as [`open_session`]
     /// from there on.
-    pub fn open_summary(&mut self, harness: HarnessId, summary: SessionSummary) {
+    pub(super) fn open_summary(&mut self, harness: HarnessId, summary: SessionSummary) {
         let id = &summary.id;
         let Some((loader, sink)) = self.loader_and_sink(harness) else {
             log::error!("cannot open {id}: no {harness} harness or session channel");
