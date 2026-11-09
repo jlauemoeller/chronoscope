@@ -8,9 +8,6 @@
 //! must do is what the keys do (`j` / `k` / `Enter`), which the tests compare
 //! with.
 
-use std::cell::Cell;
-use std::rc::Rc;
-
 use ratatui::layout::Rect;
 use tuirealm::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -21,7 +18,7 @@ use super::*;
 use crate::components::transcript::Presentation;
 use crate::components::transcript::fixtures::{arc, with_id};
 use crate::components::turn_block::fixtures as blocks;
-use crate::components::{HelpContext, PRESENTATION_ATTR};
+use crate::components::{HelpContext, PRESENTATION_ATTR, TestClock};
 
 const PRESS: MouseEventKind = MouseEventKind::Down(MouseButton::Left);
 const WHEEL_DOWN: MouseEventKind = MouseEventKind::ScrollDown;
@@ -109,11 +106,10 @@ impl Rig {
     }
 
     /// Gives the app a click clock that shows the returned time.
-    fn click_clock(&mut self) -> Rc<Cell<Duration>> {
-        let start = Instant::now();
-        let elapsed = Rc::new(Cell::new(Duration::ZERO));
-        let shared = Rc::clone(&elapsed);
-        self.app.set_click_clock(move || start + shared.get());
+    fn click_clock(&mut self) -> TestClock {
+        let elapsed = TestClock::new();
+        let shared = elapsed.clone();
+        self.app.set_click_clock(move || shared.now());
         elapsed
     }
 }
@@ -796,6 +792,54 @@ fn the_sidebar_gets_no_mouse_when_it_is_hidden() {
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert!(!rig.app.take_queued().iter().any(|msg| matches!(
         msg,
-        Msg::TurnSelected(_) | Msg::TurnClicked(_) | Msg::OpenTurn(_)
+        Msg::TurnSelected(_) | Msg::ChooseTurn { .. } | Msg::OpenTurn(_)
     )));
+}
+
+// -- the press-elsewhere notice
+
+#[test]
+fn a_press_on_the_header_the_toast_or_the_transcript_between_two_clicks_on_an_entry_ends_it() {
+    // The control: without the press between, the second click enters.
+    let mut rig = compaction_rig();
+    let clock = rig.click_clock();
+    rig.click_entry(2);
+    clock.set(Duration::from_millis(100));
+    rig.click_entry(2);
+    assert_eq!(rig.focus(), Some(Id::Transcript), "the control");
+    // The header and the toast take no pointer; the transcript does.
+    let elsewhere = [
+        (Id::BrowserHeader, 10, 0),
+        (Id::Toast, 2, 1),
+        (Id::Transcript, 60, 5),
+    ];
+    for (what, dx, dy) in elsewhere {
+        let mut rig = compaction_rig();
+        rig.app.show_toast("A toast to press").unwrap();
+        let clock = rig.click_clock();
+        rig.click_entry(2);
+        let area = rig.app.routing().area(what).unwrap();
+        rig.app.update_routed(at(PRESS, area.x + dx, area.y + dy));
+        // A press on the transcript gives it the focus; back to the sidebar.
+        rig.focus_sidebar();
+        clock.set(Duration::from_millis(100));
+        rig.click_entry(2);
+        assert_eq!(rig.focus(), Some(Id::TurnSidebar), "{what:?}: not entered");
+        clock.set(Duration::from_millis(200));
+        rig.click_entry(2);
+        assert_eq!(rig.focus(), Some(Id::Transcript), "{what:?}: then it is");
+    }
+}
+
+#[test]
+fn the_click_clock_reaches_a_sidebar_mounted_after_it_was_set() {
+    for (ms, enters) in [(400, true), (401, false)] {
+        let mut rig = rig_with(theme("default"), 120, 30);
+        let clock = rig.click_clock();
+        rig.open_turns(long_turns(4));
+        rig.click_entry(1);
+        clock.set(Duration::from_millis(ms));
+        rig.click_entry(1);
+        assert_eq!(rig.focus() == Some(Id::Transcript), enters, "{ms} ms");
+    }
 }

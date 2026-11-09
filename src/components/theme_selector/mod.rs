@@ -18,6 +18,7 @@ use unicode_width::UnicodeWidthStr;
 
 pub use rows::{ThemeItem, ThemeRows};
 
+use super::double_click::{CLICK_CLOCK_ATTR, ClickClock, LastPress};
 use super::list_cursor::{ListCursor, VISIBLE_ROWS_ATTR};
 use super::titled_block::titled_block;
 use super::{HelpLine, Hint, THEME_ATTR, theme_from_value, theme_value};
@@ -76,6 +77,11 @@ fn help_line(keymap: &Keymap, theme: &Theme) -> HelpLine {
 /// transparent theme), and bordered in `ring`. When there are more themes than
 /// rows the list scrolls, by the least that keeps the cursor visible; the
 /// number of rows is announced with [`VISIBLE_ROWS_ATTR`].
+///
+/// A left press on a theme moves the cursor there and says
+/// `Msg::ChooseTheme`, with `keep` when it completed a double-click; the
+/// clock that is measured with is set with
+/// [`with_click_clock`](Self::with_click_clock) or [`CLICK_CLOCK_ATTR`].
 #[derive(Debug, Clone)]
 pub struct ThemeSelector {
     items: Vec<ThemeItem>,
@@ -86,6 +92,8 @@ pub struct ThemeSelector {
     keymap: Keymap,
     /// The help row, built when the theme changes.
     help: HelpLine,
+    /// The last left press on a theme, for double-clicks.
+    presses: LastPress<String>,
 }
 
 impl ThemeSelector {
@@ -106,7 +114,15 @@ impl ThemeSelector {
             theme,
             keymap,
             help,
+            presses: LastPress::default(),
         }
+    }
+
+    /// Replaces the clock double-clicks are measured with.
+    #[must_use]
+    pub fn with_click_clock(mut self, clock: ClickClock) -> Self {
+        self.presses.set_clock(clock);
+        self
     }
 
     /// The size the overlay wants, borders included: as wide as its longest
@@ -245,6 +261,11 @@ impl Component for ThemeSelector {
                     self.move_cursor(selected);
                 }
             }
+            (CLICK_CLOCK_ATTR, value) => {
+                if let Some(clock) = ClickClock::from_value(&value) {
+                    self.presses.set_clock(clock);
+                }
+            }
             _ => {}
         }
     }
@@ -269,6 +290,10 @@ impl AppComponent<Msg, UserEvent> for ThemeSelector {
             Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
             // A press outside gives the previous theme back, as `Esc` does.
             Event::User(UserEvent::PointerOutside) => return Some(Msg::CancelTheme),
+            Event::User(UserEvent::PointerElsewhere) => {
+                self.presses.forget();
+                return None;
+            }
             _ => return None,
         };
         match self.keymap.resolve(Context::Overlay, key)? {
@@ -284,16 +309,22 @@ impl AppComponent<Msg, UserEvent> for ThemeSelector {
 impl ThemeSelector {
     /// The wheel moves the cursor a theme like the arrow keys. A left press on
     /// a theme that can be selected moves the cursor there and says
-    /// [`Msg::ThemeClicked`] (the `App` previews it, or keeps it on a
-    /// double-click); anywhere else in the overlay it does nothing.
+    /// [`Msg::ChooseTheme`] (the `App` previews it, or keeps it when the press
+    /// completed a double-click); anywhere else in the overlay it only ends a
+    /// double-click under way.
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         match mouse.kind {
             MouseEventKind::ScrollUp => self.moved(false),
             MouseEventKind::ScrollDown => self.moved(true),
             _ if mouse.is_left_press() => {
-                let index = self.row_at(mouse)?;
+                let Some(index) = self.row_at(mouse) else {
+                    self.presses.forget();
+                    return None;
+                };
                 self.move_cursor(index);
-                Some(Msg::ThemeClicked(self.items[index].id.clone()))
+                let id = self.items[index].id.clone();
+                let keep = self.presses.press(id.clone());
+                Some(Msg::ChooseTheme { id, keep })
             }
             _ => None,
         }
@@ -329,6 +360,7 @@ impl ThemeSelector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::TestClock;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
     use crate::theme::{Token, TokenOverride, builtin};
     use ratatui::style::{Color, Modifier};
@@ -585,29 +617,27 @@ mod tests {
         s.on(&mouse(s, PRESS, 6, 2 + line))
     }
 
+    fn chosen(id: &str, keep: bool) -> Option<Msg> {
+        Some(Msg::ChooseTheme {
+            id: id.into(),
+            keep,
+        })
+    }
+
     #[test]
     fn a_click_on_a_theme_moves_the_cursor_there_and_says_which() {
         let mut s = selector_for(&ThemeRegistry::builtin(), "default");
         // Rows are Default, Terminal, Catppuccin, Gruvbox, ...
-        assert_eq!(
-            click_line(&mut s, 3),
-            Some(Msg::ThemeClicked("gruvbox".into()))
-        );
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
         assert_eq!(selected(&s).as_deref(), Some("gruvbox"));
-        assert_eq!(
-            click_line(&mut s, 0),
-            Some(Msg::ThemeClicked("default".into()))
-        );
+        assert_eq!(click_line(&mut s, 0), chosen("default", false));
         assert_eq!(selected(&s).as_deref(), Some("default"));
     }
 
     #[test]
     fn a_click_on_the_theme_under_the_cursor_says_so_too() {
         let mut s = selector_for(&ThemeRegistry::builtin(), "nord");
-        assert_eq!(
-            click_line(&mut s, 4),
-            Some(Msg::ThemeClicked("nord".into()))
-        );
+        assert_eq!(click_line(&mut s, 4), chosen("nord", false));
         assert_eq!(selected(&s).as_deref(), Some("nord"));
     }
 
@@ -667,8 +697,8 @@ mod tests {
                 area,
             }))
         };
-        assert_eq!(s.on(&at(0)), Some(Msg::ThemeClicked("t5".into())));
-        assert_eq!(s.on(&at(4)), Some(Msg::ThemeClicked("t9".into())));
+        assert_eq!(s.on(&at(0)), chosen("t5", false));
+        assert_eq!(s.on(&at(4)), chosen("t9", false));
         assert_eq!(selected(&s).as_deref(), Some("t9"));
     }
 
@@ -680,6 +710,122 @@ mod tests {
         assert_eq!(s.on(&outside), Some(Msg::CancelTheme));
         assert_eq!(press(&mut s, Key::Esc), Some(Msg::CancelTheme));
         assert_eq!(selected(&s).as_deref(), Some("gruvbox"), "the cursor stays");
+    }
+
+    // -- double-clicks
+
+    /// The built-in themes, the cursor on `default`, double-clicks measured
+    /// with the returned clock. Line 3 is Gruvbox, line 4 Nord.
+    fn timed() -> (ThemeSelector, TestClock) {
+        let clock = TestClock::new();
+        let s = selector_for(&ThemeRegistry::builtin(), "default")
+            .with_click_clock(clock.click_clock());
+        (s, clock)
+    }
+
+    fn at_ms(clock: &TestClock, ms: u64) {
+        clock.set(std::time::Duration::from_millis(ms));
+    }
+
+    const ELSEWHERE: Event<UserEvent> = Event::User(UserEvent::PointerElsewhere);
+
+    #[test]
+    fn two_presses_on_a_theme_at_most_400_ms_apart_keep_it() {
+        for (ms, keep) in [(0, true), (400, true), (401, false)] {
+            let (mut s, clock) = timed();
+            assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
+            at_ms(&clock, ms);
+            assert_eq!(click_line(&mut s, 3), chosen("gruvbox", keep), "{ms} ms");
+        }
+    }
+
+    #[test]
+    fn a_third_press_starts_a_new_double_click() {
+        let (mut s, clock) = timed();
+        click_line(&mut s, 3);
+        at_ms(&clock, 100);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", true));
+        at_ms(&clock, 200);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
+        at_ms(&clock, 300);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", true));
+    }
+
+    #[test]
+    fn a_press_on_another_theme_ends_a_double_click() {
+        let (mut s, clock) = timed();
+        click_line(&mut s, 3);
+        at_ms(&clock, 100);
+        assert_eq!(click_line(&mut s, 4), chosen("nord", false));
+        at_ms(&clock, 200);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
+    }
+
+    #[test]
+    fn a_press_not_on_a_theme_ends_a_double_click() {
+        let size = timed().0.desired_size();
+        // The top border, the blank row, the help row, a border column.
+        for (column, row) in [(6, 0), (6, 1), (6, size.height - 2), (0, 5)] {
+            let (mut s, clock) = timed();
+            click_line(&mut s, 3);
+            at_ms(&clock, 100);
+            assert_eq!(s.on(&mouse(&s, PRESS, column, row)), None);
+            at_ms(&clock, 200);
+            assert_eq!(
+                click_line(&mut s, 3),
+                chosen("gruvbox", false),
+                "{column}, {row}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_press_on_an_invalid_theme_ends_a_double_click() {
+        let clock = TestClock::new();
+        let registry = registry_with(&[("broken", false)]);
+        let mut s = selector_for(&registry, "default").with_click_clock(clock.click_clock());
+        click_line(&mut s, 3);
+        assert_eq!(click_line(&mut s, 7), None);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
+    }
+
+    #[test]
+    fn a_press_elsewhere_ends_a_double_click_and_answers_nothing() {
+        let (mut s, clock) = timed();
+        click_line(&mut s, 3);
+        at_ms(&clock, 100);
+        assert_eq!(s.on(&ELSEWHERE), None);
+        assert_eq!(selected(&s).as_deref(), Some("gruvbox"), "the cursor stays");
+        at_ms(&clock, 200);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
+    }
+
+    #[test]
+    fn the_wheel_does_not_end_a_double_click() {
+        let (mut s, clock) = timed();
+        click_line(&mut s, 3);
+        at_ms(&clock, 100);
+        let down = mouse(&s, MouseEventKind::ScrollDown, 6, 5);
+        assert_eq!(s.on(&down), Some(Msg::PreviewTheme("nord".into())));
+        at_ms(&clock, 200);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", true));
+    }
+
+    #[test]
+    fn the_click_clock_can_be_replaced_through_an_attribute() {
+        let mut s = selector_for(&ThemeRegistry::builtin(), "default");
+        let clock = TestClock::new();
+        s.attr(CLICK_CLOCK_ATTR, clock.click_clock().value());
+        click_line(&mut s, 3);
+        at_ms(&clock, 401);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", false));
+    }
+
+    #[test]
+    fn the_system_clock_measures_double_clicks_by_default() {
+        let mut s = selector_for(&ThemeRegistry::builtin(), "default");
+        click_line(&mut s, 3);
+        assert_eq!(click_line(&mut s, 3), chosen("gruvbox", true));
     }
 
     #[test]

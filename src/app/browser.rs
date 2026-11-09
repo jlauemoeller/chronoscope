@@ -493,7 +493,8 @@ impl App {
             .unwrap_or_default();
         let sidebar = TurnSidebar::new(self.theme.clone())
             .keymap(self.keymap.clone())
-            .key_label(key);
+            .key_label(key)
+            .with_click_clock(self.click_clock());
         let gap = BackgroundFill::new(self.theme.clone());
         self.application
             .mount(Id::BrowserHeader, Box::new(header), Vec::new())?;
@@ -1102,7 +1103,14 @@ impl App {
         let Some(open) = self.browser.open.clone() else {
             return;
         };
-        if let Err(err) = mount_selector(&mut self.application, &self.keymap, &self.theme, false) {
+        let clock = self.click_clock();
+        if let Err(err) = mount_selector(
+            &mut self.application,
+            &self.keymap,
+            &self.theme,
+            &clock,
+            false,
+        ) {
             log::error!("could not mount the selector: {err}");
             self.unmount_selector();
             return;

@@ -5,6 +5,7 @@
 mod background_fill;
 mod browser_header;
 mod details_overlay;
+mod double_click;
 mod empty_state;
 mod global_events;
 mod harness_tabs;
@@ -43,6 +44,9 @@ pub use details_overlay::{
     DESIRED_SIZE_ATTR, DetailsContent, DetailsGroup, DetailsOverlay, DetailsRequest, DetailsRow,
     MAX_WIDTH_ATTR, compose, max_width_value,
 };
+#[cfg(test)]
+pub use double_click::TestClock;
+pub use double_click::{CLICK_CLOCK_ATTR, ClickClock, DOUBLE_CLICK};
 pub use empty_state::{
     EMPTY_SESSION, EmptyState, LOCAL_COMMANDS_ONLY, NO_MATCHING_SESSIONS, NO_SESSIONS, TOO_SMALL,
     empty_session_message,
