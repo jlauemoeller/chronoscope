@@ -56,7 +56,7 @@ pub fn theme_items(registry: &ThemeRegistry) -> ThemeItems {
 
 /// The themes the selector lists, in the order it lists them: its content,
 /// which says how big the overlay wants to be before it is mounted.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThemeItems {
     items: Vec<ThemeItem>,
 }

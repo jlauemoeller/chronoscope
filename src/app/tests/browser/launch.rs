@@ -218,6 +218,24 @@ fn leaving_the_filter_goes_back_to_the_project_the_command_line_chose() {
 }
 
 #[test]
+fn a_filter_shows_the_project_the_command_line_chose_in_the_projects_pane() {
+    // The filter is shown after the lists are seeded, so the Projects pane
+    // has the project `--project` names, as at a start without the prefix.
+    let request = Request {
+        project: Some("calira".to_owned()),
+        ..request("85a8")
+    };
+    let app = started(&request, prefixed_index());
+    assert_eq!(app.filter_prefix(), Some("85a8"));
+    assert_eq!(app.focused_pane(), Pane::Sessions);
+    assert_eq!(
+        app.selected_project()
+            .map(|p| p.as_str().rsplit('/').next().unwrap()),
+        Some("Calira")
+    );
+}
+
+#[test]
 fn moving_to_the_projects_pane_ends_the_filter_too() {
     let mut app = filtered();
     press(&mut app, Key::Tab);
