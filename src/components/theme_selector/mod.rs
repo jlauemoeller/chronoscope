@@ -320,7 +320,7 @@ impl ThemeSelector {
 mod tests {
     use super::*;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
-    use crate::theme::{Token, builtin};
+    use crate::theme::{Token, TokenOverride, builtin};
     use ratatui::style::{Color, Modifier};
     use tuirealm::event::{Key, KeyEvent, KeyModifiers};
 
@@ -1102,6 +1102,59 @@ mod tests {
         assert_eq!(text.bg, theme.role(Role::Surface));
     }
 
+    /// The selector over `theme`, drawn by [`draw`], with the cursor on
+    /// Terminal (row 3 of the overlay, the `>` in column 3).
+    fn draw_terminal_selected(theme: &Theme) -> ratatui::buffer::Buffer {
+        let mut s = ThemeSelector::new(
+            theme_items(&ThemeRegistry::builtin()),
+            "terminal",
+            theme.clone(),
+            Keymap::default(),
+        );
+        draw(&mut s)
+    }
+
+    #[test]
+    fn the_marker_takes_an_overridden_selection_marker_token() {
+        let red = Color::Rgb(255, 0, 0);
+        let theme = builtin::default_theme()
+            .with_role(Role::Surface, Color::Rgb(9, 9, 9))
+            .with_token(Token::SelectionMarker, TokenOverride::fg(red));
+        assert_ne!(theme.role(Role::Primary), red);
+        let buffer = draw_terminal_selected(&theme);
+        let marker = &buffer[(13, 5)];
+        assert_eq!(marker.symbol(), ">");
+        assert_eq!(marker.fg, red);
+        // No background in the token: the overlay's fill shows through.
+        assert_eq!(marker.bg, theme.role(Role::Surface));
+        assert!(!marker.modifier.contains(Modifier::BOLD));
+        assert!(!marker.modifier.contains(Modifier::REVERSED));
+        // The label after it is still bold foreground, not inverted.
+        let label = &buffer[(15, 5)];
+        assert_eq!(label.symbol(), "T");
+        assert_eq!(label.fg, theme.role(Role::Foreground));
+        assert!(label.modifier.contains(Modifier::BOLD));
+        assert!(!label.modifier.contains(Modifier::REVERSED));
+        // Other rows stay muted.
+        let other = &buffer[(15, 4)];
+        assert_eq!(other.symbol(), "D");
+        assert_eq!(other.fg, theme.role(Role::MutedForeground));
+    }
+
+    #[test]
+    fn the_marker_takes_the_selection_marker_token_background_too() {
+        let (fg, bg) = (Color::Rgb(255, 0, 0), Color::Rgb(0, 0, 255));
+        let theme = builtin::default_theme()
+            .with_token(Token::SelectionMarker, TokenOverride::fg_bg(fg, bg));
+        let buffer = draw_terminal_selected(&theme);
+        let marker = &buffer[(13, 5)];
+        assert_eq!(marker.symbol(), ">");
+        assert_eq!((marker.fg, marker.bg), (fg, bg));
+        // Only the marker: the gap and the label keep the overlay's fill.
+        assert_eq!(buffer[(14, 5)].bg, theme.role(Role::Surface));
+        assert_eq!(buffer[(15, 5)].bg, theme.role(Role::Surface));
+    }
+
     #[test]
     fn an_invalid_theme_is_muted() {
         let registry = registry_with(&[("my-theme", false)]);
@@ -1189,6 +1242,15 @@ mod tests {
     fn snapshot_builtins_styled() {
         let mut s = selector();
         insta::assert_snapshot!(buffer_to_styled(&draw(&mut s)));
+    }
+
+    #[test]
+    fn snapshot_with_an_overridden_selection_marker_styled() {
+        let theme = builtin::default_theme().with_token(
+            Token::SelectionMarker,
+            TokenOverride::fg(Color::Rgb(255, 0, 0)),
+        );
+        insta::assert_snapshot!(buffer_to_styled(&draw_terminal_selected(&theme)));
     }
 
     #[test]

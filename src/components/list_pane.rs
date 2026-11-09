@@ -6,7 +6,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Rect, Size};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use tuirealm::command::{Cmd, CmdResult, Direction};
@@ -22,7 +22,8 @@ use super::{THEME_ATTR, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
 use crate::keymap::{Action, Context, Keymap};
 use crate::model::HarnessId;
-use crate::theme::{Role, Theme, Token};
+use crate::theme::emphasis::Selection;
+use crate::theme::{Role, Theme};
 
 /// The attribute that tells a list whether a session is open behind the
 /// selector (`AttrValue::Flag`). It decides what `Esc` does: close the
@@ -257,21 +258,19 @@ impl RowStyles {
                 stats: muted,
             },
             RowKind::SelectedUnfocused => {
-                let secondary = Style::new().fg(theme.role(Role::SecondaryForeground));
+                let selection = Selection::new(theme, false);
                 Self {
-                    marker: secondary,
+                    marker: selection.marker,
                     fill: Style::new(),
-                    text: secondary.add_modifier(Modifier::BOLD),
+                    text: selection.body,
                     dot,
                     stats: muted,
                 }
             }
             RowKind::SelectedFocused => {
-                let band = Style::new()
-                    .fg(theme.role(Role::Foreground))
-                    .add_modifier(Modifier::REVERSED);
+                let Selection { marker, body: band } = Selection::new(theme, true);
                 Self {
-                    marker: theme.style(Token::SelectionMarker),
+                    marker,
                     fill: band,
                     text: band,
                     dot: band,

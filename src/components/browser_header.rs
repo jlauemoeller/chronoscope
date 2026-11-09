@@ -3,7 +3,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use tuirealm::command::{Cmd, CmdResult};
@@ -18,7 +18,7 @@ mod fit;
 use super::text_fit::truncate_start;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, UserEvent};
-use crate::theme::{Role, Theme, Token};
+use crate::theme::{Role, Theme, Token, emphasis};
 
 /// The attribute that sets how many entries of the session could not be
 /// parsed (an `AttrValue::Length`).
@@ -207,7 +207,7 @@ impl BrowserHeader {
         let project = cut.next().unwrap_or_default();
         let mut spans = vec![
             Span::styled(" Project ", self.muted()),
-            Span::styled(project, self.foreground().add_modifier(Modifier::BOLD)),
+            Span::styled(project, emphasis::header_project(&self.theme)),
         ];
         if collapsed {
             spans.push(Span::styled(fit::COLLAPSED, self.muted()));
@@ -370,7 +370,7 @@ mod tests {
     use super::*;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
     use crate::theme::builtin;
-    use ratatui::style::Color;
+    use ratatui::style::{Color, Modifier};
 
     const SESSION: &str = "85a86657-11a7-4318-a21a-0f4476babd5c";
     const CWD: &str = "/home/user/projects/brio";

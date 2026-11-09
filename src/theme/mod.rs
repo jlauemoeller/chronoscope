@@ -7,12 +7,14 @@
 //! way to read a colour from a theme other than through [`Theme::role`] and
 //! [`Theme::style`].
 //!
-//! Colour parsing lives in [`color`], theme-file parsing in [`parse`] and the
+//! Colour parsing lives in [`color`], theme-file parsing in [`parse`], the
+//! fixed emphasis styles of product §7.2 and §4.5 in [`emphasis`] and the
 //! compiled-in themes in [`builtin`]. The list of available themes is the
 //! [`registry`], and [`resolve`] picks the active one for the terminal.
 
 pub mod builtin;
 pub mod color;
+pub mod emphasis;
 pub mod parse;
 pub mod registry;
 pub mod resolve;

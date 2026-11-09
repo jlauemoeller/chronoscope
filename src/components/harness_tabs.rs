@@ -15,7 +15,7 @@ use unicode_width::UnicodeWidthStr;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
 use crate::app::{Msg, RoutedMouse, SelectorMsg, UserEvent};
 use crate::model::HarnessId;
-use crate::theme::{Role, Theme};
+use crate::theme::{Role, Theme, emphasis};
 
 /// The attribute that sets the tabs ([`Tabs`]).
 pub const TABS_ATTR: Attribute = Attribute::Custom("tabs");
@@ -66,7 +66,7 @@ impl HarnessTabs {
     }
 
     fn label_line(&self) -> Line<'static> {
-        let primary = Style::new().fg(self.theme.role(Role::Primary));
+        let primary = emphasis::harness_tab(&self.theme);
         let muted = Style::new().fg(self.theme.role(Role::MutedForeground));
         let mut spans = Vec::new();
         for (i, tab) in self.tabs.tabs.iter().enumerate() {
@@ -112,10 +112,12 @@ impl HarnessTabs {
         for tab in &self.tabs.tabs {
             let width = Self::label(tab.id).width();
             if self.tabs.selected == Some(tab.id) {
-                let primary = Style::new().fg(self.theme.role(Role::Primary));
                 return Line::from(vec![
                     Span::raw(" ".repeat(offset)),
-                    Span::styled(UNDERLINE.repeat(width), primary),
+                    Span::styled(
+                        UNDERLINE.repeat(width),
+                        emphasis::harness_tab_underline(&self.theme),
+                    ),
                 ]);
             }
             offset += width + SEPARATOR.len();

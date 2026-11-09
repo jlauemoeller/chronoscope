@@ -3,10 +3,11 @@
 use std::iter::Peekable;
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 
 use super::Styles;
 use super::prose::Inline;
+use crate::theme::emphasis;
 
 /// A block of a document.
 #[derive(Debug)]
@@ -86,10 +87,10 @@ fn heading_number(level: HeadingLevel) -> u8 {
 /// The style inside `tag`, derived from the `outer` style.
 fn inline_style(tag: &Tag, outer: Style) -> Style {
     match tag {
-        Tag::Emphasis => outer.add_modifier(Modifier::ITALIC),
-        Tag::Strong => outer.add_modifier(Modifier::BOLD),
-        Tag::Strikethrough => outer.add_modifier(Modifier::CROSSED_OUT),
-        Tag::Link { .. } => outer.add_modifier(Modifier::UNDERLINED),
+        Tag::Emphasis => emphasis::emphasis(outer),
+        Tag::Strong => emphasis::strong(outer),
+        Tag::Strikethrough => emphasis::strikethrough(outer),
+        Tag::Link { .. } => emphasis::link(outer),
         _ => outer,
     }
 }
@@ -254,7 +255,7 @@ impl Reader<'_, '_> {
     }
 
     fn table(&mut self, aligns: Vec<Alignment>) -> Table {
-        let header_style = self.styles.base.add_modifier(Modifier::BOLD);
+        let header_style = emphasis::table_header(self.styles.base);
         let mut table = Table {
             aligns,
             header: Vec::new(),

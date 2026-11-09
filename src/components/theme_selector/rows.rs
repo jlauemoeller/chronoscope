@@ -2,13 +2,13 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::UnicodeWidthStr;
 
 use crate::components::text_fit::truncate_with_ellipsis;
-use crate::theme::{Role, Theme};
+use crate::theme::{Role, Theme, Token, emphasis};
 
 /// The columns before the marker, counted from the inside of the border: the
 /// marker is in column 3 of the overlay, its border being column 0.
@@ -85,10 +85,8 @@ impl ThemeRows<'_> {
     fn line(&self, index: usize, item: &ThemeItem, width: usize) -> Line<'static> {
         let label = Self::label_text(item, width);
         if self.selected == Some(index) {
-            let marker = Style::new().fg(self.theme.role(Role::Primary));
-            let bold = Style::new()
-                .fg(self.theme.role(Role::Foreground))
-                .add_modifier(Modifier::BOLD);
+            let marker = self.theme.style(Token::SelectionMarker);
+            let bold = emphasis::selected_theme_row(self.theme);
             Line::from(vec![
                 Span::raw(MARKER_INDENT),
                 Span::styled(">", marker),

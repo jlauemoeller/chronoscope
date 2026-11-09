@@ -8,8 +8,10 @@
 //! mapped to the theme's `syntax.*` tokens. The [`Markdown`] widget draws the
 //! result into a buffer.
 //!
-//! Every colour and modifier comes from the theme tokens or is derived from
-//! the base style; nothing here names a colour.
+//! Colours come from the theme's roles and tokens or from the base style, and
+//! the fixed emphasis of product §4.5 (bold, italic, underline, strikethrough)
+//! from `src/theme/emphasis.rs`. The renderer itself names no colour and no
+//! modifier.
 
 mod blocks;
 mod highlight;
@@ -22,10 +24,10 @@ mod wrap;
 #[cfg(test)]
 mod tests;
 
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::Line;
 
-use crate::theme::{Role, Theme, Token};
+use crate::theme::{Role, Theme, Token, emphasis};
 
 pub use highlight::highlight_code;
 pub use widget::Markdown;
@@ -57,12 +59,7 @@ impl<'a> Styles<'a> {
 
     /// The style of a heading: bold, and underlined too at level 1.
     pub(crate) fn heading(&self, level: u8) -> Style {
-        let style = self.base.add_modifier(Modifier::BOLD);
-        if level == 1 {
-            style.add_modifier(Modifier::UNDERLINED)
-        } else {
-            style
-        }
+        emphasis::heading(self.base, level)
     }
 }
 
