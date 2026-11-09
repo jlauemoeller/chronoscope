@@ -690,11 +690,11 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     /// the search, [`Msg::NewSections`] when it changed the count of new
     /// sections (`G` resuming following), [`Msg::SelectionChanged`] when it
     /// moved the selection, else [`Msg::TranscriptChanged`] when that changed
-    /// what is shown, so that the App redraws. The first two carry the
-    /// selection too, when the key also moved it (one message per key). The
-    /// copy
-    /// keys answer [`Msg::CopyText`] with the text of the selected section
-    /// (as displayed, or in full); with nothing selected they do nothing.
+    /// what is shown, so that the App redraws. [`Msg::SearchPosition`] and
+    /// [`Msg::NewSections`] carry the selection too, when the key also moved
+    /// it (one message per key). The copy keys answer [`Msg::CopyText`] with
+    /// the text of the selected section (as displayed, or in full); with
+    /// nothing selected they do nothing.
     /// The save keys answer [`Msg::SaveSection`] the same way, the export
     /// keys [`Msg::Export`] with the whole document. The open key answers
     /// [`Msg::OpenSubagent`] on a subagent section (nothing on any other),

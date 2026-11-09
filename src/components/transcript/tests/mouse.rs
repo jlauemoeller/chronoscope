@@ -10,7 +10,7 @@ use tuirealm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKi
 use super::super::fixtures::*;
 use super::super::*;
 use super::keys::{ch, press};
-use super::{item_section, section_id};
+use super::{item_section, moved_to, section_id};
 use crate::app::{RoutedMouse, ViewChange};
 use crate::components::turn_block::SectionKey;
 use crate::model::ItemId;
@@ -108,12 +108,6 @@ fn a_wheel_step_scrolls_three_rows() {
     assert_eq!(t.offset(), 3);
     assert_ne!(t.selected().cloned(), before);
     assert_eq!(answer, moved_to(&t));
-}
-
-/// The answer to a wheel step or a click that moved the selection: the
-/// section selected now.
-fn moved_to(t: &Transcript) -> Option<Msg> {
-    Some(Msg::SelectionChanged(t.selected().cloned().unwrap()))
 }
 
 #[test]
@@ -223,15 +217,27 @@ fn new_sections_are_counted_after_a_wheel_up_and_reset_at_the_end() {
     assert!(!t.following());
     assert_eq!(t.new_sections(), 1);
     // Scrolls down to the end: following resumes and the count resets.
+    // The step that reaches the end reports the reset count. The selection
+    // stays where it is, in view: no selection is reported with it.
     let mut answer = None;
+    let mut selected_before = None;
     for _ in 0..5 {
-        answer = wheel(&mut t, true).or(answer);
+        selected_before = t.selected().cloned();
+        let step = wheel(&mut t, true);
+        if matches!(step, Some(Msg::NewSections { .. })) {
+            answer = step;
+            break;
+        }
     }
     assert!(t.following());
     assert_eq!(t.new_sections(), 0);
-    assert!(
-        matches!(answer, Some(Msg::NewSections { count: 0, .. })),
-        "{answer:?}"
+    assert_eq!(t.selected().cloned(), selected_before);
+    assert_eq!(
+        answer,
+        Some(Msg::NewSections {
+            count: 0,
+            selection: None,
+        })
     );
 }
 

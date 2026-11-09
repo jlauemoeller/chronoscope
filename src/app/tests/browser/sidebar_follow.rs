@@ -504,6 +504,85 @@ fn the_app_takes_the_selection_from_the_transcripts_report_not_after_every_messa
     assert_follows(&rig.app, "after the report");
 }
 
+/// The selected section of the transcript `id`, on top or covered.
+fn section_of(app: &App, id: Id) -> Option<SectionId> {
+    let value = app
+        .application()
+        .query(&id, SELECTED_SECTION_ATTR)
+        .unwrap()?
+        .into_attr();
+    payload_from_value(&value)
+}
+
+#[test]
+fn a_live_update_that_removes_the_selected_section_moves_the_sidebar_with_the_selection() {
+    let mut rig = long_rig(3, 120, 40);
+    rig.press(Key::Char('j'));
+    rig.settle();
+    assert_eq!(assert_follows(&rig.app, "on a0"), 1);
+    // `a0` is rewritten without the section that is selected: the
+    // transcript moves its selection, which the App reads after the push.
+    let changed = crate::components::transcript::fixtures::with_id(
+        crate::components::turn_block::fixtures::assistant(
+            None,
+            vec![crate::components::turn_block::fixtures::text(
+                "t2", "Changed.",
+            )],
+            None,
+        ),
+        "a0",
+    );
+    rig.app.update(session_msg(
+        &rig.app,
+        ModelUpdate::Updated(vec![arc(changed)]),
+    ));
+    let now = assert_follows(&rig.app, "after the update");
+    assert_ne!(now, 1, "the selection left a0: {:?}", section(&rig.app));
+}
+
+#[test]
+fn a_reset_and_the_same_turns_again_bring_the_sidebar_back_to_the_selection() {
+    let mut rig = rig();
+    rig.open_loaded();
+    let first = assert_follows(&rig.app, "at the start");
+    // The reset empties the sidebar's rows and the transcript's selection;
+    // the selection the turns bring back is the same section as before.
+    rig.app.update(session_msg(&rig.app, ModelUpdate::Reset));
+    rig.app
+        .update(session_msg(&rig.app, ModelUpdate::Appended(turns())));
+    rig.app.update(session_msg(&rig.app, ModelUpdate::Loaded));
+    assert_eq!(assert_follows(&rig.app, "after the reload"), first);
+}
+
+#[test]
+fn closing_a_subagent_follows_the_parents_selection_that_moved_while_it_was_covered() {
+    let mut rig = subagent_rig(120, 40);
+    rig.press(Key::Char('G'));
+    rig.settle();
+    let before = assert_follows(&rig.app, "at the end");
+    rig.app.update(Msg::OpenSubagent {
+        call_id: crate::model::ItemId::from("call-a"),
+        label: "story-writer".to_owned(),
+    });
+    rig.pump_until(|app| app.subagent_depth() == 1 && app.session_loaded());
+    rig.settle();
+    // The covered parent follows its end: a late turn moves its selection.
+    let covered_before = section_of(&rig.app, Id::Transcript);
+    rig.harness.send(
+        0,
+        ModelUpdate::Appended(vec![arc(reply("late", "A late reply of the parent."))]),
+    );
+    rig.settle();
+    assert_ne!(
+        section_of(&rig.app, Id::Transcript),
+        covered_before,
+        "the covered parent's selection moved"
+    );
+    rig.back_to(0);
+    let after = assert_follows(&rig.app, "back in the parent");
+    assert_eq!(after, before + 1);
+}
+
 #[test]
 fn the_selection_is_pushed_only_when_the_transcripts_section_changed() {
     let mut rig = rig();

@@ -240,8 +240,7 @@ impl App {
     /// to the list.
     pub(super) fn search_nav(&mut self, direction: Direction) {
         if self.selector.search_shows_results() {
-            let selected = self.selector.listed.stepped(direction);
-            self.selector.listed.select(selected);
+            self.selector.listed.step(direction);
             self.push_listed_selection();
         }
     }

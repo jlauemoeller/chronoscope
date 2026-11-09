@@ -707,8 +707,7 @@ impl App {
         // What the transcript on top says about itself, as it is now: it kept
         // receiving its updates while it was covered.
         self.sync_search_position();
-        self.sync_new_sections();
-        self.sync_selection();
+        self.sync_view_after_push();
         self.refresh_session_empty();
         self.refresh_live();
         self.push_sidebar_rows(false);
@@ -781,8 +780,7 @@ impl App {
                 self.set_loading(None);
                 // The transcript decides whether to follow from here on.
                 self.forward_to_transcript(depth, update);
-                self.sync_new_sections();
-                self.sync_selection();
+                self.sync_view_after_push();
                 self.refresh_session_empty();
             }
             ModelUpdate::ParseWarnings(count) => {
@@ -796,15 +794,13 @@ impl App {
             ModelUpdate::Appended(_) => {
                 self.forward_to_transcript(depth, update);
                 self.forward_to_sidebar(update);
-                self.sync_new_sections();
-                self.sync_selection();
+                self.sync_view_after_push();
                 self.refresh_session_empty();
             }
             ModelUpdate::Updated(_) => {
                 self.forward_to_transcript(depth, update);
                 self.forward_to_sidebar(update);
-                self.sync_new_sections();
-                self.sync_selection();
+                self.sync_view_after_push();
             }
             ModelUpdate::LocalCommands(commands) => {
                 self.browser.local_commands.clone_from(commands);
@@ -814,8 +810,7 @@ impl App {
                 self.browser.local_commands.clear();
                 self.forward_to_transcript(depth, update);
                 self.forward_to_sidebar(update);
-                self.sync_new_sections();
-                self.sync_selection();
+                self.sync_view_after_push();
                 // The matches were of the turns that are gone.
                 self.search_reloaded();
                 self.refresh_empty_message();
@@ -897,6 +892,16 @@ impl App {
     /// The number the help line's `↓ N new` shows (0: nothing).
     pub fn new_sections(&self) -> usize {
         self.browser.new_sections
+    }
+
+    /// Takes what a push into the transcript on top may have changed of its
+    /// view: the count of new sections and the selection, each through its
+    /// own helper. Called right after such a push (a `ModelUpdate`, a
+    /// viewport, a turn to go to, search results, or the swap of the
+    /// transcript on top), never on every message.
+    pub(super) fn sync_view_after_push(&mut self) {
+        self.sync_new_sections();
+        self.sync_selection();
     }
 
     /// Takes the count of new sections from the transcript on top, right

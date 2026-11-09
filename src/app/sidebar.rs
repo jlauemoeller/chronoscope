@@ -93,8 +93,7 @@ impl App {
         }
         let top = self.top_transcript();
         self.set_attr(top, GO_TO_TURN_ATTR, payload_value(id.clone()));
-        self.sync_new_sections();
-        self.sync_selection();
+        self.sync_view_after_push();
         if open {
             self.focus_top_transcript();
         }

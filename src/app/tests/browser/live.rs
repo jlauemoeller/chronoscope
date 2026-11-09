@@ -179,15 +179,19 @@ fn a_search_key_that_reaches_the_end_removes_the_indicator_with_its_report() {
         selection: None,
     });
     assert_eq!(status(&rig.app), ["↓ 3 new"]);
+    // `n` wrapped to the last match, at the end: following resumes.
     rig.app.update(Msg::SearchPosition {
-        position: None,
+        position: Some(crate::transcript_search::SearchPosition {
+            current: 5,
+            total: 5,
+        }),
         view: crate::app::ViewChange {
             changed: true,
             new_sections: Some(0),
             selection: None,
         },
     });
-    assert!(status(&rig.app).is_empty());
+    assert_eq!(status(&rig.app), ["5/5"]);
     assert_eq!(rig.app.new_sections(), 0);
 }
 

@@ -27,11 +27,11 @@ use super::search::SearchState;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
     ACTIVE_ATTR, ActiveSessions, BackgroundFill, CWD_ATTR, ClickClock, HINTS_ATTR, HarnessTabs,
-    HelpLine, PROJECT_ROWS_ATTR, PROJECTS_FILTERED_ATTR, ProjectList, ProjectRow, ProjectRows,
-    SELECTED_ATTR, SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR,
-    SelectorFrame, SessionList, SessionRow, SessionRows, SessionStatsUpdate, SessionTime,
-    SessionTokens, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir, hints_value,
-    payload_value, selected_value, viewport_value, visible_rows,
+    HelpLine, ListCursor, PROJECT_ROWS_ATTR, PROJECTS_FILTERED_ATTR, ProjectList, ProjectRow,
+    ProjectRows, SELECTED_ATTR, SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR,
+    SESSION_STATS_ATTR, SelectorFrame, SessionList, SessionRow, SessionRows, SessionStatsUpdate,
+    SessionTime, SessionTokens, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir,
+    hints_value, payload_value, selected_value, viewport_value, visible_rows,
 };
 use crate::keymap::Keymap;
 use crate::launch::{HarnessIndex, Preselect, deepest_ancestor};
@@ -206,7 +206,9 @@ pub(super) struct Filter {
 #[derive(Debug, Default)]
 pub(super) struct ListedSessions {
     ids: Vec<SessionId>,
-    selected: Option<usize>,
+    /// The selected row, kept by the same rules as the list's cursor (only
+    /// its selection is used: the scroll offset is the list's).
+    cursor: ListCursor,
 }
 
 impl ListedSessions {
@@ -214,43 +216,45 @@ impl ListedSessions {
     /// ignores when it is out of range.
     fn set(&mut self, rows: &[SessionRow], selected: Option<usize>) {
         self.ids = rows.iter().map(|row| row.id.clone()).collect();
-        self.select(selected);
+        self.cursor.set(self.ids.len(), selected);
     }
 
     /// Records `selected` as the selected row, as the list takes it: out of
     /// range, nothing is selected.
     pub(super) fn select(&mut self, selected: Option<usize>) {
-        self.selected = selected.filter(|&row| row < self.ids.len());
+        self.cursor.select(selected);
     }
 
     /// Records that the row of session `id` is selected. A session that is
     /// not listed changes nothing.
     fn select_id(&mut self, id: &SessionId) {
         if let Some(row) = self.ids.iter().position(|listed| listed == id) {
-            self.selected = Some(row);
+            self.cursor.select(Some(row));
         }
     }
 
     /// The selected row, if any.
     pub(super) fn selected(&self) -> Option<usize> {
-        self.selected
+        self.cursor.selected()
     }
 
     /// The session of the selected row, if any.
     pub(super) fn selected_id(&self) -> Option<&SessionId> {
-        self.ids.get(self.selected?)
+        self.ids.get(self.selected()?)
     }
 
-    /// The row a step in `direction` selects, by the rules of the list's
-    /// cursor: it never wraps around, `Down` with nothing selected selects
-    /// the first row, and any other direction than `Up` or `Down` keeps the
-    /// selection.
-    pub(super) fn stepped(&self, direction: Direction) -> Option<usize> {
-        match (direction, self.selected) {
-            (Direction::Up, Some(row)) => Some(row.saturating_sub(1)),
-            (Direction::Down, Some(row)) => Some((row + 1).min(self.ids.len().saturating_sub(1))),
-            (Direction::Down, None) => (!self.ids.is_empty()).then_some(0),
-            _ => self.selected,
+    /// Moves the selection one row in `direction`, as the list's own keys
+    /// do ([`ListCursor`]); a direction other than `Up` or `Down` changes
+    /// nothing.
+    pub(super) fn step(&mut self, direction: Direction) {
+        match direction {
+            Direction::Up => {
+                self.cursor.step_up();
+            }
+            Direction::Down => {
+                self.cursor.step_down();
+            }
+            Direction::Left | Direction::Right => {}
         }
     }
 }
@@ -1278,8 +1282,7 @@ impl App {
             }
             // A new size can show the end again, which resumes following,
             // and can move the selection.
-            self.sync_new_sections();
-            self.sync_selection();
+            self.sync_view_after_push();
         }
     }
 
@@ -1323,8 +1326,7 @@ mod tests {
     fn a_step_of_the_listed_selection_does_not_wrap() {
         let mut l = listed(3, Some(0));
         let step = |l: &mut ListedSessions, direction| {
-            let selected = l.stepped(direction);
-            l.select(selected);
+            l.step(direction);
             l.selected()
         };
         assert_eq!(step(&mut l, Direction::Up), Some(0));

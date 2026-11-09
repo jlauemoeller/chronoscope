@@ -342,15 +342,19 @@ fn the_end_key_does_the_same() {
     let mut t = at_the_end();
     t.perform(half_page_up());
     t.apply_update(&appended_turns(&["t9"]));
-    assert!(matches!(
-        press(&mut t, Key::End),
-        Some(Msg::NewSections { count: 0, .. })
-    ));
+    let msg = press(&mut t, Key::End);
+    assert_eq!(
+        msg,
+        Some(Msg::NewSections {
+            count: 0,
+            selection: Some(last_section_of(&t, "t9")),
+        })
+    );
     assert!(t.following());
 }
 
 #[test]
-fn a_key_that_leaves_the_count_alone_reports_a_change_of_the_view_only() {
+fn a_key_that_leaves_the_count_alone_reports_only_the_selection_it_moved() {
     let mut t = at_the_end();
     t.perform(half_page_up());
     t.apply_update(&appended_turns(&["t9"]));

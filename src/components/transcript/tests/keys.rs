@@ -928,11 +928,6 @@ fn a_key_that_changes_the_view_answers_transcript_changed() {
     }
 }
 
-/// The answer a key that moved the selection gives: the section selected now.
-fn moved_to(t: &Transcript) -> Option<Msg> {
-    Some(Msg::SelectionChanged(t.selected().cloned().unwrap()))
-}
-
 #[test]
 fn a_key_that_moves_the_selection_reports_the_section_it_selected() {
     let mut t = session_transcript(80, 24);

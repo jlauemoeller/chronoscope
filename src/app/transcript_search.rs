@@ -289,8 +289,7 @@ impl App {
             search_results_value(matches.clone()),
         );
         self.sync_search_position();
-        self.sync_new_sections();
-        self.sync_selection();
+        self.sync_view_after_push();
         if matches.matches().is_empty() {
             let text = format!("No matches for \"{}\"", self.browser.search.query);
             if let Err(err) = self.show_toast(text) {

@@ -31,8 +31,8 @@ impl Transcript {
     /// A wheel step or a left press. A wheel step answers what keys answer:
     /// the new count when it changed, else the new selection when it moved,
     /// else [`Msg::TranscriptChanged`] if the view changed. A left press
-    /// answers [`Msg::TranscriptPressed`] with the same change (the section
-    /// it selected among it), as it also asks for the focus.
+    /// answers [`Msg::TranscriptPressed`] with the same change, including
+    /// the section it selected, as it also asks for the focus.
     pub(super) fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         let before = self.view_before();
         let press = mouse.is_left_press();
