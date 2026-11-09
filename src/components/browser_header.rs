@@ -14,6 +14,9 @@ use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
 mod fit;
+mod marks;
+
+use marks::{LIVE_DOT, LIVE_WORD, LiveMarker, ParseWarningNote};
 
 use super::text_fit::truncate_start;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
@@ -40,6 +43,8 @@ pub const SESSION_ID_ATTR: Attribute = Attribute::Custom("header_session_id");
 /// The header is this many rows high: the border, a blank row, the working
 /// directory, a blank row and the border.
 pub const HEADER_HEIGHT: u16 = 5;
+/// The row of the header the working directory is on.
+const CWD_ROW: u16 = 2;
 /// The columns between the cwd (or the note) and the border: a blank column.
 const PADDING: usize = 1;
 /// The columns the working directory starts after the left border.
@@ -47,10 +52,6 @@ const CWD_COLUMN: usize = 2;
 /// The least number of cells between the working directory and what is
 /// right-aligned, and between the note and the live marker.
 const NOTE_GAP: usize = 2;
-/// The dot of the live marker, drawn in `primary`.
-const LIVE_DOT: &str = "●";
-/// The word after the dot, drawn in `muted_foreground`.
-const LIVE_WORD: &str = " live";
 /// Between the project and an agent, and between two agents.
 const AGENT_SEPARATOR: &str = " › Agent: ";
 
@@ -61,6 +62,16 @@ pub fn parse_warning_note(count: usize) -> Option<String> {
         1 => Some("1 entry could not be parsed".to_owned()),
         n => Some(format!("{n} entries could not be parsed")),
     }
+}
+
+/// Where [`BrowserHeader::cwd_row`] puts the note and the live marker on
+/// the working directory's row, in columns from the row's start.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct RowMarks {
+    /// The column the note starts in, and its text.
+    note: Option<(usize, String)>,
+    /// The column the live marker starts in.
+    live: Option<usize>,
 }
 
 /// A rounded block in `border`: `╭─ Project <name> ─…─ <session id> ─╮`, a
@@ -230,30 +241,40 @@ impl BrowserHeader {
         ])
     }
 
-    /// The row with the working directory, the note and the live marker.
-    fn cwd_row(&self, width: usize) -> Line<'static> {
-        let border = self.border();
-        let inner = width.saturating_sub(2);
+    /// What is right-aligned on the working directory's row of `inner`
+    /// columns: the note, if it fits, and whether the live marker does. The
+    /// marker goes first, then the note, two cells to its left.
+    fn right_aligned(&self, inner: usize) -> (Option<String>, bool) {
         // What is right-aligned must fit between the first blank column and
-        // the blank column before the border; the note goes first, then the
-        // marker.
+        // the blank column before the border.
         let room = inner.saturating_sub(CWD_COLUMN - 1 + PADDING);
-        let live_width = if self.live {
+        let live = self.live && LIVE_DOT.width() + LIVE_WORD.width() <= room;
+        let live_width = if live {
             LIVE_DOT.width() + LIVE_WORD.width()
         } else {
             0
         };
-        let live = self.live && live_width <= room;
-        let live_width = if live { live_width } else { 0 };
-        let gap_for = |note_width: usize| {
-            if live && note_width > 0 { NOTE_GAP } else { 0 }
-        };
         let note = parse_warning_note(self.parse_warnings).filter(|note| {
-            let width = note.width();
-            width + gap_for(width) + live_width <= room
+            let gap = if live { NOTE_GAP } else { 0 };
+            note.width() + gap + live_width <= room
         });
+        (note, live)
+    }
+
+    /// Lays out the row with the working directory: the line with the
+    /// borders and the cwd (cut from the left to leave room for what is
+    /// right-aligned), blank where the note and the live marker go, and the
+    /// columns they go in.
+    fn cwd_row(&self, width: usize) -> (Line<'static>, RowMarks) {
+        let inner = width.saturating_sub(2);
+        let (note, live) = self.right_aligned(inner);
         let note_width = note.as_deref().map_or(0, UnicodeWidthStr::width);
         let gap = if note.is_some() && live { NOTE_GAP } else { 0 };
+        let live_width = if live {
+            LIVE_DOT.width() + LIVE_WORD.width()
+        } else {
+            0
+        };
         // What is right-aligned, and the blank column before the border.
         let right = note_width + gap + live_width;
         let trailing = if right > 0 { right + PADDING } else { 0 };
@@ -262,30 +283,46 @@ impl BrowserHeader {
         let reserved = if right > 0 { right + NOTE_GAP } else { 0 };
         let available = inner.saturating_sub(CWD_COLUMN - 1 + PADDING + reserved);
         let cwd = truncate_start(&self.cwd, available);
-        let cwd_width = cwd.width();
-        let before = inner.saturating_sub(CWD_COLUMN - 1 + cwd_width + trailing);
-        let mut spans = vec![
+        let lead = (CWD_COLUMN - 1).min(inner);
+        let before = inner.saturating_sub(CWD_COLUMN - 1 + cwd.width() + trailing);
+        // Where the right-aligned part starts; its cells are left blank here
+        // for the note and the marker to draw on.
+        let start = 1 + lead + cwd.width() + before;
+        let padding = if right > 0 { PADDING.min(inner) } else { 0 };
+        let border = self.border();
+        let line = Line::from(vec![
             Span::styled("│", border),
-            Span::raw(" ".repeat((CWD_COLUMN - 1).min(inner))),
+            Span::raw(" ".repeat(lead)),
             Span::styled(cwd, self.foreground()),
-            Span::raw(" ".repeat(before)),
-        ];
-        if let Some(note) = note {
-            spans.push(Span::styled(note, self.muted()));
+            Span::raw(" ".repeat(before + right + padding)),
+            Span::styled("│", border),
+        ]);
+        let marks = RowMarks {
+            note: note.map(|note| (start, note)),
+            live: live.then_some(start + note_width + gap),
+        };
+        (line, marks)
+    }
+
+    /// Draws the note and the live marker where `marks` puts them, on the
+    /// working directory's row of `area`.
+    fn draw_marks(&self, frame: &mut Frame, area: Rect, marks: &RowMarks) {
+        let theme = &self.theme;
+        let at = |column: usize, width: usize| {
+            let x = area
+                .x
+                .saturating_add(u16::try_from(column).unwrap_or(u16::MAX));
+            let width = u16::try_from(width).unwrap_or(u16::MAX);
+            Rect::new(x, area.y.saturating_add(CWD_ROW), width, 1).intersection(area)
+        };
+        if let Some((column, text)) = &marks.note {
+            let note = ParseWarningNote { text, theme };
+            frame.render_widget(note, at(*column, text.width()));
         }
-        if gap > 0 {
-            spans.push(Span::raw(" ".repeat(gap)));
+        if let Some(column) = marks.live {
+            let width = LIVE_DOT.width() + LIVE_WORD.width();
+            frame.render_widget(LiveMarker { theme }, at(column, width));
         }
-        if live {
-            let dot = Style::new().fg(self.theme.role(Role::Primary));
-            spans.push(Span::styled(LIVE_DOT, dot));
-            spans.push(Span::styled(LIVE_WORD, self.muted()));
-        }
-        if right > 0 {
-            spans.push(Span::raw(" ".repeat(PADDING.min(inner))));
-        }
-        spans.push(Span::styled("│", border));
-        Line::from(spans)
     }
 
     fn bottom(&self, width: usize) -> Line<'static> {
@@ -308,14 +345,16 @@ impl Component for BrowserHeader {
             return;
         }
         let width = usize::from(area.width);
+        let (cwd_row, marks) = self.cwd_row(width);
         let lines = vec![
             self.top(width),
             self.blank(width),
-            self.cwd_row(width),
+            cwd_row,
             self.blank(width),
             self.bottom(width),
         ];
         frame.render_widget(Paragraph::new(lines), area);
+        self.draw_marks(frame, area, &marks);
     }
 
     fn query<'a>(&'a self, attr: Attribute) -> Option<QueryResult<'a>> {
@@ -513,6 +552,19 @@ mod tests {
             assert_eq!(chars[w - 2], ' ');
             assert_eq!(chars[w - 1], '│');
             assert_eq!(chars[w - 8..w - 2].iter().collect::<String>(), "● live");
+        }
+    }
+
+    #[test]
+    fn a_header_cut_above_its_cwd_row_draws_no_note_or_marker() {
+        let mut h = header(2).live(true);
+        for height in 0..=CWD_ROW {
+            let buffer = render(120, 4, |frame| {
+                h.view(frame, Rect::new(0, 1, 120, height));
+            });
+            let text = buffer_to_text(&buffer);
+            assert!(!text.contains("live"), "{height}: {text}");
+            assert!(!text.contains("parsed"), "{height}: {text}");
         }
     }
 
