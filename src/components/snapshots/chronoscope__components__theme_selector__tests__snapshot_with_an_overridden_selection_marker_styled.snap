@@ -1,6 +1,6 @@
 ---
-source: src/components/theme_selector/mod.rs
-expression: buffer_to_styled(&draw(&mut s))
+source: src/components/theme_selector.rs
+expression: buffer_to_styled(&draw_terminal_selected(&theme))
 ---
                                                                                 
                                                                                 
@@ -24,7 +24,7 @@ expression: buffer_to_styled(&draw(&mut s))
 2: 0..10 Reset/Reset/NONE | 10..12 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 12..20 Rgb(250, 250, 250)/Rgb(18, 18, 18)/NONE | 20..51 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 51..80 Reset/Reset/NONE
 3: 0..10 Reset/Reset/NONE | 10..11 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 11..50 Reset/Rgb(18, 18, 18)/NONE | 50..51 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 51..80 Reset/Reset/NONE
 4: 0..10 Reset/Reset/NONE | 10..11 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 11..22 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 22..50 Reset/Rgb(18, 18, 18)/NONE | 50..51 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 51..80 Reset/Reset/NONE
-5: 0..10 Reset/Reset/NONE | 10..11 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 11..13 Reset/Rgb(18, 18, 18)/NONE | 13..14 Rgb(229, 229, 229)/Rgb(18, 18, 18)/NONE | 14..15 Reset/Rgb(18, 18, 18)/NONE | 15..23 Rgb(250, 250, 250)/Rgb(18, 18, 18)/BOLD | 23..50 Reset/Rgb(18, 18, 18)/NONE | 50..51 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 51..80 Reset/Reset/NONE
+5: 0..10 Reset/Reset/NONE | 10..11 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 11..13 Reset/Rgb(18, 18, 18)/NONE | 13..14 Rgb(255, 0, 0)/Rgb(18, 18, 18)/NONE | 14..15 Reset/Rgb(18, 18, 18)/NONE | 15..23 Rgb(250, 250, 250)/Rgb(18, 18, 18)/BOLD | 23..50 Reset/Rgb(18, 18, 18)/NONE | 50..51 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 51..80 Reset/Reset/NONE
 6: 0..10 Reset/Reset/NONE | 10..11 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 11..25 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 25..50 Reset/Rgb(18, 18, 18)/NONE | 50..51 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 51..80 Reset/Reset/NONE
 7: 0..10 Reset/Reset/NONE | 10..11 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 11..22 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 22..50 Reset/Rgb(18, 18, 18)/NONE | 50..51 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 51..80 Reset/Reset/NONE
 8: 0..10 Reset/Reset/NONE | 10..11 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 11..19 Rgb(161, 161, 161)/Rgb(18, 18, 18)/NONE | 19..50 Reset/Rgb(18, 18, 18)/NONE | 50..51 Rgb(207, 207, 207)/Rgb(18, 18, 18)/NONE | 51..80 Reset/Reset/NONE
