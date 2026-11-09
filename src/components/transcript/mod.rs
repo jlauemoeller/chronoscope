@@ -38,15 +38,19 @@
 //! arrive ([`NEW_SECTIONS_ATTR`]); `G` / `End`, or scrolling back to the end,
 //! resumes following. Until `Loaded` arrives (see [`Transcript::loading`])
 //! the view stays where it is. A key that changes the count answers
-//! [`Msg::NewSections`]; the App reads the count after the updates it
-//! forwards. See the `follow` module.
+//! [`Msg::NewSections`]; the App queries the count right after the updates
+//! it pushes (cycle 5 spec, §0 item 5). See the `follow` module.
 //!
 //! # Keys and `Cmd`s
 //!
 //! `on` resolves a key with the shared [`Keymap`] for the `browser` context
 //! (a [`KeyResolver`] of its own holds a pending chord) and turns the action
-//! into a `Cmd` that `perform` handles; it answers [`Msg::TranscriptChanged`]
-//! when the key changed what is shown (the App then redraws), else nothing.
+//! into a `Cmd` that `perform` handles; it answers [`Msg::SelectionChanged`]
+//! when the key moved the selection (the turns sidebar follows it), else
+//! [`Msg::TranscriptChanged`] when it changed what is shown (the App then
+//! redraws), else nothing. A key that also does something else the App is
+//! told of carries the selection in that message instead
+//! ([`ViewChange`]).
 //! The `Cmd`s:
 //!
 //! - `Scroll(Up/Down)` scrolls one row;
@@ -72,7 +76,8 @@
 //! the pointer, toggles its fold when it is on the section's first row, and
 //! expands the output on a `… N more lines` row; the borders, the padding and
 //! the blank rows are not sections. Wherever it lands, a left press answers
-//! [`Msg::TranscriptPressed`], which asks for the focus.
+//! [`Msg::TranscriptPressed`], which asks for the focus and carries the
+//! section it selected.
 //!
 //! The keys that focus the turns sidebar are not `Cmd`s either: they answer
 //! [`Msg::FocusTurns`]. The sidebar's selection reaches the transcript through
@@ -158,22 +163,26 @@ pub const MODEL_UPDATE_ATTR: Attribute = Attribute::Custom("model_update");
 pub const TURN_COUNT_ATTR: Attribute = Attribute::Custom("turn_count");
 /// The number of sections that arrived while the user was away from the end,
 /// the `N` of `↓ N new` (a length; query only). A `Component::attr` cannot
-/// answer a `Msg`, so the App reads it with `query` after the updates it
-/// forwards; keys report changes themselves as [`Msg::NewSections`].
+/// answer a `Msg`, so the App queries it right after the updates it pushes
+/// (cycle 5 spec, §0 item 5); keys, clicks and the wheel report changes
+/// themselves ([`ViewChange::new_sections`]).
 pub const NEW_SECTIONS_ATTR: Attribute = Attribute::Custom("new_sections");
 /// Whether the transcript follows new content (a flag; query only).
 pub const FOLLOWING_ATTR: Attribute = Attribute::Custom("following");
 /// The selected section (a [`SectionId`] payload; query only; nothing when
-/// no section is selected). The App reads it to keep the turns sidebar on the
-/// turn that contains it.
+/// no section is selected). Keys, clicks and the wheel report the selection
+/// they move ([`ViewChange::selection`]); the App queries it only right after
+/// a push that can move it (cycle 5 spec, §0 item 5), to keep the turns
+/// sidebar on the turn that contains it.
 pub const SELECTED_SECTION_ATTR: Attribute = Attribute::Custom("selected_section");
 /// What the transcript keeps of its presentation: the scroll offset, the
 /// selected section and the fold states (a payload; query only).
 pub const PRESENTATION_ATTR: Attribute = Attribute::Custom("presentation");
 /// The turn whose block to go to (a [`TurnId`] payload; set only): the same
 /// scroll and selection as `]` / `[` give, for the turns sidebar. A key
-/// reports its changes as a `Msg`; an attribute cannot, so the App reads the
-/// count of new sections with [`NEW_SECTIONS_ATTR`] afterwards.
+/// reports its changes as a `Msg`; an attribute cannot, so the App queries
+/// the count of new sections ([`NEW_SECTIONS_ATTR`]) and the selection
+/// ([`SELECTED_SECTION_ATTR`]) right after it.
 pub const GO_TO_TURN_ATTR: Attribute = Attribute::Custom("go_to_turn");
 /// The [`Size`] of the area the transcript is drawn in (a payload).
 pub const VIEWPORT_ATTR: Attribute = Attribute::Custom("viewport");
@@ -679,10 +688,13 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     /// its action. Returns [`Msg::OpenSearch`] for the search key,
     /// [`Msg::SearchPosition`] when a key moved among the matches or cleared
     /// the search, [`Msg::NewSections`] when it changed the count of new
-    /// sections (`G` resuming following), else [`Msg::TranscriptChanged`]
-    /// when that changed what is shown, so that the App redraws. The copy
-    /// keys answer [`Msg::CopyText`] with the text of the selected section
-    /// (as displayed, or in full); with nothing selected they do nothing.
+    /// sections (`G` resuming following), [`Msg::SelectionChanged`] when it
+    /// moved the selection, else [`Msg::TranscriptChanged`] when that changed
+    /// what is shown, so that the App redraws. [`Msg::SearchPosition`] and
+    /// [`Msg::NewSections`] carry the selection too, when the key also moved
+    /// it (one message per key). The copy keys answer [`Msg::CopyText`] with
+    /// the text of the selected section (as displayed, or in full); with
+    /// nothing selected they do nothing.
     /// The save keys answer [`Msg::SaveSection`] the same way, the export
     /// keys [`Msg::Export`] with the whole document. The open key answers
     /// [`Msg::OpenSubagent`] on a subagent section (nothing on any other),
@@ -722,18 +734,23 @@ impl AppComponent<Msg, UserEvent> for Transcript {
             _ => {}
         }
         let cmd = keys::cmd_for(action)?;
-        let new_before = self.new_sections;
+        let before = self.view_before();
         let changed = changes_view(&self.perform(cmd));
+        let change = self.view_change(&before, changed);
         if changed
             && matches!(
                 action,
                 Action::SearchNext | Action::SearchPrev | Action::ClearSearch
             )
         {
-            return Some(Msg::SearchPosition(self.search_position()));
+            return Some(Msg::SearchPosition {
+                position: self.search_position(),
+                view: change,
+            });
         }
-        // The count changed (`G` resumed following): the App shows it.
-        self.view_change(new_before, changed).key_answer()
+        // The count changed (`G` resumed following) or the selection moved:
+        // the App shows the one and the turns sidebar follows the other.
+        change.key_answer()
     }
 }
 
@@ -742,16 +759,36 @@ fn changes_view(result: &CmdResult) -> bool {
     !matches!(result, CmdResult::NoChange | CmdResult::Invalid(_))
 }
 
+/// What an event can change of the view that the App is told: taken before
+/// the event, to compare with after it.
+struct ViewBefore {
+    new_sections: usize,
+    selected: Option<SectionId>,
+}
+
 impl Transcript {
-    /// What an event did to the view: the count of new sections, if it
-    /// changed from `new_before`, else whether anything `changed`.
-    fn view_change(&self, new_before: usize, changed: bool) -> ViewChange {
-        if self.new_sections != new_before {
-            ViewChange::NewSections(self.new_sections)
-        } else if changed {
-            ViewChange::Changed
-        } else {
-            ViewChange::Unchanged
+    /// The count of new sections and the selection, before an event.
+    fn view_before(&self) -> ViewBefore {
+        ViewBefore {
+            new_sections: self.new_sections,
+            selected: self.content.selected.clone(),
+        }
+    }
+
+    /// What an event did to the view since `before`: whether anything
+    /// `changed`, the count of new sections if it changed, and the selected
+    /// section if the selection moved to another one.
+    fn view_change(&self, before: &ViewBefore, changed: bool) -> ViewChange {
+        let selection = self
+            .content
+            .selected
+            .as_ref()
+            .filter(|&now| before.selected.as_ref() != Some(now))
+            .cloned();
+        ViewChange {
+            changed,
+            new_sections: (self.new_sections != before.new_sections).then_some(self.new_sections),
+            selection,
         }
     }
 }

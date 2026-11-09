@@ -29,11 +29,12 @@ struct Hit {
 
 impl Transcript {
     /// A wheel step or a left press. A wheel step answers what keys answer:
-    /// the new count when it changed, else [`Msg::TranscriptChanged`] if the
-    /// view changed. A left press answers [`Msg::TranscriptPressed`] with the
-    /// same change, as it also asks for the focus.
+    /// the new count when it changed, else the new selection when it moved,
+    /// else [`Msg::TranscriptChanged`] if the view changed. A left press
+    /// answers [`Msg::TranscriptPressed`] with the same change, including
+    /// the section it selected, as it also asks for the focus.
     pub(super) fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
-        let new_before = self.new_sections;
+        let before = self.view_before();
         let press = mouse.is_left_press();
         let result = match mouse.kind {
             MouseEventKind::ScrollUp => self.perform(Cmd::Custom(WHEEL_UP)),
@@ -41,7 +42,7 @@ impl Transcript {
             _ if press => self.clicked(mouse),
             _ => return None,
         };
-        let change = self.view_change(new_before, changes_view(&result));
+        let change = self.view_change(&before, changes_view(&result));
         if press {
             Some(Msg::TranscriptPressed(change))
         } else {

@@ -5,7 +5,8 @@
 //! focus.
 //!
 //! The sidebar's selection follows the transcript's while the transcript
-//! has the focus ([`App::sync_sidebar_selection`](super::App)); while the
+//! has the focus ([`App::sync_sidebar_selection`](super::App)), as the
+//! transcript reports it or the App reads it right after a push; while the
 //! sidebar has it, the sidebar moves the transcript instead.
 
 use ratatui::layout::Rect;
@@ -83,15 +84,16 @@ impl App {
     /// The sidebar selected the entry of turn `id` (`open`: and `Enter` was
     /// pressed): scrolls the transcript on top to its block with the result
     /// `]` / `[` give, and, on `Enter`, gives it the focus. Whether the view
-    /// still follows the end, and `↓ N new`, are the transcript's to decide
-    /// and are read back.
+    /// still follows the end, `↓ N new` and the section it selects are the
+    /// transcript's to decide; the App queries them right after the push
+    /// (cycle 5 spec, §0 item 5).
     pub(super) fn go_to_turn(&mut self, id: &TurnId, open: bool) {
         if !self.sidebar_shown() {
             return;
         }
         let top = self.top_transcript();
         self.set_attr(top, GO_TO_TURN_ATTR, payload_value(id.clone()));
-        self.sync_new_sections();
+        self.sync_view_after_push();
         if open {
             self.focus_top_transcript();
         }

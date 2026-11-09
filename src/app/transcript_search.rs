@@ -5,7 +5,8 @@
 //! 1. `/` in the transcript asks ([`Msg::OpenSearch`]) for the [`Prompt`] in
 //!    the help line.
 //! 2. `Enter` in the prompt with a query: the App hands the query to the
-//!    transcript (an attribute) and reads back the request it wants run:
+//!    transcript (an attribute) and, right after, queries the request it
+//!    builds from it (cycle 5 spec, §0 item 5):
 //!    the query, a snapshot of its turns and a generation, unique over the
 //!    run of the application ([`Msg::StartTranscriptSearch`]).
 //! 3. The worker thread searches and a [`TranscriptSearchPort`] delivers
@@ -27,7 +28,7 @@ use tuirealm::props::AttrValue;
 
 use super::layout::Screen;
 use super::redraw::RedrawRequest;
-use super::{App, Id, Msg, UserEvent};
+use super::{App, Id, Msg, UserEvent, ViewChange};
 use crate::components::{
     Prompt, PromptMode, SEARCH_POSITION_ATTR, SEARCH_QUERY_ATTR, SEARCH_REQUEST_ATTR,
     SEARCH_RESULTS_ATTR, SearchStart, payload_from_value, search_results_value, search_start_value,
@@ -226,19 +227,25 @@ impl App {
             SEARCH_QUERY_ATTR,
             search_start_value(start),
         );
-        let request = self
-            .application
-            .query(&self.top_transcript(), SEARCH_REQUEST_ATTR)
-            .ok()
-            .flatten()
-            .and_then(|value| payload_from_value::<SearchRequest>(&value.into_attr()));
-        if let Some(request) = request {
+        if let Some(request) = self.transcript_search_request() {
             self.emit(Msg::StartTranscriptSearch {
                 query: request.query,
                 corpus: request.corpus,
                 generation: request.generation,
             });
         }
+    }
+
+    /// The search the transcript on top asks to be run, right after the App
+    /// pushed it the query (`SEARCH_QUERY_ATTR`): the query, a snapshot of
+    /// its turns and the generation. The transcript builds it from the query
+    /// it was just given, so it is queried (cycle 5 spec, §0 item 5).
+    fn transcript_search_request(&self) -> Option<SearchRequest> {
+        self.application
+            .query(&self.top_transcript(), SEARCH_REQUEST_ATTR)
+            .ok()
+            .flatten()
+            .and_then(|value| payload_from_value::<SearchRequest>(&value.into_attr()))
     }
 
     /// Runs a search: on the worker when there is one, else right here.
@@ -282,7 +289,7 @@ impl App {
             search_results_value(matches.clone()),
         );
         self.sync_search_position();
-        self.sync_new_sections();
+        self.sync_view_after_push();
         if matches.matches().is_empty() {
             let text = format!("No matches for \"{}\"", self.browser.search.query);
             if let Err(err) = self.show_toast(text) {
@@ -292,20 +299,29 @@ impl App {
         self.request_redraw(RedrawRequest::Dirty);
     }
 
-    /// A key moved among the matches or cleared the search.
-    pub(super) fn search_position_changed(&mut self, position: Option<SearchPosition>) {
+    /// A key moved among the matches or cleared the search, and changed the
+    /// view as `view` says (the selection a jump moved, the count of new
+    /// sections).
+    pub(super) fn search_position_changed(
+        &mut self,
+        position: Option<SearchPosition>,
+        view: ViewChange,
+    ) {
         if position.is_none() {
             // Cleared: an answer still on its way is for a search that is gone.
             self.browser.search.pending = None;
         }
         self.browser.search.position = position;
         self.refresh_status();
-        self.sync_new_sections();
+        self.view_changed(view);
         self.request_redraw(RedrawRequest::Dirty);
     }
 
-    /// Takes the position from the transcript, after something that can have
-    /// changed it (an answer, a reload).
+    /// Takes the position from the transcript on top, right after a push
+    /// that can have changed it: search results, a reload (`Reset`), or the
+    /// swap of the transcript on top. The transcript computes it from the
+    /// matches and turns it was pushed, so it is queried (cycle 5 spec, §0
+    /// item 5); a key reports it in [`Msg::SearchPosition`].
     pub(super) fn sync_search_position(&mut self) {
         let value = self
             .application

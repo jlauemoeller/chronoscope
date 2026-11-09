@@ -4,6 +4,7 @@
 use tuirealm::state::{State, StateValue};
 
 use super::*;
+use crate::app::ViewChange;
 use crate::components::TURN_COUNT_ATTR;
 use crate::components::transcript::fixtures::search_session;
 use crate::transcript_search::{SearchMatches, SearchPosition};
@@ -476,7 +477,10 @@ fn clearing_the_search_drops_an_answer_still_on_its_way() {
     rig.app.update(Msg::OpenSearch);
     rig.app.update(Msg::PromptSubmit("usb".to_owned()));
     rig.drain();
-    rig.app.update(Msg::SearchPosition(None));
+    rig.app.update(Msg::SearchPosition {
+        position: None,
+        view: ViewChange::default(),
+    });
     rig.settle();
     assert_eq!(position(&rig.app), None);
     assert!(status(&rig.app).is_empty());

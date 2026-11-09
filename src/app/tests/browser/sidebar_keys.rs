@@ -695,12 +695,14 @@ fn the_session_selector_returns_the_focus_to_the_sidebar() {
 }
 
 /// Moves the selection of the transcript on top by `j`, behind the app's
-/// back (the overlay in front takes the keys), and lets the app notice.
+/// back (the overlay in front takes the keys), and tells the app as the
+/// transcript reports a move.
 fn move_the_transcripts_selection(rig: &mut Rig) {
     let top = rig.app.top_transcript();
     let component = rig.app.application_mut().get_component_mut(&top).unwrap();
     component.perform(Cmd::Move(Direction::Down));
-    rig.app.update(Msg::TranscriptChanged);
+    let moved = presentation(&rig.app).selected.expect("a selection");
+    rig.app.update(Msg::SelectionChanged(moved));
 }
 
 #[test]

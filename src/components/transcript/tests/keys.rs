@@ -920,11 +920,33 @@ fn the_marker_is_on_the_selected_section_after_keys() {
 #[test]
 fn a_key_that_changes_the_view_answers_transcript_changed() {
     let mut t = session_transcript(80, 24);
-    for c in ['l', 'j', 's', 'G'] {
+    // A fold and the system sections: the selection stays where it is.
+    for c in ['l', 's'] {
+        let before = t.selected().cloned();
         assert_eq!(ch(&mut t, c), Some(Msg::TranscriptChanged), "{c}");
+        assert_eq!(t.selected().cloned(), before, "{c}");
     }
-    assert_eq!(ctrl(&mut t, 'u'), Some(Msg::TranscriptChanged));
-    assert_eq!(press(&mut t, Key::Home), Some(Msg::TranscriptChanged));
+}
+
+#[test]
+fn a_key_that_moves_the_selection_reports_the_section_it_selected() {
+    let mut t = session_transcript(80, 24);
+    let moves = |t: &mut Transcript, name: &str, key: fn(&mut Transcript) -> Option<Msg>| {
+        let before = t.selected().cloned();
+        let answer = key(t);
+        assert_ne!(t.selected().cloned(), before, "{name} moves it");
+        assert_eq!(answer, moved_to(t), "{name}");
+    };
+    moves(&mut t, "j", |t| ch(t, 'j'));
+    moves(&mut t, "]", |t| ch(t, ']'));
+    moves(&mut t, "G", |t| ch(t, 'G'));
+    moves(&mut t, "Ctrl-u", |t| ctrl(t, 'u'));
+    moves(&mut t, "k", |t| ch(t, 'k'));
+    moves(&mut t, "[", |t| ch(t, '['));
+    moves(&mut t, "Home", |t| press(t, Key::Home));
+    assert_eq!(t.selected(), Some(&section_id("t1", SectionKey::Prompt)));
+    // At the first section there is nothing to move to: nothing is reported.
+    assert_eq!(ch(&mut t, 'k'), None);
 }
 
 #[test]
