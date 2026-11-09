@@ -2,12 +2,10 @@
 //! (no terminal): hit-testing over the layout, the routing areas, the wheel,
 //! clicks, double-clicks and the tabs.
 
-use std::cell::Cell;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use ratatui::layout::Rect;
 use tuirealm::event::{
@@ -23,13 +21,12 @@ use super::selector::{
 };
 use crate::app::fixtures::{self, fixture_snapshot};
 use crate::app::layout::{LayoutInput, PointerTarget, Screen, component_at, hit_test, layout};
-use crate::app::mouse::DOUBLE_CLICK;
 use crate::app::runtime::run_loop;
 use crate::app::{App, Id, Msg, Pane, UserEvent};
-use crate::components::{HelpContext, PROJECTS_FILTERED_ATTR};
+use crate::components::{DOUBLE_CLICK, HelpContext, PROJECTS_FILTERED_ATTR};
 use crate::index::SessionMap;
 use crate::model::SessionId;
-use crate::test_support::{buffer_to_text, render};
+use crate::test_support::{TestClock, buffer_to_text, render};
 
 // -- helpers
 
@@ -72,11 +69,9 @@ fn wheel(app: &mut App, id: Id, down: bool) {
 }
 
 /// Gives the app a click clock that shows the returned time.
-fn click_clock(app: &mut App) -> Rc<Cell<Duration>> {
-    let start = Instant::now();
-    let elapsed = Rc::new(Cell::new(Duration::ZERO));
-    let shared = Rc::clone(&elapsed);
-    app.set_click_clock(move || start + shared.get());
+fn click_clock(app: &mut App) -> TestClock {
+    let elapsed = TestClock::new();
+    app.set_click_clock(elapsed.reader());
     elapsed
 }
 
@@ -714,10 +709,10 @@ fn a_double_click_with_a_wheel_step_between_its_presses_still_opens() {
 
 #[test]
 fn a_press_not_on_a_row_ends_a_double_click_wherever_the_router_sends_it() {
-    // The reset runs at the next press, whatever the press between reached:
-    // a component that answers nothing (the tabs' underline row), nothing
-    // (the frame's border inside it), or the base selector as an outside
-    // press, which it ignores.
+    // The press between ends it whatever it reached (the router tells the
+    // Sessions pane): a component that answers nothing (the tabs' underline
+    // row), nothing (the frame's border inside it), or the base selector as
+    // an outside press, which it ignores.
     let probe = loaded();
     let underline = pos(&probe, Id::HarnessTabs, 0, 1);
     let border = pos(&probe, Id::SelectorFrame, 0, 5);
@@ -773,7 +768,10 @@ fn update_queues_the_answer_to_a_pointer_message_and_does_not_handle_it() {
     let queued = app.take_queued();
     assert_eq!(
         queued,
-        [Msg::Selector(crate::app::SelectorMsg::ProjectClicked(brio))]
+        [Msg::Selector(crate::app::SelectorMsg::ChooseProject {
+            id: brio,
+            open: false
+        })]
     );
     for msg in queued {
         app.update(msg);
@@ -1396,4 +1394,89 @@ fn with_mouse_off_the_app_is_not_subscribed_to_the_mouse() {
     )))
     .unwrap();
     assert_eq!(collect(&mut app), [Msg::Quit]);
+}
+
+// -- the press-elsewhere notice
+
+/// Two presses on session row 1, 100 ms apart by the clock given through
+/// `set_click_clock`, with the press `between` in between: whether the
+/// second opened the session.
+fn second_press_opens(between: impl FnOnce(&mut App)) -> bool {
+    let mut app = loaded();
+    app.show_toast("A toast to press").unwrap();
+    let time = click_clock(&mut app);
+    click_row(&mut app, Id::SessionList, 1);
+    assert!(app.take_queued().is_empty());
+    between(&mut app);
+    // The press between answered nothing that opens.
+    assert!(
+        !app.take_queued()
+            .iter()
+            .any(|msg| matches!(msg, Msg::OpenSession(..)))
+    );
+    time.set(Duration::from_millis(100));
+    click_row(&mut app, Id::SessionList, 1);
+    let opened = app.take_queued() == [Msg::OpenSession(CLAUDE, SessionId::from("s2"))];
+    assert_eq!(session(&app), Some("s2"));
+    opened
+}
+
+#[test]
+fn a_press_on_a_tab_the_toast_or_empty_space_between_two_presses_on_a_session_row_ends_it() {
+    assert!(second_press_opens(|_| {}), "the control");
+    let on_a_tab = |app: &mut App| {
+        let tab = pos(app, Id::HarnessTabs, 3, 0);
+        let target = hit_test(
+            app.routing(),
+            &LayoutInput::default(),
+            mouse(PRESS, tab.0, tab.1),
+        );
+        assert!(matches!(
+            target,
+            PointerTarget::Component(Id::HarnessTabs, _)
+        ));
+        click(app, Id::HarnessTabs, 3, 0);
+        assert_eq!(tabs(app).selected, Some(CLAUDE), "still Claude's");
+    };
+    assert!(!second_press_opens(on_a_tab), "a tab");
+    let on_the_toast = |app: &mut App| click(app, Id::Toast, 2, 1);
+    assert!(!second_press_opens(on_the_toast), "the toast");
+    // Above the overlay, and the gap between the panes.
+    let above = |app: &mut App| app.update_routed(Msg::Pointer(mouse(PRESS, 0, 0)));
+    assert!(!second_press_opens(above), "above the overlay");
+    let gap = |app: &mut App| {
+        let sessions = app.routing().area(Id::SessionList).unwrap();
+        app.update_routed(Msg::Pointer(mouse(PRESS, sessions.x - 1, sessions.y + 3)));
+    };
+    assert!(!second_press_opens(gap), "the gap");
+}
+
+#[test]
+fn the_notice_goes_only_to_the_pane_pressed_before_and_the_wheel_sends_none() {
+    // A press on a project row between two on a session row ends the
+    // Sessions pane's double-click; the Projects pane's own is its own.
+    let mut app = loaded();
+    let time = click_clock(&mut app);
+    click_row(&mut app, Id::ProjectList, 0);
+    time.set(Duration::from_millis(100));
+    click_row(&mut app, Id::SessionList, 1);
+    time.set(Duration::from_millis(200));
+    click_row(&mut app, Id::ProjectList, 0);
+    assert_eq!(app.focused_pane(), Pane::Projects, "not a double-click");
+    time.set(Duration::from_millis(300));
+    click_row(&mut app, Id::ProjectList, 0);
+    assert_eq!(app.focused_pane(), Pane::Sessions, "a double-click: Enter");
+    // The wheel over another pane between the presses is no notice.
+    let mut app = loaded();
+    let time = click_clock(&mut app);
+    click_row(&mut app, Id::SessionList, 1);
+    wheel(&mut app, Id::ProjectList, true);
+    time.set(Duration::from_millis(100));
+    // The wheel showed BRIO's sessions; back to Agentmon's.
+    wheel(&mut app, Id::ProjectList, false);
+    click_row(&mut app, Id::SessionList, 1);
+    assert_eq!(
+        app.take_queued(),
+        [Msg::OpenSession(CLAUDE, SessionId::from("s2"))]
+    );
 }

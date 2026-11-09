@@ -99,7 +99,7 @@ fn theme_toml(name: &str) -> String {
 
 /// The built-ins and the user themes `(id, name)`; a name of `None` writes a
 /// theme that does not parse.
-fn registry_with(user: &[(&str, Option<&str>)]) -> ThemeRegistry {
+pub(super) fn registry_with(user: &[(&str, Option<&str>)]) -> ThemeRegistry {
     let dir = tempfile::tempdir().unwrap();
     for (id, name) in user {
         let text = match name {
@@ -111,7 +111,7 @@ fn registry_with(user: &[(&str, Option<&str>)]) -> ThemeRegistry {
     ThemeRegistry::load(dir.path())
 }
 
-fn rig_with_registry(registry: ThemeRegistry, width: u16, height: u16) -> Rig {
+pub(super) fn rig_with_registry(registry: ThemeRegistry, width: u16, height: u16) -> Rig {
     let mut init = init_on("default");
     init.registry = registry;
     build_rig_from(init, width, height, false)

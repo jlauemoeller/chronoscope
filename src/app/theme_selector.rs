@@ -70,7 +70,8 @@ impl App {
             &self.theme_id,
             self.theme.clone(),
             self.keymap.clone(),
-        );
+        )
+        .with_click_clock(self.mouse.click_clock().clone());
         let size = selector.desired_size();
         let component: Box<dyn AppComponent<Msg, UserEvent>> = Box::new(selector);
         if let Err(err) = self.open_overlay(Id::ThemeSelector, component) {
@@ -93,6 +94,17 @@ impl App {
             return;
         }
         self.apply_theme_id(id);
+    }
+
+    /// A left press on the theme `id`, where the theme selector's cursor is
+    /// now: it is previewed, or, with `keep` (a double-click), kept as on
+    /// `Enter`.
+    pub(super) fn choose_theme(&mut self, id: &str, keep: bool) {
+        if keep {
+            self.select_theme(id);
+        } else {
+            self.preview_theme(id);
+        }
     }
 
     /// Keeps the theme `id`, closes the selector and saves the choice. The

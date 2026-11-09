@@ -3,18 +3,16 @@
 //! would, the components under an overlay get no mouse events, and the
 //! overlays take the wheel and clicks inside them.
 
-use std::cell::Cell;
-use std::rc::Rc;
-
 use tuirealm::event::{MouseButton, MouseEvent, MouseEventKind};
 use tuirealm::state::{State, StateValue};
 
-use super::theme_selector::mounted_themes;
+use super::theme_selector::{mounted_themes, registry_with, rig_with_registry};
 use super::*;
 use crate::app::layout::Screen;
 use crate::components::HelpContext;
 use crate::components::transcript::Presentation;
 use crate::components::{FOLLOWING_ATTR, PRESENTATION_ATTR};
+use crate::test_support::TestClock;
 
 const PRESS: MouseEventKind = MouseEventKind::Down(MouseButton::Left);
 const WHEEL_DOWN: MouseEventKind = MouseEventKind::ScrollDown;
@@ -124,11 +122,9 @@ fn assert_outside(rig: &Rig, id: Id, point: (u16, u16)) {
     );
 }
 
-fn click_clock(rig: &mut Rig) -> Rc<Cell<Duration>> {
-    let start = Instant::now();
-    let elapsed = Rc::new(Cell::new(Duration::ZERO));
-    let shared = Rc::clone(&elapsed);
-    rig.app.set_click_clock(move || start + shared.get());
+fn click_clock(rig: &mut Rig) -> TestClock {
+    let elapsed = TestClock::new();
+    rig.app.set_click_clock(elapsed.reader());
     elapsed
 }
 
@@ -651,4 +647,114 @@ fn with_mouse_off_the_overlays_take_no_mouse() {
     press_outside(&mut rig);
     assert_eq!(rig.app.screen(), Screen::BrowserSelector);
     assert!(rig.app.take_queued().is_empty());
+}
+
+// -- the press-elsewhere notice in the theme selector
+
+/// The theme selector open over the selector at 60x20, with four user
+/// themes after the built-ins so that it is tall enough for a toast to reach
+/// into its bottom rows, and a click clock set through `set_click_clock`.
+/// Returns a point on the toast inside the theme selector's area: a press
+/// there reaches no component and leaves the selector open.
+fn themes_under_a_toast() -> (Rig, TestClock, (u16, u16)) {
+    let user = ["u1", "u2", "u3", "u4"].map(|id| (id, Some(id)));
+    let mut rig = rig_with_registry(registry_with(&user), 60, 20);
+    rig.open_themes();
+    rig.app
+        .show_toast("a toast long enough to reach into the theme selector")
+        .unwrap();
+    let time = click_clock(&mut rig);
+    let selector = rig.app.routing().area(Id::ThemeSelector).unwrap();
+    let toast = rig.app.routing().area(Id::Toast).unwrap();
+    let point = (selector.x + 10, toast.y + 1);
+    assert!(
+        selector.contains(point.into()) && toast.contains(point.into()),
+        "{selector:?} {toast:?}"
+    );
+    (rig, time, point)
+}
+
+#[test]
+fn a_press_elsewhere_between_two_presses_on_a_theme_ends_the_double_click() {
+    // The control: without the press between, the second keeps the theme.
+    let (mut rig, time, _) = themes_under_a_toast();
+    click_theme(&mut rig, 3);
+    time.set(Duration::from_millis(100));
+    click_theme(&mut rig, 3);
+    assert!(!mounted(&rig, Id::ThemeSelector), "kept");
+    // A press on the toast, between them.
+    let (mut rig, time, point) = themes_under_a_toast();
+    click_theme(&mut rig, 3);
+    rig.app.update_routed(at(PRESS, point.0, point.1));
+    assert!(mounted(&rig, Id::ThemeSelector), "the toast took the press");
+    assert_eq!(rig.app.theme_id(), "gruvbox");
+    time.set(Duration::from_millis(100));
+    click_theme(&mut rig, 3);
+    assert!(mounted(&rig, Id::ThemeSelector), "not a double-click");
+    assert_eq!(rig.app.theme_id(), "gruvbox", "still a preview");
+    assert_eq!(rig.app.config().theme, "default");
+    // The press after that, soon enough, is the double-click.
+    time.set(Duration::from_millis(200));
+    click_theme(&mut rig, 3);
+    assert!(!mounted(&rig, Id::ThemeSelector));
+    assert_eq!(rig.app.config().theme, "gruvbox");
+}
+
+#[test]
+fn the_click_clock_reaches_a_theme_selector_opened_after_it_was_set() {
+    for (ms, keeps) in [(400, true), (401, false)] {
+        let mut rig = rig();
+        let time = click_clock(&mut rig);
+        rig.open_themes();
+        click_theme(&mut rig, 2);
+        time.set(Duration::from_millis(ms));
+        click_theme(&mut rig, 2);
+        assert_eq!(!mounted(&rig, Id::ThemeSelector), keeps, "{ms} ms");
+    }
+}
+
+#[test]
+fn a_press_after_the_theme_selector_closed_is_routed_as_usual() {
+    // The theme selector got the last press and is gone: the next press is
+    // no notice to it, and reaches the pane under the pointer.
+    let mut rig = rig();
+    rig.open_themes();
+    click_theme(&mut rig, 3);
+    rig.close_themes();
+    on(&mut rig, Id::SessionList, PRESS, 6, 2);
+    assert_eq!(rig.focus(), Some(Id::SessionList));
+}
+
+#[test]
+fn the_click_clock_reaches_both_panes_of_the_selector_mounted_over_the_browser() {
+    for (ms, opens) in [(400, true), (401, false)] {
+        let mut rig = rig();
+        let time = click_clock(&mut rig);
+        rig.open_loaded();
+        rig.ctrl_o();
+        rig.settle();
+        assert_eq!(rig.app.screen(), Screen::BrowserSelector);
+        on(&mut rig, Id::SessionList, PRESS, 6, 2);
+        assert!(rig.app.take_queued().is_empty());
+        time.set(Duration::from_millis(ms));
+        on(&mut rig, Id::SessionList, PRESS, 6, 2);
+        let opened = rig
+            .app
+            .take_queued()
+            .iter()
+            .any(|msg| matches!(msg, Msg::OpenSession(..)));
+        assert_eq!(opened, opens, "{ms} ms");
+        // The Projects pane has the clock too: a double-click is `Enter`,
+        // which focuses Sessions.
+        on(&mut rig, Id::ProjectList, PRESS, 6, 2);
+        assert_eq!(rig.focus(), Some(Id::ProjectList));
+        time.set(Duration::from_millis(2 * ms));
+        on(&mut rig, Id::ProjectList, PRESS, 6, 2);
+        let focus = if opens {
+            Id::SessionList
+        } else {
+            Id::ProjectList
+        };
+        assert_eq!(rig.focus(), Some(focus), "{ms} ms: Projects");
+    }
 }

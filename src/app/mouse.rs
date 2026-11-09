@@ -1,41 +1,62 @@
 //! Pointer routing (architecture.md#events-focus-and-keys as amended by the
-//! cycle 5 spec, §0 item 6; product §5.9), and, until the components keep
-//! it, the double-click state of the selector, the theme selector and the
-//! turns sidebar.
+//! cycle 5 spec, §0 item 6, §8; product §5.9).
 //!
 //! `GlobalEvents` turns every left press and wheel step into
-//! [`Msg::Pointer`] (only when `mouse = true`). [`App::update`] asks
-//! [`hit_test`] (in `layout.rs`, beside `layout`) where it goes, over the
-//! routing layout: the pure [`layout`] function that `App::view` uses too,
-//! cached in the `App` with its input and refreshed whenever the screen, an
-//! overlay or the size changes, never from `view`. `hit_test` holds the
-//! rules that depend on the screen: what an open overlay or prompt blocks,
-//! and that the toast takes nothing.
+//! [`Msg::Pointer`] (only when `mouse = true`). [`App::update`] routes it in
+//! one step, [`App::pointer`]:
 //!
-//! The component it finds gets a [`RoutedMouse`] (the event with the
-//! position relative to the component's area) as [`UserEvent::Pointer`]; the
-//! overlay on top gets a left press outside it as
-//! [`UserEvent::PointerOutside`], and closes itself as on `Esc` unless it is
-//! modal. The component alone decides what the event means. Its answer is
-//! queued with `emit`, never handled by calling `update` again:
-//! [`App::handle`] handles it before any later event.
+//! - **Hit testing** (§8.1). [`hit_test`] (in `layout.rs`, beside `layout`)
+//!   says where the event goes, over the routing layout: the pure [`layout`]
+//!   function that `App::view` uses too, cached here with its input and
+//!   refreshed whenever the screen, an overlay or the size changes, never
+//!   from `view`. It is the one place z-order is defined, and it blocks
+//!   structurally: an open overlay or prompt blocks what is under it, and a
+//!   component that does not take the pointer (the toast, a help line, a
+//!   panel, the selector's frame) blocks what is under it.
+//! - **The press-elsewhere notice** (§8.3). The router remembers which
+//!   component got the last left press, and nothing else. When a later left
+//!   press goes anywhere else (another component, outside an overlay,
+//!   nothing at all), that component, if still mounted, first gets
+//!   [`UserEvent::PointerElsewhere`] through its `on()`, so a double-click
+//!   under way there ends. The wheel sends no notice.
+//! - **Delivery** (§8.2). The component found gets a [`RoutedMouse`] (the
+//!   event with the position relative to its area) as
+//!   [`UserEvent::Pointer`]. The overlay on top gets a left press outside it
+//!   as [`UserEvent::PointerOutside`], and closes itself as on `Esc` unless
+//!   it is modal. The component's answer is queued with `emit`, never
+//!   handled by calling `update` again: [`App::handle`] handles it before any
+//!   later event.
+//!
+//! The component alone decides what an event means: selection, folding,
+//! focus, closing. Double-clicks are the components' too: `ProjectList`,
+//! `SessionList`, `ThemeSelector` and `TurnSidebar` each keep their own last
+//! press, measured with the clock this module hands them when they are
+//! mounted ([`App::set_click_clock`]), and answer a press on a row with an
+//! intent that says whether it completed a double-click
+//! (`SelectorMsg::ChooseSession { id, open }` and the like). The handlers of
+//! those intents live with their concern; the `App` interprets no click and
+//! keeps no click state.
 //!
 //! Why not hand the component the event itself? The application forwards
 //! every raw `Event::Mouse` to the focused component, in screen coordinates,
 //! and a component cannot tell those from routed ones.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ratatui::layout::{Rect, Size};
 use tuirealm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
 
 use super::layout::{LayoutInput, PointerTarget, ScreenLayout, hit_test, layout};
-use super::{App, Id, Msg, Pane, UserEvent};
-use crate::components::{SELECTED_TURN_ATTR, payload_value};
-use crate::model::{ProjectId, SessionId, TurnId};
+use super::{App, Id, UserEvent};
+use crate::components::{CLICK_CLOCK_ATTR, ClickClock};
 
-/// Two presses on the same row at most this far apart are a double-click.
-pub const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+/// The components that keep double-clicks, and so the click clock.
+const CLICK_CLOCK_IDS: [Id; 4] = [
+    Id::ProjectList,
+    Id::SessionList,
+    Id::ThemeSelector,
+    Id::TurnSidebar,
+];
 
 /// A mouse event for the component under the pointer: the position is
 /// relative to the component's area (its top-left cell is 0, 0), and `area`
@@ -65,71 +86,25 @@ impl RoutedMouse {
     }
 }
 
-/// The last left press, for double-clicks.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ClickTarget {
-    Project(ProjectId),
-    Session(SessionId),
-    Theme(String),
-    Turn(TurnId),
-}
-
-/// What the `App` keeps for the mouse: the layout it routes with and the
-/// input it was laid out from, the last press, and the clock the
-/// double-click is measured with.
-pub(super) struct MouseState {
+/// What the `App` keeps for the pointer: the layout it routes with and the
+/// input it was laid out from, the component that got the last left press,
+/// and the clock the components measure double-clicks with.
+#[derive(Default)]
+pub(super) struct PointerState {
     /// The areas events are routed with.
     pub(super) routing: ScreenLayout,
     /// What `routing` was laid out from.
     routing_input: LayoutInput,
-    last_press: Option<(ClickTarget, Instant)>,
-    /// Whether a click handler recorded the last left press as a press on a
-    /// row.
-    row_pressed: bool,
-    clock: Box<dyn Fn() -> Instant>,
+    /// The component that got the last left press, if one did.
+    pressed: Option<Id>,
+    click_clock: ClickClock,
 }
 
-impl Default for MouseState {
-    fn default() -> Self {
-        Self {
-            routing: ScreenLayout::default(),
-            routing_input: LayoutInput::default(),
-            last_press: None,
-            row_pressed: false,
-            clock: Box::new(Instant::now),
-        }
-    }
-}
-
-impl MouseState {
-    pub(super) fn set_clock(&mut self, clock: impl Fn() -> Instant + 'static) {
-        self.clock = Box::new(clock);
-    }
-
-    /// A new left press: a press before it that no click handler recorded
-    /// was not on a row (a tab, empty space, anywhere else), and ends a
-    /// double-click that was under way. The handlers only see the press once
-    /// its component's answer is handled, after routing, so this is checked
-    /// at the next press.
-    fn left_press_started(&mut self) {
-        if !self.row_pressed {
-            self.last_press = None;
-        }
-        self.row_pressed = false;
-    }
-
-    /// Records a left press on `target`. Returns whether it completes a
-    /// double-click: the previous press was on the same target at most
-    /// [`DOUBLE_CLICK`] ago. A completed double-click is forgotten, so a
-    /// third press starts a new one.
-    fn press(&mut self, target: ClickTarget) -> bool {
-        self.row_pressed = true;
-        let now = (self.clock)();
-        let double = self.last_press.as_ref().is_some_and(|(last, at)| {
-            *last == target && now.saturating_duration_since(*at) <= DOUBLE_CLICK
-        });
-        self.last_press = (!double).then_some((target, now));
-        double
+impl PointerState {
+    /// The clock the components measure double-clicks with, for one that is
+    /// being mounted.
+    pub(super) fn click_clock(&self) -> &ClickClock {
+        &self.click_clock
     }
 }
 
@@ -140,9 +115,16 @@ impl App {
     }
 
     /// Replaces the clock double-clicks are measured with (tests inject a
-    /// fixed one).
-    pub fn set_click_clock(&mut self, clock: impl Fn() -> Instant + 'static) {
-        self.mouse.set_clock(clock);
+    /// fixed one): the components that keep double-clicks get it when they
+    /// are mounted, and those mounted now get it at once.
+    pub fn set_click_clock(&mut self, clock: impl Fn() -> Instant + Send + Sync + 'static) {
+        self.mouse.click_clock = ClickClock::new(clock);
+        let value = self.mouse.click_clock.value();
+        for id in CLICK_CLOCK_IDS {
+            if self.application.mounted(&id) {
+                self.set_attr(id, CLICK_CLOCK_ATTR, value.clone());
+            }
+        }
     }
 
     /// Recomputes the routing areas from the current state. `update` calls
@@ -160,25 +142,34 @@ impl App {
 
     /// A left press or a wheel step at a position of the screen: gives it to
     /// the component [`hit_test`] finds, wherever the focus is, and queues
-    /// its answer.
+    /// its answer. A left press first tells the component that got the last
+    /// one, if it goes elsewhere.
     pub(super) fn pointer(&mut self, event: MouseEvent) {
         if !self.config.mouse {
             return;
         }
-        if event.kind == MouseEventKind::Down(MouseButton::Left) {
-            self.mouse.left_press_started();
-        }
-        let (id, routed) = match hit_test(&self.mouse.routing, &self.mouse.routing_input, event) {
+        let target = match hit_test(&self.mouse.routing, &self.mouse.routing_input, event) {
             // The layout places "the transcript"; the one on top gets it.
-            PointerTarget::Component(Id::Transcript, area) => (
+            PointerTarget::Component(Id::Transcript, area) => Some((
                 self.top_transcript(),
                 UserEvent::Pointer(RoutedMouse::new(event, area)),
-            ),
+            )),
             PointerTarget::Component(id, area) => {
-                (id, UserEvent::Pointer(RoutedMouse::new(event, area)))
+                Some((id, UserEvent::Pointer(RoutedMouse::new(event, area))))
             }
-            PointerTarget::Outside(overlay, _) => (overlay, UserEvent::PointerOutside),
-            PointerTarget::Nothing => return,
+            PointerTarget::Outside(overlay, _) => Some((overlay, UserEvent::PointerOutside)),
+            PointerTarget::Nothing => None,
+        };
+        if event.kind == MouseEventKind::Down(MouseButton::Left) {
+            // Only a press a component gets as its own can be on its row.
+            let pressed = match &target {
+                Some((id, UserEvent::Pointer(_))) => Some(*id),
+                _ => None,
+            };
+            self.press_elsewhere(pressed);
+        }
+        let Some((id, routed)) = target else {
+            return;
         };
         let answer = self
             .application
@@ -189,66 +180,19 @@ impl App {
         }
     }
 
-    // -- the theme selector's clicks
-
-    /// A click on the theme `id`, where the theme selector's cursor is now: it
-    /// is previewed. A double-click keeps it, like `Enter`.
-    pub(super) fn theme_clicked(&mut self, id: &str) {
-        if self.theme_selector.is_none() {
+    /// A left press that the component `pressed` gets as its own (`None`: a
+    /// press outside an overlay, or one that reaches no component): the
+    /// component that got the last one is told first, if it is another one
+    /// and still mounted. Remembers `pressed` for the next press.
+    fn press_elsewhere(&mut self, pressed: Option<Id>) {
+        let last = std::mem::replace(&mut self.mouse.pressed, pressed);
+        let Some(last) = last.filter(|&last| Some(last) != pressed) else {
             return;
-        }
-        if self.mouse.press(ClickTarget::Theme(id.to_owned())) {
-            self.select_theme(id);
-        } else {
-            self.preview_theme(id);
-        }
-    }
-
-    // -- the turns sidebar's clicks
-
-    /// A click on the entry of turn `id`: the sidebar gets the focus, the
-    /// entry is selected and the transcript scrolls to its block. A
-    /// double-click is `Enter` on it: the transcript gets the focus.
-    pub(super) fn turn_clicked(&mut self, id: TurnId) {
-        let double = self.mouse.press(ClickTarget::Turn(id.clone()));
-        // Focus first: the sidebar takes its selection from the transcript
-        // unless it has the focus itself.
-        self.focus_turns();
-        self.set_attr(
-            Id::TurnSidebar,
-            SELECTED_TURN_ATTR,
-            payload_value(id.clone()),
-        );
-        self.go_to_turn(&id, double);
-    }
-
-    // -- the selector's clicks
-
-    /// A click on a project row: Projects gets the focus and the project is
-    /// selected. A double-click is `Enter` on it: Sessions gets the focus
-    /// and, with none selected, its newest session.
-    pub(super) fn project_clicked(&mut self, id: ProjectId) {
-        let double = self.mouse.press(ClickTarget::Project(id.clone()));
-        // Focus first: in the filtered selector it ends the filter, which
-        // resets the project.
-        self.focus_pane(Pane::Projects);
-        self.project_selected(id);
-        if double {
-            self.focus_pane(Pane::Sessions);
-        }
-    }
-
-    /// A click on a session row: Sessions gets the focus and the session is
-    /// selected. A double-click opens it.
-    pub(super) fn session_clicked(&mut self, id: SessionId) {
-        let double = self.mouse.press(ClickTarget::Session(id.clone()));
-        // Select first: focusing Sessions with nothing selected would select
-        // the newest session, which resets the scroll of the list and moves
-        // the clicked row from under the pointer.
-        self.session_selected(id.clone());
-        self.focus_pane(Pane::Sessions);
-        if double && let Some(harness) = self.selector.current {
-            self.emit(Msg::OpenSession(harness, id));
+        };
+        // `None` when it is no longer mounted. A component answers the
+        // notice with nothing.
+        if let Some(component) = self.application.get_component_mut(&last) {
+            component.on(&Event::User(UserEvent::PointerElsewhere));
         }
     }
 }

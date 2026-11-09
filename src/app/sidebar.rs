@@ -1,7 +1,8 @@
-//! The turns sidebar's focus and keys in the app (product §5.1, §5.3, §5.4):
-//! which keys hand the focus to it and back, what selecting an entry does to
-//! the transcript, what happens to the focus when the sidebar is hidden, and
-//! the hints the help line shows while it has the focus.
+//! The turns sidebar's focus, keys and clicks in the app (product §5.1, §5.3,
+//! §5.4, §5.9): which keys hand the focus to it and back, what selecting or
+//! clicking an entry does to the transcript, what happens to the focus when
+//! the sidebar is hidden, and the hints the help line shows while it has the
+//! focus.
 //!
 //! The sidebar's selection follows the transcript's while the transcript
 //! has the focus ([`App::sync_sidebar_selection`](super::App)); while the
@@ -13,7 +14,9 @@ use super::hints::{browser_hints_at, turns_hints};
 use super::layout::{browser_areas, too_small};
 use super::redraw::RedrawRequest;
 use super::{App, Id};
-use crate::components::{GO_TO_TURN_ATTR, HINTS_ATTR, Hint, hints_value, payload_value};
+use crate::components::{
+    GO_TO_TURN_ATTR, HINTS_ATTR, Hint, SELECTED_TURN_ATTR, hints_value, payload_value,
+};
 use crate::model::TurnId;
 
 impl App {
@@ -93,6 +96,22 @@ impl App {
             self.focus_top_transcript();
         }
         self.request_redraw(RedrawRequest::Dirty);
+    }
+
+    /// A left press on the entry of turn `id`: the sidebar gets the focus,
+    /// the entry is selected and the transcript scrolls to its block. With
+    /// `enter` (a double-click) it is `Enter` on it: the transcript gets the
+    /// focus.
+    pub(super) fn choose_turn(&mut self, id: TurnId, enter: bool) {
+        // Focus first: the sidebar takes its selection from the transcript
+        // unless it has the focus itself.
+        self.focus_turns();
+        self.set_attr(
+            Id::TurnSidebar,
+            SELECTED_TURN_ATTR,
+            payload_value(id.clone()),
+        );
+        self.go_to_turn(&id, enter);
     }
 
     /// Moves the focus off a sidebar that is hidden (the screen got narrower

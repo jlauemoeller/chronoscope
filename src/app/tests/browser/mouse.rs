@@ -3,9 +3,6 @@
 //! and a double-click in the selector opens the session through the real
 //! load.
 
-use std::cell::Cell;
-use std::rc::Rc;
-
 use tuirealm::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::*;
@@ -13,6 +10,7 @@ use crate::app::layout::Screen;
 use crate::app::{Pane, SelectorMsg};
 use crate::components::transcript::Presentation;
 use crate::components::{FOLLOWING_ATTR, PRESENTATION_ATTR};
+use crate::test_support::TestClock;
 
 fn press(column: u16, row: u16) -> Msg {
     Msg::Pointer(MouseEvent {
@@ -36,10 +34,8 @@ fn selected_session(rig: &Rig) -> Option<String> {
 #[test]
 fn a_double_click_in_the_selector_opens_the_session() {
     let mut rig = rig();
-    let start = Instant::now();
-    let elapsed = Rc::new(Cell::new(Duration::ZERO));
-    let shared = Rc::clone(&elapsed);
-    rig.app.set_click_clock(move || start + shared.get());
+    let elapsed = TestClock::new();
+    rig.app.set_click_clock(elapsed.reader());
     // BRIO's sessions, newest first: NEWER_SESSION, BRIO_SESSION.
     rig.harness.script(
         BRIO_SESSION,

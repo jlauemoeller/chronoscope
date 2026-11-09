@@ -23,12 +23,12 @@ use super::redraw::RedrawRequest;
 use super::search::SearchState;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
-    ACTIVE_ATTR, ActiveSessions, BackgroundFill, CWD_ATTR, HINTS_ATTR, HarnessTabs, HelpLine,
-    PROJECT_ROWS_ATTR, PROJECTS_FILTERED_ATTR, ProjectList, ProjectRow, ProjectRows, SELECTED_ATTR,
-    SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame,
-    SessionList, SessionRow, SessionRows, SessionStatsUpdate, SessionTime, SessionTokens,
-    TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value,
-    selected_value, viewport_value, visible_rows,
+    ACTIVE_ATTR, ActiveSessions, BackgroundFill, CWD_ATTR, ClickClock, HINTS_ATTR, HarnessTabs,
+    HelpLine, PROJECT_ROWS_ATTR, PROJECTS_FILTERED_ATTR, ProjectList, ProjectRow, ProjectRows,
+    SELECTED_ATTR, SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR,
+    SelectorFrame, SessionList, SessionRow, SessionRows, SessionStatsUpdate, SessionTime,
+    SessionTokens, TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir, hints_value,
+    payload_value, selected_value, viewport_value, visible_rows,
 };
 use crate::keymap::Keymap;
 use crate::launch::{HarnessIndex, Preselect, deepest_ancestor};
@@ -61,6 +61,7 @@ pub(super) fn mount_selector(
     application: &mut Application<Id, Msg, UserEvent>,
     keymap: &Keymap,
     theme: &Theme,
+    click_clock: &ClickClock,
     base: bool,
 ) -> Result<(), ApplicationError> {
     if base {
@@ -80,12 +81,16 @@ pub(super) fn mount_selector(
     )?;
     application.mount(
         Id::ProjectList,
-        Box::new(ProjectList::new(keymap.clone(), theme.clone())),
+        Box::new(
+            ProjectList::new(keymap.clone(), theme.clone()).with_click_clock(click_clock.clone()),
+        ),
         Vec::new(),
     )?;
     application.mount(
         Id::SessionList,
-        Box::new(SessionList::new(keymap.clone(), theme.clone())),
+        Box::new(
+            SessionList::new(keymap.clone(), theme.clone()).with_click_clock(click_clock.clone()),
+        ),
         Vec::new(),
     )?;
     application.mount(
@@ -145,10 +150,14 @@ pub enum SelectorMsg {
     /// `Esc` in the filtered selector (the sessions whose ids start with
     /// the argument of the command line): back to the normal start.
     LeaveFilter,
-    /// A click on this project's row.
-    ProjectClicked(ProjectId),
-    /// A click on this session's row.
-    SessionClicked(SessionId),
+    /// A left press on this project's row: focus Projects and select it;
+    /// `open` (the press completed a double-click): then, as `Enter` does,
+    /// focus Sessions.
+    ChooseProject { id: ProjectId, open: bool },
+    /// A left press on this session's row (the list's cursor is there now):
+    /// select it and focus Sessions; `open` (the press completed a
+    /// double-click): then open it.
+    ChooseSession { id: SessionId, open: bool },
     /// A click on a pane where there is no row.
     PaneClicked(Pane),
     /// The wheel scrolled the Sessions pane without moving a selection: a
@@ -845,11 +854,37 @@ impl App {
             }
             SelectorMsg::SwitchHarness(harness) => self.switch_harness(harness),
             SelectorMsg::LeaveFilter => self.leave_filtered(),
-            SelectorMsg::ProjectClicked(id) => self.project_clicked(id),
-            SelectorMsg::SessionClicked(id) => self.session_clicked(id),
+            SelectorMsg::ChooseProject { id, open } => self.choose_project(id, open),
+            SelectorMsg::ChooseSession { id, open } => self.choose_session(id, open),
             SelectorMsg::PaneClicked(pane) => self.focus_pane(pane),
             SelectorMsg::ListScrolled => self.request_redraw(RedrawRequest::Dirty),
             SelectorMsg::Resume => {}
+        }
+    }
+
+    /// A left press on a project row: Projects gets the focus and the
+    /// project is selected. With `open` (a double-click) it is `Enter` on it:
+    /// Sessions gets the focus and, with none selected, its newest session.
+    fn choose_project(&mut self, id: ProjectId, open: bool) {
+        // Focus first: in the filtered selector it ends the filter, which
+        // resets the project.
+        self.focus_pane(Pane::Projects);
+        self.project_selected(id);
+        if open {
+            self.focus_pane(Pane::Sessions);
+        }
+    }
+
+    /// A left press on a session row: the session is selected and Sessions
+    /// gets the focus. With `open` (a double-click) the session opens.
+    fn choose_session(&mut self, id: SessionId, open: bool) {
+        // Select first: focusing Sessions with nothing selected would select
+        // the newest session, which resets the scroll of the list and moves
+        // the clicked row from under the pointer.
+        self.session_selected(id.clone());
+        self.focus_pane(Pane::Sessions);
+        if open && let Some(harness) = self.selector.current {
+            self.emit(Msg::OpenSession(harness, id));
         }
     }
 

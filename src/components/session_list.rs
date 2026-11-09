@@ -11,6 +11,7 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::State;
 use unicode_width::UnicodeWidthStr;
 
+use super::double_click::{CLICK_CLOCK_ATTR, ClickClock, LastPress};
 use super::empty_state::{EmptyState, NO_MATCHING_SESSIONS, NO_SESSIONS};
 use super::list_pane::{PaneKey, PaneState, Part, RowParts, pane_key, render_rows, visible_rows};
 use super::text_fit::truncate_with_ellipsis;
@@ -123,6 +124,11 @@ pub fn format_stats(stats: &SessionStats) -> String {
 /// rows then carry their project's name. The list keeps the focus's look
 /// while the prompt has the input focus; the app moves the selection with
 /// [`SEARCH_NAV_ATTR`].
+///
+/// A left press on a row selects it and reports
+/// [`SelectorMsg::ChooseSession`], with `open` when it completed a
+/// double-click; the clock that is measured with is set with
+/// [`with_click_clock`](Self::with_click_clock) or [`CLICK_CLOCK_ATTR`].
 #[derive(Debug, Clone)]
 pub struct SessionList {
     pane: PaneState,
@@ -136,6 +142,8 @@ pub struct SessionList {
     harness_empty: bool,
     empty: EmptyState,
     no_matches: EmptyState,
+    /// The last left press on a row, for double-clicks.
+    presses: LastPress<SessionId>,
 }
 
 impl SessionList {
@@ -152,7 +160,15 @@ impl SessionList {
             harness: None,
             rows: Arc::default(),
             harness_empty: false,
+            presses: LastPress::default(),
         }
+    }
+
+    /// Replaces the clock double-clicks are measured with.
+    #[must_use]
+    pub fn with_click_clock(mut self, clock: ClickClock) -> Self {
+        self.presses.set_clock(clock);
+        self
     }
 
     /// The request to open the selected session, if there is one.
@@ -204,8 +220,9 @@ impl SessionList {
     }
 
     /// The wheel moves the selection like the keys, or, with none selected,
-    /// only scrolls the rows. A left press on a row selects it and reports
-    /// the session; elsewhere in the pane it asks for the focus.
+    /// only scrolls the rows. A left press on a row selects it and chooses
+    /// the session (and says whether it completed a double-click); elsewhere
+    /// in the pane it ends a double-click under way and asks for the focus.
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         let wheel = |list: &mut Self, direction| {
             if list.pane.cursor.selected().is_some() {
@@ -224,14 +241,15 @@ impl SessionList {
             _ if mouse.is_left_press() => {
                 let row = self.pane.row_at(mouse.column, mouse.row, mouse.area);
                 let Some(index) = row.filter(|&i| i < self.rows.len()) else {
+                    self.presses.forget();
                     return Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Sessions)));
                 };
                 // The list moves its own cursor: over search results and
                 // filtered sessions the app does not track the selection.
                 self.pane.cursor.select(Some(index));
-                Some(Msg::Selector(SelectorMsg::SessionClicked(
-                    self.rows[index].id.clone(),
-                )))
+                let id = self.rows[index].id.clone();
+                let open = self.presses.press(id.clone());
+                Some(Msg::Selector(SelectorMsg::ChooseSession { id, open }))
             }
             _ => None,
         }
@@ -380,6 +398,11 @@ impl Component for SessionList {
                     self.pane.perform(Cmd::Move(direction));
                 }
             }
+            CLICK_CLOCK_ATTR => {
+                if let Some(clock) = ClickClock::from_value(&value) {
+                    self.presses.set_clock(clock);
+                }
+            }
             _ => {
                 if attr == THEME_ATTR {
                     self.empty.attr(attr, value.clone());
@@ -401,8 +424,13 @@ impl Component for SessionList {
 
 impl AppComponent<Msg, UserEvent> for SessionList {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
-        if let Event::User(UserEvent::Pointer(mouse)) = ev {
-            return self.on_mouse(mouse);
+        match ev {
+            Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
+            Event::User(UserEvent::PointerElsewhere) => {
+                self.presses.forget();
+                return None;
+            }
+            _ => {}
         }
         match pane_key(&self.keymap, ev)? {
             PaneKey::Up => self.moved(Direction::Up),
@@ -427,6 +455,7 @@ mod tests {
     use crate::components::list_cursor::{SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_value};
     use crate::components::list_pane::SESSION_OPEN_ATTR;
     use crate::model::HarnessId;
+    use crate::test_support::TestClock;
     use crate::test_support::{buffer_to_styled, buffer_to_text, render};
     use crate::theme::{Role, builtin};
     use std::time::Duration;
@@ -1201,10 +1230,15 @@ mod tests {
         mouse(MouseEventKind::Down(MouseButton::Left), 10, row, rows)
     }
 
+    fn chosen(id: &str, open: bool) -> Option<Msg> {
+        Some(Msg::Selector(SelectorMsg::ChooseSession {
+            id: SessionId::from(id),
+            open,
+        }))
+    }
+
     fn clicked(id: &str) -> Option<Msg> {
-        Some(Msg::Selector(SelectorMsg::SessionClicked(SessionId::from(
-            id,
-        ))))
+        chosen(id, false)
     }
 
     fn offset_of(list: &SessionList, rows: usize) -> usize {
@@ -1298,5 +1332,107 @@ mod tests {
         });
         assert_eq!(l.on(&raw), None);
         assert_eq!(l.state(), State::Single(StateValue::Usize(0)));
+    }
+
+    // -- double-clicks
+
+    /// A list of three sessions, `b` selected, whose double-clicks are
+    /// measured with the returned clock. Row 3 is `b`'s.
+    fn timed() -> (SessionList, TestClock) {
+        let clock = TestClock::new();
+        let l = list(sample(true), Some(1), true).with_click_clock(clock.click_clock());
+        (l, clock)
+    }
+
+    const ELSEWHERE: Event<UserEvent> = Event::User(UserEvent::PointerElsewhere);
+
+    #[test]
+    fn two_presses_on_a_row_at_most_400_ms_apart_open_the_session() {
+        for (ms, open) in [(0, true), (400, true), (401, false)] {
+            let (mut l, clock) = timed();
+            assert_eq!(l.on(&press(3, 5)), chosen("b", false));
+            clock.set_ms(ms);
+            assert_eq!(l.on(&press(3, 5)), chosen("b", open), "{ms} ms");
+        }
+    }
+
+    #[test]
+    fn a_third_press_starts_a_new_double_click() {
+        let (mut l, clock) = timed();
+        l.on(&press(3, 5));
+        clock.set_ms(100);
+        assert_eq!(l.on(&press(3, 5)), chosen("b", true));
+        clock.set_ms(200);
+        assert_eq!(l.on(&press(3, 5)), chosen("b", false));
+        clock.set_ms(300);
+        assert_eq!(l.on(&press(3, 5)), chosen("b", true));
+    }
+
+    #[test]
+    fn a_press_on_another_row_ends_a_double_click() {
+        let (mut l, clock) = timed();
+        l.on(&press(3, 5));
+        clock.set_ms(100);
+        assert_eq!(l.on(&press(4, 5)), chosen("c", false));
+        clock.set_ms(200);
+        assert_eq!(l.on(&press(3, 5)), chosen("b", false));
+    }
+
+    #[test]
+    fn a_press_not_on_a_row_ends_a_double_click() {
+        // The border, the blank row, under the last row.
+        for row in [0, 1, 5, 7] {
+            let (mut l, clock) = timed();
+            l.on(&press(3, 5));
+            clock.set_ms(100);
+            assert_eq!(
+                l.on(&press(row, 5)),
+                Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Sessions)))
+            );
+            clock.set_ms(200);
+            assert_eq!(l.on(&press(3, 5)), chosen("b", false), "{row}");
+        }
+    }
+
+    #[test]
+    fn a_press_elsewhere_ends_a_double_click_and_answers_nothing() {
+        let (mut l, clock) = timed();
+        l.on(&press(3, 5));
+        clock.set_ms(100);
+        assert_eq!(l.on(&ELSEWHERE), None);
+        assert_eq!(l.state(), State::Single(StateValue::Usize(1)));
+        clock.set_ms(200);
+        assert_eq!(l.on(&press(3, 5)), chosen("b", false));
+        assert_eq!(list(sample(true), None, true).on(&ELSEWHERE), None);
+    }
+
+    #[test]
+    fn the_wheel_does_not_end_a_double_click() {
+        let (mut l, clock) = timed();
+        l.on(&press(3, 5));
+        clock.set_ms(100);
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollDown, 10, 3, 5)),
+            selected("c")
+        );
+        clock.set_ms(200);
+        assert_eq!(l.on(&press(3, 5)), chosen("b", true));
+    }
+
+    #[test]
+    fn the_click_clock_can_be_replaced_through_an_attribute() {
+        let mut l = list(sample(true), Some(1), true);
+        let clock = TestClock::new();
+        l.attr(CLICK_CLOCK_ATTR, clock.click_clock().value());
+        l.on(&press(3, 5));
+        clock.set_ms(401);
+        assert_eq!(l.on(&press(3, 5)), chosen("b", false));
+    }
+
+    #[test]
+    fn the_system_clock_measures_double_clicks_by_default() {
+        let mut l = list(sample(true), Some(1), true);
+        l.on(&press(3, 5));
+        assert_eq!(l.on(&press(3, 5)), chosen("b", true));
     }
 }

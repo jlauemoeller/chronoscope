@@ -5,6 +5,7 @@
 //! # Props
 //!
 //! Data flows in through [`attr`](Component::attr): [`THEME_ATTR`],
+//! [`CLICK_CLOCK_ATTR`] (the clock double-clicks are measured with),
 //! `Attribute::Focus`, [`KEY_LABEL_ATTR`] (the label of the key that focuses
 //! the pane, shown in the title), [`TURN_ROWS_ATTR`] (the [`TurnRows`] of a
 //! transcript that was opened or closed), [`MODEL_UPDATE_ATTR`] (the
@@ -38,9 +39,13 @@
 //! focused component in screen coordinates. The wheel selects the previous or
 //! next entry like `Up` / `Down` (no wrap-around) and answers
 //! [`Msg::TurnSelected`]; it does not ask for the focus. A left press on an
-//! entry's row answers [`Msg::TurnClicked`] with its turn; a press anywhere
-//! else (`Start`, `End`, a connector, the blank row above the list, the
-//! border, the margin, below the last row) answers nothing.
+//! entry's row answers [`Msg::ChooseTurn`] with its turn, and `enter` when
+//! the press completed a double-click: two presses on the same entry at most
+//! [`DOUBLE_CLICK`](crate::components::DOUBLE_CLICK) apart, measured with the
+//! clock set with [`TurnSidebar::with_click_clock`] or [`CLICK_CLOCK_ATTR`].
+//! A press anywhere else (`Start`, `End`, a connector, the blank row above
+//! the list, the border, the margin, below the last row) answers nothing and
+//! ends a double-click under way, as [`UserEvent::PointerElsewhere`] does.
 
 mod line;
 
@@ -62,6 +67,7 @@ use tuirealm::props::{AttrValue, Attribute, QueryResult};
 use tuirealm::state::{State, StateValue};
 
 use self::line::Look;
+use super::double_click::{CLICK_CLOCK_ATTR, ClickClock, LastPress};
 use super::list_cursor::{
     ListCursor, SELECTED_ATTR, VISIBLE_ROWS_ATTR, selected_from_value, selected_value,
 };
@@ -130,6 +136,8 @@ pub struct TurnSidebar {
     /// What the next rows set bring back: the pane of a transcript that was
     /// uncovered.
     restore: Option<Covered>,
+    /// The last left press on an entry, for double-clicks.
+    presses: LastPress<TurnId>,
 }
 
 impl TurnSidebar {
@@ -146,6 +154,7 @@ impl TurnSidebar {
             cursor: ListCursor::default(),
             covered: Vec::new(),
             restore: None,
+            presses: LastPress::default(),
         };
         sidebar.sync();
         sidebar
@@ -155,6 +164,13 @@ impl TurnSidebar {
     #[must_use]
     pub fn with_rows(mut self, rows: TurnRows) -> Self {
         self.set_rows(rows);
+        self
+    }
+
+    /// Replaces the clock double-clicks are measured with.
+    #[must_use]
+    pub fn with_click_clock(mut self, clock: ClickClock) -> Self {
+        self.presses.set_clock(clock);
         self
     }
 
@@ -426,6 +442,10 @@ impl Component for TurnSidebar {
             if let Some(rows) = payload_from_value::<TurnRows>(&value) {
                 self.set_rows(rows);
             }
+        } else if attr == CLICK_CLOCK_ATTR {
+            if let Some(clock) = ClickClock::from_value(&value) {
+                self.presses.set_clock(clock);
+            }
         } else if attr == MODEL_UPDATE_ATTR
             && let Some(update) = payload_from_value::<Arc<ModelUpdate>>(&value)
         {
@@ -472,16 +492,21 @@ impl TurnSidebar {
     }
 
     /// The wheel selects the previous or next entry; a left press on an
-    /// entry's row names its turn. The selection itself is moved by the
-    /// `App` on a press.
+    /// entry's row chooses its turn (and says whether it completed a
+    /// double-click), elsewhere it ends a double-click under way. The
+    /// selection itself is moved by the `App` on a press.
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         match mouse.kind {
             MouseEventKind::ScrollUp => self.moved(Direction::Up),
             MouseEventKind::ScrollDown => self.moved(Direction::Down),
-            _ if mouse.is_left_press() => self
-                .turn_at(mouse.column, mouse.row, mouse.area)
-                .cloned()
-                .map(Msg::TurnClicked),
+            _ if mouse.is_left_press() => {
+                let Some(id) = self.turn_at(mouse.column, mouse.row, mouse.area).cloned() else {
+                    self.presses.forget();
+                    return None;
+                };
+                let enter = self.presses.press(id.clone());
+                Some(Msg::ChooseTurn { id, enter })
+            }
             _ => None,
         }
     }
@@ -491,15 +516,19 @@ impl AppComponent<Msg, UserEvent> for TurnSidebar {
     /// Resolves the key in the `turns` context. `Up` / `Down` answer
     /// [`Msg::TurnSelected`] when the selection moved, `Open`
     /// [`Msg::OpenTurn`] for the selected turn, and the pane keys and
-    /// `focus_transcript` [`Msg::FocusTranscript`]. A routed mouse event is
-    /// as described in the module's Mouse section. Anything else, the raw
-    /// mouse events included, answers nothing.
+    /// `focus_transcript` [`Msg::FocusTranscript`]. A routed mouse event and
+    /// the press-elsewhere notice are as described in the module's Mouse
+    /// section. Anything else, the raw mouse events included, answers
+    /// nothing.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
-        if let Event::User(UserEvent::Pointer(mouse)) = ev {
-            return self.on_mouse(mouse);
-        }
-        let Event::Keyboard(key) = ev else {
-            return None;
+        let key = match ev {
+            Event::Keyboard(key) => key,
+            Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
+            Event::User(UserEvent::PointerElsewhere) => {
+                self.presses.forget();
+                return None;
+            }
+            _ => return None,
         };
         let Resolved::Action(action) = self.resolver.feed(&self.keymap, key) else {
             return None;

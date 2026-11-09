@@ -996,6 +996,7 @@ mod mouse {
     use tuirealm::event::{MouseButton, MouseEventKind};
 
     use super::*;
+    use crate::test_support::TestClock;
 
     /// The size of the pane the events are routed in: 30 x 14 shows eleven
     /// list rows (rows 2..13 of the pane).
@@ -1023,18 +1024,29 @@ mod mouse {
         routed(kind, 10, 5, PANE)
     }
 
+    /// The answer to a press on the entry of `turn`.
+    fn chosen(turn: &str, enter: bool) -> Option<Msg> {
+        Some(Msg::ChooseTurn {
+            id: id(turn),
+            enter,
+        })
+    }
+
     /// The wireframe's list rows: 0 Start, 1 |, 2 u1, 3 |, 4 a1, 5 |, 6 u2,
     /// 7 |, 8 a2, 9 |, 10 c1, 11 |, 12 a3, 13 |, 14 End.
     fn clicked(turn: &str) -> Option<Msg> {
-        Some(Msg::TurnClicked(id(turn)))
+        chosen(turn, false)
     }
 
     #[test]
     fn a_left_press_on_an_entrys_row_names_its_turn_wherever_in_the_row() {
-        let mut sidebar = sidebar_of(&wireframe());
+        // A second apart, so that no two presses are a double-click.
+        let clock = TestClock::new();
+        let mut sidebar = sidebar_of(&wireframe()).with_click_clock(clock.click_clock());
         // The list starts at pane row 2 and has no offset: the entries are on
         // rows 4, 6, 8 and 10 (list rows 2, 4, 6 and 8).
-        for column in [1, 2, 3, 7, 15, 28] {
+        for (seconds, column) in (0..).zip([1, 2, 3, 7, 15, 28]) {
+            clock.set(Duration::from_secs(seconds));
             assert_eq!(sidebar.on(&press(column, 4)), clicked("u1"), "{column}");
         }
         assert_eq!(sidebar.on(&press(10, 6)), clicked("a1"));
@@ -1115,9 +1127,10 @@ mod mouse {
         for entry in [18, 19, 20] {
             assert_eq!(
                 sidebar.on(&press(10, pane_row(entry))),
-                Some(Msg::TurnClicked(
-                    sidebar.rows().entry(entry).unwrap().0.clone()
-                )),
+                Some(Msg::ChooseTurn {
+                    id: sidebar.rows().entry(entry).unwrap().0.clone(),
+                    enter: false,
+                }),
                 "entry {entry}"
             );
         }
@@ -1215,5 +1228,107 @@ mod mouse {
         let mut sidebar = sidebar_of(&[]);
         assert_eq!(sidebar.on(&wheel(true)), None);
         assert_eq!(sidebar.on(&wheel(false)), None);
+    }
+
+    // -- double-clicks
+
+    /// The wireframe's sidebar, double-clicks measured with the returned
+    /// clock. Pane row 4 is `u1`'s entry, 6 `a1`'s, 5 the connector between.
+    fn timed() -> (TurnSidebar, TestClock) {
+        let clock = TestClock::new();
+        let sidebar = sidebar_of(&wireframe()).with_click_clock(clock.click_clock());
+        (sidebar, clock)
+    }
+
+    const ELSEWHERE: Event<UserEvent> = Event::User(UserEvent::PointerElsewhere);
+
+    #[test]
+    fn two_presses_on_an_entry_at_most_400_ms_apart_enter_it() {
+        for (ms, enter) in [(0, true), (400, true), (401, false)] {
+            let (mut sidebar, clock) = timed();
+            assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
+            clock.set_ms(ms);
+            assert_eq!(sidebar.on(&press(3, 4)), chosen("u1", enter), "{ms} ms");
+        }
+    }
+
+    #[test]
+    fn a_third_press_starts_a_new_double_click() {
+        let (mut sidebar, clock) = timed();
+        sidebar.on(&press(10, 4));
+        clock.set_ms(100);
+        assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", true));
+        clock.set_ms(200);
+        assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
+        clock.set_ms(300);
+        assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", true));
+    }
+
+    #[test]
+    fn a_press_on_another_entry_ends_a_double_click() {
+        let (mut sidebar, clock) = timed();
+        sidebar.on(&press(10, 4));
+        clock.set_ms(100);
+        assert_eq!(sidebar.on(&press(10, 6)), chosen("a1", false));
+        clock.set_ms(200);
+        assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
+    }
+
+    #[test]
+    fn a_press_off_the_entries_ends_a_double_click() {
+        // A connector, `Start`, the blank row, the border.
+        for (column, row) in [(10, 5), (10, 2), (10, 1), (0, 4)] {
+            let (mut sidebar, clock) = timed();
+            sidebar.on(&press(10, 4));
+            clock.set_ms(100);
+            assert_eq!(sidebar.on(&press(column, row)), None);
+            clock.set_ms(200);
+            assert_eq!(
+                sidebar.on(&press(10, 4)),
+                chosen("u1", false),
+                "{column}, {row}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_press_elsewhere_ends_a_double_click_and_answers_nothing() {
+        let (mut sidebar, clock) = timed();
+        sidebar.on(&press(10, 4));
+        clock.set_ms(100);
+        assert_eq!(sidebar.on(&ELSEWHERE), None);
+        assert_eq!(sidebar.selected_entry(), None);
+        clock.set_ms(200);
+        assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
+    }
+
+    #[test]
+    fn the_wheel_does_not_end_a_double_click() {
+        let (mut sidebar, clock) = timed();
+        sidebar.on(&press(10, 4));
+        clock.set_ms(100);
+        assert_eq!(
+            sidebar.on(&wheel(true)),
+            Some(Msg::TurnSelected(turn_of(0)))
+        );
+        clock.set_ms(200);
+        assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", true));
+    }
+
+    #[test]
+    fn the_click_clock_can_be_replaced_through_an_attribute() {
+        let mut sidebar = sidebar_of(&wireframe());
+        let clock = TestClock::new();
+        sidebar.attr(CLICK_CLOCK_ATTR, clock.click_clock().value());
+        sidebar.on(&press(10, 4));
+        clock.set_ms(401);
+        assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", false));
+    }
+
+    #[test]
+    fn the_system_clock_measures_double_clicks_by_default() {
+        let mut sidebar = sidebar_of(&wireframe());
+        sidebar.on(&press(10, 4));
+        assert_eq!(sidebar.on(&press(10, 4)), chosen("u1", true));
     }
 }

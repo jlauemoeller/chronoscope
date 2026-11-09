@@ -6,7 +6,7 @@
 //!   [`Msg::Pointer`], which exists for the pointer routing only).
 //! - [`UserEvent`] is what the Ports deliver, and the pointer events the
 //!   router hands to components ([`UserEvent::Pointer`],
-//!   [`UserEvent::PointerOutside`]).
+//!   [`UserEvent::PointerOutside`], [`UserEvent::PointerElsewhere`]).
 //!
 //! [`App::update`] is the only place that changes domain state or the mounted
 //! components. [`App::view`] only asks [`layout`] where each component goes and
@@ -169,9 +169,10 @@ pub enum Msg {
     /// `Enter` in the theme selector on the theme with this id: keep it,
     /// save it to the config and close the selector.
     SelectTheme(String),
-    /// A click on the theme with this id in the theme selector (its cursor
-    /// is there now): show it as a preview, or, on a double-click, keep it.
-    ThemeClicked(String),
+    /// A left press on the theme with this id in the theme selector (its
+    /// cursor is there now): show it as a preview, or, with `keep` (the
+    /// press completed a double-click), keep it as `Enter` does.
+    ChooseTheme { id: String, keep: bool },
     /// `Esc` in the theme selector: restore the theme that was active when
     /// it opened and close it.
     CancelTheme,
@@ -273,10 +274,11 @@ pub enum Msg {
     /// A key in the turns sidebar selected the entry of this turn: scroll the
     /// transcript to its block.
     TurnSelected(TurnId),
-    /// A left press on the entry of this turn in the turns sidebar (routed
-    /// by the `App`): focus the sidebar, select the entry and scroll the
-    /// transcript to its block; a double-click does what `Enter` does.
-    TurnClicked(TurnId),
+    /// A left press on the entry of this turn in the turns sidebar: focus
+    /// the sidebar, select the entry and scroll the transcript to its block;
+    /// with `enter` (the press completed a double-click), then do what
+    /// `Enter` does: focus the transcript.
+    ChooseTurn { id: TurnId, enter: bool },
     /// `Enter` in the turns sidebar on the entry of this turn: scroll the
     /// transcript to its block and focus it.
     OpenTurn(TurnId),
@@ -351,6 +353,13 @@ pub enum UserEvent {
     /// that overlay: it closes as on `Esc`, unless it is modal. Built by the
     /// router, never delivered by a Port.
     PointerOutside,
+    /// A left press went somewhere else than the component that got the last
+    /// one: on another component, outside an overlay, or on nothing. The
+    /// router gives it to that component before it routes the press, so a
+    /// double-click under way there ends; the component forgets its last
+    /// press and answers nothing. Built by the router (cycle 5 spec, §0 item
+    /// 6, §8.3), never delivered by a Port.
+    PointerElsewhere,
 }
 
 /// How often the event listener sends `Event::Tick`.
@@ -462,8 +471,9 @@ pub struct App {
     /// The theme selector: what it wants and what to restore on `Esc`, while
     /// it is open.
     theme_selector: Option<theme_selector::ThemeSelection>,
-    /// The routing areas and the double-click state of the mouse.
-    mouse: mouse::MouseState,
+    /// What the pointer router keeps: the routing areas, which component got
+    /// the last left press, and the clock it hands the components.
+    mouse: mouse::PointerState,
     /// The id of the active theme.
     theme_id: String,
     /// The terminal the theme is adapted to, as at startup.
@@ -509,7 +519,8 @@ impl App {
             Box::new(GlobalEvents::new(keymap.clone())),
             GlobalEvents::subscriptions(&keymap, config.mouse),
         )?;
-        selector::mount_selector(&mut application, &keymap, &theme, true)?;
+        let mouse = mouse::PointerState::default();
+        selector::mount_selector(&mut application, &keymap, &theme, mouse.click_clock(), true)?;
         application.mount(
             Id::EmptyState,
             Box::new(EmptyState::new(TOO_SMALL, theme.clone())),
@@ -551,7 +562,7 @@ impl App {
             help_size: None,
             details_size: None,
             theme_selector: None,
-            mouse: mouse::MouseState::default(),
+            mouse,
             theme_id,
             theme_env: env,
             config_path,
@@ -766,7 +777,7 @@ impl App {
             Msg::OpenThemeSelector => self.open_theme_selector(),
             Msg::PreviewTheme(id) => self.preview_theme(&id),
             Msg::SelectTheme(id) => self.select_theme(&id),
-            Msg::ThemeClicked(id) => self.theme_clicked(&id),
+            Msg::ChooseTheme { id, keep } => self.choose_theme(&id, keep),
             Msg::CancelTheme => self.cancel_theme(),
             Msg::Resized(width, height) => self.resized(width, height),
             Msg::Tick => self.tick_elapsed(),
@@ -826,7 +837,7 @@ impl App {
             Msg::FocusTranscript => self.focus_transcript_from_sidebar(),
             Msg::TurnSelected(id) => self.go_to_turn(&id, false),
             Msg::OpenTurn(id) => self.go_to_turn(&id, true),
-            Msg::TurnClicked(id) => self.turn_clicked(id),
+            Msg::ChooseTurn { id, enter } => self.choose_turn(id, enter),
             Msg::TranscriptPressed(change) => self.transcript_pressed(change),
             Msg::Pointer(event) => self.pointer(event),
         }
