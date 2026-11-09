@@ -430,7 +430,7 @@ pub(super) fn result_block(
     };
     let text = match result.output.text() {
         Ok(text) => text,
-        Err(err) => return (unavailable_block(label, call, &err, ctx), None),
+        Err(err) => return (unavailable_block(label, &err, ctx), None),
     };
     if text.trim().is_empty() {
         return (muted_block(label, "(no output)", ctx), None);
@@ -444,7 +444,6 @@ pub(super) fn result_block(
 /// not logged: layout is part of rendering, which has no side effects.
 pub(super) fn unavailable_block(
     label: &'static str,
-    call: &ToolCall,
     err: &crate::model::ToolOutputError,
     ctx: &SectionCtx<'_>,
 ) -> Block {

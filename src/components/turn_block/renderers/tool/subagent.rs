@@ -75,7 +75,7 @@ impl ToolBodyRenderer for SubagentBody {
                     };
                     markdown_block("Result:", shown, ctx.theme.style(token), ctx)
                 }
-                Err(err) => unavailable_block("Result:", call, &err, ctx),
+                Err(err) => unavailable_block("Result:", &err, ctx),
             },
         });
         Body { blocks, remaining }

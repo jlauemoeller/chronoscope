@@ -222,7 +222,7 @@ impl ToolBodyRenderer for ReadBody {
                 plain_body(call, empty, None, ctx)
             }
             Err(err) => {
-                let unavailable = unavailable_block("Content:", call, &err, ctx);
+                let unavailable = unavailable_block("Content:", &err, ctx);
                 plain_body(call, unavailable, None, ctx)
             }
         }
