@@ -613,7 +613,7 @@ If a session id is ambiguous (prefix matches several sessions), the selector ope
 | OpenCode | `notify` watch on `opencode.db` and `opencode.db-wal`, debounced 200 ms; poll every 1 s if watching fails, and always on macOS, where writes to a file that stays open raise no events (the session index polls there too) | `SELECT … FROM session_message WHERE session_id = ? AND seq > ?`, plus re-reading rows whose `time_updated` changed (streaming messages are updated in place) |
 
 - The database is opened read-only (`SQLITE_OPEN_READ_ONLY`). Chronoscope never writes to any harness store.
-- Watch events are coalesced. Workers parse new data off the UI thread and send `ModelUpdate`s; the UI thread applies them (§1.1) and redraws at most every 50 ms.
+- Watch events are coalesced. Workers parse new data off the UI thread and send `ModelUpdate`s; the UI thread applies them (§1.1) and redraws at most every 50 ms. The one exception is a redraw that follows a resize of the terminal: it is drawn at once, so the screen is never shown at a stale size.
 
 ### 6.2 Browser behaviour
 

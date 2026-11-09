@@ -1,5 +1,5 @@
 //! Tests of what the Session Time and Session Tokens panels show in the app
-//! (no terminal), product §3.3: the values follow the selected session by every
+//! (no terminal), product §3.1: the values follow the selected session by every
 //! route, update as stats arrive and clear when nothing is selected.
 //!
 //! The panels are read from the screen as drawn, because the rule is about

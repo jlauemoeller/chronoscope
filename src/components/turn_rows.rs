@@ -1,4 +1,4 @@
-//! What the turns sidebar lists (product §5.2, §5.6): one entry per turn that
+//! What the turns sidebar lists (product §3.2, §8.2): one entry per turn that
 //! has a block, and the rows drawn from them. The `Transcript` builds them
 //! from its turns and the `TurnSidebar` shows them, so they live here, in a
 //! module both use.

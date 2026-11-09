@@ -1,6 +1,6 @@
 //! Snapshots of the turns sidebar at 120x40 and 90x24 (the pane is 30 x 33
 //! and 30 x 17 there) in the `default` and `terminal` themes: each state of
-//! product §5.3 on each kind of entry, no selection, a list longer than the pane
+//! product §3.2 on each kind of entry, no selection, a list longer than the pane
 //! at each end, and the widest durations.
 
 use super::super::fixtures::*;

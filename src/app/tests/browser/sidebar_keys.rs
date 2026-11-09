@@ -1,4 +1,4 @@
-//! The turns sidebar's keys and focus (product §5.1, §5.3, §5.4): the keys that
+//! The turns sidebar's keys and focus (product §3.2, §5.3): the keys that
 //! hand the focus to it and back, what selecting an entry does to the
 //! transcript, the focus while overlays are open and when the sidebar is
 //! hidden, the help line's hints, and the screens with the sidebar focused.

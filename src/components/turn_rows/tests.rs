@@ -1,4 +1,4 @@
-//! Tests of the rows the turns sidebar lists (product §5.2, §5.6): which turns
+//! Tests of the rows the turns sidebar lists (product §3.2, §8.2): which turns
 //! have an entry, the rows drawn from the entries, and how updates change
 //! them.
 
