@@ -1,5 +1,5 @@
-//! Items the harness adapters share: session titles and the subagent
-//! description.
+//! Items the harness adapters share: lenient fields, session titles and
+//! the subagent description.
 
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -62,6 +62,15 @@ pub fn truncate_title(line: &str) -> String {
     title
 }
 
+/// The title of a session that has no title of its own: the first line of
+/// its first prompt that is not blank, trimmed and cut by
+/// [`truncate_title`], else [`UNTITLED`].
+pub fn title_from_prompt(prompt: Option<&str>) -> String {
+    prompt
+        .and_then(|p| p.lines().map(str::trim).find(|l| !l.is_empty()))
+        .map_or_else(|| UNTITLED.to_owned(), truncate_title)
+}
+
 /// What `agent-<id>.meta.json` says about a subagent run.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct SubagentInfo {
@@ -71,4 +80,42 @@ pub struct SubagentInfo {
     /// The short description the parent gave the run; empty when unknown.
     #[serde(default)]
     pub description: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_prompt_or_an_empty_one_is_untitled() {
+        assert_eq!(title_from_prompt(None), UNTITLED);
+        assert_eq!(title_from_prompt(Some("")), UNTITLED);
+        assert_eq!(title_from_prompt(Some("  \n\t\n")), UNTITLED);
+    }
+
+    #[test]
+    fn the_title_is_the_first_line_that_is_not_blank() {
+        assert_eq!(
+            title_from_prompt(Some("\n   \nFix the login test\nand the other one")),
+            "Fix the login test"
+        );
+    }
+
+    #[test]
+    fn the_title_is_trimmed() {
+        assert_eq!(
+            title_from_prompt(Some("  \tFix the login test \r\n")),
+            "Fix the login test"
+        );
+    }
+
+    #[test]
+    fn a_long_line_is_cut_with_an_ellipsis() {
+        let line = "x".repeat(MAX_TITLE_CHARS + 5);
+        let title = title_from_prompt(Some(&line));
+        assert_eq!(title.chars().count(), MAX_TITLE_CHARS);
+        assert!(title.ends_with('…'), "{title}");
+        let exact = "y".repeat(MAX_TITLE_CHARS);
+        assert_eq!(title_from_prompt(Some(&exact)), exact);
+    }
 }

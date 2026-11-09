@@ -18,9 +18,10 @@ use std::path::Path;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::harness::WRITES_TO_OPEN_FILES_RAISE_EVENTS;
+use crate::harness::watch_event::notice;
 
 use super::db::wal_path;
 use super::follow::Follower;
@@ -95,22 +96,9 @@ fn start_notify(db: &Path) -> notify::Result<(RecommendedWatcher, Receiver<()>)>
 /// Passes what concerns the database to the worker; the callback runs on
 /// `notify`'s thread and holds no reference to the update channel.
 fn forward(names: &[OsString], tx: &Sender<()>, event: notify::Result<notify::Event>) {
-    let event = match event {
-        Ok(event) => event,
-        Err(err) => {
-            // Possibly an overflow: look at the database to be safe.
-            log::debug!("file watch error: {err}");
-            let _ = tx.send(());
-            return;
-        }
-    };
-    // The worker's own reads must not cause more reads.
-    if matches!(event.kind, EventKind::Access(_)) {
-        return;
-    }
-    let concerns_us = event.need_rescan()
-        || event.paths.is_empty()
-        || event.paths.iter().any(|path| {
+    let seen = notice(event);
+    let concerns_us = seen.wake
+        || seen.paths.iter().any(|path| {
             path.file_name()
                 .is_some_and(|name| names.iter().any(|n| n == name))
         });

@@ -20,10 +20,11 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant, SystemTime};
 
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 use super::load::{Identity, Job, Streamer, WatchMode, load_file};
 use super::subagent::subagents_dir;
+use crate::harness::watch_event::notice;
 use crate::model::ModelUpdate;
 
 /// After the first event, how long to wait for more before reading.
@@ -351,24 +352,11 @@ impl<'a> Watch<'a> {
 /// Passes what concerns the session to the worker; the callback runs on
 /// `notify`'s thread and holds no reference to the update channel.
 fn forward(targets: &Targets, tx: &Sender<Wake>, event: notify::Result<notify::Event>) {
-    let event = match event {
-        Ok(event) => event,
-        Err(err) => {
-            // Possibly an overflow: look at the file to be safe.
-            log::debug!("file watch error: {err}");
-            let _ = tx.send(Wake::Session);
-            return;
-        }
-    };
-    // The worker's own reads must not cause more reads.
-    if matches!(event.kind, EventKind::Access(_)) {
-        return;
-    }
-    // Events were lost (a rescan is due) or name nothing: look at the file.
-    if event.need_rescan() || event.paths.is_empty() {
+    let seen = notice(event);
+    if seen.wake {
         let _ = tx.send(Wake::Session);
     }
-    for path in &event.paths {
+    for path in &seen.paths {
         if let Some(wake) = targets.classify(path) {
             // The worker may be gone already.
             let _ = tx.send(wake);

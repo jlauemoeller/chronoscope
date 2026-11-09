@@ -26,7 +26,7 @@ use super::scan::{FileScan, scan_reader};
 use super::subagent::{self, Opened, SubagentFile, SubagentInfo};
 use super::usage_memo::UsageMemo;
 use crate::config::Config;
-use crate::harness::shared::{UNTITLED, truncate_title};
+use crate::harness::shared::{UNTITLED, title_from_prompt};
 use crate::harness::{Harness, Result, WatchHandle};
 use crate::model::{
     HarnessId, ModelUpdate, Project, ProjectId, SectionSource, SessionId, SessionStats,
@@ -766,16 +766,13 @@ fn project_id(cwd: &str) -> ProjectId {
     }
 }
 
-/// The last `ai-title`, else the first prompt's first line, else
-/// [`UNTITLED`].
+/// The last `ai-title`, else the title of the first prompt
+/// ([`title_from_prompt`]).
 fn session_title(scan: &FileScan) -> String {
     if let Some(title) = &scan.ai_title {
         return title.clone();
     }
-    scan.first_prompt
-        .as_deref()
-        .and_then(|p| p.lines().map(str::trim).find(|l| !l.is_empty()))
-        .map_or_else(|| UNTITLED.to_owned(), truncate_title)
+    title_from_prompt(scan.first_prompt.as_deref())
 }
 
 /// The alias configured for the project's cwd, else the cwd's basename, else

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use ratatui::layout::Size;
@@ -60,6 +60,13 @@ struct FakeHarness {
     subagents: Mutex<HashMap<(SessionId, ToolCallId), SessionId>>,
     /// Every `subagent` question asked.
     subagent_asks: Mutex<Vec<(SessionId, ToolCallId)>>,
+    /// The name of the thread each `subagent` question was asked on.
+    subagent_threads: Mutex<Vec<Option<String>>>,
+    /// While set, `subagent` waits before it answers; the condition variable
+    /// tells it the hold is lifted.
+    subagent_hold: (Mutex<bool>, Condvar),
+    /// Whether `subagent` panics instead of answering.
+    subagent_panics: AtomicBool,
     /// The resume command template; none: the harness has no command.
     resume: Mutex<Option<String>>,
 }
@@ -76,6 +83,9 @@ impl FakeHarness {
             earlier_stopped: Mutex::default(),
             subagents: Mutex::default(),
             subagent_asks: Mutex::default(),
+            subagent_threads: Mutex::default(),
+            subagent_hold: (Mutex::new(false), Condvar::new()),
+            subagent_panics: AtomicBool::new(false),
             resume: Mutex::default(),
         })
     }
@@ -98,6 +108,22 @@ impl FakeHarness {
             .lock()
             .unwrap()
             .insert((id(parent), ToolCallId::from(call)), id(agent));
+    }
+
+    /// Makes `subagent` wait before it answers, until
+    /// [`release_subagents`](Self::release_subagents).
+    fn hold_subagents(&self) {
+        *self.subagent_hold.0.lock().unwrap() = true;
+    }
+
+    /// Lets the `subagent` questions held answer.
+    fn release_subagents(&self) {
+        *self.subagent_hold.0.lock().unwrap() = false;
+        self.subagent_hold.1.notify_all();
+    }
+
+    fn subagent_ask_count(&self) -> usize {
+        self.subagent_asks.lock().unwrap().len()
     }
 
     fn loads(&self) -> Vec<String> {
@@ -173,6 +199,20 @@ impl Harness for FakeHarness {
     fn subagent(&self, parent: &SessionId, call: &ToolCallId) -> Option<SessionId> {
         let key = (parent.clone(), call.clone());
         self.subagent_asks.lock().unwrap().push(key.clone());
+        self.subagent_threads
+            .lock()
+            .unwrap()
+            .push(std::thread::current().name().map(str::to_owned));
+        let (held, lifted) = &self.subagent_hold;
+        let mut held = held.lock().unwrap();
+        while *held {
+            held = lifted.wait(held).unwrap();
+        }
+        drop(held);
+        assert!(
+            !self.subagent_panics.load(Ordering::Relaxed),
+            "the lookup broke"
+        );
         self.subagents.lock().unwrap().get(&key).cloned()
     }
 

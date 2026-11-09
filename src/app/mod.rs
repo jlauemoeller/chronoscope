@@ -198,6 +198,14 @@ pub enum Msg {
         generation: u64,
         update: SessionUpdate,
     },
+    /// The lookup that `a` on a subagent section started answered:
+    /// `generation` numbers the lookup and the load of the subagent, and
+    /// `found` is its session, `None` when it has no transcript. The answer
+    /// to a lookup that is no longer waited for is dropped.
+    SubagentLookedUp {
+        generation: u64,
+        found: Option<SessionId>,
+    },
     /// The text of the prompt changed.
     PromptChanged(String),
     /// Only the prompt's cursor moved: nothing but a redraw is needed.
@@ -290,6 +298,12 @@ pub enum UserEvent {
     Session {
         generation: u64,
         update: SessionUpdate,
+    },
+    /// The lookup of a subagent's transcript answered; `generation` is the
+    /// number its load gets, and `found` the subagent's session, if any.
+    Subagent {
+        generation: u64,
+        found: Option<SessionId>,
     },
     /// A mouse event the `App` routed to the component under the pointer,
     /// with the position relative to the component's area. Built by the
@@ -754,6 +768,9 @@ impl App {
             Msg::OpenSelector => self.open_selector(),
             Msg::CloseSelector => self.close_selector(),
             Msg::Session { generation, update } => self.session_update(generation, &update),
+            Msg::SubagentLookedUp { generation, found } => {
+                self.subagent_looked_up(generation, found)
+            }
             Msg::FocusTurns => self.focus_turns(),
             Msg::FocusTranscript => self.focus_transcript_from_sidebar(),
             Msg::TurnSelected(id) => self.go_to_turn(&id, false),

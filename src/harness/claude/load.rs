@@ -28,6 +28,7 @@ use super::assemble::Assembler;
 use super::subagent::{Opened, resolve};
 use super::watch;
 use crate::model::{ByteSource, ModelUpdate, SessionId, Turn, TurnId};
+use crate::platform::{FileIdentity, file_identity};
 
 /// A callback the worker runs before it sends each batch. A test hook.
 pub(super) type LoadHook = Arc<dyn Fn() + Send + Sync>;
@@ -133,30 +134,13 @@ pub(super) fn load_file<'a>(
 }
 
 /// What tells two files at one path apart: the inode (with the device) on
-/// Unix, the creation time elsewhere.
+/// Unix, the creation time elsewhere ([`file_identity`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Identity {
-    #[cfg(unix)]
-    id: (u64, u64),
-    #[cfg(not(unix))]
-    created: Option<std::time::SystemTime>,
-}
+pub(super) struct Identity(FileIdentity);
 
 impl Identity {
     pub(super) fn of(meta: &Metadata) -> Self {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            Self {
-                id: (meta.dev(), meta.ino()),
-            }
-        }
-        #[cfg(not(unix))]
-        {
-            Self {
-                created: meta.created().ok(),
-            }
-        }
+        Self(file_identity(meta))
     }
 }
 

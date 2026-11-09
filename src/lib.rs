@@ -19,6 +19,7 @@ pub mod logging;
 pub mod markdown;
 pub mod model;
 pub mod paths;
+pub(crate) mod platform;
 pub mod section_details;
 pub mod terminal;
 #[doc(hidden)]

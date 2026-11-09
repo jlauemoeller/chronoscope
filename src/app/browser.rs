@@ -11,6 +11,9 @@
 //! them.
 
 use std::ops::{Deref, DerefMut};
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::mpsc::Sender;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
@@ -20,7 +23,7 @@ use super::hints::browser_hints;
 use super::layout::Screen;
 use super::redraw::RedrawRequest;
 use super::selector::{SELECTOR_IDS, mount_selector};
-use super::session_port::{SessionUpdate, forward_to};
+use super::session_port::{SessionEvent, SessionUpdate, forward_to, look_up_subagent};
 use super::{App, Id};
 use crate::components::turn_block::export::ExportMeta;
 use crate::components::{
@@ -30,7 +33,7 @@ use crate::components::{
     SectionId, TRUNCATE_OUTPUT_LINES_ATTR, TURN_COUNT_ATTR, TURN_ROWS_ATTR, Transcript,
     TurnSidebar, empty_session_message, payload_from_value, payload_value, status_value,
 };
-use crate::harness::WatchHandle;
+use crate::harness::{Harness, WatchHandle};
 use crate::keymap::{Action, Context};
 use crate::model::{HarnessId, ModelUpdate, SessionId, SessionSummary, ToolCallId, is_active_at};
 use crate::theme::Role;
@@ -134,6 +137,17 @@ pub(super) struct BrowserState {
     sidebar_section: SidebarSection,
     /// Whether the help line shows the hints of the turns sidebar.
     pub(super) sidebar_hints: bool,
+    /// The subagent lookup whose answer is waited for, if any.
+    pending_subagent: Option<PendingSubagent>,
+}
+
+/// A lookup that `a` on a subagent section started, waiting for its answer.
+#[derive(Debug)]
+struct PendingSubagent {
+    /// The number of the lookup, which the subagent's load gets.
+    generation: u64,
+    /// The agent in the breadcrumb.
+    label: String,
 }
 
 impl Deref for BrowserState {
@@ -313,15 +327,24 @@ impl App {
         self.open_summary(harness, summary);
     }
 
+    /// The harness `harness` and the channel its loads report to; `None`
+    /// when either is missing.
+    fn loader_and_sink(
+        &self,
+        harness: HarnessId,
+    ) -> Option<(Arc<dyn Harness>, Sender<SessionEvent>)> {
+        Some((
+            self.harnesses.get(&harness).cloned()?,
+            self.session_sink.clone()?,
+        ))
+    }
+
     /// Opens `summary`, a session of `harness` the index may not list yet (a
     /// session given on the command line): the same as [`open_session`]
     /// from there on.
     pub fn open_summary(&mut self, harness: HarnessId, summary: SessionSummary) {
         let id = &summary.id;
-        let (Some(loader), Some(sink)) = (
-            self.harnesses.get(&harness).cloned(),
-            self.session_sink.clone(),
-        ) else {
+        let Some((loader, sink)) = self.loader_and_sink(harness) else {
             log::error!("cannot open {id}: no {harness} harness or session channel");
             self.toast_quiet("Cannot open the session");
             return;
@@ -330,6 +353,8 @@ impl App {
         // The worker of the session that was open stops before the new load
         // starts. If the load fails the old browser stays, no longer live.
         self.browser.stop_watching();
+        // Nor is a subagent of it opened: a lookup's answer is dropped.
+        self.browser.pending_subagent = None;
         let watch = match loader.load(id, forward_to(generation, sink)) {
             Ok(watch) => watch,
             Err(err) => {
@@ -379,13 +404,7 @@ impl App {
             .selector
             .find_project(open.harness, &open.summary.project);
         Some(project.map_or_else(
-            || {
-                let id = open.summary.project.as_str();
-                id.rsplit('/')
-                    .find(|part| !part.is_empty())
-                    .unwrap_or(id)
-                    .to_owned()
-            },
+            || last_path_segment(open.summary.project.as_str()),
             |project| project.name.clone(),
         ))
     }
@@ -516,13 +535,16 @@ impl App {
 
     // -- subagent transcripts (product §4.4)
 
-    /// `a` on a subagent section: asks the harness for the transcript of the
-    /// subagent that tool call `call` started and mounts a `Transcript` for
-    /// it over the one on top, which stays mounted but is not drawn. The new
-    /// one is loaded and watched like any session and gets the focus. With
-    /// no transcript to open a toast says so and nothing is mounted.
+    /// `a` on a subagent section: starts the lookup of the transcript of the
+    /// subagent that tool call `call` started, on a worker
+    /// ([`look_up_subagent`]). [`subagent_looked_up`](Self::subagent_looked_up)
+    /// opens it when the answer comes. Nothing changes until then, and `a`
+    /// is ignored while a lookup is pending.
     pub(super) fn open_subagent(&mut self, call: &ToolCallId, label: String) {
-        if self.screen != Screen::Browser || self.application.mounted(&Id::Prompt) {
+        if self.screen != Screen::Browser
+            || self.application.mounted(&Id::Prompt)
+            || self.browser.pending_subagent.is_some()
+        {
             return;
         }
         let Some(harness) = self.browser.open.as_ref().map(|open| open.harness) else {
@@ -531,22 +553,59 @@ impl App {
         let Some(parent) = self.browser.current_session().cloned() else {
             return;
         };
-        let (Some(loader), Some(sink)) = (
-            self.harnesses.get(&harness).cloned(),
-            self.session_sink.clone(),
-        ) else {
+        let Some((loader, sink)) = self.loader_and_sink(harness) else {
             log::error!("cannot open a subagent: no {harness} harness or session channel");
             self.toast_quiet("Could not open the subagent");
             return;
         };
-        let Some(id) = loader.subagent(&parent, call) else {
+        // The number is taken before the worker starts, so it is never given
+        // again, whatever happens next. The subagent's load gets it too.
+        let generation = self.browser.load_seq + 1;
+        self.browser.load_seq = generation;
+        if let Err(err) = look_up_subagent(loader, parent, call.clone(), generation, sink) {
+            log::error!("could not start the subagent lookup: {err}");
+            self.toast_quiet("Could not open the subagent");
+            return;
+        }
+        self.browser.pending_subagent = Some(PendingSubagent { generation, label });
+    }
+
+    /// The answer to the subagent lookup `generation`: the transcript of
+    /// subagent `found` is mounted over the one on top, which stays mounted
+    /// but is not drawn. The new one is loaded and watched like any session
+    /// and gets the focus. With no transcript to open a toast says so and
+    /// nothing is mounted. The answer to a lookup that is no longer waited
+    /// for (the user went back or opened another session) is dropped, and so
+    /// is one that comes when the transcript that asked no longer has the
+    /// focus (the selector, an overlay or a prompt is open, or the turns
+    /// sidebar is focused).
+    pub(super) fn subagent_looked_up(&mut self, generation: u64, found: Option<SessionId>) {
+        let Some(PendingSubagent { label, .. }) = self
+            .browser
+            .pending_subagent
+            .take_if(|pending| pending.generation == generation)
+        else {
+            log::debug!("dropping the answer of subagent lookup {generation}");
+            return;
+        };
+        // The user moved on: to the selector, an overlay, a prompt or the
+        // turns sidebar. Opening the subagent now would take the focus away.
+        let asked_from = self.top_transcript();
+        if self.screen != Screen::Browser || self.application.focus() != Some(&asked_from) {
+            log::debug!("dropping the answer of subagent lookup {generation}: the focus moved");
+            return;
+        }
+        let Some(id) = found else {
             self.toast_quiet(NO_SUBAGENT_TRANSCRIPT);
             return;
         };
-        // The number is taken before the worker starts, so it is never given
-        // again, whatever happens next.
-        let generation = self.browser.load_seq + 1;
-        self.browser.load_seq = generation;
+        let loaded_by = self.browser.open.as_ref().map(|open| open.harness);
+        let Some((loader, sink)) = loaded_by.and_then(|harness| self.loader_and_sink(harness))
+        else {
+            log::error!("cannot open subagent {id}: no harness or session channel");
+            self.toast_quiet("Could not open the subagent");
+            return;
+        };
         let watch = match loader.load(&id, forward_to(generation, sink)) {
             Ok(watch) => watch,
             Err(err) => {
@@ -616,6 +675,9 @@ impl App {
         {
             return;
         }
+        // A lookup started here is no longer waited for: its answer is
+        // dropped.
+        self.browser.pending_subagent = None;
         let depth = self.browser.depth();
         // Dropping the level stops its worker; its late updates are dropped
         // because no load has its number.
@@ -1088,4 +1150,43 @@ impl App {
 /// The percentage `fraction` (0.0 to 1.0) stands for, rounded.
 fn percent(fraction: f32) -> u32 {
     (fraction.clamp(0.0, 1.0) * 100.0).round() as u32
+}
+
+/// The last segment of the path `id`, a trailing separator skipped; `id`
+/// itself when it has none (`/`, an empty id). A cwd is normalised, so it
+/// never ends in `.` or `..`; for an id that does, [`Path::file_name`] skips
+/// a final `.` and gives nothing (so `id` itself) for a final `..`.
+fn last_path_segment(id: &str) -> String {
+    Path::new(id)
+        .file_name()
+        .map_or_else(|| id.to_owned(), |name| name.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{MAIN_SEPARATOR, PathBuf};
+
+    use super::*;
+
+    #[test]
+    fn the_last_segment_of_a_cwd_joined_with_the_platform_separator() {
+        let cwd: PathBuf = ["home", "user", "projects", "brio"].iter().collect();
+        let id = format!("{MAIN_SEPARATOR}{}", cwd.display());
+        assert_eq!(last_path_segment(&id), "brio");
+    }
+
+    #[test]
+    fn a_trailing_separator_is_skipped() {
+        let id = format!("{MAIN_SEPARATOR}home{MAIN_SEPARATOR}brio{MAIN_SEPARATOR}");
+        assert_eq!(last_path_segment(&id), "brio");
+        assert_eq!(last_path_segment("/home/brio/"), "brio");
+    }
+
+    #[test]
+    fn an_id_without_a_separator_is_its_own_last_segment() {
+        assert_eq!(last_path_segment("-home-user-brio"), "-home-user-brio");
+        assert_eq!(last_path_segment(""), "");
+        let root = MAIN_SEPARATOR.to_string();
+        assert_eq!(last_path_segment(&root), root);
+    }
 }
