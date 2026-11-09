@@ -562,7 +562,7 @@ impl App {
 
     /// Tells the selector whether a session is open behind it, which decides
     /// what `Esc` does: close the selector, or quit.
-    pub fn set_session_open(&mut self, open: bool) {
+    pub(super) fn set_session_open(&mut self, open: bool) {
         for id in [Id::ProjectList, Id::SessionList] {
             self.set_attr(id, SESSION_OPEN_ATTR, AttrValue::Flag(open));
         }
@@ -570,13 +570,13 @@ impl App {
 
     /// Tells the selector where the command line says to start. It is
     /// honoured while the selector is still on its startup preselection.
-    pub fn set_preselection(&mut self, preselect: Preselect) {
+    pub(super) fn set_preselection(&mut self, preselect: Preselect) {
         self.selector.hint = preselect;
     }
 
     /// Gives the selector the lists the command line was resolved against, as
     /// if the index worker had reported them.
-    pub fn seed_index(&mut self, index: &[HarnessIndex]) {
+    pub(super) fn seed_index(&mut self, index: &[HarnessIndex]) {
         for harness in index {
             if !self.selector.registered.contains(&harness.harness) {
                 continue;
@@ -606,7 +606,7 @@ impl App {
     /// pane has the focus and lists them as results (the first selected),
     /// and no others, whichever tab is shown. The Projects pane is as at a
     /// start without the prefix. `Esc` leaves the filter.
-    pub fn show_filtered(&mut self, prefix: &str, matches: &[(HarnessId, SessionId)]) {
+    pub(super) fn show_filtered(&mut self, prefix: &str, matches: &[(HarnessId, SessionId)]) {
         let Some(&(harness, _)) = matches.first() else {
             return;
         };

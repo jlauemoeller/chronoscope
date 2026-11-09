@@ -41,8 +41,7 @@ pub use browser_header::{
     parse_warning_note,
 };
 pub use details_overlay::{
-    DESIRED_SIZE_ATTR, DetailsContent, DetailsGroup, DetailsOverlay, DetailsRequest, DetailsRow,
-    MAX_WIDTH_ATTR, compose, max_width_value,
+    DetailsContent, DetailsGroup, DetailsOverlay, DetailsRequest, DetailsRow, compose,
 };
 pub use double_click::{CLICK_CLOCK_ATTR, ClickClock, DOUBLE_CLICK};
 pub use empty_state::{
@@ -72,7 +71,7 @@ pub use session_list::{
 };
 pub use session_time::{SESSION_TIME_ATTR, SessionTime, SessionTimes};
 pub use session_tokens::{SESSION_TOKENS_ATTR, SessionTokens};
-pub use theme_selector::{ThemeItem, ThemeRows, ThemeSelector, theme_items};
+pub use theme_selector::{ThemeItem, ThemeItems, ThemeRows, ThemeSelector, theme_items};
 pub use toast::{MAX_TOAST_WIDTH, TOAST_CHROME, TOAST_DURATION, Toast};
 pub use transcript::{
     DIM_UNSELECTED_ATTR, FOLLOWING_ATTR, GO_TO_TURN_ATTR, MODEL_UPDATE_ATTR, NEW_SECTIONS_ATTR,

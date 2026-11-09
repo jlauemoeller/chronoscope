@@ -596,8 +596,8 @@ fn a_value_is_drawn_to_its_end_however_its_graphemes_are_measured() {
 fn a_wider_screen_gives_the_overlay_the_width_its_rows_want() {
     let mut rig = open_long_model_at(80, 24);
     // Capped by the screen: 76 columns, the model wrapped. Read before
-    // anything draws, because `overlay_rows` sends `Msg::Resized`, which asks
-    // the overlay for its size again.
+    // anything draws, because `overlay_rows` sends `Msg::Resized`, which
+    // computes the overlay's size from its content again.
     let at_open = rect_of(&rig);
     assert_eq!(at_open.width, 76);
     assert_eq!(at_open.height, 14, "as high as the wrapped rows");

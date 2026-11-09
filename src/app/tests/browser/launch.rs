@@ -1,15 +1,16 @@
 //! The command line in the app (product §5.8): the filtered selector, a session
 //! opened directly, and where the selector starts. Everything is resolved
 //! with [`launch::resolve`] and started with the same `start_with` the
-//! running application uses.
+//! running application uses, which sends the start message.
 
 use super::super::selector::{OPENCODE, empty_app_in, press, project_rows, send, styled, text};
 use super::*;
 use crate::app::Pane;
 use crate::app::fixtures::fixture_snapshot;
 use crate::app::runtime::{Startup, launch_warnings, prepare, resolve_startup, start_with};
+use crate::app::tests::selector_start;
 use crate::index::IndexEvent;
-use crate::launch::{self, HarnessIndex, Preselect, Request, Target};
+use crate::launch::{self, HarnessIndex, Preselect, Request, Resolution, Target};
 
 const DIR: &str = "/home/user/projects/brio";
 
@@ -209,6 +210,24 @@ fn leaving_the_filter_goes_back_to_the_project_the_command_line_chose() {
     let mut app = started(&request, prefixed_index());
     assert_eq!(app.filter_prefix(), Some("85a8"));
     press(&mut app, Key::Esc);
+    assert_eq!(
+        app.selected_project()
+            .map(|p| p.as_str().rsplit('/').next().unwrap()),
+        Some("Calira")
+    );
+}
+
+#[test]
+fn a_filter_shows_the_project_the_command_line_chose_in_the_projects_pane() {
+    // The filter is shown after the lists are seeded, so the Projects pane
+    // has the project `--project` names, as at a start without the prefix.
+    let request = Request {
+        project: Some("calira".to_owned()),
+        ..request("85a8")
+    };
+    let app = started(&request, prefixed_index());
+    assert_eq!(app.filter_prefix(), Some("85a8"));
+    assert_eq!(app.focused_pane(), Pane::Sessions);
     assert_eq!(
         app.selected_project()
             .map(|p| p.as_str().rsplit('/').next().unwrap()),
@@ -556,7 +575,19 @@ fn opening_directly_without_an_index_shows_the_project_by_its_id() {
             at(2026, 10, 21, 9, 35, 15),
         )
     };
-    rig.app.open_summary(CLAUDE, summary);
+    let path = PathBuf::from(format!("/somewhere/{BRIO_SESSION}.jsonl"));
+    start_with(
+        &mut rig.app,
+        Startup {
+            resolution: Resolution {
+                target: Target::File(path),
+                preselect: Preselect::default(),
+                warnings: Vec::new(),
+            },
+            index: Vec::new(),
+            open: Some((CLAUDE, summary)),
+        },
+    );
     rig.pump_until(App::session_loaded);
     assert_eq!(rig.app.open_session_id(), Some((CLAUDE, &id(BRIO_SESSION))));
 }
@@ -652,14 +683,43 @@ fn an_unknown_project_warns_and_the_normal_preselection_is_used() {
 }
 
 #[test]
+fn the_startup_warnings_show_before_the_session_opens() {
+    // No harness or session channel is set, so the session cannot open: its
+    // toast comes after the warnings' and replaces it.
+    let mut init = init(&[CLAUDE], theme("default"));
+    init.warnings.push(crate::config::ConfigWarning {
+        key: "k".to_owned(),
+        message: "unknown key \"x\"".to_owned(),
+    });
+    let mut app = App::new(init, EventListenerCfg::default(), PathBuf::from("/nowhere")).unwrap();
+    assert_eq!(app.toast_text(), None, "nothing is shown before the start");
+    let summary = session(
+        &brio(),
+        BRIO_SESSION,
+        "Investigate the camera profiles",
+        at(2026, 10, 21, 8, 35, 15),
+        at(2026, 10, 21, 9, 35, 15),
+    );
+    let mut startup = selector_start(Preselect::default(), Vec::new());
+    startup.open = Some((CLAUDE, summary));
+    start_with(&mut app, startup);
+    assert_eq!(app.toast_text(), Some("Cannot open the session"));
+}
+
+#[test]
 fn the_working_directory_rule_is_used_without_a_project() {
     let mut app = empty_app_in(
         &[CLAUDE],
         theme("default"),
         "/home/jacob/Development/projects/BRIO/src",
     );
-    app.set_preselection(Preselect::default());
-    app.seed_index(&[harness_index(fixture_snapshot(CLAUDE))]);
+    start_with(
+        &mut app,
+        selector_start(
+            Preselect::default(),
+            vec![harness_index(fixture_snapshot(CLAUDE))],
+        ),
+    );
     assert_eq!(
         app.selected_project().map(|p| p.as_str()),
         Some("/home/jacob/Development/projects/BRIO")
@@ -673,10 +733,11 @@ fn a_harness_preselects_its_tab_when_it_reports_after_another() {
     let dir = "/home/jacob/Development/projects/BRIO";
     for opencode_first in [false, true] {
         let mut app = empty_app_in(&[CLAUDE, OPENCODE], theme("default"), dir);
-        app.set_preselection(Preselect {
+        let preselect = Preselect {
             harness: Some(OPENCODE),
             project: None,
-        });
+        };
+        start_with(&mut app, selector_start(preselect, Vec::new()));
         let mut snapshots = [fixture_snapshot(CLAUDE), fixture_snapshot(OPENCODE)];
         if opencode_first {
             snapshots.reverse();
@@ -696,10 +757,11 @@ fn a_harness_preselects_its_tab_when_it_reports_after_another() {
 #[test]
 fn an_unavailable_harness_is_not_preselected() {
     let mut app = empty_app_in(&[CLAUDE, OPENCODE], theme("default"), "/nowhere");
-    app.set_preselection(Preselect {
+    let preselect = Preselect {
         harness: Some(OPENCODE),
         project: None,
-    });
+    };
+    start_with(&mut app, selector_start(preselect, Vec::new()));
     send(&mut app, fixture_snapshot(CLAUDE));
     send(
         &mut app,
@@ -956,8 +1018,7 @@ fn errors_of_the_command_line_are_reported_before_anything_starts() {
         &crate::config::Config::default(),
         &harnesses,
     )
-    .err()
-    .expect("an error");
+    .expect_err("an error");
     assert_eq!(err.to_string(), "no such file: /no/such/file.jsonl");
     let err = resolve_startup(
         &request("zzz"),
@@ -965,7 +1026,6 @@ fn errors_of_the_command_line_are_reported_before_anything_starts() {
         &crate::config::Config::default(),
         &harnesses,
     )
-    .err()
-    .expect("an error");
+    .expect_err("an error");
     assert_eq!(err.to_string(), "no session matches \"zzz\"");
 }

@@ -3,17 +3,46 @@
 //! to who had it. The content is made by the transcript when the key is
 //! pressed and never changes while the overlay is open.
 
-use ratatui::layout::Rect;
-use tuirealm::component::{AppComponent, Component};
+use ratatui::layout::{Rect, Size};
+use tuirealm::component::AppComponent;
 
 use super::layout::{layout, overlay_max_width, too_small};
 use super::redraw::RedrawRequest;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
-    DESIRED_SIZE_ATTR, DetailsContent, DetailsOverlay, DetailsRequest, INTERIOR_ATTR,
-    MAX_WIDTH_ATTR, compose, interior_of, interior_value, max_width_value, payload_from_value,
+    DetailsContent, DetailsOverlay, DetailsRequest, INTERIOR_ATTR, compose, interior_of,
+    interior_value,
 };
 use crate::model::SourceGroup;
+
+/// What the app keeps while the details overlay is open: the content it
+/// shows, which never changes while it is open, and the size the overlay
+/// wants at the current screen width.
+#[derive(Debug, Clone)]
+pub(super) struct DetailsSizing {
+    content: DetailsContent,
+    /// The size the overlay wants, borders included.
+    pub size: Size,
+}
+
+impl DetailsSizing {
+    /// The sizing of `content` on a screen `screen_width` columns wide.
+    fn new(content: DetailsContent, screen_width: u16) -> Self {
+        let size = Self::size_of(&content, screen_width);
+        Self { content, size }
+    }
+
+    /// As wide as the content's widest row, but at most the screen less the
+    /// margin, and as high as the content wrapped at that width.
+    fn size_of(content: &DetailsContent, screen_width: u16) -> Size {
+        content.desired_size(overlay_max_width(screen_width))
+    }
+
+    /// Recomputes the size for a screen `screen_width` columns wide.
+    fn resize(&mut self, screen_width: u16) {
+        self.size = Self::size_of(&self.content, screen_width);
+    }
+}
 
 impl App {
     /// Mounts the details overlay for `request` and gives it the focus. Does
@@ -38,18 +67,16 @@ impl App {
             return;
         }
         let content = self.compose_details(request);
-        let mut overlay = DetailsOverlay::new(content, self.theme.clone(), self.keymap.clone());
-        let max_width = overlay_max_width(self.size.0);
-        overlay.attr(MAX_WIDTH_ATTR, max_width_value(max_width));
         // Wrapped at the width the screen leaves it, the content is as high
         // as it will be drawn.
-        let wanted = overlay.desired_size(max_width);
+        let sizing = DetailsSizing::new(content.clone(), self.size.0);
+        let overlay = DetailsOverlay::new(content, self.theme.clone(), self.keymap.clone());
         let component: Box<dyn AppComponent<Msg, UserEvent>> = Box::new(overlay);
         if let Err(err) = self.open_overlay(Id::DetailsOverlay, component) {
             log::error!("could not mount the details overlay: {err}");
             return;
         }
-        self.details_size = Some(wanted);
+        self.details = Some(sizing);
         self.refresh_routing();
         self.push_details_interior();
         self.request_redraw(RedrawRequest::Dirty);
@@ -73,14 +100,14 @@ impl App {
         if !self.application.mounted(&Id::DetailsOverlay) {
             return;
         }
-        self.details_size = None;
+        self.details = None;
         self.close_overlay(Id::DetailsOverlay);
     }
 
     /// Unmounts the details overlay without returning the focus (the screen
     /// under it is being replaced).
     pub(super) fn drop_details(&mut self) {
-        self.details_size = None;
+        self.details = None;
         if self.application.mounted(&Id::DetailsOverlay)
             && let Err(err) = self.application.umount(&Id::DetailsOverlay)
         {
@@ -88,35 +115,21 @@ impl App {
         }
     }
 
-    /// Asks the details overlay for the size it wants at the current screen
-    /// width: as wide as its widest row, but at most the screen less the
-    /// margin, and as high as its content wrapped at that width. Called when
-    /// the size changes, before the routing layout is refreshed, so that the
-    /// overlay follows the screen it is on.
+    /// Recomputes the size the details overlay wants from its content at
+    /// the current screen width (see [`DetailsSizing`]). Called when the size
+    /// changes, before the routing layout is refreshed, so that the overlay
+    /// follows the screen it is on.
     pub(super) fn refresh_details_size(&mut self) {
-        if self.details_size.is_none() {
-            return;
-        }
-        self.set_attr(
-            Id::DetailsOverlay,
-            MAX_WIDTH_ATTR,
-            max_width_value(overlay_max_width(self.size.0)),
-        );
-        let wanted = self
-            .application
-            .query(&Id::DetailsOverlay, DESIRED_SIZE_ATTR)
-            .ok()
-            .flatten()
-            .and_then(|value| payload_from_value(&value.into_attr()));
-        if wanted.is_some() {
-            self.details_size = wanted;
+        let width = self.size.0;
+        if let Some(details) = &mut self.details {
+            details.resize(width);
         }
     }
 
     /// Tells the details overlay how many rows and columns its interior has
     /// at the current size.
     pub(super) fn push_details_interior(&mut self) {
-        if self.details_size.is_none() {
+        if self.details.is_none() {
             return;
         }
         let area = Rect::new(0, 0, self.size.0, self.size.1);

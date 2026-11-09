@@ -21,28 +21,16 @@ pub use compose::{DetailsRequest, compose};
 pub use content::{DetailsContent, DetailsGroup, DetailsRow};
 
 use super::overlay_frame::{FrameKey, INTERIOR_ATTR, OverlayFrame, interior_value};
-use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
+use super::{THEME_ATTR, payload_from_value, theme_from_value, theme_value};
 use crate::app::{Msg, RoutedMouse, UserEvent};
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
 use crate::theme::Theme;
 
-/// The attribute that tells the overlay the most columns it may be wide, the
-/// screen's less its margin (a `u16` payload, see [`max_width_value`]).
-pub const MAX_WIDTH_ATTR: Attribute = Attribute::Custom("details_max_width");
-/// The attribute the overlay answers its wanted size with, borders included
-/// (a [`Size`] payload): as wide as the widest row plus eight columns, but at
-/// most [`MAX_WIDTH_ATTR`], and as high as the content wrapped at that width.
-pub const DESIRED_SIZE_ATTR: Attribute = Attribute::Custom("details_desired_size");
-
-/// The attribute value that sets the most columns the overlay may be wide.
-pub fn max_width_value(width: u16) -> AttrValue {
-    payload_value(width)
-}
-
 /// The details overlay. It takes the focus; `Esc` or the `details` key
 /// closes it, the up and down keys scroll a row and the page keys a page.
 ///
-/// `view` gets the overlay's rect (see `App`'s layout) as its area. Values
+/// `view` gets the overlay's rect (see `App`'s layout) as its area; the `App`
+/// sizes it with [`DetailsContent::desired_size`] before mounting it. Values
 /// wider than the interior are wrapped at the width the overlay is drawn
 /// with; the rows that scrolling counts are those of the announced interior
 /// (see [`INTERIOR_ATTR`]).
@@ -52,8 +40,6 @@ pub struct DetailsOverlay {
     frame: OverlayFrame,
     /// Resolves the `details` key, which can be a two-key chord.
     resolver: KeyResolver,
-    /// The most columns the overlay may be wide.
-    max_width: u16,
 }
 
 impl DetailsOverlay {
@@ -63,14 +49,7 @@ impl DetailsOverlay {
             content,
             frame: OverlayFrame::new("Details", theme, keymap),
             resolver: KeyResolver::new(Context::Browser),
-            max_width: u16::MAX,
         }
-    }
-
-    /// The size the overlay wants, borders included, when it may be at most
-    /// `max_width` columns wide (see [`DetailsContent::desired_size`]).
-    pub fn desired_size(&self, max_width: u16) -> Size {
-        self.content.desired_size(max_width)
     }
 
     /// The rows of the content at the announced interior width; nothing
@@ -96,9 +75,6 @@ impl Component for DetailsOverlay {
             self.frame
                 .interior()
                 .map(|size| QueryResult::Owned(interior_value(size)))
-        } else if attr == DESIRED_SIZE_ATTR {
-            let size = self.desired_size(self.max_width);
-            Some(QueryResult::Owned(payload_value(size)))
         } else {
             None
         }
@@ -114,10 +90,6 @@ impl Component for DetailsOverlay {
         {
             self.frame
                 .set_interior(size, self.content.row_count(size.width));
-        } else if attr == MAX_WIDTH_ATTR
-            && let Some(width) = payload_from_value::<u16>(&value)
-        {
-            self.max_width = width;
         }
     }
 
@@ -285,19 +257,6 @@ mod tests {
         assert_eq!(press(&mut overlay, Key::Char('x')), None);
         assert_eq!(press(&mut overlay, Key::Esc), Some(Msg::CloseDetails));
         assert_eq!(press(&mut overlay, Key::Char('i')), None);
-    }
-
-    #[test]
-    fn it_answers_the_size_it_wants_for_the_width_it_may_have() {
-        let mut overlay = overlay(10);
-        let wanted = |overlay: &DetailsOverlay| {
-            let value = overlay.query(DESIRED_SIZE_ATTR).unwrap().into_attr();
-            payload_from_value::<Size>(&value).unwrap()
-        };
-        assert_eq!(wanted(&overlay), overlay.desired_size(u16::MAX));
-        overlay.attr(MAX_WIDTH_ATTR, max_width_value(30));
-        assert_eq!(wanted(&overlay), overlay.desired_size(30));
-        assert_eq!(wanted(&overlay).width, 30);
     }
 
     /// An overlay whose browser keys are `bindings` (action, key).

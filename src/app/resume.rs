@@ -149,7 +149,7 @@ impl App {
     pub(super) fn request_resume(&mut self, target: Option<(HarnessId, SessionId)>) {
         let busy = self.application.mounted(&Id::Prompt)
             || self.help_size.is_some()
-            || self.details_size.is_some()
+            || self.details.is_some()
             || self.theme_selector.is_some();
         if busy {
             return;

@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use tuirealm::terminal::TerminalAdapter;
 
-use super::hints::COMMAND_LINE_KEY;
+use super::hints::{COMMAND_LINE_KEY, startup_toast_text};
 use super::redraw::RedrawLimiter;
 use super::resume::{SystemSteps, hand_off};
 use super::startup::AppInit;
@@ -56,20 +56,34 @@ pub fn run_loop<T: TerminalAdapter>(
     Ok(())
 }
 
-/// Tells the app what the command line resolved to. The harnesses and the
-/// session channel are set already.
+/// Tells the app what the command line resolved to, in a
+/// [`Msg::Start`]. The harnesses and the session channel are set already.
 pub(super) fn start_with(app: &mut App, startup: Startup) {
-    let Startup {
-        resolution,
-        index,
-        open,
-    } = startup;
-    app.set_preselection(resolution.preselect);
-    app.seed_index(&index);
-    match (open, resolution.target) {
-        (Some((harness, summary)), _) => app.open_summary(harness, summary),
-        (None, Target::Filtered { prefix, matches }) => app.show_filtered(&prefix, &matches),
-        (None, _) => {}
+    app.update(Msg::Start(Box::new(startup)));
+}
+
+impl App {
+    /// Starts with what the command line resolved to (product §5.8): shows
+    /// the startup warnings, sets the preselection, then gives the selector
+    /// the lists the command line was resolved against, and after both opens
+    /// the session the command line names or lists the sessions its prefix
+    /// matches.
+    pub(super) fn start(&mut self, startup: Startup) {
+        let Startup {
+            resolution,
+            index,
+            open,
+        } = startup;
+        if let Some(text) = startup_toast_text(self.warnings()) {
+            self.toast_quiet(text);
+        }
+        self.set_preselection(resolution.preselect);
+        self.seed_index(&index);
+        match (open, resolution.target) {
+            (Some((harness, summary)), _) => self.open_summary(harness, summary),
+            (None, Target::Filtered { prefix, matches }) => self.show_filtered(&prefix, &matches),
+            (None, _) => {}
+        }
     }
 }
 
@@ -89,7 +103,9 @@ fn start_index(harnesses: Vec<Arc<dyn Harness>>, paths: Option<&Paths>) -> Optio
 }
 
 /// What the command line asks the app to start with, resolved (product §5.8).
-pub(super) struct Startup {
+/// [`Msg::Start`] carries it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Startup {
     pub(super) resolution: Resolution,
     /// The lists the request was resolved against; empty when it did not
     /// need them.
