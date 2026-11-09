@@ -67,8 +67,8 @@ pub use project_list::{
 pub use prompt::{Prompt, PromptMode};
 pub use selector_frame::{RESUME_OPEN_ATTR, SelectorFrame};
 pub use session_list::{
-    ACTIVE_ATTR, ActiveSessions, SEARCH_NAV_ATTR, SESSION_FILTERED_ATTR, SESSION_ROWS_ATTR,
-    SESSION_STATS_ATTR, SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_stats,
+    ACTIVE_ATTR, ActiveSessions, SESSION_FILTERED_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR,
+    SessionList, SessionRow, SessionRows, SessionStatsUpdate, format_stats,
 };
 pub use session_time::{SESSION_TIME_ATTR, SessionTime, SessionTimes};
 pub use session_tokens::{SESSION_TOKENS_ATTR, SessionTokens};

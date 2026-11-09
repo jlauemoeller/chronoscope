@@ -4,9 +4,11 @@
 //! `/` mounts the [`Prompt`] over the help line and gives it the focus; the
 //! Sessions pane keeps its focused look and, once the query is not empty,
 //! lists the sessions of every project of the harness that match it. `↑` /
-//! `↓` in the prompt move the selection in the list (the `App` forwards them
-//! as an attribute), `Enter` asks to open the selected result and `Esc`
-//! clears the query and puts the selector back as the search found it.
+//! `↓` in the prompt move the selected result, which the `App` keeps and
+//! pushes to the list (cycle 5 spec, §9.1); a click or a wheel step on a
+//! result row is reported by the list and moves it too. `Enter` asks to open
+//! the selected result and `Esc` clears the query and puts the selector back
+//! as the search found it.
 
 use std::sync::Arc;
 
@@ -18,10 +20,7 @@ use tuirealm::props::{AttrValue, Attribute};
 use super::search_worker::{SearchRequest, SearchResult, SearchUpdate, SearchWorker};
 use super::selector::SelectorState;
 use super::{App, Id, Msg, Pane};
-use crate::components::{
-    Prompt, PromptMode, SEARCH_NAV_ATTR, SELECTED_ATTR, SESSION_ROWS_ATTR, SessionRow, SessionRows,
-    payload_value, selected_from_value,
-};
+use crate::components::{Prompt, PromptMode, SessionRow, SessionRows};
 use crate::index::SessionMap;
 use crate::model::{Project, SessionId, SessionSummary, is_active};
 
@@ -178,22 +177,13 @@ impl App {
             .map_or(&[], |search| search.hits.as_slice())
     }
 
-    /// The selected search result, if there is one.
+    /// The selected search result, if there is one: the result at the index
+    /// the App keeps for the Sessions pane ([`ListedSessions`]).
+    ///
+    /// [`ListedSessions`]: super::selector::ListedSessions
     pub fn selected_result(&self) -> Option<SessionId> {
-        let index = self.selected_row()?;
+        let index = self.selector.listed.selected()?;
         self.search_results().get(index).cloned()
-    }
-
-    /// The row selected in the Sessions pane, asked of the list. While the
-    /// results are listed the list moves its own cursor (`SEARCH_NAV_ATTR`)
-    /// and reports no message, so this is how the app learns the selection.
-    pub(super) fn selected_row(&self) -> Option<usize> {
-        let value = self
-            .application
-            .query(&Id::SessionList, SELECTED_ATTR)
-            .ok()??
-            .into_attr();
-        selected_from_value(&value)?
     }
 
     /// `/`: opens the prompt. The Sessions pane gets the focus (and the
@@ -245,10 +235,14 @@ impl App {
         self.push_sessions();
     }
 
-    /// `↑` / `↓` in the prompt: the list moves its selection.
+    /// `↑` / `↓` in the prompt: moves the selected row the App keeps for
+    /// the Sessions pane by one, as the list's own keys would, and pushes it
+    /// to the list.
     pub(super) fn search_nav(&mut self, direction: Direction) {
         if self.selector.search_shows_results() {
-            self.set_attr(Id::SessionList, SEARCH_NAV_ATTR, payload_value(direction));
+            let selected = self.selector.listed.stepped(direction);
+            self.selector.listed.select(selected);
+            self.push_listed_selection();
         }
     }
 
@@ -395,7 +389,7 @@ impl App {
             selected,
             harness_empty: false,
         };
-        self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
+        self.push_session_rows(rows);
     }
 
     /// Gives the lists the look of the pane that has the focus. While the

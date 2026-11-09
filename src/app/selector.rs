@@ -7,13 +7,16 @@
 //! The `App` owns the data and the selection. The lists own their cursor and
 //! scroll offset and report the user's moves as [`SelectorMsg`]s; when the
 //! data changes the `App` works out the new selection (by id, falling back to
-//! the same index) and pushes rows and selection into the components.
+//! the same index) and pushes rows and selection into the components. It
+//! keeps what it gave the Sessions pane ([`ListedSessions`]), so it never
+//! reads a list back.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use tuirealm::application::{Application, ApplicationError};
+use tuirealm::command::Direction;
 use tuirealm::props::{AttrValue, Attribute};
 
 use super::hints::{filtered_selector_hints, selector_hints};
@@ -192,6 +195,66 @@ pub(super) struct Filter {
     matches: HashSet<(HarnessId, SessionId)>,
 }
 
+/// What the App last gave the Sessions pane: the sessions of its rows, in
+/// row order, and the row selected there.
+///
+/// The App keeps it so that it never reads the list back (cycle 5 spec,
+/// §9.1). It records every push of rows or of a selection, and every move of
+/// the cursor the list reports (a key, a click or the wheel). While search
+/// results are listed it is the App's own search state: `↑` / `↓` in the
+/// prompt move its selection, which the App then pushes to the list.
+#[derive(Debug, Default)]
+pub(super) struct ListedSessions {
+    ids: Vec<SessionId>,
+    selected: Option<usize>,
+}
+
+impl ListedSessions {
+    /// Records the rows `rows` with `selected` selected, which the list
+    /// ignores when it is out of range.
+    fn set(&mut self, rows: &[SessionRow], selected: Option<usize>) {
+        self.ids = rows.iter().map(|row| row.id.clone()).collect();
+        self.select(selected);
+    }
+
+    /// Records `selected` as the selected row, as the list takes it: out of
+    /// range, nothing is selected.
+    pub(super) fn select(&mut self, selected: Option<usize>) {
+        self.selected = selected.filter(|&row| row < self.ids.len());
+    }
+
+    /// Records that the row of session `id` is selected. A session that is
+    /// not listed changes nothing.
+    fn select_id(&mut self, id: &SessionId) {
+        if let Some(row) = self.ids.iter().position(|listed| listed == id) {
+            self.selected = Some(row);
+        }
+    }
+
+    /// The selected row, if any.
+    pub(super) fn selected(&self) -> Option<usize> {
+        self.selected
+    }
+
+    /// The session of the selected row, if any.
+    pub(super) fn selected_id(&self) -> Option<&SessionId> {
+        self.ids.get(self.selected?)
+    }
+
+    /// The row a step in `direction` selects, by the rules of the list's
+    /// cursor: it never wraps around, `Down` with nothing selected selects
+    /// the first row, and any other direction than `Up` or `Down` keeps the
+    /// selection.
+    pub(super) fn stepped(&self, direction: Direction) -> Option<usize> {
+        match (direction, self.selected) {
+            (Direction::Up, Some(row)) => Some(row.saturating_sub(1)),
+            (Direction::Down, Some(row)) => Some((row + 1).min(self.ids.len().saturating_sub(1))),
+            (Direction::Down, None) => (!self.ids.is_empty()).then_some(0),
+            _ => self.selected,
+        }
+    }
+}
+
 /// The selector's domain state.
 #[derive(Debug, Default)]
 pub(super) struct SelectorState {
@@ -223,6 +286,8 @@ pub(super) struct SelectorState {
     pub(super) filtered: Option<Filter>,
     /// The sessions listed while filtered, in row order.
     pub(super) shown: Vec<SessionId>,
+    /// What the Sessions pane was last given, and its selection.
+    pub(super) listed: ListedSessions,
     /// What the Session Time and Session Tokens panels were last given.
     pub(super) panels: super::session_panels::PanelValues,
 }
@@ -621,7 +686,9 @@ impl App {
             return;
         };
         let previous = self
-            .selected_row()
+            .selector
+            .listed
+            .selected()
             .and_then(|row| self.selector.shown.get(row).cloned());
         let now = (self.clock)();
         let harness = self.selector.current;
@@ -662,7 +729,7 @@ impl App {
             selected,
             harness_empty: false,
         };
-        self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
+        self.push_session_rows(rows);
     }
 
     /// The sessions that show the `●` marker: those of the selected project
@@ -903,9 +970,15 @@ impl App {
         self.push_cwd();
     }
 
+    /// The Sessions pane's cursor is on the row of session `id` now: the
+    /// list reported a key, a click or the wheel that moved it there.
     pub(super) fn session_selected(&mut self, id: SessionId) {
+        self.selector.listed.select_id(&id);
         if self.selector.filtered.is_some() || self.selector.search_shows_results() {
-            // The list moved its own cursor over sessions of any project.
+            // The rows are sessions of any project: the selection is the
+            // row's, which the App has just recorded. Pushing it back keeps
+            // the list right when the message came from elsewhere.
+            self.push_listed_selection();
             self.request_redraw(RedrawRequest::Dirty);
             return;
         }
@@ -1121,16 +1194,30 @@ impl App {
             selected: self.selector.session_index(),
             harness_empty: self.selector.harness_empty(),
         };
+        self.push_session_rows(rows);
+    }
+
+    /// Gives the Sessions pane `rows`, and records what it was given.
+    pub(super) fn push_session_rows(&mut self, rows: SessionRows) {
+        self.selector.listed.set(&rows.rows, rows.selected);
         self.set_attr(Id::SessionList, SESSION_ROWS_ATTR, payload_value(rows));
     }
 
+    /// Selects the selected session's row in the Sessions pane. The filtered
+    /// selector keeps the row it has: its selection is not the selected
+    /// session of a project.
     pub(super) fn push_session_selection(&mut self) {
         if self.selector.filtered.is_some() {
-            // The list moves its own cursor over the matches.
             self.request_redraw(RedrawRequest::Dirty);
             return;
         }
-        let selected = self.selector.session_index();
+        self.selector.listed.select(self.selector.session_index());
+        self.push_listed_selection();
+    }
+
+    /// Pushes the selection the App keeps for the Sessions pane to it.
+    pub(super) fn push_listed_selection(&mut self) {
+        let selected = self.selector.listed.selected();
         self.set_attr(Id::SessionList, SELECTED_ATTR, selected_value(selected));
     }
 
@@ -1189,8 +1276,10 @@ impl App {
                     viewport_value(transcript.as_size()),
                 );
             }
-            // A new size can show the end again, which resumes following.
+            // A new size can show the end again, which resumes following,
+            // and can move the selection.
             self.sync_new_sections();
+            self.sync_selection();
         }
     }
 
@@ -1213,6 +1302,60 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn listed(rows: usize, selected: Option<usize>) -> ListedSessions {
+        let mut listed = ListedSessions::default();
+        let rows: Vec<SessionRow> = (0..rows)
+            .map(|n| SessionRow {
+                id: SessionId::from(format!("s{n}")),
+                started: String::new(),
+                title: String::new(),
+                project: None,
+                active: false,
+                stats: None,
+            })
+            .collect();
+        listed.set(&rows, selected);
+        listed
+    }
+
+    #[test]
+    fn a_step_of_the_listed_selection_does_not_wrap() {
+        let mut l = listed(3, Some(0));
+        let step = |l: &mut ListedSessions, direction| {
+            let selected = l.stepped(direction);
+            l.select(selected);
+            l.selected()
+        };
+        assert_eq!(step(&mut l, Direction::Up), Some(0));
+        step(&mut l, Direction::Down);
+        assert_eq!(step(&mut l, Direction::Down), Some(2));
+        assert_eq!(step(&mut l, Direction::Down), Some(2));
+        assert_eq!(step(&mut l, Direction::Up), Some(1));
+        // Other directions change nothing.
+        assert_eq!(step(&mut l, Direction::Left), Some(1));
+        assert_eq!(step(&mut l, Direction::Right), Some(1));
+        assert_eq!(l.selected_id().map(SessionId::as_str), Some("s1"));
+        // `Down` with nothing selected selects the first row, `Up` nothing;
+        // an empty list has nothing to select.
+        let mut l = listed(3, None);
+        assert_eq!(step(&mut l, Direction::Up), None);
+        assert_eq!(step(&mut l, Direction::Down), Some(0));
+        let mut l = listed(0, None);
+        assert_eq!(step(&mut l, Direction::Down), None);
+    }
+
+    #[test]
+    fn the_listed_selection_is_dropped_out_of_range_and_follows_reported_rows() {
+        let mut l = listed(3, Some(7));
+        assert_eq!(l.selected(), None, "as the list drops it");
+        l.select_id(&SessionId::from("s2"));
+        assert_eq!(l.selected(), Some(2));
+        l.select_id(&SessionId::from("elsewhere"));
+        assert_eq!(l.selected(), Some(2), "a session not listed moves nothing");
+        l.select(Some(3));
+        assert_eq!(l.selected_id(), None);
+    }
 
     #[test]
     fn reselect_keeps_the_item_when_its_index_moves() {

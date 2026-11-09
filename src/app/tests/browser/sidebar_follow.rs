@@ -3,6 +3,7 @@
 //! moved that selection, and it stays visible.
 
 use ratatui::layout::Rect;
+use tuirealm::command::Cmd;
 use tuirealm::event::{MouseEvent, MouseEventKind};
 
 use super::sidebar::{entry_kinds, pane_rows, sidebar_rows};
@@ -477,6 +478,30 @@ fn pushing_the_selection_produces_no_message() {
     ));
     assert_eq!(sidebar_entry(&rig.app), Some(8));
     assert_eq!(rig.app.take_queued(), []);
+}
+
+#[test]
+fn the_app_takes_the_selection_from_the_transcripts_report_not_after_every_message() {
+    let mut rig = rig();
+    rig.open_loaded();
+    rig.press(Key::Char(']'));
+    rig.settle();
+    let before = assert_follows(&rig.app, "after the key");
+    // Move the transcript's selection behind the App's back: no report.
+    let top = rig.app.top_transcript();
+    let component = rig.app.application_mut().get_component_mut(&top).unwrap();
+    component.perform(Cmd::Custom(crate::components::transcript::NEXT_TURN));
+    let moved = section(&rig.app).expect("a selection");
+    assert_ne!(followed_entry(&rig.app), Some(before), "it moved");
+    // A tick, a redraw request and a prompt's cursor ask the transcript
+    // nothing: the sidebar stays.
+    rig.app.update(Msg::Tick);
+    rig.app.update(Msg::TranscriptChanged);
+    rig.app.update(Msg::PromptMoved);
+    assert_eq!(sidebar_entry(&rig.app), Some(before));
+    // The report is what it follows.
+    rig.app.update(Msg::SelectionChanged(moved));
+    assert_follows(&rig.app, "after the report");
 }
 
 #[test]

@@ -267,7 +267,10 @@ fn n_and_capital_n_cycle_through_the_matches_with_wrap_around() {
     for _ in 0..5 {
         assert!(matches!(
             ch(&mut t, 'n'),
-            Some(Msg::SearchPosition(Some(_)))
+            Some(Msg::SearchPosition {
+                position: Some(_),
+                ..
+            })
         ));
         seen.push(shown(&t).unwrap());
     }
@@ -284,12 +287,24 @@ fn n_and_capital_n_cycle_through_the_matches_with_wrap_around() {
 fn a_key_reports_the_position_as_a_message() {
     let mut t = searching();
     search(&mut t, "usb");
+    let before = t.selected().cloned();
+    let msg = ch(&mut t, 'n');
+    let now = t.selected().cloned();
+    assert_ne!(now, before, "the jump moved the selection");
+    // The one message carries the selection the jump moved.
     assert_eq!(
-        ch(&mut t, 'n'),
-        Some(Msg::SearchPosition(Some(SearchPosition {
-            current: 2,
-            total: 5
-        })))
+        msg,
+        Some(Msg::SearchPosition {
+            position: Some(SearchPosition {
+                current: 2,
+                total: 5
+            }),
+            view: ViewChange {
+                changed: true,
+                new_sections: None,
+                selection: now,
+            },
+        })
     );
 }
 
@@ -475,9 +490,16 @@ fn escape_clears_the_temporary_unfold() {
     search(&mut t, "usb");
     ch(&mut t, 'n');
     assert!(unfolded(&t, &tool()));
-    assert_eq!(press(&mut t, Key::Esc), Some(Msg::SearchPosition(None)));
+    let Some(Msg::SearchPosition {
+        position: None,
+        view,
+    }) = press(&mut t, Key::Esc)
+    else {
+        panic!("Esc clears the search");
+    };
     assert!(folded(&t, &tool()));
     assert_eq!(t.selected(), Some(&tool()), "the selection stays");
+    assert_eq!(view.selection, None, "and no selection is reported");
 }
 
 #[test]
@@ -692,7 +714,10 @@ fn escape_removes_the_highlights_and_the_position() {
     let mut t = searching();
     search(&mut t, "usb");
     assert!(!highlighted(&mut t).is_empty());
-    assert_eq!(press(&mut t, Key::Esc), Some(Msg::SearchPosition(None)));
+    assert!(matches!(
+        press(&mut t, Key::Esc),
+        Some(Msg::SearchPosition { position: None, .. })
+    ));
     assert!(highlighted(&mut t).is_empty());
     assert_eq!(position(&t), None);
     // The keys are inert again.
@@ -1684,4 +1709,30 @@ mod subagent_title {
         assert_eq!(highlighted(&mut t), ["transcript"]);
         assert!(rows(&mut t).contains("a to open transcript"));
     }
+}
+
+#[test]
+fn a_jump_to_the_end_reports_the_count_of_new_sections_it_reset() {
+    let mut turns = search_session();
+    turns.extend((0..12).map(|i| arc(reply(&format!("f{i}"), "Filler."))));
+    let mut t = transcript_of(turns, WIDTH, 10);
+    assert!(!t.following(), "the end is out of view");
+    t.apply_update(&ModelUpdate::Appended(vec![arc(reply(
+        "z1",
+        "A last usb mention.",
+    ))]));
+    assert_eq!(t.new_sections(), 1);
+    search(&mut t, "usb");
+    assert!(!t.following());
+    // Back from the first match wraps to the last one, at the end: following
+    // resumes, and the one message says so with the selection it moved.
+    let Some(Msg::SearchPosition { position, view }) = ch(&mut t, 'N') else {
+        panic!("the key reports the position");
+    };
+    assert!(t.following());
+    assert_eq!(t.new_sections(), 0);
+    assert_eq!(position.map(|p| p.current), position.map(|p| p.total));
+    assert_eq!(view.new_sections, Some(0));
+    assert_eq!(view.selection.as_ref(), t.selected());
+    assert!(view.selection.is_some());
 }

@@ -55,6 +55,7 @@ use tuirealm::listener::EventListenerCfg;
 use tuirealm::subscription::{EventClause, Sub, SubClause};
 
 use crate::clipboard::{Clipboard, NoClipboard};
+use crate::components::turn_block::SectionId;
 use crate::components::{
     DetailsRequest, EmptyState, GlobalEvents, HelpContext, TOAST_DURATION, TOO_SMALL, Toast,
 };
@@ -214,20 +215,30 @@ pub enum Msg {
     PromptChanged(String),
     /// Only the prompt's cursor moved: nothing but a redraw is needed.
     PromptMoved,
-    /// A key changed what the transcript shows (selection, scroll, folds):
-    /// nothing but a redraw is needed.
+    /// A key or the wheel changed what the transcript shows (scroll, folds)
+    /// but not its selection: nothing but a redraw is needed.
     TranscriptChanged,
-    /// The transcript counts this many sections that arrived while the user
-    /// was away from the end (`↓ N new`); 0 once following resumes. Keys
-    /// report it this way; after the updates and viewport changes it
-    /// forwards, the App reads the count from the transcript itself.
-    NewSections(usize),
+    /// A key or the wheel moved the transcript's selection to this section,
+    /// and changed nothing else the App shows: the turns sidebar follows it.
+    SelectionChanged(SectionId),
+    /// The transcript counts `count` sections that arrived while the user
+    /// was away from the end (`↓ N new`); 0 once following resumes. A key or
+    /// the wheel reports it this way, with `selection`, the section it
+    /// selected, when it also moved the selection (`G`). After the updates
+    /// and viewport changes the App pushes, it reads the count right after
+    /// the push (cycle 5 spec, §0 item 5).
+    NewSections {
+        count: usize,
+        selection: Option<SectionId>,
+    },
     /// `Enter` in the prompt, with its text (`"y"` for a yes in a `y/n`
     /// prompt).
     PromptSubmit(String),
     /// `Esc` in the prompt, or a no in a `y/n` prompt.
     PromptCancel,
-    /// `↑` or `↓` in the prompt, for its owner to use.
+    /// `↑` or `↓` in the prompt, for its owner to use: over search results
+    /// in the selector, the App moves the selected result it keeps and
+    /// pushes it to the Sessions pane.
     PromptNav(Direction),
     /// `/` in the transcript: open the search prompt in the help line.
     OpenSearch,
@@ -241,8 +252,13 @@ pub enum Msg {
     },
     /// The worker answered a search of the transcript.
     TranscriptSearchResults(SearchMatches),
-    /// A key moved among the matches (`3/17`) or cleared the search (`None`).
-    SearchPosition(Option<SearchPosition>),
+    /// A key moved among the matches (`3/17`) or cleared the search
+    /// (`None`), and did to the transcript's view what `view` says (the
+    /// selection a jump moved, the count of new sections).
+    SearchPosition {
+        position: Option<SearchPosition>,
+        view: ViewChange,
+    },
     /// The transcript asks for this text to be put on the clipboard: the
     /// selected section as displayed (`y`) or in full (`Y`).
     CopyText(String),
@@ -283,7 +299,8 @@ pub enum Msg {
     /// transcript to its block and focus it.
     OpenTurn(TurnId),
     /// A left press on the transcript on top, on a section or not: it asks
-    /// for the focus, and says what the press did to its view.
+    /// for the focus, and says what the press did to its view (the section
+    /// it selected, among others).
     TranscriptPressed(ViewChange),
     /// A left press or a wheel step at this position of the screen (only
     /// with `mouse = true`), in screen coordinates. It is built on the
@@ -297,27 +314,39 @@ pub enum Msg {
 }
 
 /// What an event did to the transcript's view, as its answer reports it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ViewChange {
-    /// Nothing changed.
-    Unchanged,
-    /// The selection, scroll or folds changed: nothing but a redraw is
-    /// needed (as for [`Msg::TranscriptChanged`]).
-    Changed,
-    /// The count of new sections changed to this (as for
-    /// [`Msg::NewSections`]).
-    NewSections(usize),
+/// The transcript owns its selection and its count of new sections, and
+/// reports here what a key, a click or the wheel changed of them, so the App
+/// never asks (cycle 5 spec, §9.1).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ViewChange {
+    /// Whether anything the transcript shows changed (the selection, the
+    /// scroll or the folds): a redraw is needed.
+    pub changed: bool,
+    /// The count of new sections, when the event changed it.
+    pub new_sections: Option<usize>,
+    /// The section selected now, when the event moved the selection. A
+    /// selection that went to none (every section hidden) is not reported:
+    /// the turns sidebar keeps the entry it shows, as it does for none.
+    pub selection: Option<SectionId>,
 }
 
 impl ViewChange {
-    /// The message a key that made this change answers: none,
-    /// [`Msg::TranscriptChanged`] or [`Msg::NewSections`].
+    /// The message a key or a wheel step that made this change answers:
+    /// [`Msg::NewSections`] when the count changed (with the selection, if
+    /// it moved too), else [`Msg::SelectionChanged`] when the selection
+    /// moved, else [`Msg::TranscriptChanged`] when anything else changed,
+    /// else none.
     pub fn key_answer(self) -> Option<Msg> {
-        match self {
-            Self::Unchanged => None,
-            Self::Changed => Some(Msg::TranscriptChanged),
-            Self::NewSections(count) => Some(Msg::NewSections(count)),
+        if let Some(count) = self.new_sections {
+            return Some(Msg::NewSections {
+                count,
+                selection: self.selection,
+            });
         }
+        if let Some(section) = self.selection {
+            return Some(Msg::SelectionChanged(section));
+        }
+        self.changed.then_some(Msg::TranscriptChanged)
     }
 }
 
@@ -801,7 +830,16 @@ impl App {
             }
             Msg::PromptChanged(text) => self.search_changed(text),
             Msg::PromptMoved | Msg::TranscriptChanged => self.request_redraw(RedrawRequest::Dirty),
-            Msg::NewSections(count) => self.new_sections_reported(count),
+            Msg::SelectionChanged(section) => self.view_changed(ViewChange {
+                changed: true,
+                new_sections: None,
+                selection: Some(section),
+            }),
+            Msg::NewSections { count, selection } => self.view_changed(ViewChange {
+                changed: true,
+                new_sections: Some(count),
+                selection,
+            }),
             Msg::PromptSubmit(text) if self.browser.search.prompt_open => {
                 self.transcript_prompt_submit(text);
             }
@@ -819,7 +857,7 @@ impl App {
                 generation,
             } => self.start_transcript_search(query, corpus, generation),
             Msg::TranscriptSearchResults(matches) => self.transcript_matches_arrived(&matches),
-            Msg::SearchPosition(position) => self.search_position_changed(position),
+            Msg::SearchPosition { position, view } => self.search_position_changed(position, view),
             Msg::CopyText(text) => self.copy_text(&text),
             Msg::SaveSection { text, kind } => self.save_section(text, kind),
             Msg::Export { full: _, document } => self.export_session(document),
@@ -841,7 +879,8 @@ impl App {
             Msg::TranscriptPressed(change) => self.transcript_pressed(change),
             Msg::Pointer(event) => self.pointer(event),
         }
-        // Any message may have moved the transcript's selection, or the focus.
+        // Any message may have moved the focus, which decides whether the
+        // turns sidebar follows the transcript's selection.
         self.sync_sidebar_selection();
         self.refresh_hints();
         // Any message may have selected another session or brought its stats.

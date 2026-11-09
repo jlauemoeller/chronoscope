@@ -132,9 +132,17 @@ pub(super) struct BrowserState {
     /// The save or export waiting for its path or for an overwrite to be
     /// confirmed.
     pub(super) write: Option<super::save::PendingWrite>,
+    /// The selected section of the transcript on top: as the transcript
+    /// last reported it (a key, a click or the wheel moved it), or as the App
+    /// read it right after a push that can move it (cycle 5 spec, §0 item
+    /// 5). The turns sidebar follows it.
+    selection: Option<SectionId>,
     /// The transcript's selected section as of the last push to the turns
     /// sidebar.
     sidebar_section: SidebarSection,
+    /// The text last pushed to the empty state of the browser
+    /// ([`Id::EmptySession`]).
+    empty_message: String,
     /// Whether the help line shows the hints of the turns sidebar.
     pub(super) sidebar_hints: bool,
     /// The subagent lookup whose answer is waited for, if any.
@@ -508,6 +516,7 @@ impl App {
             .mount(Id::BrowserHelpLine, Box::new(help), Vec::new())?;
         self.application
             .mount(Id::EmptySession, Box::new(empty), Vec::new())?;
+        self.browser.empty_message = EMPTY_SESSION.to_owned();
         self.configure_transcript(Id::Transcript);
         self.application.active(&Id::Transcript)
     }
@@ -636,6 +645,9 @@ impl App {
         });
         self.show_top_in_header();
         self.refresh_status();
+        // The transcript on top is the new one: its selection, not the one
+        // it covers, is the one the sidebar follows.
+        self.sync_selection();
         self.push_sidebar_rows(true);
         self.push_viewports();
         self.request_redraw(RedrawRequest::Dirty);
@@ -696,6 +708,7 @@ impl App {
         // receiving its updates while it was covered.
         self.sync_search_position();
         self.sync_new_sections();
+        self.sync_selection();
         self.refresh_session_empty();
         self.refresh_live();
         self.push_sidebar_rows(false);
@@ -769,6 +782,7 @@ impl App {
                 // The transcript decides whether to follow from here on.
                 self.forward_to_transcript(depth, update);
                 self.sync_new_sections();
+                self.sync_selection();
                 self.refresh_session_empty();
             }
             ModelUpdate::ParseWarnings(count) => {
@@ -783,12 +797,14 @@ impl App {
                 self.forward_to_transcript(depth, update);
                 self.forward_to_sidebar(update);
                 self.sync_new_sections();
+                self.sync_selection();
                 self.refresh_session_empty();
             }
             ModelUpdate::Updated(_) => {
                 self.forward_to_transcript(depth, update);
                 self.forward_to_sidebar(update);
                 self.sync_new_sections();
+                self.sync_selection();
             }
             ModelUpdate::LocalCommands(commands) => {
                 self.browser.local_commands.clone_from(commands);
@@ -799,6 +815,7 @@ impl App {
                 self.forward_to_transcript(depth, update);
                 self.forward_to_sidebar(update);
                 self.sync_new_sections();
+                self.sync_selection();
                 // The matches were of the turns that are gone.
                 self.search_reloaded();
                 self.refresh_empty_message();
@@ -882,8 +899,12 @@ impl App {
         self.browser.new_sections
     }
 
-    /// Takes the count of new sections from the transcript, after an update
-    /// that may have changed it (keys report it themselves, as a `Msg`).
+    /// Takes the count of new sections from the transcript on top, right
+    /// after a push that may have changed it: a `ModelUpdate`, a viewport, a
+    /// turn to go to, search results, or the swap of the transcript on top.
+    /// The count is a fact the transcript computes from the data it was
+    /// pushed, so it is queried (cycle 5 spec, §0 item 5); a key, a click or
+    /// the wheel reports its changes as a `Msg` instead ([`ViewChange`]).
     pub(super) fn sync_new_sections(&mut self) {
         let count = self
             .application
@@ -896,24 +917,51 @@ impl App {
         }
     }
 
-    /// A key or the pointer moved the view, and the transcript now counts
-    /// `count` new sections.
-    pub(super) fn new_sections_reported(&mut self, count: usize) {
-        self.request_redraw(RedrawRequest::Dirty);
-        self.set_new_sections(count);
+    /// Takes the selected section from the transcript on top, right after a
+    /// push that may have moved it: a `ModelUpdate`, a viewport, a turn to
+    /// go to, search results, or the swap of the transcript on top (a
+    /// subagent opened or closed). Where the selection moves because of data
+    /// the App pushed, the transcript cannot answer with a `Msg`, so it is
+    /// queried once, here (cycle 5 spec, §0 item 5, §9.1); a key, a click or
+    /// the wheel reports it ([`ViewChange::selection`]). The turns sidebar
+    /// follows it at the end of the update.
+    pub(super) fn sync_selection(&mut self) {
+        self.browser.selection = self
+            .application
+            .query(&self.top_transcript(), SELECTED_SECTION_ATTR)
+            .ok()
+            .flatten()
+            .map(tuirealm::props::QueryResult::into_attr)
+            .and_then(|value| payload_from_value::<SectionId>(&value));
+    }
+
+    /// A key, a click or the wheel changed the view of the transcript on
+    /// top as `change` says: redraws, shows the new count of new sections
+    /// and keeps the selection it moved, which the turns sidebar follows.
+    pub(super) fn view_changed(&mut self, change: ViewChange) {
+        let ViewChange {
+            changed,
+            new_sections,
+            selection,
+        } = change;
+        if changed || new_sections.is_some() || selection.is_some() {
+            self.request_redraw(RedrawRequest::Dirty);
+        }
+        if let Some(count) = new_sections {
+            self.set_new_sections(count);
+        }
+        if selection.is_some() {
+            self.browser.selection = selection;
+        }
     }
 
     /// A left press on the transcript on top: it gets the focus, if
-    /// something else has it, and the view is redrawn as `change` says.
+    /// something else has it, and the view changed as `change` says.
     pub(super) fn transcript_pressed(&mut self, change: ViewChange) {
         if self.application.focus() != Some(&self.top_transcript()) {
             self.give_top_transcript_focus();
         }
-        match change {
-            ViewChange::Unchanged => {}
-            ViewChange::Changed => self.request_redraw(RedrawRequest::Dirty),
-            ViewChange::NewSections(count) => self.new_sections_reported(count),
-        }
+        self.view_changed(change);
     }
 
     /// The transcript counts `count` new sections: shows `↓ N new` in the
@@ -926,6 +974,9 @@ impl App {
     }
 
     /// Hands a turn update to the transcript at `depth`, which owns the turns.
+    /// For the one on top, the caller then reads what the update changed of
+    /// its view ([`sync_new_sections`](Self::sync_new_sections),
+    /// [`sync_selection`](Self::sync_selection)).
     fn forward_to_transcript(&mut self, depth: usize, update: &SessionUpdate) {
         self.set_attr(
             transcript_id(depth),
@@ -947,7 +998,8 @@ impl App {
     }
 
     /// Replaces the sidebar's rows by those of the transcript on top: one
-    /// pass over its turns, asked of the transcript that owns them. Done when
+    /// pass over its turns, which the transcript that owns them computes
+    /// ([`top_turn_rows`](Self::top_turn_rows)). Done when
     /// the transcript on top changes (a subagent opened, `covering`, or
     /// closed). The pane remembers its selection and scroll offset for the
     /// transcript it covers and brings them back with its rows, so going
@@ -960,15 +1012,22 @@ impl App {
         // the one last pushed from another, but rows replaced mean the
         // sidebar knows nothing of it.)
         self.browser.sidebar_section = SidebarSection::NotPushed;
-        let rows = self
-            .application
+        if let Some(rows) = self.top_turn_rows() {
+            self.set_attr(Id::TurnSidebar, TURN_ROWS_ATTR, rows);
+        }
+    }
+
+    /// The rows of the turns sidebar, built from the turns of the transcript
+    /// on top, right after the swap of the transcript on top (a subagent
+    /// opened or closed). The transcript owns the turns the App pushed, so
+    /// it computes the rows and is queried for them (cycle 5 spec, §0 item
+    /// 5).
+    fn top_turn_rows(&self) -> Option<AttrValue> {
+        self.application
             .query(&self.top_transcript(), TURN_ROWS_ATTR)
             .ok()
             .flatten()
-            .map(tuirealm::props::QueryResult::into_attr);
-        if let Some(rows) = rows {
-            self.set_attr(Id::TurnSidebar, TURN_ROWS_ATTR, rows);
-        }
+            .map(tuirealm::props::QueryResult::into_attr)
     }
 
     /// Whether the turns sidebar takes its selection from the transcript:
@@ -981,9 +1040,12 @@ impl App {
     }
 
     /// Keeps the turns sidebar on the turn that contains the selected section
-    /// of the transcript on top. It is the end of every [`App::update`], so
-    /// every path that moves the selection (keys, wheel, search, live
-    /// updates, a subagent opened or closed) is covered once. The push is an
+    /// of the transcript on top, as the App knows it
+    /// ([`BrowserState::selection`]: reported by the transcript, or read
+    /// right after a push). It is the end of every [`App::update`], so every
+    /// path that moves the selection (keys, wheel, search, live updates, a
+    /// subagent opened or closed) or hands the focus back to the transcript
+    /// is covered once. It asks the transcript nothing, and the push is an
     /// attribute: it produces no `Msg`.
     ///
     /// It pushes only when the selected section changed since the last
@@ -1002,17 +1064,12 @@ impl App {
             self.browser.sidebar_section = SidebarSection::NotPushed;
             return;
         }
-        let selected = self
-            .application
-            .query(&top, SELECTED_SECTION_ATTR)
-            .ok()
-            .flatten()
-            .map(tuirealm::props::QueryResult::into_attr)
-            .and_then(|value| payload_from_value::<SectionId>(&value));
-        if matches!(&self.browser.sidebar_section, SidebarSection::Pushed(last) if *last == selected)
+        let selected = &self.browser.selection;
+        if matches!(&self.browser.sidebar_section, SidebarSection::Pushed(last) if last == selected)
         {
             return;
         }
+        let selected = selected.clone();
         if let Some(section) = &selected {
             self.set_attr(
                 Id::TurnSidebar,
@@ -1046,16 +1103,9 @@ impl App {
     }
 
     /// Decides whether the session is empty: loaded, and the transcript
-    /// holds no turn (asked of the transcript, which owns them). Then shows
-    /// what the empty state says.
+    /// holds no turn. Then shows what the empty state says.
     pub(super) fn refresh_session_empty(&mut self) {
-        let turns = self
-            .application
-            .query(&self.top_transcript(), TURN_COUNT_ATTR)
-            .ok()
-            .flatten()
-            .map(tuirealm::props::QueryResult::into_attr);
-        let empty = self.browser.loaded && matches!(turns, Some(AttrValue::Length(0)));
+        let empty = self.browser.loaded && self.top_turn_count() == Some(0);
         if empty != self.browser.empty {
             self.browser.empty = empty;
             // The sidebar is not drawn for an empty session.
@@ -1065,23 +1115,37 @@ impl App {
         self.refresh_empty_message();
     }
 
+    /// The number of turns the transcript on top holds, right after a
+    /// `ModelUpdate` of its load (`Loaded`, `Appended`, `LocalCommands`) or
+    /// the swap that made it the one on top. The transcript owns the turns
+    /// the App pushed, so it counts them and is queried (cycle 5 spec, §0
+    /// item 5).
+    fn top_turn_count(&self) -> Option<usize> {
+        let count = self
+            .application
+            .query(&self.top_transcript(), TURN_COUNT_ATTR)
+            .ok()
+            .flatten()
+            .map(tuirealm::props::QueryResult::into_attr);
+        match count {
+            Some(AttrValue::Length(count)) => Some(count),
+            _ => None,
+        }
+    }
+
     /// Pushes the message of the empty state to its component when it
-    /// changed: the local commands if the session holds only those, else
-    /// `Session file is empty`. The view on top decides, so the message is
-    /// also brought up to date when a subagent's transcript is closed.
+    /// differs from the one the App last pushed: the local commands if the
+    /// session holds only those, else `Session file is empty`. The view on
+    /// top decides, so the message is also brought up to date when a
+    /// subagent's transcript is closed.
     fn refresh_empty_message(&mut self) {
         let message = if self.browser.empty {
             empty_session_message(&self.browser.local_commands)
         } else {
             EMPTY_SESSION.to_owned()
         };
-        let shown = self
-            .application
-            .query(&Id::EmptySession, Attribute::Text)
-            .ok()
-            .flatten()
-            .map(tuirealm::props::QueryResult::into_attr);
-        if !matches!(&shown, Some(AttrValue::String(text)) if *text == message) {
+        if message != self.browser.empty_message {
+            self.browser.empty_message.clone_from(&message);
             self.set_attr(
                 Id::EmptySession,
                 Attribute::Text,
@@ -1161,6 +1225,8 @@ impl App {
         self.selector.search = None;
         self.selector.filtered = None;
         self.selector.shown.clear();
+        // The Sessions pane is gone with what it was given.
+        self.selector.listed = super::selector::ListedSessions::default();
         self.forget_pushed_panels();
         // The question was in the prompt that is unmounted.
         self.clear_resume_question();

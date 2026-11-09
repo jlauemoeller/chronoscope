@@ -34,10 +34,6 @@ pub const SESSION_FILTERED_ATTR: Attribute = Attribute::Custom("session_filtered
 /// The attribute that sets which rows show the `●` marker
 /// ([`ActiveSessions`]).
 pub const ACTIVE_ATTR: Attribute = Attribute::Custom("active_sessions");
-/// The attribute that moves the selection of the search results
-/// (a payload of `tuirealm::command::Direction`: `Up` or `Down`), for the owner of the prompt
-/// that has the input focus meanwhile.
-pub const SEARCH_NAV_ATTR: Attribute = Attribute::Custom("search_nav");
 
 /// The columns between the timestamp and the title, and between the title
 /// and the stats.
@@ -122,8 +118,10 @@ pub fn format_stats(stats: &SessionStats) -> String {
 ///
 /// Search results come in the same way, with [`SessionRows::search`] set: the
 /// rows then carry their project's name. The list keeps the focus's look
-/// while the prompt has the input focus; the app moves the selection with
-/// [`SEARCH_NAV_ATTR`].
+/// while the prompt has the input focus; the app keeps the selected result
+/// and pushes it with [`SELECTED_ATTR`](super::SELECTED_ATTR). A key, a click
+/// or the wheel that moves the cursor reports the row's session, over search
+/// results too.
 ///
 /// A left press on a row selects it and reports
 /// [`SelectorMsg::ChooseSession`], with `open` when it completed a
@@ -244,8 +242,9 @@ impl SessionList {
                     self.presses.forget();
                     return Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Sessions)));
                 };
-                // The list moves its own cursor: over search results and
-                // filtered sessions the app does not track the selection.
+                // The list moves its own cursor and reports the row, which
+                // the app records (over search results and filtered sessions
+                // too).
                 self.pane.cursor.select(Some(index));
                 let id = self.rows[index].id.clone();
                 let open = self.presses.press(id.clone());
@@ -391,11 +390,6 @@ impl Component for SessionList {
             SESSION_FILTERED_ATTR => {
                 if let AttrValue::Flag(filtered) = value {
                     self.filtered = filtered;
-                }
-            }
-            SEARCH_NAV_ATTR => {
-                if let Some(direction) = payload_from_value::<Direction>(&value) {
-                    self.pane.perform(Cmd::Move(direction));
                 }
             }
             CLICK_CLOCK_ATTR => {
@@ -875,35 +869,6 @@ mod tests {
         assert_eq!(rows.rows[0].project.as_deref(), Some("Agentmon"));
     }
 
-    fn nav(l: &mut SessionList, direction: Direction) {
-        l.attr(SEARCH_NAV_ATTR, payload_value(direction));
-    }
-
-    fn selected_row(l: &SessionList) -> Option<usize> {
-        match l.state() {
-            State::Single(StateValue::Usize(i)) => Some(i),
-            _ => None,
-        }
-    }
-
-    #[test]
-    fn the_search_nav_attribute_moves_the_selection_without_wrapping() {
-        let mut l = results_list(three_results(), Some(0));
-        nav(&mut l, Direction::Up);
-        assert_eq!(selected_row(&l), Some(0));
-        nav(&mut l, Direction::Down);
-        nav(&mut l, Direction::Down);
-        assert_eq!(selected_row(&l), Some(2));
-        nav(&mut l, Direction::Down);
-        assert_eq!(selected_row(&l), Some(2));
-        nav(&mut l, Direction::Up);
-        assert_eq!(selected_row(&l), Some(1));
-        // Other directions and other payloads change nothing.
-        nav(&mut l, Direction::Left);
-        l.attr(SEARCH_NAV_ATTR, AttrValue::Flag(true));
-        assert_eq!(selected_row(&l), Some(1));
-    }
-
     #[test]
     fn the_search_key_asks_the_app_to_search() {
         let mut l = list(sample(false), Some(0), true);
@@ -1293,6 +1258,25 @@ mod tests {
         let mut l = list(sample(true), None, false);
         assert_eq!(l.on(&press(4, 5)), clicked("c"));
         assert_eq!(l.state(), State::Single(StateValue::Usize(2)));
+    }
+
+    #[test]
+    fn over_search_results_a_key_a_wheel_step_and_a_press_report_the_rows_session() {
+        let mut l = results_list(three_results(), Some(0));
+        assert_eq!(l.on(&key(Key::Down)), selected("b"));
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 5)),
+            selected("c")
+        );
+        // At the last row the wheel moves nothing and reports nothing.
+        assert_eq!(l.on(&mouse(MouseEventKind::ScrollDown, 5, 3, 5)), None);
+        assert_eq!(l.on(&press(2, 5)), clicked("a"));
+        assert_eq!(l.state(), State::Single(StateValue::Usize(0)));
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollUp, 5, 3, 5)),
+            None,
+            "at the first row"
+        );
     }
 
     #[test]

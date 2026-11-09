@@ -318,7 +318,15 @@ fn g_jumps_to_the_end_resets_the_count_and_resumes_following() {
     t.apply_update(&appended_turns(&["t9", "t10", "t11"]));
     assert_eq!(t.new_sections(), 3);
     let msg = ch(&mut t, 'G');
-    assert_eq!(msg, Some(Msg::NewSections(0)), "the key reports the reset");
+    let last = last_section_of(&t, "t11");
+    assert_eq!(
+        msg,
+        Some(Msg::NewSections {
+            count: 0,
+            selection: Some(last)
+        }),
+        "the key reports the reset, and the selection it moved"
+    );
     assert!(t.following());
     assert_eq!(t.new_sections(), 0);
     assert!(shows_last_row(&mut t, 24));
@@ -334,7 +342,10 @@ fn the_end_key_does_the_same() {
     let mut t = at_the_end();
     t.perform(half_page_up());
     t.apply_update(&appended_turns(&["t9"]));
-    assert_eq!(press(&mut t, Key::End), Some(Msg::NewSections(0)));
+    assert!(matches!(
+        press(&mut t, Key::End),
+        Some(Msg::NewSections { count: 0, .. })
+    ));
     assert!(t.following());
 }
 
@@ -343,7 +354,10 @@ fn a_key_that_leaves_the_count_alone_reports_a_change_of_the_view_only() {
     let mut t = at_the_end();
     t.perform(half_page_up());
     t.apply_update(&appended_turns(&["t9"]));
-    assert_eq!(ch(&mut t, 'j'), Some(Msg::TranscriptChanged));
+    // `j` moves the selection: that is all it reports.
+    let msg = ch(&mut t, 'j');
+    assert_eq!(msg, t.selected().cloned().map(Msg::SelectionChanged));
+    assert!(msg.is_some());
     assert_eq!(t.new_sections(), 1);
 }
 
