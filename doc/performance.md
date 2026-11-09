@@ -16,19 +16,19 @@ wide margin.
 
 ## The fixture
 
-`chronoscope::bench_support` (`src/bench_support/`) generates a Claude-format
-session of a requested size. It is deterministic: one seed and one size always
-give the same bytes. The mix is human prompts (some of several lines),
-assistant messages split over several lines the way Claude Code writes them,
-readable and redacted thinking, `Bash`, `Read`, `Edit` and `Grep` calls with
-results, `turn_duration` entries and injected attachments (opened file, hook
-message) next to noise ones. Every tool result line also carries a
+`chronoscope::bench_support` (`src/bench_support.rs` and `src/bench_support/`)
+generates a Claude-format session of a requested size. It is deterministic: one
+seed and one size always give the same bytes. The mix is human prompts (some of
+several lines), assistant messages split over several lines the way Claude Code
+writes them, readable and redacted thinking, `Bash`, `Read`, `Edit` and `Grep`
+calls with results, `turn_duration` entries and injected attachments (opened
+file, hook message) next to noise ones. Every tool result line also carries a
 `toolUseResult`, as Claude Code writes it: an object that repeats the output in
 the fields of the tool (`stdout`, file content, matches) for a call that
-succeeded, and the error message as a string for one that failed. The
-assembler reads only `isAsync` from it, but has to get past all of it, and a
-large result line therefore holds its output twice. About 5% of the tool results
-are large (100 KB to 2 MB, so they are stored lazily); the rest are 40 B to 3 KB.
+succeeded, and the error message as a string for one that failed. The assembler
+reads only `isAsync` from it, but has to get past all of it, and a large result
+line therefore holds its output twice. About 5% of the tool results are large
+(100 KB to 2 MB, so they are stored lazily); the rest are 40 B to 3 KB.
 
 Two 100 MiB (104 857 600 bytes) sessions are used:
 
