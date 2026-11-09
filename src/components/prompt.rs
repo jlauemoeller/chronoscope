@@ -293,6 +293,9 @@ impl PromptText<'_> {
 
 impl Widget for PromptText<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        if area.is_empty() {
+            return;
+        }
         let foreground = self.theme.role(Role::Foreground);
         let style = Style::new().fg(foreground);
         Paragraph::new(Span::styled(self.text, style)).render(area, buf);
@@ -831,6 +834,16 @@ mod tests {
         for x in 0..4 {
             assert_eq!(buffer[(x, 0)].bg, Color::Reset, "{x}");
         }
+        // An area with no rows, on the buffer's bottom edge, is left alone.
+        let theme = builtin::default_theme();
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 4, 1));
+        let widget = PromptText {
+            text: "abc",
+            cursor: 0,
+            theme: &theme,
+        };
+        widget.render(Rect::new(0, 1, 4, 0), &mut buffer);
+        assert_eq!(buffer, Buffer::empty(Rect::new(0, 0, 4, 1)));
     }
 
     // -- confirm

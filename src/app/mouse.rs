@@ -354,7 +354,7 @@ mod tests {
     fn a_component_that_only_paints_is_never_found() {
         let screen = Rect::new(0, 0, 20, 10);
         let gap = Rect::new(5, 0, 1, 10);
-        for paint_only in PAINT_ONLY {
+        for paint_only in [Id::SidebarGap, Id::ScreenBackground] {
             let areas = [(paint_only, screen)];
             assert_eq!(topmost_at(&areas, 3, 3), None, "{paint_only:?}");
             // Nor does it hide what is drawn under it.
@@ -365,11 +365,5 @@ mod tests {
                 "{paint_only:?}"
             );
         }
-    }
-
-    #[test]
-    fn the_screen_background_and_the_sidebar_gap_only_paint() {
-        assert!(PAINT_ONLY.contains(&Id::ScreenBackground));
-        assert!(PAINT_ONLY.contains(&Id::SidebarGap));
     }
 }
