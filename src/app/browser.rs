@@ -568,30 +568,23 @@ impl App {
     /// and gets the focus. With no transcript to open a toast says so and
     /// nothing is mounted. The answer to a lookup that is no longer waited
     /// for (the user went back or opened another session) is dropped, and so
-    /// is one that comes while the browser is covered or a prompt is open.
+    /// is one that comes when the transcript that asked no longer has the
+    /// focus (the selector, an overlay or a prompt is open, or the turns
+    /// sidebar is focused).
     pub(super) fn subagent_found(&mut self, generation: u64, found: Option<SessionId>) {
-        let current = self
+        let Some(PendingSubagent { label, .. }) = self
             .browser
             .pending_subagent
-            .as_ref()
-            .is_some_and(|pending| pending.generation == generation);
-        if !current {
+            .take_if(|pending| pending.generation == generation)
+        else {
             log::debug!("dropping the answer of subagent lookup {generation}");
             return;
-        }
-        let Some(PendingSubagent { label, .. }) = self.browser.pending_subagent.take() else {
-            return;
         };
-        let covered = [
-            Id::Prompt,
-            Id::HelpOverlay,
-            Id::DetailsOverlay,
-            Id::ThemeSelector,
-        ]
-        .iter()
-        .any(|id| self.application.mounted(id));
-        if self.screen != Screen::Browser || covered {
-            log::debug!("dropping the answer of subagent lookup {generation}: the browser is busy");
+        // The user moved on: to the selector, an overlay, a prompt or the
+        // turns sidebar. Opening the subagent now would take the focus away.
+        let asked_from = self.top_transcript();
+        if self.screen != Screen::Browser || self.application.focus() != Some(&asked_from) {
+            log::debug!("dropping the answer of subagent lookup {generation}: the focus moved");
             return;
         }
         let Some(id) = found else {

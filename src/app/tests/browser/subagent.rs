@@ -506,6 +506,25 @@ fn an_answer_that_comes_while_the_selector_is_open_is_dropped() {
 }
 
 #[test]
+fn an_answer_that_comes_while_the_turns_sidebar_has_the_focus_is_dropped() {
+    let mut rig = subagent_rig(120, 40);
+    rig.harness.hold_subagents();
+    rig.press(Key::Char('a'));
+    rig.settle();
+    rig.app.update(Msg::FocusTurns);
+    assert_eq!(rig.focus(), Some(Id::TurnSidebar));
+    rig.harness.release_subagents();
+    let seen = rig.settle();
+    assert_eq!(lookup_answers(&seen), 1, "the answer came: {seen:?}");
+    assert_eq!(rig.focus(), Some(Id::TurnSidebar));
+    assert!(!mounted(&rig.app, Id::Subagent(1)));
+    assert_eq!(rig.harness.loads(), [BRIO_SESSION]);
+    rig.app.update(Msg::FocusTranscript);
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+    assert_eq!(rig.app.subagent_depth(), 0);
+}
+
+#[test]
 fn an_answer_to_a_lookup_nobody_waits_for_is_dropped() {
     let mut rig = subagent_rig(120, 40);
     let screen = screen_text(&mut rig, 120, 40);

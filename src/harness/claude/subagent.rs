@@ -4,8 +4,9 @@
 //! A subagent transcript lives at
 //! `<project dir>/<session-uuid>/subagents/agent-<agentId>.jsonl`, next to
 //! `agent-<agentId>.meta.json`. Its [`SessionId`] is
-//! `<session-uuid>/subagents/agent-<agentId>`, which makes the file name
-//! `<id>.jsonl` below the project directory, like that of a main session.
+//! `<session-uuid>/subagents/agent-<agentId>`. Its file is joined from those
+//! parts one at a time ([`file_below_project`]), so the `/` in the id is never
+//! a separator in a path; a main session's file is `<id>.jsonl`.
 
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -98,7 +99,9 @@ fn resolve_opened(opened: &Opened, id: &SessionId) -> Option<PathBuf> {
 }
 
 /// Finds the transcript of session `id`: a file the user opened by its path,
-/// else `<data_dir>/<project dir>/<id>.jsonl`. Lists the project directories
+/// else the file of [`file_below_project`] in `<data_dir>/<project dir>/`.
+/// An id that is not a plain session or subagent id ([`classify`]) is
+/// rejected before any path is joined. Lists the project directories
 /// (sorted by name, so a clash is resolved the same way every time) and stats
 /// one candidate in each; reads no file.
 pub(super) fn resolve(data_dir: &Path, opened: &Opened, id: &SessionId) -> Option<PathBuf> {
