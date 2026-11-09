@@ -347,12 +347,12 @@ impl Component for Prompt {
             return;
         }
         let (text, cursor) = self.visible_text(usize::from(rest.width));
-        let text = PromptText {
+        let widget = PromptText {
             text: &text,
             cursor,
             theme: &self.theme,
         };
-        frame.render_widget(text, rest);
+        frame.render_widget(widget, rest);
     }
 
     fn query<'a>(&'a self, attr: Attribute) -> Option<QueryResult<'a>> {

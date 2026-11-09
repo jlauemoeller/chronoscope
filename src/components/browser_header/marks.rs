@@ -10,9 +10,11 @@ use ratatui::widgets::Widget;
 use crate::theme::{Role, Theme};
 
 /// The dot of the live marker, drawn in `primary`.
-pub(super) const LIVE_DOT: &str = "●";
+const LIVE_DOT: &str = "●";
 /// The word after the dot, drawn in `muted_foreground`.
-pub(super) const LIVE_WORD: &str = " live";
+const LIVE_WORD: &str = " live";
+/// The columns the live marker takes: `LIVE_DOT` and `LIVE_WORD`.
+pub(super) const LIVE_MARKER_WIDTH: usize = 6;
 
 /// The note that entries could not be parsed, in `muted_foreground`, cut
 /// at the area's right edge.
@@ -112,6 +114,12 @@ mod tests {
         );
         let symbols: String = cells(&buf).into_iter().map(|(s, _, _)| s).collect();
         assert_eq!(symbols, " 1 e ");
+    }
+
+    #[test]
+    fn the_marker_width_is_the_width_of_its_text() {
+        use unicode_width::UnicodeWidthStr;
+        assert_eq!(LIVE_MARKER_WIDTH, LIVE_DOT.width() + LIVE_WORD.width());
     }
 
     #[test]

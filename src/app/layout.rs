@@ -148,11 +148,11 @@ pub fn too_small(area: Rect) -> bool {
 /// When the screen is too small (under 60 columns or 20 rows) only
 /// [`Id::EmptyState`] is visible, filling the screen. Otherwise, when the
 /// selector is the base screen, [`Id::ScreenBackground`] comes first and
-/// fills the screen. The selector overlay is [`Id::SelectorFrame`]: as wide as the screen up to 160 columns
-/// and centred, with one empty row above and below. Inside it come the tabs,
-/// the two panes, the Working Directory box (see [`selector_areas`]) and
-/// [`Id::HelpLine`]: one row, two rows above the bottom border, from column 5
-/// to width - 6. An active prompt ([`LayoutInput::prompt`]) is [`Id::Prompt`]
+/// fills the screen. The selector overlay is [`Id::SelectorFrame`]: as wide
+/// as the screen up to 160 columns and centred, with one empty row above and
+/// below. Inside it come the tabs, the two panes, the Working Directory box
+/// (see [`selector_areas`]) and [`Id::HelpLine`]: one row, two rows above the
+/// bottom border, from column 5 to width - 6. An active prompt ([`LayoutInput::prompt`]) is [`Id::Prompt`]
 /// in the same place instead of the help line; over the browser alone it
 /// takes the browser's help line.
 ///

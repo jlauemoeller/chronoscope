@@ -214,6 +214,9 @@ fn an_empty_session_has_nothing_at_the_sidebar_and_the_message_everywhere() {
 
 #[test]
 fn a_press_on_the_base_selector_screen_never_finds_its_background() {
+    // `SelectorFrame` is an overlay, so what is drawn before it is never a
+    // candidate here; `a_component_that_only_paints_is_never_found` in
+    // `app/mouse.rs` checks the exclusion itself, with no overlay.
     let selector = [
         Id::SelectorFrame,
         Id::HarnessTabs,

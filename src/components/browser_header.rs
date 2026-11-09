@@ -16,7 +16,7 @@ use unicode_width::UnicodeWidthStr;
 mod fit;
 mod marks;
 
-use marks::{LIVE_DOT, LIVE_WORD, LiveMarker, ParseWarningNote};
+use marks::{LIVE_MARKER_WIDTH, LiveMarker, ParseWarningNote};
 
 use super::text_fit::truncate_start;
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
@@ -66,12 +66,47 @@ pub fn parse_warning_note(count: usize) -> Option<String> {
 
 /// Where [`BrowserHeader::cwd_row`] puts the note and the live marker on
 /// the working directory's row, in columns from the row's start.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug)]
 struct RowMarks {
     /// The column the note starts in, and its text.
     note: Option<(usize, String)>,
     /// The column the live marker starts in.
     live: Option<usize>,
+}
+
+/// What is right-aligned on the working directory's row, as
+/// [`BrowserHeader::right_aligned`] fits it.
+#[derive(Debug)]
+struct RightAligned {
+    /// The parse-warning note, if it fits.
+    note: Option<String>,
+    /// Whether the live marker is shown.
+    live: bool,
+}
+
+impl RightAligned {
+    fn note_width(&self) -> usize {
+        self.note.as_deref().map_or(0, UnicodeWidthStr::width)
+    }
+
+    fn live_width(&self) -> usize {
+        if self.live { LIVE_MARKER_WIDTH } else { 0 }
+    }
+
+    /// The cells between the note and the marker: [`NOTE_GAP`] when both
+    /// are shown.
+    fn gap(&self) -> usize {
+        if self.note.is_some() && self.live {
+            NOTE_GAP
+        } else {
+            0
+        }
+    }
+
+    /// The columns of the whole right-aligned part.
+    fn width(&self) -> usize {
+        self.note_width() + self.gap() + self.live_width()
+    }
 }
 
 /// A rounded block in `border`: `╭─ Project <name> ─…─ <session id> ─╮`, a
@@ -244,21 +279,19 @@ impl BrowserHeader {
     /// What is right-aligned on the working directory's row of `inner`
     /// columns: the note, if it fits, and whether the live marker does. The
     /// marker goes first, then the note, two cells to its left.
-    fn right_aligned(&self, inner: usize) -> (Option<String>, bool) {
+    fn right_aligned(&self, inner: usize) -> RightAligned {
         // What is right-aligned must fit between the first blank column and
         // the blank column before the border.
         let room = inner.saturating_sub(CWD_COLUMN - 1 + PADDING);
-        let live = self.live && LIVE_DOT.width() + LIVE_WORD.width() <= room;
-        let live_width = if live {
-            LIVE_DOT.width() + LIVE_WORD.width()
-        } else {
-            0
+        let marker = RightAligned {
+            note: None,
+            live: self.live && LIVE_MARKER_WIDTH <= room,
         };
         let note = parse_warning_note(self.parse_warnings).filter(|note| {
-            let gap = if live { NOTE_GAP } else { 0 };
-            note.width() + gap + live_width <= room
+            let gap = if marker.live { NOTE_GAP } else { 0 };
+            note.width() + gap + marker.live_width() <= room
         });
-        (note, live)
+        RightAligned { note, ..marker }
     }
 
     /// Lays out the row with the working directory: the line with the
@@ -267,16 +300,9 @@ impl BrowserHeader {
     /// columns they go in.
     fn cwd_row(&self, width: usize) -> (Line<'static>, RowMarks) {
         let inner = width.saturating_sub(2);
-        let (note, live) = self.right_aligned(inner);
-        let note_width = note.as_deref().map_or(0, UnicodeWidthStr::width);
-        let gap = if note.is_some() && live { NOTE_GAP } else { 0 };
-        let live_width = if live {
-            LIVE_DOT.width() + LIVE_WORD.width()
-        } else {
-            0
-        };
+        let fitted = self.right_aligned(inner);
         // What is right-aligned, and the blank column before the border.
-        let right = note_width + gap + live_width;
+        let right = fitted.width();
         let trailing = if right > 0 { right + PADDING } else { 0 };
         // One blank column before the border, and the columns before the
         // directory.
@@ -297,9 +323,10 @@ impl BrowserHeader {
             Span::raw(" ".repeat(before + right + padding)),
             Span::styled("│", border),
         ]);
+        let live = start + fitted.note_width() + fitted.gap();
         let marks = RowMarks {
-            note: note.map(|note| (start, note)),
-            live: live.then_some(start + note_width + gap),
+            live: fitted.live.then_some(live),
+            note: fitted.note.map(|note| (start, note)),
         };
         (line, marks)
     }
@@ -320,8 +347,7 @@ impl BrowserHeader {
             frame.render_widget(note, at(*column, text.width()));
         }
         if let Some(column) = marks.live {
-            let width = LIVE_DOT.width() + LIVE_WORD.width();
-            frame.render_widget(LiveMarker { theme }, at(column, width));
+            frame.render_widget(LiveMarker { theme }, at(column, LIVE_MARKER_WIDTH));
         }
     }
 

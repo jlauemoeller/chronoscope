@@ -433,7 +433,9 @@ fn session_msg(app: &App, update: ModelUpdate) -> Msg {
     }
 }
 
-const SELECTOR_IDS: [Id; 8] = [
+/// The components of the selector overlay. The base screen's
+/// `Id::ScreenBackground` is not one of them: it is mounted at startup only.
+const OVERLAY_IDS: [Id; 8] = [
     Id::SelectorFrame,
     Id::HarnessTabs,
     Id::ProjectList,
@@ -456,7 +458,7 @@ const BROWSER_IDS: [Id; 5] = [
 #[test]
 fn opening_a_session_mounts_the_browser_unmounts_the_selector_and_starts_a_load() {
     let mut rig = rig();
-    for id in SELECTOR_IDS {
+    for id in OVERLAY_IDS {
         assert!(rig.app.application().mounted(&id), "{id:?}");
     }
     for id in BROWSER_IDS {
@@ -466,7 +468,7 @@ fn opening_a_session_mounts_the_browser_unmounts_the_selector_and_starts_a_load(
     for id in BROWSER_IDS {
         assert!(rig.app.application().mounted(&id), "{id:?}");
     }
-    for id in SELECTOR_IDS
+    for id in OVERLAY_IDS
         .into_iter()
         .chain([Id::Prompt, Id::ScreenBackground])
     {
@@ -812,7 +814,7 @@ fn ctrl_o_opens_the_selector_over_the_browser_on_the_open_session() {
     );
     assert_eq!(app.focused_pane(), crate::app::Pane::Sessions);
     assert_eq!(rig.focus(), Some(Id::SessionList));
-    for id in SELECTOR_IDS.into_iter().chain(BROWSER_IDS) {
+    for id in OVERLAY_IDS.into_iter().chain(BROWSER_IDS) {
         assert!(app.application().mounted(&id), "{id:?}");
     }
     // Over a session the selector paints no background of the screen.
@@ -877,7 +879,7 @@ fn esc_closes_the_selector_and_returns_the_focus_to_the_transcript() {
     let seen = rig.pump_until(|app| app.screen() == Screen::Browser);
     assert!(seen.contains(&Msg::CloseSelector), "{seen:?}");
     assert_eq!(rig.focus(), Some(Id::Transcript));
-    for id in SELECTOR_IDS.into_iter().chain([Id::Prompt]) {
+    for id in OVERLAY_IDS.into_iter().chain([Id::Prompt]) {
         assert!(!rig.app.application().mounted(&id), "{id:?}");
     }
     assert!(!rig.app.should_quit());
