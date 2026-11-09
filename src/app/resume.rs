@@ -19,11 +19,12 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use tuirealm::props::AttrValue;
 use unicode_width::UnicodeWidthStr;
 
 use super::{App, Id};
 use crate::components::text_fit::truncate_start;
-use crate::components::{MAX_TOAST_WIDTH, Prompt, TOAST_CHROME};
+use crate::components::{MAX_TOAST_WIDTH, Prompt, RESUME_OPEN_ATTR, TOAST_CHROME};
 use crate::model::{HarnessId, SessionId, SessionSummary};
 use crate::platform::exec_or_run;
 use crate::theme::Role;
@@ -194,9 +195,19 @@ impl App {
             prompt = prompt.with_fill(Role::Background).inset(PROMPT_INSET);
         }
         match self.open_overlay(Id::Prompt, Box::new(prompt)) {
-            Ok(()) => self.resume.pending = Some(ResumePlan::new(&command, cwd)),
+            Ok(()) => {
+                self.resume.pending = Some(ResumePlan::new(&command, cwd));
+                self.push_resume_open();
+            }
             Err(err) => log::warn!("could not open the resume prompt: {err}"),
         }
+    }
+
+    /// Tells the selector's frame whether the question is open: while it
+    /// is, a press outside the selector does nothing.
+    fn push_resume_open(&mut self) {
+        let open = self.resume.pending();
+        self.set_attr(Id::SelectorFrame, RESUME_OPEN_ATTR, AttrValue::Flag(open));
     }
 
     /// `y` or another key in the question: `y` confirms the plan and quits;
@@ -205,6 +216,7 @@ impl App {
         let Some(plan) = self.resume.pending.take() else {
             return;
         };
+        self.push_resume_open();
         self.close_overlay(Id::Prompt);
         if answer == "y" {
             self.resume.confirmed = Some(plan);
@@ -215,13 +227,16 @@ impl App {
     /// Forgets the question without touching the prompt, for when the prompt
     /// is unmounted by someone else.
     pub(super) fn clear_resume_question(&mut self) {
-        self.resume.pending = None;
+        if self.resume.pending.take().is_some() {
+            self.push_resume_open();
+        }
     }
 
     /// `n`, `Esc` or any other key but `y`: nothing is resumed and the focus
     /// returns to where it was.
     pub(super) fn resume_declined(&mut self) {
         if self.resume.pending.take().is_some() {
+            self.push_resume_open();
             self.close_overlay(Id::Prompt);
         }
     }

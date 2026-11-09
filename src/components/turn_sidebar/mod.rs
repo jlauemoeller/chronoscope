@@ -33,7 +33,7 @@
 //!
 //! # Mouse
 //!
-//! `on` takes the `App`'s [`RoutedMouse`] (a `UserEvent::Mouse`, in the
+//! `on` takes the router's [`RoutedMouse`] (a `UserEvent::Pointer`, in the
 //! pane's own coordinates) and never the raw `Event::Mouse` that goes to the
 //! focused component in screen coordinates. The wheel selects the previous or
 //! next entry like `Up` / `Down` (no wrap-around) and answers
@@ -495,7 +495,7 @@ impl AppComponent<Msg, UserEvent> for TurnSidebar {
     /// as described in the module's Mouse section. Anything else, the raw
     /// mouse events included, answers nothing.
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
-        if let Event::User(UserEvent::Mouse(mouse)) = ev {
+        if let Event::User(UserEvent::Pointer(mouse)) = ev {
             return self.on_mouse(mouse);
         }
         let Event::Keyboard(key) = ev else {

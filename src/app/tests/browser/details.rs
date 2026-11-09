@@ -26,7 +26,7 @@ const PRESS: MouseEventKind = MouseEventKind::Down(MouseButton::Left);
 const WHEEL_DOWN: MouseEventKind = MouseEventKind::ScrollDown;
 
 fn at(kind: MouseEventKind, column: u16, row: u16) -> Msg {
-    Msg::Mouse(MouseEvent {
+    Msg::Pointer(MouseEvent {
         kind,
         modifiers: KeyModifiers::NONE,
         column,
@@ -614,7 +614,7 @@ fn a_wider_screen_gives_the_overlay_the_width_its_rows_want() {
     );
     // A press near the new right edge is inside the overlay, not outside it.
     rig.app
-        .update(at(PRESS, wide.right() - 2, wide.y + wide.height / 2));
+        .update_routed(at(PRESS, wide.right() - 2, wide.y + wide.height / 2));
     assert!(open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
     // The interior follows the rect.
@@ -640,7 +640,7 @@ fn a_narrower_screen_makes_the_overlay_as_high_as_the_wrapped_rows() {
     assert_eq!(interior(&rig.app).height, wide.height - 1);
     // A press just outside the new rect closes it: routing follows the rect.
     rig.app
-        .update(at(PRESS, narrow.right(), narrow.y + narrow.height / 2));
+        .update_routed(at(PRESS, narrow.right(), narrow.y + narrow.height / 2));
     assert!(!open(&rig.app));
 }
 
@@ -821,15 +821,15 @@ fn the_wheel_scrolls_the_overlay_and_a_press_outside_closes_it() {
     rig.open_details();
     let area = rig.app.routing().area(Id::DetailsOverlay).unwrap();
     let inside = (area.x + 5, area.y + 5);
-    rig.app.update(at(WHEEL_DOWN, inside.0, inside.1));
+    rig.app.update_routed(at(WHEEL_DOWN, inside.0, inside.1));
     assert_eq!(offset(&rig.app), 3);
-    rig.app.update(at(WHEEL_DOWN, inside.0, inside.1));
+    rig.app.update_routed(at(WHEEL_DOWN, inside.0, inside.1));
     assert_eq!(offset(&rig.app), 4, "clamped to the last row that fits");
     rig.app
-        .update(at(MouseEventKind::ScrollUp, inside.0, inside.1));
+        .update_routed(at(MouseEventKind::ScrollUp, inside.0, inside.1));
     assert_eq!(offset(&rig.app), 1);
     // A press inside does nothing.
-    rig.app.update(at(PRESS, inside.0, inside.1));
+    rig.app.update_routed(at(PRESS, inside.0, inside.1));
     assert!(open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
     // The wheel outside is ignored, over the header and over the transcript.
@@ -838,13 +838,14 @@ fn the_wheel_scrolls_the_overlay_and_a_press_outside_closes_it() {
     assert!(covered.contains(on_transcript.into()));
     assert!(!area.contains(on_transcript.into()));
     for point in [(0, 0), on_transcript] {
-        rig.app.update(at(WHEEL_DOWN, point.0, point.1));
+        rig.app.update_routed(at(WHEEL_DOWN, point.0, point.1));
         assert_eq!(offset(&rig.app), 1);
         assert_eq!(presentation(&rig.app), transcript);
     }
     // A press outside closes it and returns the focus; it does not reach the
     // transcript under the pointer.
-    rig.app.update(at(PRESS, on_transcript.0, on_transcript.1));
+    rig.app
+        .update_routed(at(PRESS, on_transcript.0, on_transcript.1));
     assert!(!open(&rig.app));
     assert_eq!(presentation(&rig.app), transcript);
     assert_eq!(rig.focus(), Some(Id::Transcript));
@@ -863,8 +864,9 @@ fn nothing_under_the_overlay_gets_the_mouse() {
     let covered = rig.app.routing().area(Id::Transcript).unwrap();
     assert!(covered.intersects(area));
     for (dx, dy) in [(0, 0), (3, 3), (area.width - 1, area.height - 1)] {
-        rig.app.update(at(PRESS, area.x + dx, area.y + dy));
-        rig.app.update(at(WHEEL_DOWN, area.x + dx, area.y + dy));
+        rig.app.update_routed(at(PRESS, area.x + dx, area.y + dy));
+        rig.app
+            .update_routed(at(WHEEL_DOWN, area.x + dx, area.y + dy));
     }
     assert!(open(&rig.app));
     assert_eq!(rig.focus(), Some(Id::DetailsOverlay));
@@ -880,9 +882,10 @@ fn with_mouse_off_the_overlay_takes_no_mouse() {
     rig.down(1);
     rig.open_details();
     let area = rig.app.routing().area(Id::DetailsOverlay).unwrap();
-    rig.app.update(at(WHEEL_DOWN, area.x + 5, area.y + 5));
+    rig.app
+        .update_routed(at(WHEEL_DOWN, area.x + 5, area.y + 5));
     assert_eq!(offset(&rig.app), 0);
-    rig.app.update(at(PRESS, 0, 0));
+    rig.app.update_routed(at(PRESS, 0, 0));
     assert!(open(&rig.app));
 }
 

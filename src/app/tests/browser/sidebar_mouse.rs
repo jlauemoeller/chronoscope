@@ -3,9 +3,10 @@
 //! double-click does what `Enter` does, and a click on the transcript
 //! focuses it.
 //!
-//! The events go through `App::update(Msg::Mouse(..))`, as `GlobalEvents`
-//! sends them in the running application; what they must do is what the keys
-//! do (`j` / `k` / `Enter`), which the tests compare with.
+//! The events go through `App::update_routed(Msg::Pointer(..))`, which
+//! handles the router's answer as the running application does; what they
+//! must do is what the keys do (`j` / `k` / `Enter`), which the tests compare
+//! with.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -27,7 +28,7 @@ const WHEEL_DOWN: MouseEventKind = MouseEventKind::ScrollDown;
 const WHEEL_UP: MouseEventKind = MouseEventKind::ScrollUp;
 
 fn at(kind: MouseEventKind, column: u16, row: u16) -> Msg {
-    Msg::Mouse(MouseEvent {
+    Msg::Pointer(MouseEvent {
         kind,
         modifiers: KeyModifiers::NONE,
         column,
@@ -72,13 +73,13 @@ impl Rig {
     /// A press at (`dx`, `dy`) of the pane.
     fn press_pane(&mut self, dx: u16, dy: u16) {
         let pane = self.pane();
-        self.app.update(at(PRESS, pane.x + dx, pane.y + dy));
+        self.app.update_routed(at(PRESS, pane.x + dx, pane.y + dy));
     }
 
     /// A wheel step over the middle of the pane.
     fn wheel_pane(&mut self, kind: MouseEventKind) {
         let pane = self.pane();
-        self.app.update(at(kind, pane.x + 10, pane.y + 6));
+        self.app.update_routed(at(kind, pane.x + 10, pane.y + 6));
     }
 
     /// The row of the pane (from its top) that shows the selected entry,
@@ -410,7 +411,7 @@ fn a_press_elsewhere_on_the_screen_between_two_clicks_ends_the_double_click_too(
     clock.set(Duration::from_millis(100));
     // The transcript's far corner.
     let area = rig.app.routing().area(Id::Transcript).unwrap();
-    rig.app.update(at(PRESS, area.x + 60, area.y + 5));
+    rig.app.update_routed(at(PRESS, area.x + 60, area.y + 5));
     rig.focus_sidebar();
     clock.set(Duration::from_millis(200));
     rig.click_entry(2);
@@ -557,12 +558,14 @@ fn the_wheel_works_anywhere_over_the_pane_and_not_in_the_gap() {
     for (dx, dy) in [(0, 0), (29, 10), (15, 1), (10, 12)] {
         let pane = rig.pane();
         let before = sidebar_entry(&rig.app).unwrap();
-        rig.app.update(at(WHEEL_DOWN, pane.x + dx, pane.y + dy));
+        rig.app
+            .update_routed(at(WHEEL_DOWN, pane.x + dx, pane.y + dy));
         assert_eq!(sidebar_entry(&rig.app), Some(before + 1), "({dx}, {dy})");
     }
     let pane = rig.pane();
     let before = presentation(&rig.app);
-    rig.app.update(at(WHEEL_DOWN, pane.x + 30, pane.y + 6));
+    rig.app
+        .update_routed(at(WHEEL_DOWN, pane.x + 30, pane.y + 6));
     assert_eq!(sidebar_entry(&rig.app), Some(4));
     assert_eq!(presentation(&rig.app), before);
 }
@@ -633,7 +636,7 @@ fn a_click_on_the_transcript_gives_it_the_focus_while_the_sidebar_has_it() {
     rig.click_entry(3);
     assert!(sidebar_focused(&rig));
     let area = rig.app.routing().area(Id::Transcript).unwrap();
-    rig.app.update(at(PRESS, area.x + 10, area.y + 2));
+    rig.app.update_routed(at(PRESS, area.x + 10, area.y + 2));
     assert_eq!(rig.focus(), Some(Id::Transcript));
     let text = screen_text(&mut rig, 120, 20);
     assert!(!text.contains("ENTER to go to block"), "the hints follow");
@@ -654,7 +657,7 @@ fn a_click_on_the_transcript_after_the_wheel_moved_the_sidebar_on_syncs_it() {
     rig.click_entry(1);
     assert!(sidebar_focused(&rig));
     let area = rig.app.routing().area(Id::Transcript).unwrap();
-    rig.app.update(at(PRESS, area.x + 10, area.y + 1));
+    rig.app.update_routed(at(PRESS, area.x + 10, area.y + 1));
     assert_eq!(rig.focus(), Some(Id::Transcript));
     let turn = turn_of(&rig.app).unwrap();
     let entry = sidebar_rows(&rig.app)
@@ -683,12 +686,12 @@ fn aim(rig: &mut Rig) -> Aim {
 impl Aim {
     fn press(&self, rig: &mut Rig) {
         rig.app
-            .update(at(PRESS, self.pane.x + 10, self.pane.y + self.row));
+            .update_routed(at(PRESS, self.pane.x + 10, self.pane.y + self.row));
     }
 
     fn wheel(&self, rig: &mut Rig) {
         rig.app
-            .update(at(WHEEL_DOWN, self.pane.x + 10, self.pane.y + 6));
+            .update_routed(at(WHEEL_DOWN, self.pane.x + 10, self.pane.y + 6));
     }
 
     fn fire(&self, rig: &mut Rig) {
@@ -788,8 +791,8 @@ fn the_sidebar_gets_no_mouse_when_it_is_hidden() {
     let mut rig = long_rig(10, 89, 20);
     assert!(rig.app.routing().area(Id::TurnSidebar).is_none());
     // Where the pane would be at 120 columns: the transcript is there.
-    rig.app.update(at(PRESS, 5, 9));
-    rig.app.update(at(WHEEL_DOWN, 5, 9));
+    rig.app.update_routed(at(PRESS, 5, 9));
+    rig.app.update_routed(at(WHEEL_DOWN, 5, 9));
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert!(!rig.app.take_queued().iter().any(|msg| matches!(
         msg,

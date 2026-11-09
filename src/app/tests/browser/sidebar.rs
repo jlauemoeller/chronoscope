@@ -229,7 +229,7 @@ fn scrolling_the_transcript_does_not_move_the_pane() {
     }
     let wheel = |rig: &mut Rig, kind| {
         let area = rig.app.routing().area(Id::Transcript).unwrap();
-        rig.app.update(Msg::Mouse(MouseEvent {
+        rig.app.update_routed(Msg::Pointer(MouseEvent {
             kind,
             modifiers: KeyModifiers::NONE,
             column: area.x + 10,
@@ -519,7 +519,7 @@ fn previewing_a_theme_changes_the_cells_of_the_sidebar() {
 // -- the mouse
 
 fn click(rig: &mut Rig, column: u16, row: u16) {
-    rig.app.update(Msg::Mouse(MouseEvent {
+    rig.app.update_routed(Msg::Pointer(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         modifiers: KeyModifiers::NONE,
         column,
@@ -601,7 +601,7 @@ fn the_wheel_in_the_gap_does_not_scroll_the_transcript() {
     let mut rig = rig();
     rig.open_loaded();
     let before = screen_text(&mut rig, 120, 40);
-    rig.app.update(Msg::Mouse(MouseEvent {
+    rig.app.update_routed(Msg::Pointer(MouseEvent {
         kind: MouseEventKind::ScrollDown,
         modifiers: KeyModifiers::NONE,
         column: 30,

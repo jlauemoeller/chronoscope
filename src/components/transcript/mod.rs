@@ -66,12 +66,13 @@
 //!   `/` is not a `Cmd`: the key answers [`Msg::OpenSearch`].
 //!
 //! The mouse (see the `mouse` module) arrives as a [`RoutedMouse`](crate::app::RoutedMouse)
-//! the `App` made for the pointer's position in the transcript's area. A wheel
+//! the router made for the pointer's position in the transcript's area. A wheel
 //! step is `Custom(`[`WHEEL_UP`]`/`[`WHEEL_DOWN`]`)`: it scrolls [`WHEEL_ROWS`]
 //! rows the way the page keys scroll. A left press selects the section under
 //! the pointer, toggles its fold when it is on the section's first row, and
 //! expands the output on a `… N more lines` row; the borders, the padding and
-//! the blank rows are not sections.
+//! the blank rows are not sections. Wherever it lands, a left press answers
+//! [`Msg::TranscriptPressed`], which asks for the focus.
 //!
 //! The keys that focus the turns sidebar are not `Cmd`s either: they answer
 //! [`Msg::FocusTurns`]. The sidebar's selection reaches the transcript through
@@ -130,7 +131,7 @@ use self::folding::FoldOp;
 use self::window::Window;
 use super::turn_rows::{TURN_ROWS_ATTR, TurnRows};
 use super::{THEME_ATTR, payload_from_value, payload_value, theme_from_value, theme_value};
-use crate::app::{Msg, UserEvent};
+use crate::app::{Msg, UserEvent, ViewChange};
 use crate::components::turn_block::SectionId;
 use crate::components::turn_block::export::ExportMeta;
 use crate::keymap::{Action, Context, KeyResolver, Keymap, Resolved};
@@ -693,9 +694,9 @@ impl AppComponent<Msg, UserEvent> for Transcript {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let key = match ev {
             Event::Keyboard(key) => key,
-            // Only what the `App` routed here: the raw event reaches the
+            // Only what the router sent here: the raw event reaches the
             // focused component in screen coordinates.
-            Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
+            Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
             _ => return None,
         };
         let Resolved::Action(action) = self.resolver.feed(&self.keymap, key) else {
@@ -722,8 +723,7 @@ impl AppComponent<Msg, UserEvent> for Transcript {
         }
         let cmd = keys::cmd_for(action)?;
         let new_before = self.new_sections;
-        let result = self.perform(cmd);
-        let changed = !matches!(result, CmdResult::NoChange | CmdResult::Invalid(_));
+        let changed = changes_view(&self.perform(cmd));
         if changed
             && matches!(
                 action,
@@ -733,9 +733,25 @@ impl AppComponent<Msg, UserEvent> for Transcript {
             return Some(Msg::SearchPosition(self.search_position()));
         }
         // The count changed (`G` resumed following): the App shows it.
+        self.view_change(new_before, changed).key_answer()
+    }
+}
+
+/// Whether a `Cmd` that answered `result` changed what the transcript shows.
+fn changes_view(result: &CmdResult) -> bool {
+    !matches!(result, CmdResult::NoChange | CmdResult::Invalid(_))
+}
+
+impl Transcript {
+    /// What an event did to the view: the count of new sections, if it
+    /// changed from `new_before`, else whether anything `changed`.
+    fn view_change(&self, new_before: usize, changed: bool) -> ViewChange {
         if self.new_sections != new_before {
-            return Some(Msg::NewSections(self.new_sections));
+            ViewChange::NewSections(self.new_sections)
+        } else if changed {
+            ViewChange::Changed
+        } else {
+            ViewChange::Unchanged
         }
-        changed.then_some(Msg::TranscriptChanged)
     }
 }

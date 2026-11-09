@@ -24,11 +24,11 @@ use super::search::SearchState;
 use super::{App, Id, Msg, UserEvent};
 use crate::components::{
     ACTIVE_ATTR, ActiveSessions, BackgroundFill, CWD_ATTR, HINTS_ATTR, HarnessTabs, HelpLine,
-    PROJECT_ROWS_ATTR, ProjectList, ProjectRow, ProjectRows, SELECTED_ATTR, SESSION_FILTERED_ATTR,
-    SESSION_OPEN_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame, SessionList,
-    SessionRow, SessionRows, SessionStatsUpdate, SessionTime, SessionTokens, TABS_ATTR, Tab, Tabs,
-    VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value, selected_value,
-    viewport_value, visible_rows,
+    PROJECT_ROWS_ATTR, PROJECTS_FILTERED_ATTR, ProjectList, ProjectRow, ProjectRows, SELECTED_ATTR,
+    SESSION_FILTERED_ATTR, SESSION_OPEN_ATTR, SESSION_ROWS_ATTR, SESSION_STATS_ATTR, SelectorFrame,
+    SessionList, SessionRow, SessionRows, SessionStatsUpdate, SessionTime, SessionTokens,
+    TABS_ATTR, Tab, Tabs, VIEWPORT_ATTR, VISIBLE_ROWS_ATTR, WorkingDir, hints_value, payload_value,
+    selected_value, viewport_value, visible_rows,
 };
 use crate::keymap::Keymap;
 use crate::launch::{HarnessIndex, Preselect, deepest_ancestor};
@@ -70,11 +70,9 @@ pub(super) fn mount_selector(
             Vec::new(),
         )?;
     }
-    application.mount(
-        Id::SelectorFrame,
-        Box::new(SelectorFrame::new(theme.clone())),
-        Vec::new(),
-    )?;
+    let frame = SelectorFrame::new(theme.clone());
+    let frame = if base { frame } else { frame.over_session() };
+    application.mount(Id::SelectorFrame, Box::new(frame), Vec::new())?;
     application.mount(
         Id::HarnessTabs,
         Box::new(HarnessTabs::new(theme.clone())),
@@ -550,15 +548,25 @@ impl App {
         if let Err(err) = self.application.active(&Id::SessionList) {
             log::warn!("could not focus the sessions: {err}");
         }
-        self.set_attr(
-            Id::SessionList,
-            SESSION_FILTERED_ATTR,
-            AttrValue::Flag(true),
-        );
+        self.push_filtered(true);
         self.push_selector_hints();
         self.sync_pane_focus();
         self.push_all();
         self.request_redraw(RedrawRequest::Dirty);
+    }
+
+    /// Tells the two panes whether the selector is `filtered`.
+    fn push_filtered(&mut self, filtered: bool) {
+        self.set_attr(
+            Id::SessionList,
+            SESSION_FILTERED_ATTR,
+            AttrValue::Flag(filtered),
+        );
+        self.set_attr(
+            Id::ProjectList,
+            PROJECTS_FILTERED_ATTR,
+            AttrValue::Flag(filtered),
+        );
     }
 
     /// Shows the hints that fit the selector: those of the filtered one
@@ -579,11 +587,7 @@ impl App {
             return;
         }
         self.selector.shown.clear();
-        self.set_attr(
-            Id::SessionList,
-            SESSION_FILTERED_ATTR,
-            AttrValue::Flag(false),
-        );
+        self.push_filtered(false);
         self.push_selector_hints();
         self.selector.pane = Pane::Projects;
         if let Some(want) = self.selector.preselection() {

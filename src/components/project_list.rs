@@ -20,6 +20,11 @@ use crate::theme::Theme;
 /// The attribute that sets the rows ([`ProjectRows`]).
 pub const PROJECT_ROWS_ATTR: Attribute = Attribute::Custom("project_rows");
 
+/// The attribute that says whether the selector is filtered
+/// (`AttrValue::Flag`): the Projects pane is then as at a start without the
+/// prefix, and the wheel leaves it alone.
+pub const PROJECTS_FILTERED_ATTR: Attribute = Attribute::Custom("projects_filtered");
+
 /// The title of the pane.
 const TITLE: &str = "Projects";
 
@@ -44,12 +49,14 @@ pub struct ProjectRows {
 ///
 /// Rows come in through [`PROJECT_ROWS_ATTR`]. Moving the selection reports
 /// [`SelectorMsg::ProjectSelected`]; the app then shows that project's
-/// sessions.
+/// sessions. While the selector is filtered ([`PROJECTS_FILTERED_ATTR`]) the
+/// wheel does nothing.
 #[derive(Debug, Clone)]
 pub struct ProjectList {
     pane: PaneState,
     keymap: Keymap,
     rows: Vec<ProjectRow>,
+    filtered: bool,
 }
 
 impl ProjectList {
@@ -59,6 +66,7 @@ impl ProjectList {
             pane: PaneState::new(theme),
             keymap,
             rows: Vec::new(),
+            filtered: false,
         }
     }
 
@@ -87,10 +95,12 @@ impl ProjectList {
         }
     }
 
-    /// The wheel moves the selection like the keys; a left press on a row
-    /// reports the project, elsewhere in the pane it asks for the focus.
+    /// The wheel moves the selection like the keys, except while the
+    /// selector is filtered; a left press on a row reports the project,
+    /// elsewhere in the pane it asks for the focus (either ends the filter).
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         match mouse.kind {
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown if self.filtered => None,
             MouseEventKind::ScrollUp => self.moved(Direction::Up),
             MouseEventKind::ScrollDown => self.moved(Direction::Down),
             _ if mouse.is_left_press() => {
@@ -126,6 +136,9 @@ impl Component for ProjectList {
             };
             return Some(QueryResult::Owned(payload_value(rows)));
         }
+        if attr == PROJECTS_FILTERED_ATTR {
+            return Some(QueryResult::Owned(AttrValue::Flag(self.filtered)));
+        }
         self.pane.query(attr)
     }
 
@@ -134,6 +147,10 @@ impl Component for ProjectList {
             if let Some(ProjectRows { rows, selected }) = payload_from_value(&value) {
                 self.pane.cursor.set(rows.len(), selected);
                 self.rows = rows;
+            }
+        } else if attr == PROJECTS_FILTERED_ATTR {
+            if let AttrValue::Flag(filtered) = value {
+                self.filtered = filtered;
             }
         } else {
             self.pane.attr(attr, &value);
@@ -151,7 +168,7 @@ impl Component for ProjectList {
 
 impl AppComponent<Msg, UserEvent> for ProjectList {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
-        if let Event::User(UserEvent::Mouse(mouse)) = ev {
+        if let Event::User(UserEvent::Pointer(mouse)) = ev {
             return self.on_mouse(mouse);
         }
         match pane_key(&self.keymap, ev)? {
@@ -467,7 +484,7 @@ mod tests {
 
     /// A pane of 36 x 10 shows 7 rows, from its row 2.
     fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Event<UserEvent> {
-        Event::User(UserEvent::Mouse(RoutedMouse {
+        Event::User(UserEvent::Pointer(RoutedMouse {
             kind,
             column,
             row,
@@ -509,6 +526,36 @@ mod tests {
         assert_eq!(
             l.on(&mouse(MouseEventKind::ScrollDown, 0, 0)),
             selected("BRIO")
+        );
+    }
+
+    #[test]
+    fn while_the_selector_is_filtered_the_wheel_does_nothing_and_a_press_still_reports() {
+        let mut l = list(&NAMES, Some(1), false);
+        l.attr(PROJECTS_FILTERED_ATTR, AttrValue::Flag(true));
+        assert_eq!(
+            l.query(PROJECTS_FILTERED_ATTR).unwrap().into_attr(),
+            AttrValue::Flag(true)
+        );
+        for kind in [MouseEventKind::ScrollDown, MouseEventKind::ScrollUp] {
+            assert_eq!(l.on(&mouse(kind, 5, 4)), None, "{kind:?}");
+        }
+        assert_eq!(
+            l.state(),
+            State::Single(tuirealm::state::StateValue::Usize(1)),
+            "the selection stays"
+        );
+        // A press ends the filter, as the app decides.
+        assert_eq!(l.on(&press(5, 3)), clicked("BRIO"));
+        assert_eq!(
+            l.on(&press(5, 9)),
+            Some(Msg::Selector(SelectorMsg::PaneClicked(Pane::Projects)))
+        );
+        // Once the filter ends, the wheel moves the selection again.
+        l.attr(PROJECTS_FILTERED_ATTR, AttrValue::Flag(false));
+        assert_eq!(
+            l.on(&mouse(MouseEventKind::ScrollDown, 5, 4)),
+            selected("Calira")
         );
     }
 
@@ -566,7 +613,7 @@ mod tests {
         l.on(&ch('j'));
         // A pane of 36 x 5 shows two rows: rows 1 and 2 are drawn.
         let small = |row| {
-            Event::User(UserEvent::Mouse(RoutedMouse {
+            Event::User(UserEvent::Pointer(RoutedMouse {
                 kind: MouseEventKind::Down(MouseButton::Left),
                 column: 5,
                 row,

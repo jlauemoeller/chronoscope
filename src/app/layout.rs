@@ -2,10 +2,12 @@
 //! pure function from the screen state and size to the area of every visible
 //! component.
 //!
-//! `App::view` draws from it, and the mouse router hit-tests against it, so
-//! both always agree on where a component is.
+//! `App::view` draws from it, and the pointer router asks [`hit_test`] which
+//! component on it gets a pointer event, so both always agree on where a
+//! component is.
 
 use ratatui::layout::{Rect, Size};
+use tuirealm::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use crate::components::{HEADER_HEIGHT, MAX_TOAST_WIDTH, TOAST_CHROME};
 
@@ -107,6 +109,10 @@ pub struct LayoutInput {
     pub toast_text_width: Option<usize>,
     /// Whether a prompt is active: it takes the help line's place.
     pub prompt: bool,
+    /// Whether the selector's search is under way. Its prompt leaves the
+    /// Sessions pane, which lists the results, to the pointer (see
+    /// [`hit_test`]); the layout itself does not depend on it.
+    pub selector_search: bool,
     /// Whether the open session has no turns: the browser shows
     /// [`Id::EmptySession`] in place of the transcript.
     pub session_empty: bool,
@@ -449,6 +455,110 @@ fn selector_overlay(area: Rect) -> Rect {
         y: area.y + 1,
         width,
         height: area.height - 2,
+    }
+}
+
+/// Where a pointer event goes, as [`hit_test`] decides it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointerTarget {
+    /// The topmost component that takes the pointer and contains the point,
+    /// with its area. [`Id::Transcript`] stands for the transcript on top.
+    Component(Id, Rect),
+    /// A left press outside the topmost overlay: it goes to that overlay
+    /// (with its area), which decides whether it closes.
+    Outside(Id, Rect),
+    /// No component gets the event.
+    Nothing,
+}
+
+/// The ids of the overlays: the components under the topmost of them get no
+/// pointer events.
+const OVERLAYS: [Id; 4] = [
+    Id::SelectorFrame,
+    Id::HelpOverlay,
+    Id::DetailsOverlay,
+    Id::ThemeSelector,
+];
+
+/// The components that only paint: the pointer goes through them.
+const PAINT_ONLY: [Id; 2] = [Id::SidebarGap, Id::ScreenBackground];
+
+/// The topmost overlay and its area, or `None` if none is open.
+pub fn topmost_overlay(layout: &ScreenLayout) -> Option<(Id, Rect)> {
+    layout
+        .areas()
+        .iter()
+        .rfind(|(id, _)| OVERLAYS.contains(id))
+        .copied()
+}
+
+/// The component drawn topmost at (`column`, `row`) and its area, or `None`
+/// if no component is there, whether or not it takes the pointer.
+///
+/// Components are drawn in `layout`'s order, so the last one that contains
+/// the point is on top. [`Id::SidebarGap`] and [`Id::ScreenBackground`] only
+/// paint, so they are never found and hide nothing. Components under the
+/// topmost overlay are not candidates, even where the overlay does not cover
+/// them.
+pub fn component_at(layout: &ScreenLayout, column: u16, row: u16) -> Option<(Id, Rect)> {
+    topmost_at(layout.areas(), column, row)
+}
+
+/// [`component_at`] over `areas`, in drawing order.
+fn topmost_at(areas: &[(Id, Rect)], column: u16, row: u16) -> Option<(Id, Rect)> {
+    let first = areas
+        .iter()
+        .rposition(|(id, _)| OVERLAYS.contains(id))
+        .unwrap_or(0);
+    areas[first..]
+        .iter()
+        .rev()
+        .find(|(id, area)| !PAINT_ONLY.contains(id) && area.contains((column, row).into()))
+        .copied()
+}
+
+/// Where the pointer event `event` goes on the screen `layout`, laid out
+/// from `input`: the one place that decides which component is on top
+/// (architecture.md#events-focus-and-keys, as amended by the cycle 5 spec,
+/// §0 item 6).
+///
+/// - With an overlay open, a left press outside the topmost one goes to that
+///   overlay ([`PointerTarget::Outside`]); a wheel step there reaches
+///   nothing.
+/// - Otherwise the component drawn on top at the point ([`component_at`])
+///   gets it, if it takes the pointer. One that does not (the toast, a help
+///   line, a panel, the selector's frame) blocks what is under it.
+///
+/// Which components take the pointer depends on the screen, not on any one
+/// component: the overlays always do; while a prompt is open nothing else
+/// does, except the Sessions pane during the selector's search
+/// ([`LayoutInput::selector_search`]); otherwise the harness tabs, the two
+/// panes, the turns sidebar and the transcript do. What the event then
+/// means is the component's to decide.
+pub fn hit_test(layout: &ScreenLayout, input: &LayoutInput, event: MouseEvent) -> PointerTarget {
+    let (column, row) = (event.column, event.row);
+    if let Some((overlay, area)) = topmost_overlay(layout)
+        && !area.contains((column, row).into())
+    {
+        return if event.kind == MouseEventKind::Down(MouseButton::Left) {
+            PointerTarget::Outside(overlay, area)
+        } else {
+            PointerTarget::Nothing
+        };
+    }
+    match component_at(layout, column, row) {
+        Some((id, area)) if takes_pointer(id, input) => PointerTarget::Component(id, area),
+        _ => PointerTarget::Nothing,
+    }
+}
+
+/// Whether `id` takes the pointer on a screen laid out from `input`.
+fn takes_pointer(id: Id, input: &LayoutInput) -> bool {
+    match id {
+        Id::HelpOverlay | Id::DetailsOverlay | Id::ThemeSelector => true,
+        Id::SessionList => !input.prompt || input.selector_search,
+        Id::HarnessTabs | Id::ProjectList | Id::TurnSidebar | Id::Transcript => !input.prompt,
+        _ => false,
     }
 }
 
@@ -1379,6 +1489,443 @@ mod tests {
         assert_eq!(
             time,
             Rect::new(sessions.x, sessions.bottom(), sessions.width, 4)
+        );
+    }
+
+    // -- hit_test
+
+    const PRESS: MouseEventKind = MouseEventKind::Down(MouseButton::Left);
+
+    fn event(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            modifiers: tuirealm::event::KeyModifiers::NONE,
+            column,
+            row,
+        }
+    }
+
+    /// `hit_test` of a left press and of a wheel step at (`column`, `row`)
+    /// of a screen of `size` laid out from `input`.
+    fn targets(
+        input: &LayoutInput,
+        size: (u16, u16),
+        column: u16,
+        row: u16,
+    ) -> (PointerTarget, PointerTarget) {
+        let l = layout(input, Rect::new(0, 0, size.0, size.1));
+        (
+            hit_test(&l, input, event(PRESS, column, row)),
+            hit_test(&l, input, event(MouseEventKind::ScrollDown, column, row)),
+        )
+    }
+
+    fn press_at(input: &LayoutInput, size: (u16, u16), column: u16, row: u16) -> PointerTarget {
+        targets(input, size, column, row).0
+    }
+
+    /// The id `target` gives the event to, if it is a component.
+    fn component(target: PointerTarget) -> Option<Id> {
+        match target {
+            PointerTarget::Component(id, _) => Some(id),
+            _ => None,
+        }
+    }
+
+    fn browser_input() -> LayoutInput {
+        LayoutInput {
+            screen: Screen::Browser,
+            ..LayoutInput::default()
+        }
+    }
+
+    fn sized(width: u16, height: u16) -> Size {
+        Size::new(width, height)
+    }
+
+    #[test]
+    fn a_component_that_only_paints_is_never_found() {
+        let screen = Rect::new(0, 0, 20, 10);
+        let gap = Rect::new(5, 0, 1, 10);
+        for paint_only in [Id::SidebarGap, Id::ScreenBackground] {
+            let areas = [(paint_only, screen)];
+            assert_eq!(topmost_at(&areas, 3, 3), None, "{paint_only:?}");
+            // Nor does it hide what is drawn under it.
+            let areas = [(Id::Transcript, screen), (paint_only, gap)];
+            assert_eq!(
+                topmost_at(&areas, 5, 3),
+                Some((Id::Transcript, screen)),
+                "{paint_only:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_component_under_the_pointer_gets_it_with_its_area() {
+        let input = browser_input();
+        let l = layout(&input, Rect::new(0, 0, 120, 40));
+        let transcript = l.area(Id::Transcript).unwrap();
+        let sidebar = l.area(Id::TurnSidebar).unwrap();
+        for kind in [PRESS, MouseEventKind::ScrollUp, MouseEventKind::ScrollDown] {
+            assert_eq!(
+                hit_test(&l, &input, event(kind, 60, 20)),
+                PointerTarget::Component(Id::Transcript, transcript),
+                "{kind:?}"
+            );
+            assert_eq!(
+                hit_test(&l, &input, event(kind, 10, 20)),
+                PointerTarget::Component(Id::TurnSidebar, sidebar),
+                "{kind:?}"
+            );
+        }
+        let selector = layout(&LayoutInput::default(), Rect::new(0, 0, 80, 24));
+        let tabs = selector.area(Id::HarnessTabs).unwrap();
+        assert_eq!(
+            hit_test(
+                &selector,
+                &LayoutInput::default(),
+                event(PRESS, tabs.x, tabs.y)
+            ),
+            PointerTarget::Component(Id::HarnessTabs, tabs)
+        );
+    }
+
+    #[test]
+    fn the_topmost_component_wins_where_areas_overlap() {
+        // The panes are drawn over the selector's frame.
+        let selector = LayoutInput::default();
+        let l = layout(&selector, Rect::new(0, 0, 80, 24));
+        let projects = l.area(Id::ProjectList).unwrap();
+        assert!(
+            l.area(Id::SelectorFrame)
+                .unwrap()
+                .contains(projects.as_position())
+        );
+        assert_eq!(
+            press_at(&selector, (80, 24), projects.x, projects.y),
+            PointerTarget::Component(Id::ProjectList, projects)
+        );
+        // The help overlay is drawn over the transcript.
+        let help = LayoutInput {
+            help: Some(sized(40, 10)),
+            ..browser_input()
+        };
+        let l = layout(&help, Rect::new(0, 0, 120, 40));
+        let overlay = l.area(Id::HelpOverlay).unwrap();
+        let (column, row) = (overlay.x + 2, overlay.y + 2);
+        assert!(
+            l.area(Id::Transcript)
+                .unwrap()
+                .contains((column, row).into())
+        );
+        let (press, wheel) = targets(&help, (120, 40), column, row);
+        assert_eq!(press, PointerTarget::Component(Id::HelpOverlay, overlay));
+        assert_eq!(wheel, PointerTarget::Component(Id::HelpOverlay, overlay));
+    }
+
+    #[test]
+    fn a_press_on_the_toast_reaches_nothing() {
+        // Over the transcript, over the browser's help line and over the
+        // selector: what is under the toast does not get it either.
+        for (input, size) in [
+            (browser_input(), (120, 40)),
+            (browser_input(), (80, 24)),
+            (LayoutInput::default(), (80, 24)),
+        ] {
+            let input = LayoutInput {
+                toast_text_width: Some(20),
+                ..input
+            };
+            let l = layout(&input, Rect::new(0, 0, size.0, size.1));
+            let toast = l.area(Id::Toast).unwrap();
+            for row in toast.rows() {
+                for column in row.columns() {
+                    let (press, wheel) = targets(&input, size, column.x, column.y);
+                    assert_eq!(press, PointerTarget::Nothing, "{size:?} {column:?}");
+                    assert_eq!(wheel, PointerTarget::Nothing, "{size:?} {column:?}");
+                }
+            }
+        }
+        // The toast over the transcript, whose rows it covers.
+        let input = LayoutInput {
+            toast_text_width: Some(20),
+            ..browser_input()
+        };
+        let l = layout(&input, Rect::new(0, 0, 120, 40));
+        let toast = l.area(Id::Toast).unwrap();
+        assert!(
+            l.area(Id::Transcript)
+                .unwrap()
+                .contains(toast.as_position())
+        );
+        assert_eq!(
+            component(press_at(&input, (120, 40), toast.x - 1, toast.y)),
+            Some(Id::Transcript),
+            "beside the toast"
+        );
+    }
+
+    #[test]
+    fn nothing_under_an_overlay_is_hit_even_where_it_does_not_cover_it() {
+        let size = (120, 40);
+        let overlays = [
+            (
+                Id::HelpOverlay,
+                LayoutInput {
+                    help: Some(sized(40, 10)),
+                    ..browser_input()
+                },
+            ),
+            (
+                Id::DetailsOverlay,
+                LayoutInput {
+                    details: Some(sized(40, 10)),
+                    ..browser_input()
+                },
+            ),
+            (
+                Id::ThemeSelector,
+                LayoutInput {
+                    theme_selector: Some(sized(40, 10)),
+                    ..browser_input()
+                },
+            ),
+            (
+                Id::SelectorFrame,
+                LayoutInput {
+                    screen: Screen::BrowserSelector,
+                    ..LayoutInput::default()
+                },
+            ),
+        ];
+        for (overlay, input) in overlays {
+            let l = layout(&input, Rect::new(0, 0, size.0, size.1));
+            let area = l.area(overlay).unwrap();
+            for row in 0..size.1 {
+                for column in 0..size.0 {
+                    let (press, wheel) = targets(&input, size, column, row);
+                    let hit = [component(press), component(wheel)];
+                    if area.contains((column, row).into()) {
+                        // The overlay, or what is drawn over it as part of
+                        // it (the selector's panes and tabs).
+                        for id in hit.into_iter().flatten() {
+                            let ok = [overlay, Id::HarnessTabs, Id::ProjectList, Id::SessionList];
+                            assert!(ok.contains(&id), "{overlay:?}: {id:?} at ({column}, {row})");
+                        }
+                    } else {
+                        assert_eq!(hit, [None, None], "{overlay:?} at ({column}, {row})");
+                    }
+                }
+            }
+            // The browser is under each of them.
+            let header = l.area(Id::BrowserHeader).unwrap();
+            assert!(!area.contains(header.as_position()), "{overlay:?}");
+            assert_eq!(
+                press_at(&input, size, header.x, header.y),
+                PointerTarget::Outside(overlay, area),
+                "{overlay:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_press_outside_the_topmost_overlay_is_addressed_to_it_and_a_wheel_step_to_nothing() {
+        // The help overlay over the selector over the browser.
+        let input = LayoutInput {
+            screen: Screen::BrowserSelector,
+            help: Some(sized(30, 8)),
+            ..LayoutInput::default()
+        };
+        let size = (120, 40);
+        let l = layout(&input, Rect::new(0, 0, size.0, size.1));
+        let help = l.area(Id::HelpOverlay).unwrap();
+        let projects = l.area(Id::ProjectList).unwrap();
+        assert!(!help.contains(projects.as_position()));
+        // On the Projects pane, inside the selector but not the help.
+        let (press, wheel) = targets(&input, size, projects.x, projects.y);
+        assert_eq!(press, PointerTarget::Outside(Id::HelpOverlay, help));
+        assert_eq!(wheel, PointerTarget::Nothing);
+        // Off the selector too.
+        let (press, wheel) = targets(&input, size, 0, 0);
+        assert_eq!(press, PointerTarget::Outside(Id::HelpOverlay, help));
+        assert_eq!(wheel, PointerTarget::Nothing);
+        // The selector over the browser alone, with the base selector for
+        // comparison: both get a press outside them.
+        for screen in [Screen::BrowserSelector, Screen::Selector] {
+            let input = LayoutInput {
+                screen,
+                ..LayoutInput::default()
+            };
+            let l = layout(&input, Rect::new(0, 0, 200, 50));
+            let frame = l.area(Id::SelectorFrame).unwrap();
+            let (press, wheel) = targets(&input, (200, 50), 5, 10);
+            assert_eq!(press, PointerTarget::Outside(Id::SelectorFrame, frame));
+            assert_eq!(wheel, PointerTarget::Nothing);
+        }
+    }
+
+    #[test]
+    fn a_press_on_a_toast_outside_the_overlay_is_outside_it() {
+        // At 200 columns the toast is right of the centred selector.
+        let input = LayoutInput {
+            screen: Screen::BrowserSelector,
+            toast_text_width: Some(10),
+            ..LayoutInput::default()
+        };
+        let l = layout(&input, Rect::new(0, 0, 200, 50));
+        let toast = l.area(Id::Toast).unwrap();
+        let frame = l.area(Id::SelectorFrame).unwrap();
+        assert!(!frame.contains(toast.as_position()));
+        assert_eq!(
+            press_at(&input, (200, 50), toast.x, toast.y),
+            PointerTarget::Outside(Id::SelectorFrame, frame)
+        );
+    }
+
+    #[test]
+    fn inside_the_selector_only_the_tabs_and_the_panes_take_the_pointer() {
+        let input = LayoutInput::default();
+        let size = (200, 50);
+        let l = layout(&input, Rect::new(0, 0, size.0, size.1));
+        for id in [
+            Id::SelectorFrame,
+            Id::SessionTime,
+            Id::SessionTokens,
+            Id::WorkingDir,
+            Id::HelpLine,
+        ] {
+            let area = l.area(id).unwrap();
+            // A cell of the area that no other component is drawn over.
+            let cell = area
+                .positions()
+                .find(|p| component_at(&l, p.x, p.y).map(|(found, _)| found) == Some(id))
+                .unwrap();
+            let (press, wheel) = targets(&input, size, cell.x, cell.y);
+            assert_eq!(press, PointerTarget::Nothing, "{id:?}");
+            assert_eq!(wheel, PointerTarget::Nothing, "{id:?}");
+        }
+    }
+
+    #[test]
+    fn during_the_selector_search_only_the_sessions_pane_takes_the_pointer() {
+        let search = LayoutInput {
+            prompt: true,
+            selector_search: true,
+            ..LayoutInput::default()
+        };
+        let size = (120, 40);
+        let l = layout(&search, Rect::new(0, 0, size.0, size.1));
+        let sessions = l.area(Id::SessionList).unwrap();
+        let (press, wheel) = targets(&search, size, sessions.x + 2, sessions.y + 2);
+        assert_eq!(press, PointerTarget::Component(Id::SessionList, sessions));
+        assert_eq!(wheel, PointerTarget::Component(Id::SessionList, sessions));
+        for id in [Id::ProjectList, Id::HarnessTabs, Id::Prompt] {
+            let area = l.area(id).unwrap();
+            let (press, wheel) = targets(&search, size, area.x + 1, area.y);
+            assert_eq!(press, PointerTarget::Nothing, "{id:?}");
+            assert_eq!(wheel, PointerTarget::Nothing, "{id:?}");
+        }
+    }
+
+    #[test]
+    fn during_any_other_prompt_nothing_under_the_overlays_takes_the_pointer() {
+        let size = (120, 40);
+        // The resume confirmation over the selector, base or over the
+        // browser, and a prompt in the browser (search, save, resume).
+        let prompts = [
+            LayoutInput {
+                prompt: true,
+                ..LayoutInput::default()
+            },
+            LayoutInput {
+                prompt: true,
+                screen: Screen::BrowserSelector,
+                ..LayoutInput::default()
+            },
+            LayoutInput {
+                prompt: true,
+                ..browser_input()
+            },
+        ];
+        for input in prompts {
+            for row in 0..size.1 {
+                for column in 0..size.0 {
+                    let (press, wheel) = targets(&input, size, column, row);
+                    assert_eq!(component(press), None, "{input:?} at ({column}, {row})");
+                    assert_eq!(component(wheel), None, "{input:?} at ({column}, {row})");
+                }
+            }
+        }
+        // The overlays still take it.
+        let input = LayoutInput {
+            prompt: true,
+            help: Some(sized(40, 10)),
+            ..browser_input()
+        };
+        let l = layout(&input, Rect::new(0, 0, size.0, size.1));
+        let help = l.area(Id::HelpOverlay).unwrap();
+        assert_eq!(
+            press_at(&input, size, help.x + 1, help.y + 1),
+            PointerTarget::Component(Id::HelpOverlay, help)
+        );
+    }
+
+    #[test]
+    fn the_gap_and_the_background_are_never_returned() {
+        let screens = [
+            (browser_input(), (120, 40)),
+            (browser_input(), (90, 24)),
+            (LayoutInput::default(), (80, 24)),
+            (LayoutInput::default(), (200, 50)),
+        ];
+        for (input, size) in screens {
+            let l = layout(&input, Rect::new(0, 0, size.0, size.1));
+            for row in 0..size.1 {
+                for column in 0..size.0 {
+                    for kind in [PRESS, MouseEventKind::ScrollDown] {
+                        let target = hit_test(&l, &input, event(kind, column, row));
+                        let found = match target {
+                            PointerTarget::Component(id, _) | PointerTarget::Outside(id, _) => {
+                                Some(id)
+                            }
+                            PointerTarget::Nothing => None,
+                        };
+                        assert!(
+                            !matches!(found, Some(Id::SidebarGap | Id::ScreenBackground)),
+                            "{found:?} at ({column}, {row}) of {size:?}"
+                        );
+                    }
+                }
+            }
+        }
+        // The gap's own column reaches nothing.
+        let input = browser_input();
+        let gap = layout(&input, Rect::new(0, 0, 120, 40))
+            .area(Id::SidebarGap)
+            .unwrap();
+        assert_eq!(
+            targets(&input, (120, 40), gap.x, gap.y + 3),
+            (PointerTarget::Nothing, PointerTarget::Nothing)
+        );
+    }
+
+    #[test]
+    fn a_terminal_that_is_too_small_takes_no_pointer() {
+        assert_eq!(
+            targets(&browser_input(), (59, 24), 10, 10),
+            (PointerTarget::Nothing, PointerTarget::Nothing)
+        );
+    }
+
+    #[test]
+    fn the_message_of_an_empty_session_takes_no_pointer() {
+        let input = LayoutInput {
+            session_empty: true,
+            ..browser_input()
+        };
+        assert_eq!(
+            targets(&input, (120, 40), 60, 20),
+            (PointerTarget::Nothing, PointerTarget::Nothing)
         );
     }
 }

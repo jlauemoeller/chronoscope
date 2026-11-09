@@ -15,7 +15,7 @@ use crate::components::transcript::Presentation;
 use crate::components::{FOLLOWING_ATTR, PRESENTATION_ATTR};
 
 fn press(column: u16, row: u16) -> Msg {
-    Msg::Mouse(MouseEvent {
+    Msg::Pointer(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         modifiers: KeyModifiers::NONE,
         column,
@@ -26,7 +26,7 @@ fn press(column: u16, row: u16) -> Msg {
 /// A press on list row `line` of the pane `pane`.
 fn click_row(rig: &mut Rig, pane: Id, line: u16) {
     let area = rig.app.routing().area(pane).unwrap();
-    rig.app.update(press(area.x + 6, area.y + 2 + line));
+    rig.app.update_routed(press(area.x + 6, area.y + 2 + line));
 }
 
 fn selected_session(rig: &Rig) -> Option<String> {
@@ -68,7 +68,7 @@ const WHEEL_DOWN: MouseEventKind = MouseEventKind::ScrollDown;
 const WHEEL_UP: MouseEventKind = MouseEventKind::ScrollUp;
 
 fn mouse_at(kind: MouseEventKind, column: u16, row: u16) -> Msg {
-    Msg::Mouse(MouseEvent {
+    Msg::Pointer(MouseEvent {
         kind,
         modifiers: KeyModifiers::NONE,
         column,
@@ -80,7 +80,7 @@ fn mouse_at(kind: MouseEventKind, column: u16, row: u16) -> Msg {
 fn on_transcript(rig: &mut Rig, kind: MouseEventKind, column: u16, row: u16) {
     let area = rig.app.routing().area(Id::Transcript).unwrap();
     rig.app
-        .update(mouse_at(kind, area.x + column, area.y + row));
+        .update_routed(mouse_at(kind, area.x + column, area.y + row));
 }
 
 fn presentation_of(rig: &Rig, id: Id) -> Presentation {
@@ -299,7 +299,7 @@ fn the_header_and_the_help_line_ignore_clicks() {
         let area = rig.app.routing().area(id).unwrap();
         for kind in [MouseEventKind::Down(MouseButton::Left), WHEEL_DOWN] {
             rig.app
-                .update(mouse_at(kind, area.x + 4, area.y + area.height - 1));
+                .update_routed(mouse_at(kind, area.x + 4, area.y + area.height - 1));
         }
     }
     assert_eq!(presentation_of(&rig, Id::Transcript), before);
@@ -344,7 +344,7 @@ fn the_wheel_and_clicks_go_to_the_subagent_on_top() {
     let child = presentation_of(&rig, Id::Subagent(1));
     // Click on the prompt of the subagent's first turn.
     let row = row_with(&mut rig, "Write a short story");
-    rig.app.update(mouse_at(
+    rig.app.update_routed(mouse_at(
         MouseEventKind::Down(MouseButton::Left),
         area.x + 10,
         area.y + row,
@@ -380,13 +380,14 @@ fn the_selector_over_the_browser_takes_the_mouse_and_the_browser_under_it_does_n
     // under it gets nothing.
     let transcript = presentation_of(&rig, Id::Transcript);
     let projects = rig.app.routing().area(Id::ProjectList).unwrap();
-    rig.app.update(press(projects.right(), projects.y + 2));
+    rig.app
+        .update_routed(press(projects.right(), projects.y + 2));
     assert_eq!(rig.app.screen(), Screen::BrowserSelector);
     assert_eq!(selected_session(&rig).as_deref(), Some(NEWER_SESSION));
     assert_eq!(presentation_of(&rig, Id::Transcript), transcript);
     // The wheel moves the selection over the list.
     let list = rig.app.routing().area(Id::SessionList).unwrap();
-    rig.app.update(Msg::Mouse(MouseEvent {
+    rig.app.update_routed(Msg::Pointer(MouseEvent {
         kind: MouseEventKind::ScrollDown,
         modifiers: KeyModifiers::NONE,
         column: list.x + 6,
@@ -414,9 +415,9 @@ fn a_click_during_the_resume_confirmation_does_nothing() {
     click_row(&mut rig, Id::SessionList, 1);
     click_row(&mut rig, Id::ProjectList, 1);
     let tabs = rig.app.routing().area(Id::HarnessTabs).unwrap();
-    rig.app.update(press(tabs.x + 2, tabs.y));
+    rig.app.update_routed(press(tabs.x + 2, tabs.y));
     let list = rig.app.routing().area(Id::SessionList).unwrap();
-    rig.app.update(Msg::Mouse(MouseEvent {
+    rig.app.update_routed(Msg::Pointer(MouseEvent {
         kind: MouseEventKind::ScrollDown,
         modifiers: KeyModifiers::NONE,
         column: list.x + 6,

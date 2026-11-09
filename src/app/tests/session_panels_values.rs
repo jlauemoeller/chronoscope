@@ -147,7 +147,7 @@ fn selected(app: &App) -> Option<&str> {
 }
 
 fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Msg {
-    Msg::Mouse(MouseEvent {
+    Msg::Pointer(MouseEvent {
         kind,
         modifiers: KeyModifiers::NONE,
         column,
@@ -159,12 +159,12 @@ fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Msg {
 fn click_row(app: &mut App, id: Id, line: u16) {
     let area = app.routing().area(id).unwrap();
     let press = MouseEventKind::Down(MouseButton::Left);
-    app.update(mouse(press, area.x + 6, area.y + 2 + line));
+    app.update_routed(mouse(press, area.x + 6, area.y + 2 + line));
 }
 
 fn wheel_down(app: &mut App, id: Id) {
     let area = app.routing().area(id).unwrap();
-    app.update(mouse(MouseEventKind::ScrollDown, area.x + 6, area.y + 3));
+    app.update_routed(mouse(MouseEventKind::ScrollDown, area.x + 6, area.y + 3));
 }
 
 fn project(app: &mut App, name: &str) {

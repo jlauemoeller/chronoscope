@@ -1002,7 +1002,7 @@ mod mouse {
     const PANE: Size = Size::new(30, 14);
 
     fn routed(kind: MouseEventKind, column: u16, row: u16, area: Size) -> Event<UserEvent> {
-        Event::User(UserEvent::Mouse(RoutedMouse {
+        Event::User(UserEvent::Pointer(RoutedMouse {
             kind,
             column,
             row,

@@ -5,6 +5,7 @@
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,7 @@ use tuirealm::event::{
     Event, Key, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use tuirealm::listener::{EventListenerCfg, Poll, PortResult};
+use tuirealm::props::AttrValue;
 
 use super::search::searching;
 use super::selector::{
@@ -20,10 +22,11 @@ use super::selector::{
     theme, two_harnesses,
 };
 use crate::app::fixtures::{self, fixture_snapshot};
-use crate::app::layout::{LayoutInput, Screen, layout};
-use crate::app::mouse::{DOUBLE_CLICK, hit_test};
+use crate::app::layout::{LayoutInput, PointerTarget, Screen, component_at, hit_test, layout};
+use crate::app::mouse::DOUBLE_CLICK;
+use crate::app::runtime::run_loop;
 use crate::app::{App, Id, Msg, Pane, UserEvent};
-use crate::components::HelpContext;
+use crate::components::{HelpContext, PROJECTS_FILTERED_ATTR};
 use crate::index::SessionMap;
 use crate::model::SessionId;
 use crate::test_support::{buffer_to_text, render};
@@ -50,7 +53,7 @@ fn pos(app: &App, id: Id, column: u16, row: u16) -> (u16, u16) {
 /// A left press at (`column`, `row`) of `id`.
 fn click(app: &mut App, id: Id, column: u16, row: u16) {
     let (column, row) = pos(app, id, column, row);
-    app.update(Msg::Mouse(mouse(PRESS, column, row)));
+    app.update_routed(Msg::Pointer(mouse(PRESS, column, row)));
 }
 
 /// A press on the list row `line` (0 is the first row drawn) of a pane.
@@ -65,7 +68,7 @@ fn wheel(app: &mut App, id: Id, down: bool) {
         MouseEventKind::ScrollUp
     };
     let (column, row) = pos(app, id, 6, 3);
-    app.update(Msg::Mouse(mouse(kind, column, row)));
+    app.update_routed(Msg::Pointer(mouse(kind, column, row)));
 }
 
 /// Gives the app a click clock that shows the returned time.
@@ -98,8 +101,10 @@ fn at_size(width: u16, height: u16) -> crate::app::layout::ScreenLayout {
     layout(&LayoutInput::default(), Rect::new(0, 0, width, height))
 }
 
+/// The component drawn on top at a point, whether or not it takes the
+/// pointer (`hit_test`'s own tests are in `layout.rs`).
 fn hit(layout: &crate::app::layout::ScreenLayout, column: u16, row: u16) -> Option<Id> {
-    hit_test(layout, column, row).map(|(id, _)| id)
+    component_at(layout, column, row).map(|(id, _)| id)
 }
 
 // -- hit-testing
@@ -216,7 +221,7 @@ fn an_empty_session_has_nothing_at_the_sidebar_and_the_message_everywhere() {
 fn a_press_on_the_base_selector_screen_never_finds_its_background() {
     // `SelectorFrame` is an overlay, so what is drawn before it is never a
     // candidate here; `a_component_that_only_paints_is_never_found` in
-    // `app/mouse.rs` checks the exclusion itself, with no overlay.
+    // `app/layout.rs` checks the exclusion itself, with no overlay.
     let selector = [
         Id::SelectorFrame,
         Id::HarnessTabs,
@@ -367,7 +372,7 @@ fn the_routing_areas_follow_the_size() {
     assert_eq!(app.routing().area(Id::ProjectList), None);
     // A click on the old position hits nothing now.
     let before = (project(&app), app.focused_pane());
-    app.update(Msg::Mouse(mouse(PRESS, 6, 8)));
+    app.update_routed(Msg::Pointer(mouse(PRESS, 6, 8)));
     assert_eq!((project(&app), app.focused_pane()), before);
 }
 
@@ -376,7 +381,7 @@ fn a_click_lands_where_the_new_size_puts_the_row() {
     let mut app = loaded();
     app.update(Msg::Resized(200, 50));
     // Row 1 (BRIO) of the Projects pane at 200x50.
-    app.update(Msg::Mouse(mouse(PRESS, 30, 6 + 2 + 1)));
+    app.update_routed(Msg::Pointer(mouse(PRESS, 30, 6 + 2 + 1)));
     assert!(project(&app).ends_with("/BRIO"));
 }
 
@@ -647,7 +652,7 @@ fn a_press_that_is_not_on_a_row_ends_a_double_click_under_way() {
     let mut app = loaded();
     let time = click_clock(&mut app);
     click_row(&mut app, Id::SessionList, 1);
-    app.update(Msg::Mouse(mouse(PRESS, 0, 0)));
+    app.update_routed(Msg::Pointer(mouse(PRESS, 0, 0)));
     time.set(Duration::from_millis(100));
     click_row(&mut app, Id::SessionList, 1);
     assert!(app.take_queued().is_empty());
@@ -670,6 +675,148 @@ fn the_wheel_over_projects_leaves_the_filtered_selector_alone() {
     // The wheel over the matches still works.
     wheel(&mut app, Id::SessionList, true);
     assert_eq!(app.filter_prefix(), Some("s2"));
+}
+
+#[test]
+fn the_app_tells_the_projects_pane_when_the_filter_starts_and_ends() {
+    let filtered = |app: &App| {
+        app.application()
+            .query(&Id::ProjectList, PROJECTS_FILTERED_ATTR)
+            .unwrap()
+            .map(|value| value.into_attr())
+    };
+    let mut app = loaded();
+    assert_eq!(filtered(&app), Some(AttrValue::Flag(false)));
+    let matches = vec![(CLAUDE, SessionId::from("s2"))];
+    app.show_filtered("s2", &matches);
+    assert_eq!(filtered(&app), Some(AttrValue::Flag(true)));
+    app.update(Msg::Selector(crate::app::SelectorMsg::LeaveFilter));
+    assert_eq!(app.filter_prefix(), None);
+    assert_eq!(filtered(&app), Some(AttrValue::Flag(false)));
+    // And the wheel moves the Projects pane again.
+    let before = project(&app);
+    wheel(&mut app, Id::ProjectList, true);
+    assert_ne!(project(&app), before);
+}
+
+#[test]
+fn a_double_click_with_a_wheel_step_between_its_presses_still_opens() {
+    let mut app = loaded();
+    let time = click_clock(&mut app);
+    click_row(&mut app, Id::SessionList, 1);
+    time.set(Duration::from_millis(100));
+    // Over a component that takes no pointer: nothing moves.
+    wheel(&mut app, Id::WorkingDir, true);
+    time.set(Duration::from_millis(200));
+    click_row(&mut app, Id::SessionList, 1);
+    assert_eq!(app.take_queued().len(), 1);
+}
+
+#[test]
+fn a_press_not_on_a_row_ends_a_double_click_wherever_the_router_sends_it() {
+    // The reset runs at the next press, whatever the press between reached:
+    // a component that answers nothing (the tabs' underline row), nothing
+    // (the frame's border inside it), or the base selector as an outside
+    // press, which it ignores.
+    let probe = loaded();
+    let underline = pos(&probe, Id::HarnessTabs, 0, 1);
+    let border = pos(&probe, Id::SelectorFrame, 0, 5);
+    let cases = [
+        (underline, "a component"),
+        (border, "nothing"),
+        ((0, 0), "outside the base selector"),
+    ];
+    for ((column, row), what) in cases {
+        let target = hit_test(
+            probe.routing(),
+            &LayoutInput::default(),
+            mouse(PRESS, column, row),
+        );
+        let kind = match target {
+            PointerTarget::Component(id, _) => {
+                assert_eq!(id, Id::HarnessTabs);
+                "a component"
+            }
+            PointerTarget::Nothing => "nothing",
+            PointerTarget::Outside(id, _) => {
+                assert_eq!(id, Id::SelectorFrame);
+                "outside the base selector"
+            }
+        };
+        assert_eq!(kind, what);
+        let mut app = loaded();
+        let time = click_clock(&mut app);
+        click_row(&mut app, Id::SessionList, 1);
+        app.update(Msg::Pointer(mouse(PRESS, column, row)));
+        assert!(app.take_queued().is_empty(), "{what}: nothing answered");
+        time.set(Duration::from_millis(100));
+        click_row(&mut app, Id::SessionList, 1);
+        assert!(app.take_queued().is_empty(), "{what}");
+        // Two more presses on the row are a double-click again.
+        time.set(Duration::from_millis(200));
+        click_row(&mut app, Id::SessionList, 1);
+        assert_eq!(app.take_queued().len(), 1, "{what}");
+    }
+}
+
+// -- delivery
+
+#[test]
+fn update_queues_the_answer_to_a_pointer_message_and_does_not_handle_it() {
+    let mut app = loaded();
+    let brio = project_rows(&app).rows[1].id.clone();
+    let before = project(&app);
+    // Row 1 (BRIO) of the Projects pane.
+    let (column, row) = pos(&app, Id::ProjectList, 6, 3);
+    app.update(Msg::Pointer(mouse(PRESS, column, row)));
+    assert_eq!(project(&app), before, "the answer is not handled yet");
+    let queued = app.take_queued();
+    assert_eq!(
+        queued,
+        [Msg::Selector(crate::app::SelectorMsg::ProjectClicked(brio))]
+    );
+    for msg in queued {
+        app.update(msg);
+    }
+    assert!(project(&app).ends_with("/BRIO"));
+    // A wheel step too.
+    let (column, row) = pos(&app, Id::ProjectList, 6, 3);
+    app.update(Msg::Pointer(mouse(MouseEventKind::ScrollDown, column, row)));
+    assert!(project(&app).ends_with("/BRIO"), "not handled yet");
+    assert_eq!(app.take_queued().len(), 1);
+}
+
+#[test]
+fn handle_gives_each_pointer_answer_before_the_next_message() {
+    let mut app = loaded();
+    app.update(Msg::OpenHelp(HelpContext::Selector));
+    let help = app.routing().area(Id::HelpOverlay).unwrap();
+    // Row 1 (BRIO) of the Projects pane, which the help overlay does not
+    // cover.
+    let (column, row) = pos(&app, Id::ProjectList, 6, 3);
+    assert!(!help.contains((column, row).into()));
+    let press = Msg::Pointer(mouse(PRESS, column, row));
+    app.handle(press.clone());
+    assert!(!app.application().mounted(&Id::HelpOverlay), "closed");
+    assert_eq!(focus_of(&app), Some(Id::ProjectList));
+    assert!(project(&app).ends_with("/Agentmon"), "nothing under it");
+    app.handle(press);
+    assert!(project(&app).ends_with("/BRIO"));
+    assert!(app.take_queued().is_empty(), "handle handled everything");
+}
+
+#[test]
+fn handle_also_handles_what_the_answer_queued() {
+    let mut app = loaded();
+    let time = click_clock(&mut app);
+    let (column, row) = pos(&app, Id::SessionList, 6, 3);
+    app.handle(Msg::Pointer(mouse(PRESS, column, row)));
+    time.set(Duration::from_millis(100));
+    app.handle(Msg::Pointer(mouse(PRESS, column, row)));
+    assert!(app.take_queued().is_empty());
+    // The double-click's `OpenSession` was handled: this app has no harness
+    // to load it with.
+    assert_eq!(app.toast_text(), Some("Cannot open the session"));
 }
 
 #[test]
@@ -724,8 +871,8 @@ fn a_click_elsewhere_does_nothing() {
     let frame = pos(&app, Id::SelectorFrame, 0, 5);
     let gap = (projects.right(), projects.y + 3);
     for (column, row) in [working_dir, help_line, frame, gap, (0, 0), (119, 39)] {
-        app.update(Msg::Mouse(mouse(PRESS, column, row)));
-        app.update(Msg::Mouse(mouse(MouseEventKind::ScrollDown, column, row)));
+        app.update_routed(Msg::Pointer(mouse(PRESS, column, row)));
+        app.update_routed(Msg::Pointer(mouse(MouseEventKind::ScrollDown, column, row)));
         assert_eq!(app.focused_pane(), Pane::Sessions, "{column}, {row}");
         assert_eq!(session(&app), Some("s3"), "{column}, {row}");
         assert!(project(&app).ends_with("/Agentmon"), "{column}, {row}");
@@ -746,7 +893,7 @@ fn other_buttons_and_kinds_do_nothing() {
         MouseEventKind::ScrollLeft,
         MouseEventKind::ScrollRight,
     ] {
-        app.update(Msg::Mouse(mouse(kind, column, row)));
+        app.update_routed(Msg::Pointer(mouse(kind, column, row)));
         assert_eq!(app.focused_pane(), Pane::Projects, "{kind:?}");
         assert_eq!(session(&app), None, "{kind:?}");
     }
@@ -934,7 +1081,7 @@ fn nothing_under_the_help_overlay_or_the_theme_selector_gets_the_mouse() {
                 tried += 1;
                 // The overlay may act on the click itself (a theme row); the
                 // pane under it must not.
-                app.update(Msg::Mouse(mouse(PRESS, column, row)));
+                app.update_routed(Msg::Pointer(mouse(PRESS, column, row)));
                 assert_eq!(app.routing().area(overlay), Some(covered), "{overlay:?}");
             }
         }
@@ -1132,6 +1279,39 @@ fn event(kind: MouseEventKind, modifiers: KeyModifiers, column: u16, row: u16) -
 }
 
 #[test]
+fn the_run_loop_handles_a_press_outside_an_overlay_before_the_next_press() {
+    // Where the presses land, with help open as the loop will open it.
+    let (mut probe, _tx) = app_with_events(true);
+    let (column, row) = pos(&probe, Id::ProjectList, 6, 3);
+    probe.update(Msg::OpenHelp(HelpContext::Selector));
+    let help = probe.routing().area(Id::HelpOverlay).unwrap();
+    assert!(!help.contains((column, row).into()));
+    assert!(!help.contains((0, 0).into()));
+    let (mut app, tx) = app_with_events(true);
+    // All of them are waiting before the loop starts, so the two presses
+    // can come out of one poll: the loop must handle the first one's answer
+    // (closing help) before it routes the second.
+    for event in [
+        Event::Keyboard(KeyEvent::new(Key::Char('?'), KeyModifiers::NONE)),
+        event(PRESS, KeyModifiers::NONE, 0, 0),
+        event(PRESS, KeyModifiers::NONE, column, row),
+        // `Ctrl-c` quits whatever has the focus.
+        Event::Keyboard(KeyEvent::new(Key::Char('c'), KeyModifiers::CONTROL)),
+    ] {
+        tx.send(event).unwrap();
+    }
+    let mut terminal = super::test_terminal(120, 40);
+    run_loop(&mut app, &mut terminal, &AtomicBool::new(false)).unwrap();
+    assert!(app.should_quit());
+    assert!(!app.application().mounted(&Id::HelpOverlay), "help closed");
+    assert!(
+        project(&app).ends_with("/BRIO"),
+        "the second press selected"
+    );
+    assert_eq!(app.focused_pane(), Pane::Projects);
+}
+
+#[test]
 fn a_click_travels_from_the_terminal_once_whichever_component_has_focus() {
     for focus_sessions in [false, true] {
         let (mut app, tx) = app_with_events(true);
@@ -1147,11 +1327,12 @@ fn a_click_travels_from_the_terminal_once_whichever_component_has_focus() {
         let msgs = collect(&mut app);
         assert_eq!(
             msgs,
-            [Msg::Mouse(mouse(PRESS, column, row))],
+            [Msg::Pointer(mouse(PRESS, column, row))],
             "the focused component must not act on the raw event too"
         );
+        // As the run loop does.
         for msg in msgs {
-            app.update(msg);
+            app.handle(msg);
         }
         assert!(project(&app).ends_with("/BRIO"));
         assert_eq!(app.focused_pane(), Pane::Projects);
@@ -1172,7 +1353,7 @@ fn the_wheel_travels_from_the_terminal() {
     let msgs = collect(&mut app);
     assert_eq!(msgs.len(), 1, "{msgs:?}");
     for msg in msgs {
-        app.update(msg);
+        app.handle(msg);
     }
     assert!(project(&app).ends_with("/BRIO"));
 }

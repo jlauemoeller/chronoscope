@@ -65,11 +65,16 @@ impl App {
     }
 
     fn focus_top_transcript(&mut self) {
+        self.give_top_transcript_focus();
+        self.request_redraw(RedrawRequest::Dirty);
+    }
+
+    /// Gives the transcript on top the focus, without asking for a redraw.
+    pub(super) fn give_top_transcript_focus(&mut self) {
         let top = self.top_transcript();
         if let Err(err) = self.application.active(&top) {
             log::warn!("could not return the focus to {top:?}: {err}");
         }
-        self.request_redraw(RedrawRequest::Dirty);
     }
 
     /// The sidebar selected the entry of turn `id` (`open`: and `Enter` was

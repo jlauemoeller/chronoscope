@@ -44,7 +44,7 @@ pub fn run_loop<T: TerminalAdapter>(
     let mut limiter = RedrawLimiter::default();
     while !app.should_quit() && !shutdown.load(Ordering::SeqCst) {
         for msg in app.tick()? {
-            app.update(msg);
+            app.handle(msg);
         }
         limiter.request(app.take_redraw());
         let now = Instant::now();

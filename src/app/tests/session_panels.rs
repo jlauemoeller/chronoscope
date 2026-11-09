@@ -52,7 +52,7 @@ fn area(app: &App, id: Id) -> Rect {
 }
 
 fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Msg {
-    Msg::Mouse(MouseEvent {
+    Msg::Pointer(MouseEvent {
         kind,
         modifiers: KeyModifiers::NONE,
         column,
@@ -240,7 +240,7 @@ fn the_wheel_scrolls_by_the_new_height() {
         let sessions = area(&app, Id::SessionList);
         let (column, row) = (sessions.x + 6, sessions.y + 3);
         for _ in 0..100 {
-            app.update(mouse(MouseEventKind::ScrollDown, column, row));
+            app.update_routed(mouse(MouseEventKind::ScrollDown, column, row));
         }
         let numbers = drawn_numbers(&text(&mut app, width, height));
         assert_eq!(
@@ -249,7 +249,7 @@ fn the_wheel_scrolls_by_the_new_height() {
             "{width}x{height}: the end of the list, no further"
         );
         for _ in 0..100 {
-            app.update(mouse(MouseEventKind::ScrollUp, column, row));
+            app.update_routed(mouse(MouseEventKind::ScrollUp, column, row));
         }
         let numbers = drawn_numbers(&text(&mut app, width, height));
         assert_eq!(numbers, (0..rows).collect::<Vec<_>>(), "{width}x{height}");
@@ -294,7 +294,7 @@ fn a_click_over_either_panel_changes_neither_selection_nor_scroll_nor_focus() {
     let rows = session_rows(&app);
     app.take_redraw();
     for (id, column, row) in panel_points(&app) {
-        app.update(mouse(PRESS, column, row));
+        app.update_routed(mouse(PRESS, column, row));
         assert_eq!(app.selected_session().cloned(), selected, "{id:?}");
         assert_eq!(app.selected_project().cloned(), project, "{id:?}");
         assert_eq!(app.focused_pane(), Pane::Sessions, "{id:?}");
@@ -312,7 +312,7 @@ fn a_double_click_over_a_panel_does_not_open_the_session() {
     app.take_redraw();
     for (_, column, row) in panel_points(&app) {
         for _ in 0..2 {
-            app.update(mouse(PRESS, column, row));
+            app.update_routed(mouse(PRESS, column, row));
         }
     }
     assert_eq!(app.take_redraw(), RedrawRequest::None);
@@ -333,7 +333,7 @@ fn the_wheel_over_either_panel_changes_neither_selection_nor_scroll() {
             // Scroll the list a little with the wheel first.
             let sessions = area(&app, Id::SessionList);
             for _ in 0..4 {
-                app.update(mouse(
+                app.update_routed(mouse(
                     MouseEventKind::ScrollDown,
                     sessions.x + 6,
                     sessions.y + 3,
@@ -348,7 +348,7 @@ fn the_wheel_over_either_panel_changes_neither_selection_nor_scroll() {
         for (id, column, row) in panel_points(&app) {
             for kind in [MouseEventKind::ScrollDown, MouseEventKind::ScrollUp] {
                 for _ in 0..30 {
-                    app.update(mouse(kind, column, row));
+                    app.update_routed(mouse(kind, column, row));
                 }
                 let now = drawn_numbers(&drawn(&mut app, 120, 40));
                 assert_eq!(now, before, "{id:?} {kind:?} selected={selected}");
@@ -370,11 +370,11 @@ fn the_rows_just_above_the_panels_stay_clickable() {
     // The pane's last list row is two rows above its bottom border... the
     // border is the row above `Session Time`, the list row above that.
     let last_row_y = sessions.bottom() - 2;
-    app.update(mouse(PRESS, sessions.x + 6, last_row_y));
+    app.update_routed(mouse(PRESS, sessions.x + 6, last_row_y));
     assert_eq!(app.selected_session().map(SessionId::as_str), Some("m09"));
     assert_eq!(app.focused_pane(), Pane::Sessions);
     // The same column, one row lower, is the panel: nothing happens.
-    app.update(mouse(PRESS, sessions.x + 6, time.y));
+    app.update_routed(mouse(PRESS, sessions.x + 6, time.y));
     assert_eq!(app.selected_session().map(SessionId::as_str), Some("m09"));
 }
 
@@ -384,10 +384,10 @@ fn at_60x33_the_last_list_row_is_clickable_and_the_panel_below_is_not() {
     app.update(Msg::Resized(60, 33));
     let sessions = area(&app, Id::SessionList);
     assert_eq!(sessions.height, 6);
-    app.update(mouse(PRESS, sessions.x + 6, sessions.y + 4));
+    app.update_routed(mouse(PRESS, sessions.x + 6, sessions.y + 4));
     assert_eq!(app.selected_session().map(SessionId::as_str), Some("m02"));
     let time = area(&app, Id::SessionTime);
-    app.update(mouse(PRESS, time.x + 6, time.y + 1));
+    app.update_routed(mouse(PRESS, time.x + 6, time.y + 1));
     assert_eq!(app.selected_session().map(SessionId::as_str), Some("m02"));
 }
 

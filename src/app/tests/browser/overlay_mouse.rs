@@ -21,7 +21,7 @@ const WHEEL_DOWN: MouseEventKind = MouseEventKind::ScrollDown;
 const WHEEL_UP: MouseEventKind = MouseEventKind::ScrollUp;
 
 fn at(kind: MouseEventKind, column: u16, row: u16) -> Msg {
-    Msg::Mouse(MouseEvent {
+    Msg::Pointer(MouseEvent {
         kind,
         modifiers: KeyModifiers::NONE,
         column,
@@ -32,22 +32,23 @@ fn at(kind: MouseEventKind, column: u16, row: u16) -> Msg {
 /// A mouse event at (`column`, `row`) of the component `id`.
 fn on(rig: &mut Rig, id: Id, kind: MouseEventKind, column: u16, row: u16) {
     let area = rig.app.routing().area(id).unwrap();
-    rig.app.update(at(kind, area.x + column, area.y + row));
+    rig.app
+        .update_routed(at(kind, area.x + column, area.y + row));
 }
 
 /// A press in the top-left corner of the screen: outside every overlay.
 fn press_outside(rig: &mut Rig) {
-    rig.app.update(at(PRESS, 0, 0));
+    rig.app.update_routed(at(PRESS, 0, 0));
 }
 
 /// A press at the bottom-right corner of the screen.
 fn press_far_corner(rig: &mut Rig) {
     let (width, height) = rig.app.size();
-    rig.app.update(at(PRESS, width - 1, height - 1));
+    rig.app.update_routed(at(PRESS, width - 1, height - 1));
 }
 
 fn wheel_outside(rig: &mut Rig, kind: MouseEventKind) {
-    rig.app.update(at(kind, 0, 0));
+    rig.app.update_routed(at(kind, 0, 0));
 }
 
 /// The first assistant turn of the fixture, with a thinking text so long that
@@ -102,7 +103,7 @@ fn a_press_at_the_summary_point_toggles_the_fold_when_no_overlay_is_open() {
         let point = summary_point(&mut rig, width, height);
         let before = presentation(&rig);
         assert!(screen_text(&mut rig, width, height).contains("▶ Thinking:"));
-        rig.app.update(at(PRESS, point.0, point.1));
+        rig.app.update_routed(at(PRESS, point.0, point.1));
         assert_ne!(presentation(&rig), before, "{width}x{height}");
         let text = screen_text(&mut rig, width, height);
         assert!(text.contains("▼ Thinking"), "{width}x{height}: unfolded");
@@ -198,7 +199,7 @@ fn selector_over_wide_browser() -> (Rig, (u16, u16)) {
 fn a_click_outside_the_selector_over_the_browser_closes_it_and_focuses_the_transcript() {
     let (mut rig, point) = selector_over_wide_browser();
     let transcript = presentation(&rig);
-    rig.app.update(at(PRESS, point.0, point.1));
+    rig.app.update_routed(at(PRESS, point.0, point.1));
     assert_eq!(rig.app.screen(), Screen::Browser);
     assert!(!mounted(&rig, Id::SelectorFrame));
     assert_eq!(rig.focus(), Some(Id::Transcript));
@@ -217,7 +218,7 @@ fn a_click_above_the_selector_over_the_browser_closes_it_too() {
     rig.ctrl_o();
     rig.settle();
     let header = rig.app.routing().area(Id::BrowserHeader).unwrap();
-    rig.app.update(at(PRESS, header.x + 3, header.y));
+    rig.app.update_routed(at(PRESS, header.x + 3, header.y));
     assert_eq!(rig.app.screen(), Screen::Browser);
     assert_eq!(rig.focus(), Some(Id::Transcript));
 }
@@ -231,7 +232,7 @@ fn a_click_outside_the_selector_during_its_search_closes_it() {
     rig.press(Key::Char('/'));
     rig.settle();
     assert_eq!(rig.focus(), Some(Id::Prompt));
-    rig.app.update(at(PRESS, 0, 0));
+    rig.app.update_routed(at(PRESS, 0, 0));
     assert_eq!(rig.app.screen(), Screen::Browser);
     assert!(!mounted(&rig, Id::Prompt), "the search ended with it");
     assert!(!mounted(&rig, Id::SelectorFrame));
@@ -256,6 +257,31 @@ fn the_resume_confirmation_is_modal_to_a_click_outside_the_selector() {
 }
 
 #[test]
+fn once_the_resume_confirmation_is_answered_a_click_outside_closes_the_selector() {
+    let mut rig = rig();
+    rig.harness.set_resume(Some("claude --resume {id}"));
+    rig.app.set_dir_exists(|_| true);
+    rig.open_loaded();
+    rig.ctrl_o();
+    rig.settle();
+    // Declined with `n`, then with `Esc`.
+    for decline in [Key::Char('n'), Key::Esc] {
+        rig.key(Key::Char('R'), KeyModifiers::SHIFT);
+        rig.settle();
+        assert!(rig.app.resume_prompt_open());
+        press_outside(&mut rig);
+        assert_eq!(rig.app.screen(), Screen::BrowserSelector, "{decline:?}");
+        rig.press(decline);
+        rig.settle();
+        assert!(!rig.app.resume_prompt_open(), "{decline:?}");
+        assert_eq!(rig.focus(), Some(Id::SessionList), "{decline:?}");
+    }
+    press_outside(&mut rig);
+    assert_eq!(rig.app.screen(), Screen::Browser);
+    assert_eq!(rig.focus(), Some(Id::Transcript));
+}
+
+#[test]
 fn a_click_inside_the_selector_acts_on_it_and_does_not_close_it() {
     let mut rig = rig();
     rig.open_loaded();
@@ -264,7 +290,8 @@ fn a_click_inside_the_selector_acts_on_it_and_does_not_close_it() {
     let transcript = presentation(&rig);
     // On the frame between the panes, on a session row, and on the tabs.
     let projects = rig.app.routing().area(Id::ProjectList).unwrap();
-    rig.app.update(at(PRESS, projects.right(), projects.y + 2));
+    rig.app
+        .update_routed(at(PRESS, projects.right(), projects.y + 2));
     assert_eq!(rig.app.screen(), Screen::BrowserSelector);
     on(&mut rig, Id::SessionList, PRESS, 6, 2);
     assert_eq!(rig.app.screen(), Screen::BrowserSelector);
@@ -281,7 +308,7 @@ fn the_wheel_outside_the_selector_over_the_browser_is_ignored() {
     let transcript = presentation(&rig);
     let session = rig.app.selected_session().cloned();
     for kind in [WHEEL_DOWN, WHEEL_UP, WHEEL_DOWN] {
-        rig.app.update(at(kind, point.0, point.1));
+        rig.app.update_routed(at(kind, point.0, point.1));
     }
     assert_eq!(rig.app.screen(), Screen::BrowserSelector, "still open");
     assert_eq!(rig.focus(), Some(Id::SessionList));
@@ -304,8 +331,9 @@ fn the_transcript_under_the_selector_gets_no_wheel_or_click() {
     let frame = rig.app.routing().area(Id::SelectorFrame).unwrap();
     let projects = rig.app.routing().area(Id::ProjectList).unwrap();
     for kind in [PRESS, WHEEL_DOWN] {
-        rig.app.update(at(kind, frame.x + 1, frame.y + 6));
-        rig.app.update(at(kind, projects.right(), projects.y + 3));
+        rig.app.update_routed(at(kind, frame.x + 1, frame.y + 6));
+        rig.app
+            .update_routed(at(kind, projects.right(), projects.y + 3));
     }
     assert_eq!(presentation(&rig), before);
 }
@@ -338,7 +366,7 @@ fn a_click_outside_the_help_overlay_closes_it_and_returns_the_focus() {
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
     assert_outside(&rig, Id::HelpOverlay, point);
-    rig.app.update(at(PRESS, point.0, point.1));
+    rig.app.update_routed(at(PRESS, point.0, point.1));
     assert!(!mounted(&rig, Id::HelpOverlay));
     assert_eq!(rig.focus(), Some(Id::Transcript));
     assert_eq!(rig.app.screen(), Screen::Browser);
@@ -371,7 +399,7 @@ fn a_click_inside_the_help_overlay_does_nothing() {
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
     let area = rig.app.routing().area(Id::HelpOverlay).unwrap();
     for (dx, dy) in [(0, 0), (3, 3), (area.width - 1, area.height - 1)] {
-        rig.app.update(at(PRESS, area.x + dx, area.y + dy));
+        rig.app.update_routed(at(PRESS, area.x + dx, area.y + dy));
     }
     assert!(mounted(&rig, Id::HelpOverlay));
     assert_eq!(rig.focus(), Some(Id::HelpOverlay));
@@ -410,7 +438,7 @@ fn the_wheel_outside_an_overlay_over_the_browser_is_ignored() {
         assert_outside(&rig, overlay, point);
         let transcript = presentation(&rig);
         for kind in [WHEEL_DOWN, WHEEL_UP, WHEEL_DOWN] {
-            rig.app.update(at(kind, point.0, point.1));
+            rig.app.update_routed(at(kind, point.0, point.1));
         }
         assert!(mounted(&rig, overlay), "{overlay:?} stays open");
         assert_eq!(presentation(&rig), transcript, "{overlay:?}");
@@ -438,7 +466,7 @@ fn the_wheel_outside_an_overlay_does_not_stop_following() {
     };
     rig.app.update(Msg::OpenHelp(HelpContext::Browser));
     assert_outside(&rig, Id::HelpOverlay, point);
-    rig.app.update(at(WHEEL_UP, point.0, point.1));
+    rig.app.update_routed(at(WHEEL_UP, point.0, point.1));
     assert!(following(&rig));
 }
 
@@ -455,7 +483,7 @@ fn a_click_outside_the_theme_selector_cancels_and_restores_the_theme() {
     rig.move_to(Key::Down, "terminal");
     assert_ne!(rig.app.theme(), &original, "previewed");
     assert_outside(&rig, Id::ThemeSelector, point);
-    rig.app.update(at(PRESS, point.0, point.1));
+    rig.app.update_routed(at(PRESS, point.0, point.1));
     assert!(!mounted(&rig, Id::ThemeSelector));
     assert_eq!(rig.app.theme_id(), "default");
     assert_eq!(rig.app.theme(), &original);
@@ -559,7 +587,7 @@ fn a_click_outside_a_theme_row_inside_the_selector_does_nothing() {
         (8, area.height - 1),
         (8, area.height - 2),
     ] {
-        rig.app.update(at(PRESS, area.x + dx, area.y + dy));
+        rig.app.update_routed(at(PRESS, area.x + dx, area.y + dy));
     }
     assert!(mounted(&rig, Id::ThemeSelector));
     assert_eq!(cursor(&rig), cursor_before);

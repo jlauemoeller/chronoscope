@@ -2,18 +2,20 @@
 //! selects the section under the pointer, a click on a section's summary line
 //! toggles its fold and a click on a `… N more lines` row expands the output.
 //!
-//! The `App` routes the event here with the position relative to the
-//! transcript's area (see [`RoutedMouse`]). The row is mapped to a block and a
-//! row of that block through the prepared window (the layout cache's blocks,
-//! laid out for the viewport), and from there to a section or selection stop.
+//! The router sends the event here with the position relative to the
+//! transcript's area (see [`RoutedMouse`]). A left press asks for the focus
+//! ([`Msg::TranscriptPressed`]), whether or not it hits a section. The row is
+//! mapped to a block and a row of that block through the prepared window (the
+//! layout cache's blocks, laid out for the viewport), and from there to a
+//! section or selection stop.
 
 use tuirealm::command::{Cmd, CmdResult};
 use tuirealm::component::Component;
 use tuirealm::event::MouseEventKind;
 
-use super::Transcript;
 use super::folding::FoldOp;
 use super::keys::{WHEEL_DOWN, WHEEL_UP};
+use super::{Transcript, changes_view};
 use crate::app::{Msg, RoutedMouse};
 use crate::components::turn_block::SectionId;
 
@@ -26,21 +28,25 @@ struct Hit {
 }
 
 impl Transcript {
-    /// A wheel step or a left press. Answers what keys answer: the new count
-    /// when it changed, else [`Msg::TranscriptChanged`] if the view changed.
+    /// A wheel step or a left press. A wheel step answers what keys answer:
+    /// the new count when it changed, else [`Msg::TranscriptChanged`] if the
+    /// view changed. A left press answers [`Msg::TranscriptPressed`] with the
+    /// same change, as it also asks for the focus.
     pub(super) fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         let new_before = self.new_sections;
+        let press = mouse.is_left_press();
         let result = match mouse.kind {
             MouseEventKind::ScrollUp => self.perform(Cmd::Custom(WHEEL_UP)),
             MouseEventKind::ScrollDown => self.perform(Cmd::Custom(WHEEL_DOWN)),
-            _ if mouse.is_left_press() => self.clicked(mouse),
+            _ if press => self.clicked(mouse),
             _ => return None,
         };
-        if self.new_sections != new_before {
-            return Some(Msg::NewSections(self.new_sections));
+        let change = self.view_change(new_before, changes_view(&result));
+        if press {
+            Some(Msg::TranscriptPressed(change))
+        } else {
+            change.key_answer()
         }
-        let changed = !matches!(result, CmdResult::NoChange | CmdResult::Invalid(_));
-        changed.then_some(Msg::TranscriptChanged)
     }
 
     /// A left press at (`column`, `row`) of the transcript's area.

@@ -98,7 +98,7 @@ impl Rig {
     }
 
     fn click(&mut self, column: u16, row: u16) {
-        self.app.update(Msg::Mouse(MouseEvent {
+        self.app.update_routed(Msg::Pointer(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
             modifiers: KeyModifiers::NONE,
             column,

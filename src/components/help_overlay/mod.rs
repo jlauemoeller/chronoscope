@@ -99,8 +99,7 @@ impl Component for HelpOverlay {
 
 impl HelpOverlay {
     /// The wheel scrolls [`WHEEL_ROWS`](super::overlay_frame::WHEEL_ROWS)
-    /// rows; clicks do nothing (the `App` closes the overlay for one outside
-    /// it).
+    /// rows; clicks inside it do nothing.
     fn on_mouse(&mut self, mouse: &RoutedMouse) -> Option<Msg> {
         self.frame
             .on_mouse(mouse, self.content.row_count())
@@ -112,8 +111,10 @@ impl AppComponent<Msg, UserEvent> for HelpOverlay {
     fn on(&mut self, ev: &Event<UserEvent>) -> Option<Msg> {
         let key = match ev {
             Event::Keyboard(key) => key,
-            // Only what the `App` routed here, in the overlay's coordinates.
-            Event::User(UserEvent::Mouse(mouse)) => return self.on_mouse(mouse),
+            // Only what the router sent here, in the overlay's coordinates.
+            Event::User(UserEvent::Pointer(mouse)) => return self.on_mouse(mouse),
+            // A press outside closes it, as `Esc` does.
+            Event::User(UserEvent::PointerOutside) => return Some(Msg::CloseHelp),
             _ => return None,
         };
         match self.frame.on_key(key, self.content.row_count()) {
@@ -223,7 +224,7 @@ mod tests {
             row: 4,
             area: Size::new(72, 22),
         };
-        overlay.on(&Event::User(UserEvent::Mouse(mouse)))
+        overlay.on(&Event::User(UserEvent::Pointer(mouse)))
     }
 
     #[test]
@@ -285,6 +286,17 @@ mod tests {
         });
         assert_eq!(overlay.on(&raw), None);
         assert_eq!(offset(&overlay), 0);
+    }
+
+    #[test]
+    fn a_press_outside_it_closes_it_as_esc_does() {
+        let mut overlay = with_interior(20);
+        let outside = Event::User(UserEvent::PointerOutside);
+        assert_eq!(overlay.on(&outside), Some(Msg::CloseHelp));
+        assert_eq!(press(&mut overlay, Key::Esc), Some(Msg::CloseHelp));
+        // Scrolled or not.
+        wheel(&mut overlay, MouseEventKind::ScrollDown);
+        assert_eq!(overlay.on(&outside), Some(Msg::CloseHelp));
     }
 
     #[test]
