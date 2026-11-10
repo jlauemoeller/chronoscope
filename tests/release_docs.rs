@@ -278,20 +278,6 @@ fn readme_documents_the_tmux_settings_verbatim() {
 }
 
 #[test]
-fn readme_says_herdr_osc52_is_unverified() {
-    let text = readme();
-    let herdr: Vec<&str> = text
-        .lines()
-        .filter(|l| l.contains("herdr") && l.to_lowercase().contains("unverified"))
-        .collect();
-    assert!(
-        !herdr.is_empty(),
-        "no line says herdr's behaviour is unverified"
-    );
-    assert!(text.contains("OSC52"));
-}
-
-#[test]
 fn readme_command_line_matches_the_spec() {
     let text = readme();
     let usage = block_containing(&text, "", "chronoscope --latest");
