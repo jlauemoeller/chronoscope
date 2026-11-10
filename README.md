@@ -4,12 +4,11 @@ Chronoscope is a read-only terminal viewer for session histories of AI coding ag
 the sessions of your local projects, and presents them as a transcript of turns that you can 
 fold, search, copy, save and export, with live updates while the session is still running.
 
-You can export individual sections or the entire transcript as a Markdown document, view details about token usage and tool use in individual turns, or re-open the selected transcript in your harness. 
+You can export individual sections or the entire transcript as a Markdown document, view details 
+about token usage and tool use in individual turns, or re-open the selected transcript in your 
+harness. 
 
 **Supported harnesses** are Claude Code (from `~/.claude/projects`) and OpenCode (from its SQLite database)
-
-## Factory Skill
-The project was built using a Claude Code factory skill defined by [factory/factory.md](factory/factory.md). To install this skill, execute the file as a prompt with eg. Opus 5.5 on High. See the prompt file for information on how to use the factory and the associated dashboard.
 
 ## Screenshots
 
@@ -18,6 +17,48 @@ The project was built using a Claude Code factory skill defined by [factory/fact
 ![details](doc/screenshots/details.png)
 
 ![themes](doc/screenshots/themes.png)
+
+## Factory Skill
+The project was built using a Claude Code factory skill defined by [factory/factory.md](factory/factory.md). 
+To install or regenerate this skill, execute the file as a prompt with eg. Opus 5.5 on High. See 
+the prompt file for information on how to use the factory and the associated dashboard.
+
+Use the factory as follows:
+
+1. **Prepare a new cycle specification** and place it in `doc/cycles`, eg. [doc/cycles/cycle-4.md](doc/cycles/cycle-4.md) 
+   The specification should be a detailed description of the work included in the next cycle 
+   executed by the factory. I find that a good way to produce the spec file is to start with a simpler
+   PRD (Product Requirement Description) and ask the harness to research and write a draft 
+   specification. Then review and refine this spec until you are happy it describes the desired
+   outcome. Once all is good, you must commit the file as the factory won't start unless the
+   working directory is clean.
+
+2. **Run the factory preflight**. Switch your coding harness to a high-performance model and a
+   high effort level (eg. at the time of writing I use Opus 5.5 @ High), This model will
+   become the _Main Orchestrator_ for the factory. Then execute `/factory start doc/cycles/cycle-<id>.md`. 
+   This will start the factory and cause the _Planner_ agent to run it's preflight check. 
+   During this run it will determine if the required toolchain is installed and whether the
+   spec appear complete and sufficient detailed, and come back with recommendations. If 
+   needed, edit and commit the spec and install additional tools.
+
+3. **Start the planning**. With the preflight out of the way, run `/factory continue`
+   to move the _Planner_ to the planning stage. It will produce a number of tasks
+   inside `factory/state`, then hand control back to you for a sanity check. 
+
+4. **Start the implementation**. Once you are happy with the plan, start the actual implementation
+   work by once again issuing `/factory continue`. The factory will then run to completion,
+   or until it requires you to step in.
+
+If you are asked to resolve a situation where the Approver cannot finalize a task 
+implementation, you can use `/factory approve` to approve the current result as-is (or after your
+manual changes), `/factory cancel` to cancel the current task, or `/factory rework` to issue 
+manual rework rounds with instructions on what to change.
+
+Once the cycle is complete you need to move `factory/state` to `factory/archive/cycle-10`
+before starting a new cycle.
+
+Follow along on the factory dashboard which you can start by running `python3 -m http.server -d factory`
+in the terminal.
 
 ## Install
 You can install Chronoscope from a relase or by compiling it from source.
@@ -439,11 +480,6 @@ set -sg escape-time 10
 server is reachable, or when `$TMUX` is set, Chronoscope also writes an OSC52
 escape sequence to the terminal, wrapped in tmux's DCS passthrough under tmux.
 Your terminal must support OSC52 for that path to work.
-
-### herdr
-
-How herdr treats OSC52 and clipboard passthrough is **unverified**; see
-[Open items](#open-items-to-verify).
 
 ## Data sources
 
