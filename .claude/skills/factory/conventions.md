@@ -291,7 +291,7 @@ command describes it.
 | Command | Use |
 |---|---|
 | `preconditions` | Branch, `state-ignored`, clean tree (see "Preconditions"). |
-| `spec-copy <spec>` | `/factory start` and the preflight restart: writes `spec-source`, copies the spec to `SPEC.md`, the project documents next to it to `project/`, and every Markdown file they link to (transitively) to `spec/`, rewriting the links; prints `copied:` and `missing:` lines. |
+| `spec-copy <spec>` | `/factory start` and the preflight restart: writes `spec-source`, copies the spec to `SPEC.md`, the project documents next to it (or, for each one not there, in its parent directory) to `project/`, and every Markdown file they link to (transitively) to `spec/`, rewriting the links; prints `copied:` and `missing:` lines. |
 | `run-info` | The run at a glance: `preflight`, `backlog`, `preflight-state`, `spec-source`, `board`, `loop-state`, task counts, `active: <id> <status>`, `next-planned`, `all-planned-no-rounds`. |
 | `backlog` | Each task-id and status. |
 | `set-status <task-id> "<status>"` | Change a status in `backlog.md`. |

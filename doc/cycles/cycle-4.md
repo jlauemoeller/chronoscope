@@ -4,7 +4,7 @@
 
 **Scope.** Plan and build only the requirements in this document. The application already exists and is complete: do not scaffold it, and do not re-plan anything else.
 
-**Base spec.** [product.md](product.md) describes the application as built. It is context, not work to plan. Where the two documents conflict, this one wins. Other documents linked from it are context too.
+**Base spec.** [product.md](../product.md) describes the application as built. It is context, not work to plan. Where the two documents conflict, this one wins. Other documents linked from it are context too.
 
 **References.** `§n` means a section of this document, and `base §n` a section of the base spec.
 

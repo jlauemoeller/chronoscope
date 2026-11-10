@@ -2,7 +2,7 @@
 
 > See [PRD.md](PRD.md), [ui-sketch.md](ui-sketch.md) and [theme-selector.md](theme-selector.md).
 
-This is the living description of Chronoscope as built. The final docs task of every cycle folds that cycle's changes into it. Cycle specs (`cycle-N-SPEC.md`) describe changes against it, and [cycle-1-SPEC.md](cycle-1-SPEC.md) is the first one.
+This is the living description of Chronoscope as built. The final docs task of every cycle folds that cycle's changes into it. Cycle specs (`cycles/cycle-N.md`) describe changes against it, and [cycle-1.md](cycles/cycle-1.md) is the first one.
 
 How the product is built and tested is in the project guidelines: [architecture.md](architecture.md), [coding.md](coding.md) and [testing.md](testing.md).
 

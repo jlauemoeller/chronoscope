@@ -919,8 +919,13 @@ def spec_copy(spec_arg):
     copies = {spec: "SPEC.md"}  # original realpath -> copy path relative to state
     queue = [spec]
     project = []
+    # Each project document sits next to the spec or, failing that, in its
+    # parent directory (specs may live in a subdirectory such as doc/cycles/).
     for doc in PROJECT_DOCS:
-        path = os.path.realpath(os.path.join(spec_dir, doc))
+        for doc_dir in (spec_dir, os.path.dirname(spec_dir)):
+            path = os.path.realpath(os.path.join(doc_dir, doc))
+            if os.path.isfile(path):
+                break
         if os.path.isfile(path) and path not in copies:
             copies[path] = "project/" + doc
             project.append(path)
@@ -1431,7 +1436,7 @@ def build_parser():
         return p
 
     add("preconditions", cmd_preconditions, "Current branch, whether factory/state is git-ignored, and whether the tree is clean (untracked files included).")
-    p = add("spec-copy", cmd_spec_copy, "Copy a spec, the project documents next to it and every Markdown file they link to into factory/state/, rewriting links; write spec-source.")
+    p = add("spec-copy", cmd_spec_copy, "Copy a spec, the project documents next to it (or in its parent directory) and every Markdown file they link to into factory/state/, rewriting links; write spec-source.")
     p.add_argument("spec")
     add("run-info", cmd_run_info, "The state of the run: preflight result, backlog, preflight state, active task, next Planned task, loop state.")
     add("backlog", cmd_backlog, "Each task in backlog.md with its status, in backlog order.")

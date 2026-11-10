@@ -217,7 +217,8 @@ suitable number of tasks that together implement the work it describes:
   (`architecture.md`, `coding.md` or `testing.md`), and carries out anything
   else the spec asks to document. Write these changes into its acceptance
   criteria. These are the original project documents in the spec's
-  directory (`cat factory/state/spec-source` gives the spec's path). When the
+  directory or, for one that isn't there, its parent directory
+  (`cat factory/state/spec-source` gives the spec's path). When the
   spec's directory is outside the repository, the plan has no documentation
   task.
 

@@ -4,7 +4,7 @@
 
 **Scope.** Plan and build only the requirements in this document. The application already exists and is complete: do not scaffold it, and do not re-plan anything else.
 
-**Base spec.** [product.md](product.md) describes the application as built. It is context, not work to plan. Where the two documents conflict, this one wins. Other documents linked from it are context too.
+**Base spec.** [product.md](../product.md) describes the application as built. It is context, not work to plan. Where the two documents conflict, this one wins. Other documents linked from it are context too.
 
 **Wireframe.** [cycle-2-ui-sketch.md](cycle-2-ui-sketch.md) is the wireframe for the turns sidebar (§6). It defines only the sidebar and where it sits. Its transcript content is illustrative: fold markers, tool rows and everything else in the transcript follow the base spec and this document.
 

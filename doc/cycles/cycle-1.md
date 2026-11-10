@@ -1,6 +1,6 @@
 # Chronoscope — Specification
 
-> See [PRD.md](PRD.md), [ui-sketch.md](ui-sketch.md) and [theme-selector.md](theme-selector.md).
+> See [PRD.md](../PRD.md), [ui-sketch.md](../ui-sketch.md) and [theme-selector.md](../theme-selector.md).
 
 ## 1. Overview
 
@@ -509,7 +509,7 @@ User themes: `$XDG_CONFIG_HOME/chronoscope/themes/<name>.toml`. A user theme wit
 
 ### 8.4 Theme selector overlay
 
-Layout per [theme-selector.md](theme-selector.md):
+Layout per [theme-selector.md](../theme-selector.md):
 
 ```
 ╭─ Themes ──────────────────────────────╮

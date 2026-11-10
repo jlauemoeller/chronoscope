@@ -37,7 +37,7 @@ Refuse if `factory/state/backlog.md`, `factory/state/tasks/` or
 spec with the factory script (see "The factory script"). It writes the
 absolute path of <spec>, with any `~` expanded, to
 `factory/state/spec-source`. It copies <spec> to `factory/state/SPEC.md`,
-the project documents next to <spec> (see "The project documents") to
+the project documents (see "The project documents") to
 `factory/state/project/`, and every Markdown file that <spec> or a project
 document links to with a relative link (following links transitively) into
 `factory/state/spec/`. It rewrites those links so they resolve from the
@@ -518,8 +518,10 @@ means deleting its task directory.
 ### The project documents
 
 A spec describes one cycle: the changes that cycle makes. What holds from one
-cycle to the next is in the project documents, which sit in the same
-directory as the spec. Each one is optional:
+cycle to the next is in the project documents. Each one sits in the same
+directory as the spec or, so that specs can be kept in a subdirectory such as
+`doc/cycles/`, in its parent directory; the spec's own directory wins where
+both have one. Each one is optional:
 - `product.md`: the product as built, as its users see it. The spec
   describes its changes against it. It is context, never work to plan.
 - `architecture.md`: how the project is built: its parts, how they fit
@@ -570,8 +572,9 @@ It folds the cycle's changes into `product.md`, or writes `product.md` from
 the spec as built when there is none yet. It records every rule the cycle
 adds or changes in the guideline it belongs in, and carries out anything else
 the spec asks to document. The Planner writes these changes into its
-acceptance criteria. When the spec's directory is outside the repository,
-the plan has no documentation task.
+acceptance criteria. The originals are where the spec copy found them (see
+"The project documents"). When the spec's directory is outside the
+repository, the plan has no documentation task.
 
 ### The stack profile
 
@@ -1437,8 +1440,9 @@ text under its heading.
 
 The spec copy:
 - writes the absolute path of the spec to `spec-source`;
-- copies each project document that exists in the spec's directory to
-  `project/`, under its own name (see "The project documents");
+- copies each project document that exists in the spec's directory, or
+  failing that in its parent directory, to `project/`, under its own name
+  (see "The project documents");
 - follows relative links to Markdown files transitively, from the spec and
   from the project documents alike, including reference-style links and
   links whose text wraps across lines;
@@ -1462,7 +1466,10 @@ repository, never the real one. Cover:
   a missing file, with a link that wraps across lines and one in an
   indented code block;
 - a spec with some of the project documents next to it, one of which the
-  spec links to and one of which links to a document the spec doesn't.
+  spec links to and one of which links to a document the spec doesn't;
+- a spec in a subdirectory below its project documents that links to one of
+  them with `../`, and a project document in both the spec's directory and
+  its parent.
 
 ### The task orchestrator
 

@@ -97,7 +97,8 @@ applies. What a guideline describes as it is today (an inventory, a table, a
 diagram, a dependency list, reasons) is context, not a rule: adding to it
 isn't a breach. Where the documents differ, `task.md` wins over `SPEC.md`,
 and `SPEC.md` over the project documents. Only the documentation task
-changes the original project documents (in the spec's directory); if this is
+changes the original project documents (in the spec's directory or its
+parent); if this is
 that task, its acceptance criteria say what to change.
 
 ### The stack profile
