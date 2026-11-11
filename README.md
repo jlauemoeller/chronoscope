@@ -60,6 +60,11 @@ before starting a new cycle.
 Follow along on the factory dashboard which you can start by running `python3 -m http.server -d factory`
 in the terminal.
 
+The same server also hosts a stats board at `/stats/` that shows how the factory performed across
+the archived cycles, including the agent time and tokens each task took (read from the factory's
+Claude Code transcripts under `~/.claude/projects`). Run `python3 factory/stats/extract.py` first, and
+again after each archived cycle, to refresh its data.
+
 ## Install
 You can install Chronoscope from a relase or by compiling it from source.
 

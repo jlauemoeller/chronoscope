@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Factory stats</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer
+    src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"
+    integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i"
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- Markdown rendering and sanitizing, pinned and checked by hash. If either
+       fails to load, files show as preformatted text instead. -->
+  <script defer
+    src="https://cdnjs.cloudflare.com/ajax/libs/marked/18.1.3/lib/marked.umd.min.js"
+    integrity="sha384-lFrK5CitYysybAqlfGWzSr4wxMI/Ok44hlfKtPAFt1q6F4xSK/6mTiKDfcw/GZO5"
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script defer
+    src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.4.17/purify.min.js"
+    integrity="sha384-P0JNneQf81HOl9VwNXK76cQ9VMD6Nfsnepxb0cCOg8+UzEdzgPHAPV4wVQrvYQSx"
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script defer src="panel.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <h1 class="brand">Factory stats</h1>
+      <span class="meta" id="generated"></span>
+      <a class="nav" href="../dashboard/">Dashboard</a>
+    </div>
+  </header>
+
+  <main class="page" id="page">
+    <p class="load-error" id="load-error" hidden></p>
+
+    <section class="head" id="overview">
+      <p class="lede">How the build, review and approval loop performed on every task in <code>factory/archive</code>: the rounds each task needed, the Approver's verdicts, what each reviewer found, and the agent time and tokens it all took.</p>
+      <p class="takeaway">Tasks needed <b data-v="headline.first_avg_rounds" data-fmt="f2"></b> rounds on average in cycle <b data-v="headline.first_cycle"></b> (<span data-v="headline.first_tasks"></span> tasks) and <b data-v="headline.last_avg_rounds" data-fmt="f2"></b> in cycle <b data-v="headline.last_cycle"></b> (<span data-v="headline.last_tasks"></span> tasks). The Approver sent <b data-v="kpis.rework_verdicts"></b> of its <b data-v="kpis.approver_runs"></b> verdicts back as rework, <span data-v="headline.rework_since"></span></p>
+    </section>
+
+    <section class="tiles" aria-label="Headline figures">
+      <div class="tile">
+        <span class="tile-label">Tasks</span>
+        <span class="tile-value" data-v="kpis.tasks"></span>
+        <span class="tile-sub">in <span data-v="kpis.cycles"></span> cycles, <span data-v="kpis.rounds"></span> rounds</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Rounds per task</span>
+        <span class="tile-value" data-v="kpis.avg_rounds" data-fmt="f2"></span>
+        <span class="tile-sub">average; 1 means approved first time</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">First-pass approval</span>
+        <span class="tile-value" data-v="kpis.first_pass_pct" data-fmt="pct"></span>
+        <span class="tile-sub"><span data-v="kpis.first_pass"></span> tasks approved after round 1</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Automatic fix round</span>
+        <span class="tile-value" data-v="kpis.auto_fix_pct" data-fmt="pct"></span>
+        <span class="tile-sub">of tasks failed a round-1 review</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Approver rework rate</span>
+        <span class="tile-value" data-v="kpis.rework_pct" data-fmt="pct"></span>
+        <span class="tile-sub"><span data-v="kpis.rework_verdicts"></span> REWORK of <span data-v="kpis.approver_runs"></span> verdicts</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Approved over a FAIL</span>
+        <span class="tile-value" data-v="kpis.approved_over_fail"></span>
+        <span class="tile-sub">tasks merged while a review still failed</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Escalations</span>
+        <span class="tile-value" data-v="kpis.escalations"></span>
+        <span class="tile-sub">ESCALATE verdicts; <span data-v="kpis.human_rounds"></span> human rework rounds</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Round-1 findings per review</span>
+        <span class="tile-value" data-v="kpis.must_fix_r1" data-fmt="f2"></span>
+        <span class="tile-sub">must-fix, plus <span data-v="kpis.nits_r1" data-fmt="f2"></span> nits</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Tokens</span>
+        <span class="tile-value" data-v="kpis.tokens" data-fmt="tok"></span>
+        <span class="tile-sub">input, output and cache writes; <span data-v="kpis.cache_read" data-fmt="tok"></span> cache reads</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Tokens per task</span>
+        <span class="tile-value" data-v="kpis.tokens_per_task" data-fmt="tok"></span>
+        <span class="tile-sub">median, builder, reviewers and Approver</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Agent time per task</span>
+        <span class="tile-value" data-v="kpis.secs_per_task" data-fmt="dur"></span>
+        <span class="tile-sub">median; <span data-v="kpis.effort_per_task" data-fmt="dur"></span> of effort, summed over agents</span>
+      </div>
+      <div class="tile">
+        <span class="tile-label">Orchestration</span>
+        <span class="tile-value" data-v="kpis.orchestration_pct" data-fmt="pct"></span>
+        <span class="tile-sub">of tokens: main session, task orchestrators, planner</span>
+      </div>
+    </section>
+
+    <section class="section" id="rounds">
+      <h2>How many rounds each task needed</h2>
+      <p>Round 1 is the build and full review. If any review fails, the factory runs one automatic fix round. After that, each REWORK verdict adds a round, up to two per task, and a human can add more with <code>/factory rework</code>.</p>
+      <ul class="legend" id="rounds-legend" aria-label="Legend"></ul>
+      <div class="chart" id="rounds-chart"></div>
+    </section>
+
+    <section class="section" id="trend">
+      <h2>Cycle-over-cycle trend</h2>
+      <p>Each point is one cycle. <span data-v="headline.small_cycles_note"></span></p>
+      <div class="grid4">
+        <div class="cell">
+          <h3>Average rounds per task</h3>
+          <div class="chart" data-trend="avg_rounds" data-fmt="f2" data-label="Average rounds per task by cycle"></div>
+        </div>
+        <div class="cell">
+          <h3>First-pass approval</h3>
+          <div class="chart" data-trend="first_pass_pct" data-fmt="pct" data-max="100" data-label="Share of tasks approved after round 1, by cycle"></div>
+        </div>
+        <div class="cell">
+          <h3>Must-fix per round-1 review</h3>
+          <div class="chart" data-trend="must_fix_r1" data-fmt="f2" data-label="Average must-fix findings per round-1 review, by cycle"></div>
+        </div>
+        <div class="cell">
+          <h3>Tokens per task</h3>
+          <div class="chart" data-trend="tokens_per_task" data-fmt="tok" data-label="Average tokens per task, by cycle"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="approver">
+      <h2>The Approver</h2>
+      <p>The Approver runs when every round-1 review passes, after the automatic fix round, and after each rework round. It can APPROVE, send a REWORK note, or ESCALATE to a human.</p>
+      <div class="grid2">
+        <div class="cell">
+          <h3>Verdicts by cycle</h3>
+          <ul class="legend" aria-label="Legend">
+            <li><span class="sw sw-ok"></span>APPROVE</li>
+            <li><span class="sw sw-warn"></span>REWORK</li>
+            <li><span class="sw sw-bad"></span>ESCALATE</li>
+          </ul>
+          <div class="chart" id="verdict-chart"></div>
+        </div>
+        <div class="cell">
+          <h3>Rework budget used per task</h3>
+          <div class="chart" id="budget-chart"></div>
+          <p class="note"><span class="inline" data-v="kpis.budget_spent"></span> tasks used both REWORK verdicts. The Approver then approved or escalated whatever was left.</p>
+        </div>
+      </div>
+      <h3>Approved while a review still failed</h3>
+      <p class="note">The Approver may judge a soft-category must-fix minor, or show that it is wrong. These are the tasks it merged with a FAIL review in the final round.</p>
+      <div class="tablewrap">
+        <table class="table">
+          <thead><tr>
+            <th class="num">Cycle</th><th>Task</th><th class="num">Final round</th>
+            <th>Review still FAIL</th><th class="num">REWORK verdicts before</th>
+          </tr></thead>
+          <tbody id="overrides-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" id="reviewers">
+      <h2>Findings per reviewer</h2>
+      <p>Average findings per review, by reviewer. Round 1 is the full review. Later rounds check the earlier must-fix findings and the round's changes, so they find less.</p>
+      <ul class="legend" aria-label="Legend">
+        <li><span class="sw sw-s1"></span>Round 1</li>
+        <li><span class="sw sw-s2"></span>Later rounds</li>
+      </ul>
+      <div class="grid2">
+        <div class="cell">
+          <h3>Must-fix per review</h3>
+          <div class="chart chart-tall" data-reviewer="must_fix_avg" data-label="Average must-fix findings per review, by reviewer and round"></div>
+        </div>
+        <div class="cell">
+          <h3>Nits per review</h3>
+          <div class="chart chart-tall" data-reviewer="nits_avg" data-label="Average nit findings per review, by reviewer and round"></div>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table class="table">
+          <thead><tr>
+            <th>Reviewer</th><th>Rounds</th><th class="num">Reviews</th><th class="num">FAIL rate</th>
+            <th class="num">Must-fix</th><th class="num">Must-fix / review</th><th class="num">Nits</th>
+            <th class="num">Nits / review</th><th class="num">Nits found late</th><th class="num">Evidence files / review</th>
+            <th class="num">Agent time / review</th><th class="num">Tokens / review</th>
+          </tr></thead>
+          <tbody id="reviewer-body"></tbody>
+        </table>
+      </div>
+      <h3>Does a FAIL clear in the next round?</h3>
+      <p class="note">For each FAIL review, whether the same reviewer still failed the task in the round after.</p>
+      <div class="tablewrap">
+        <table class="table">
+          <thead><tr>
+            <th>Reviewer</th><th class="num">FAIL reviews with a next round</th><th class="num">Passed next round</th>
+            <th class="num">Failed again</th><th class="num">Failed again, share</th>
+          </tr></thead>
+          <tbody id="persistence-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" id="token-use">
+      <h2>Token use</h2>
+      <p>Tokens are input, output and cache writes, counted as chronoscope counts them; cache reads are shown apart. Task work is the builder, the reviewers and the Approver. Orchestration is the main <code>/factory</code> session, the task orchestrators (from cycle 3), the planner, and any other agent the main session started.</p>
+      <ul class="legend" aria-label="Legend">
+        <li><span class="sw sw-s1"></span>Task work</li>
+        <li><span class="sw sw-s2"></span>Orchestration</li>
+      </ul>
+      <div class="chart" id="tokens-chart"></div>
+      <h3>Tokens per task, by rounds needed</h3>
+      <div class="chart chart-tall" id="task-tokens-chart"></div>
+      <h3>Where the tokens went</h3>
+      <div class="toolbar">
+        <label for="role-cycle-pick">Cycle</label>
+        <select id="role-cycle-pick"><option value="">All cycles</option></select>
+      </div>
+      <div class="tablewrap">
+        <table class="table">
+          <thead><tr>
+            <th>Agent</th><th class="num">Turns</th><th class="num">Agents</th><th class="num">Agent time</th>
+            <th class="num">Tokens</th><th class="num">Share</th><th class="num">Tokens / turn</th>
+            <th class="num">Output</th><th class="num">Cache reads</th>
+          </tr></thead>
+          <tbody id="role-body"></tbody>
+        </table>
+      </div>
+      <p class="note">Share is of the tokens in the cycles shown. Agent time adds up each agent's turns, so for task work it is effort, not elapsed time. The main session's and the task orchestrators' time includes waiting for the agents they started, as in chronoscope, so it is not added to the rest.</p>
+    </section>
+
+    <section class="section" id="timing">
+      <h2>Agent time per task</h2>
+      <p>The time at least one of the task's agents was working, by the number of rounds it needed, measured as chronoscope measures agent time: waiting to be resumed, halts and pauses are left out. Reviewers work side by side, so their times are merged, not added. Hover over a dot for the effort as well: every agent's time added up.</p>
+      <div class="chart chart-tall" id="timing-chart"></div>
+    </section>
+
+    <section class="section" id="tasks">
+      <h2>Every task</h2>
+      <div class="toolbar">
+        <label for="cycle-pick">Cycle</label>
+        <select id="cycle-pick"><option value="">All cycles</option></select>
+      </div>
+      <p class="note">Each round shows its reviews (C code, F feature, U UI, S security) and the Approver's verdict; hover over one for its agent time and tokens. A round with no verdict was the automatic fix round, or a human rework round when marked "human". Click a task to read its files: the task, a round number for its build notes, a review letter for that review, or a verdict for the Approver's verdict and rework note.</p>
+      <div class="tablewrap">
+        <table class="table">
+          <thead><tr>
+            <th class="num">Cycle</th><th>Task</th><th>Title</th><th class="num">Rounds</th>
+            <th class="num">REWORK</th><th class="num">Must-fix</th><th class="num">Nits</th>
+            <th class="num">Agent time</th><th class="num">Tokens</th><th>Rounds and reviews</th>
+          </tr></thead>
+          <tbody id="task-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <details class="details">
+      <summary>How these numbers were counted</summary>
+      <ul>
+        <li>The data comes from <code>factory/stats/extract.py</code>, which writes <code>factory/stats/data/</code>. Run it again after archiving a cycle, then reload this page.</li>
+        <li>Rounds, round kinds, review states and verdicts come from each cycle's <code>board.json</code>. The extractor checks that every review's first line and every <code>verdict.md</code> agree with the board.</li>
+        <li>Findings are the <code>[must-fix]</code> and <code>[nit]</code> items under each review's <code>## Findings</code> heading. Re-checks of earlier findings, under headings such as "Previous findings", are not counted again. Each FAIL review has at least one must-fix and each PASS review none.</li>
+        <li>"Nits found late" are nits marked <code>(found late)</code>: issues in code the round did not change.</li>
+        <li>Evidence files are the files in a reviewer's evidence folder for that round.</li>
+        <li>Agent time and tokens come from the Claude Code transcripts of the factory's sessions, read the way chronoscope reads them. A main session's agent time is its "Agent" figure in chronoscope's session selector, which runs from each of your prompts to the end of the turn it started, so it includes the time the session waited for its background agents. An agent's turn runs from the prompt it was given (or the message that resumed it) to its hand-back, and the extractor checks every main session against chronoscope's own stats cache.</li>
+        <li>Turns are matched to tasks and rounds by their prompt, "Task-id: … Round-id: …". Every build, review and verdict in the archive has its agent's transcript. The matched turns are kept in each cycle's <code>usage.json</code>, so the figures stay once Claude Code deletes old transcripts.</li>
+        <li>Runs outside the archived cycles, such as trial runs and the run before cycle 1, are left out; <code>extract.py</code> lists them.</li>
+      </ul>
+    </details>
+  </main>
+
+  <aside class="panel" id="panel" hidden aria-label="Task files">
+    <div class="panel-handle" id="panel-handle" role="separator"
+         aria-orientation="vertical" aria-label="Resize panel" tabindex="0"></div>
+    <div class="panel-inner">
+      <div class="panel-head">
+        <div class="panel-title">
+          <span class="panel-context" id="panel-context"></span>
+          <span class="panel-path" id="panel-path"></span>
+        </div>
+        <button type="button" class="panel-close" id="panel-close"
+                aria-label="Close panel" title="Close (Esc)">&times;</button>
+      </div>
+      <div class="panel-body">
+        <nav class="file-list" id="file-list" aria-label="Task files"></nav>
+        <div class="viewer" id="viewer">
+          <div class="viewer-note" id="viewer-note" hidden></div>
+          <div class="viewer-content" id="viewer-content"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</body>
+</html>
